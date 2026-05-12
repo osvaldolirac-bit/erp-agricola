@@ -102,7 +102,10 @@ elif menu == "📦 Compras":
         prov = c1.text_input("Proveedor")
         f_c = c2.date_input("Fecha Compra", datetime.now())
         f_v = c2.date_input("Fecha Vencimiento", datetime.now() + timedelta(days=30))
-        conn = conectar_db(); df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn); conn.close()
+        conn = conectar_db()
+        # AJUSTE: Orden Alfabético en el selector de productos
+        df_inv = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn)
+        conn.close()
         if not df_inv.empty:
             cp1, cp2, cp3, cp4 = st.columns([3,1,1,1])
             p_sel = cp1.selectbox("Producto", df_inv['id'].astype(str) + " - " + df_inv['producto'])
@@ -182,10 +185,15 @@ elif menu == "🚜 Inventario":
     st.header("Bodega y Aplicaciones")
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Stock", "🔄 Mov. Manual", "➕ Nuevo Producto", "🔍 Reporte CC"])
     with tab1:
-        conn = conectar_db(); st.dataframe(pd.read_sql_query("SELECT * FROM inventario", conn), use_container_width=True); conn.close()
+        conn = conectar_db()
+        # AJUSTE: Tabla de stock en orden alfabético
+        st.dataframe(pd.read_sql_query("SELECT * FROM inventario ORDER BY producto", conn), use_container_width=True)
+        conn.close()
     with tab2:
         with st.form("mm"):
-            conn = conectar_db(); prods = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
+            conn = conectar_db()
+            # AJUSTE: Selector de productos en orden alfabético
+            prods = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn)
             ps = st.selectbox("Producto", prods['id'].astype(str) + " - " + prods['producto']) if not prods.empty else None
             tipo = st.radio("Tipo", ["Entrada", "Salida"])
             cant = st.number_input("Cant.", min_value=0.0)
@@ -205,6 +213,8 @@ elif menu == "🚜 Inventario":
     with tab4:
         conn = conectar_db(); ccs = pd.read_sql_query("SELECT DISTINCT centro_costo FROM movimientos WHERE tipo='Salida' AND centro_costo != ''", conn)
         cc_f = st.selectbox("Filtrar por CC", ["Todos"] + list(ccs['centro_costo']))
+        # AJUSTE: Reporte de aplicaciones ordenado por producto
         q_cc = "SELECT m.fecha, i.producto, m.cantidad, m.centro_costo FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.tipo = 'Salida'"
         if cc_f != "Todos": q_cc += f" AND m.centro_costo = '{cc_f}'"
+        q_cc += " ORDER BY i.producto"
         st.dataframe(pd.read_sql_query(q_cc, conn), use_container_width=True); conn.close()
