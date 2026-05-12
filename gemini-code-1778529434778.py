@@ -15,7 +15,8 @@ def inicializar_db():
     conn = conectar_db(); cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT, nro_documento TEXT, proveedor TEXT, 
-        fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, estado TEXT DEFAULT 'Pendiente')''')
+        fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, 
+        estado TEXT DEFAULT 'Pendiente', tipo TEXT DEFAULT 'Factura')''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS detalle_facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id INTEGER, producto_id INTEGER, 
         cantidad REAL, precio_neto REAL, total_linea REAL)''')
@@ -78,10 +79,10 @@ if menu == "🏠 Dashboard":
     if not df_f.empty:
         df_f['fecha_vencimiento'] = pd.to_datetime(df_f['fecha_vencimiento']).dt.date
         vencidas = df_f[df_f['fecha_vencimiento'] < hoy].shape[0]
-        col2.metric("Facturas Vencidas", vencidas, delta="¡Urgente!" if vencidas > 0 else "", delta_color="inverse")
+        col2.metric("Vencimientos Atrasados", vencidas, delta="¡Revisar!" if vencidas > 0 else "", delta_color="inverse")
     
     st.markdown("---")
-    st.subheader("📅 Proyección de Pagos Mensuales")
+    st.subheader("📅 Proyección de Pagos Mensuales (Facturas + Gastos)")
     
     fecha_actual = datetime.now()
     meses_proyeccion = []
@@ -100,26 +101,25 @@ if menu == "🏠 Dashboard":
                 st.markdown(f"### {nombre_mes}")
                 st.markdown(f"<h2 style='color: #2E7D32;'>${monto_mes:,.0f}</h2>", unsafe_allow_html=True)
     else:
-        st.info("No hay facturas pendientes para proyectar.")
+        st.info("No hay pagos pendientes para proyectar.")
 
-# --- 2. COMPRAS (HISTORIAL MEJORADO) ---
+# --- 2. COMPRAS (CON PESTAÑA DE GASTOS VARIOS) ---
 elif menu == "📦 Compras":
-    st.header("Gestión de Compras")
-    t1, t2 = st.tabs(["➕ Nueva Factura", "🔍 Consultas e Historial"])
+    st.header("Gestión de Adquisiciones y Gastos")
+    t1, t2, t3 = st.tabs(["➕ Nueva Factura Insumos", "💸 Gasto Vario / Servicio", "🔍 Consultas e Historial"])
     
     with t1:
+        st.subheader("Ingreso de Compra con Factura (Afecta Inventario)")
         c1, c2 = st.columns(2)
-        nro = c1.text_input("N° Factura")
-        prov = c1.text_input("Proveedor")
-        f_c = c2.date_input("Fecha Compra", datetime.now())
-        f_v = c2.date_input("Fecha Vencimiento", datetime.now() + timedelta(days=30))
+        nro = c1.text_input("N° Factura", key="compra_nro")
+        prov = c1.text_input("Proveedor", key="compra_prov")
+        f_c = c2.date_input("Fecha Compra", datetime.now(), key="compra_fc")
+        f_v = c2.date_input("Fecha Vencimiento", datetime.now() + timedelta(days=30), key="compra_fv")
         
-        conn = conectar_db()
-        df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
-        conn.close()
+        conn = conectar_db(); df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn); conn.close()
         
         if df_inv.empty:
-            st.warning("⚠️ Crea productos en 'Inventario' primero.")
+            st.warning("⚠️ Crea productos en 'Inventario' primero para facturas de insumos.")
         else:
             st.markdown("---")
             cp1, cp2, cp3, cp4 = st.columns([3, 1, 1, 1])
@@ -144,8 +144,8 @@ elif menu == "📦 Compras":
                 if st.button("💾 GUARDAR FACTURA COMPLETA"):
                     if nro and prov:
                         conn = conectar_db(); cursor = conn.cursor()
-                        cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total) VALUES (?,?,?,?,?,?)",
-                                       (nro, prov, f_c, f_v, neto_t, total_f))
+                        cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total, tipo) VALUES (?,?,?,?,?,?,?)",
+                                       (nro, prov, f_c, f_v, neto_t, total_f, 'Factura'))
                         id_fact = cursor.lastrowid
                         for i in st.session_state['carrito']:
                             cursor.execute("INSERT INTO detalle_facturas (factura_id, producto_id, cantidad, precio_neto, total_linea) VALUES (?,?,?,?,?)",
@@ -158,44 +158,70 @@ elif menu == "📦 Compras":
                         st.success("¡Factura guardada!"); st.rerun()
 
     with t2:
-        st.subheader("Filtros de Búsqueda")
+        st.subheader("Registro de Gasto o Servicio (No afecta Inventario)")
+        st.info("Use esto para fletes, reparaciones, jornales o servicios sin factura de insumos.")
+        with st.form("form_gastos"):
+            ga1, ga2 = st.columns(2)
+            g_doc = ga1.text_input("N° Documento (Opcional, dejar en blanco si no tiene)")
+            g_prov = ga1.text_input("Proveedor o Beneficiario")
+            g_desc = ga1.text_area("Descripción del Gasto (ej: Pago Flete Cosecha)")
+            
+            g_fecha = ga2.date_input("Fecha", datetime.now())
+            g_vence = ga2.date_input("Vencimiento del Pago", datetime.now() + timedelta(days=7))
+            g_monto = ga2.number_input("Monto Total a Pagar ($)", min_value=0.0)
+            
+            if st.form_submit_button("💾 REGISTRAR GASTO EN CTAS. POR PAGAR"):
+                if g_prov and g_monto > 0:
+                    doc_final = g_doc if g_doc else f"GASTO-{datetime.now().strftime('%y%m%d%H%M')}"
+                    conn = conectar_db(); cursor = conn.cursor()
+                    cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total, tipo) VALUES (?,?,?,?,?,?,?)",
+                                   (doc_final, g_prov, g_fecha, g_vence, g_monto, g_monto, 'Gasto Vario'))
+                    conn.commit(); conn.close()
+                    st.success(f"Gasto registrado como {doc_final}. Ya aparece en Cuentas por Pagar.")
+                else:
+                    st.error("Proveedor y Monto son obligatorios.")
+
+    with t3:
+        st.subheader("Consultas Históricas")
         f1, f2, f3 = st.columns(3)
         d_inicio = f1.date_input("Desde", datetime.now() - timedelta(days=60))
         d_fin = f2.date_input("Hasta", datetime.now())
-        est_filtro = f3.selectbox("Estado", ["Todos", "Pendiente", "Pagado"])
+        t_filtro = f3.selectbox("Tipo de Registro", ["Todos", "Factura", "Gasto Vario"])
         
         conn = conectar_db()
-        query = f"SELECT * FROM facturas WHERE fecha_compra BETWEEN '{d_inicio}' AND '{d_fin}'"
-        if est_filtro != "Todos": query += f" AND estado='{est_filtro}'"
+        query = f"SELECT id, nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, estado, tipo FROM facturas WHERE fecha_compra BETWEEN '{d_inicio}' AND '{d_fin}'"
+        if t_filtro != "Todos": query += f" AND tipo='{t_filtro}'"
         
         df_hist = pd.read_sql_query(query, conn)
         st.dataframe(df_hist, use_container_width=True)
         
-        if st.checkbox("Habilitar opción de eliminar (Cuidado)"):
+        if st.checkbox("Habilitar eliminación de registros"):
             id_borrar = st.number_input("ID para borrar", min_value=0)
             if st.button("❌ Eliminar Permanentemente"):
                 eliminar_factura(id_borrar); st.rerun()
         conn.close()
 
-# --- 3. CUENTAS POR PAGAR ---
+# --- 3. CUENTAS POR PAGAR (UNIFICADO) ---
 elif menu == "💸 Cuentas por Pagar":
     st.header("Tesorería: Cuentas Pendientes")
     conn = conectar_db()
-    df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente'", conn)
+    df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total, tipo FROM facturas WHERE estado='Pendiente'", conn)
     
     if not df_p.empty:
+        st.write("Lista de deudas (Facturas de Insumos + Gastos Varios):")
         st.dataframe(df_p, use_container_width=True)
-        id_pago = st.selectbox("Seleccionar Factura para Pagar", df_p['id'])
+        st.divider()
+        id_pago = st.selectbox("Seleccionar Registro para Pagar", df_p['id'])
         metodo = st.selectbox("Método de Pago", ["Transferencia", "Efectivo", "Cheque", "Vale Vista"])
-        if st.button("💰 Registrar Pago"):
+        if st.button("💰 Registrar Pago Realizado"):
             cursor = conn.cursor()
             cursor.execute("UPDATE facturas SET estado='Pagado' WHERE id=?", (id_pago,))
-            conn.commit(); st.success(f"Factura {id_pago} marcada como PAGADA. Puedes verla en el Historial de Compras."); st.rerun()
+            conn.commit(); st.success(f"Registro {id_pago} marcado como PAGADO."); st.rerun()
     else:
-        st.success("✅ No existen facturas pendientes de pago.")
+        st.success("✅ No existen deudas pendientes.")
     conn.close()
 
-# --- 4. INVENTARIO (RESTAURADO MOVIMIENTO MANUAL) ---
+# --- 4. INVENTARIO ---
 elif menu == "🚜 Inventario":
     st.header("Control de Inventario y Bodega")
     tab1, tab2, tab3 = st.tabs(["📊 Stock Actual", "🔄 Movimiento Manual", "➕ Crear Producto"])
@@ -206,21 +232,19 @@ elif menu == "🚜 Inventario":
         conn.close()
     
     with tab2:
-        st.subheader("Entradas o Salidas Directas (Sin Factura)")
+        st.subheader("Ajustes Directos de Stock")
         with st.form("mov_manual"):
-            conn = conectar_db()
-            prods = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
+            conn = conectar_db(); prods = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
             p_sel = st.selectbox("Producto", prods['id'].astype(str) + " - " + prods['producto']) if not prods.empty else None
             tipo = st.radio("Tipo de Movimiento", ["Entrada", "Salida"])
             cant_m = st.number_input("Cantidad", min_value=0.0, step=0.1)
             bod_m = st.selectbox("Bodega Destino", ["Central", "Insumos", "Petróleo"])
-            cc_m = st.text_input("Centro de Costo (ej. Cuartel A)")
             if st.form_submit_button("Ejecutar Movimiento"):
                 if p_sel:
                     id_p = int(p_sel.split(" - ")[0])
                     cursor = conn.cursor()
-                    cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, bodega, centro_costo, fecha) VALUES (?,?,?,?,?,?)", 
-                                   (id_p, tipo, cant_m, bod_m, cc_m, datetime.now().date()))
+                    cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, bodega, fecha) VALUES (?,?,?,?,?)", 
+                                   (id_p, tipo, cant_m, bod_m, datetime.now().date()))
                     ajuste = cant_m if tipo == "Entrada" else -cant_m
                     cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (ajuste, id_p))
                     conn.commit(); st.success("Movimiento registrado con éxito"); st.rerun()
