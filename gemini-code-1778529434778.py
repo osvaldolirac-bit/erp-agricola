@@ -103,7 +103,6 @@ elif menu == "📦 Compras":
         f_c = c2.date_input("Fecha Compra", datetime.now())
         f_v = c2.date_input("Fecha Vencimiento", datetime.now() + timedelta(days=30))
         conn = conectar_db()
-        # AJUSTE: Orden Alfabético en el selector de productos
         df_inv = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn)
         conn.close()
         if not df_inv.empty:
@@ -186,13 +185,11 @@ elif menu == "🚜 Inventario":
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Stock", "🔄 Mov. Manual", "➕ Nuevo Producto", "🔍 Reporte CC"])
     with tab1:
         conn = conectar_db()
-        # AJUSTE: Tabla de stock en orden alfabético
         st.dataframe(pd.read_sql_query("SELECT * FROM inventario ORDER BY producto", conn), use_container_width=True)
         conn.close()
     with tab2:
         with st.form("mm"):
             conn = conectar_db()
-            # AJUSTE: Selector de productos en orden alfabético
             prods = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn)
             ps = st.selectbox("Producto", prods['id'].astype(str) + " - " + prods['producto']) if not prods.empty else None
             tipo = st.radio("Tipo", ["Entrada", "Salida"])
@@ -206,14 +203,32 @@ elif menu == "🚜 Inventario":
                     cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (aj, id_p)); conn.commit(); st.success("Listo"); st.rerun()
             conn.close()
     with tab3:
+        st.subheader("Crear nuevo producto en el Maestro")
         with st.form("np"):
-            n = st.text_input("Nombre"); f = st.selectbox("Familia", ["Petróleo", "Insumos", "Fertilizantes"])
+            n = st.text_input("Nombre del Producto (Ej: Urea 46%)")
+            # --- NUEVA LISTA DE FAMILIAS ---
+            familias_agricolas = [
+                "Fertilizante", 
+                "Herbicida", 
+                "Insecticida", 
+                "Fungicidas", 
+                "Bio estimulante", 
+                "Fertilizante foliar",
+                "Petróleo/Combustible",
+                "Otros"
+            ]
+            f = st.selectbox("Familia", familias_agricolas)
             if st.form_submit_button("Crear"):
-                conn = conectar_db(); cursor = conn.cursor(); cursor.execute("INSERT INTO inventario (producto, familia) VALUES (?,?)", (n, f)); conn.commit(); conn.close(); st.rerun()
+                if n:
+                    conn = conectar_db(); cursor = conn.cursor()
+                    cursor.execute("INSERT INTO inventario (producto, familia) VALUES (?,?)", (n, f))
+                    conn.commit(); conn.close()
+                    st.success(f"Producto '{n}' creado con éxito."); st.rerun()
+                else:
+                    st.error("Por favor, ingresa un nombre para el producto.")
     with tab4:
         conn = conectar_db(); ccs = pd.read_sql_query("SELECT DISTINCT centro_costo FROM movimientos WHERE tipo='Salida' AND centro_costo != ''", conn)
         cc_f = st.selectbox("Filtrar por CC", ["Todos"] + list(ccs['centro_costo']))
-        # AJUSTE: Reporte de aplicaciones ordenado por producto
         q_cc = "SELECT m.fecha, i.producto, m.cantidad, m.centro_costo FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.tipo = 'Salida'"
         if cc_f != "Todos": q_cc += f" AND m.centro_costo = '{cc_f}'"
         q_cc += " ORDER BY i.producto"
