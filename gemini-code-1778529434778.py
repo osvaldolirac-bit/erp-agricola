@@ -3,11 +3,12 @@ import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
 import os
+import calendar
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", layout="wide")
 
-# --- CONEXIÓN A BASE DE DATOS (v6) ---
+# --- CONEXIÓN A BASE DE DATOS (Manteniendo v6) ---
 def conectar_db():
     return sqlite3.connect('erp_concepcion_v6.db')
 
@@ -18,7 +19,7 @@ def inicializar_db():
         fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, estado TEXT DEFAULT 'Pendiente')''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS detalle_facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id INTEGER, producto_id INTEGER, 
-        cantidad REAL, precio_neto REAL, total_linea REAL)''')
+        cantidad REAL, precio_neto REAL, total_linea REAL)''")
     cursor.execute('''CREATE TABLE IF NOT EXISTS inventario (
         id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS movimientos (
@@ -26,7 +27,7 @@ def inicializar_db():
         cantidad REAL, centro_costo TEXT, bodega TEXT, fecha DATE, factura_id INTEGER)''')
     conn.commit(); conn.close()
 
-# --- LÓGICA DE ELIMINACIÓN ---
+# --- FUNCIONES AUXILIARES ---
 def eliminar_factura(id_f):
     conn = conectar_db(); cursor = conn.cursor()
     detalles = cursor.execute("SELECT producto_id, cantidad FROM detalle_facturas WHERE factura_id=?", (id_f,)).fetchall()
@@ -36,6 +37,11 @@ def eliminar_factura(id_f):
     cursor.execute("DELETE FROM detalle_facturas WHERE factura_id=?", (id_f,))
     cursor.execute("DELETE FROM facturas WHERE id=?", (id_f,))
     conn.commit(); conn.close()
+
+def obtener_nombre_mes(mes_num):
+    meses = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+             7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
+    return meses.get(mes_num, "")
 
 # --- INICIALIZACIÓN ---
 inicializar_db()
@@ -49,41 +55,70 @@ with st.sidebar:
     st.markdown("---")
     menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Cuentas por Pagar", "🚜 Inventario"])
     st.markdown("---")
-    if st.button("🗑️ Limpiar Carrito de Compras"):
+    
+    # PUNTO 1: BOTÓN DE RESPALDO
+    if os.path.exists('erp_concepcion_v6.db'):
+        with open('erp_concepcion_v6.db', 'rb') as f:
+            st.download_button(
+                label="💾 Descargar Respaldo DB",
+                data=f,
+                file_name=f"respaldo_la_concepcion_{datetime.now().strftime('%Y%m%d')}.db",
+                mime="application/x-sqlite3"
+            )
+    
+    if st.button("🗑️ Limpiar Carrito"):
         st.session_state['carrito'] = []
         st.rerun()
 
-# --- 1. DASHBOARD ---
+# --- 1. DASHBOARD MODIFICADO ---
 if menu == "🏠 Dashboard":
-    st.header("📊 Resumen Operativo")
+    st.header("📊 Resumen de Compromisos Financieros")
     conn = conectar_db()
-    df_f = pd.read_sql_query("SELECT * FROM facturas", conn)
-    col1, col2, col3, col4 = st.columns(4)
+    df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
+    conn.close()
     
-    deuda = df_f[df_f['estado']=='Pendiente']['monto_total'].sum()
-    col1.metric("Deuda Pendiente", f"${deuda:,.0f}")
-    
-    stock_t = pd.read_sql_query("SELECT SUM(stock) as s FROM inventario", conn)['s'][0] or 0
-    col2.metric("Stock Total", f"{stock_t:,.1f}")
+    # Métricas principales (Sin Stock Total)
+    col1, col2, col3 = st.columns(3)
+    total_deuda = df_f['monto_total'].sum()
+    col1.metric("Deuda Total Pendiente", f"${total_deuda:,.0f}")
     
     hoy = datetime.now().date()
     if not df_f.empty:
         df_f['fecha_vencimiento'] = pd.to_datetime(df_f['fecha_vencimiento']).dt.date
-        vencidas = df_f[(df_f['estado']=='Pendiente') & (df_f['fecha_vencimiento'] < hoy)].shape[0]
-        col3.metric("Facturas Vencidas", vencidas, delta="¡Revisar!" if vencidas > 0 else "", delta_color="inverse")
+        vencidas = df_f[df_f['fecha_vencimiento'] < hoy].shape[0]
+        col2.metric("Facturas Vencidas", vencidas, delta="¡Urgente!" if vencidas > 0 else "", delta_color="inverse")
     
     st.markdown("---")
-    st.subheader("📅 Proyección Financiera (Próximos Meses)")
-    if not df_f.empty:
-        pend = df_f[df_f['estado']=='Pendiente'].copy()
-        pend['Mes'] = pd.to_datetime(pend['fecha_vencimiento']).dt.strftime('%m-%Y')
-        proy = pend.groupby('Mes')['monto_total'].sum().reset_index()
-        st.bar_chart(proy.set_index('Mes'))
-    else:
-        st.info("Ingresa facturas para ver proyecciones.")
-    conn.close()
+    
+    # PUNTO 2 y 3: PROYECCIÓN NUMÉRICA (Mes actual + 3 meses)
+    st.subheader("📅 Proyección de Pagos Mensuales")
+    
+    # Calculamos los 4 meses a mostrar
+    fecha_actual = datetime.now()
+    meses_proyeccion = []
+    for i in range(4):
+        # Manejo de cambio de año automático
+        mes = (fecha_actual.month + i - 1) % 12 + 1
+        anio = fecha_actual.year + (fecha_actual.month + i - 1) // 12
+        meses_proyeccion.append((mes, anio))
 
-# --- 2. COMPRAS (MULTI-PRODUCTO MEJORADO) ---
+    cols_meses = st.columns(4)
+    
+    if not df_f.empty:
+        df_f['fecha_vencimiento'] = pd.to_datetime(df_f['fecha_vencimiento'])
+        for idx, (m, a) in enumerate(meses_proyeccion):
+            nombre_mes = obtener_nombre_mes(m)
+            # Filtramos por mes y año
+            monto_mes = df_f[(df_f['fecha_vencimiento'].dt.month == m) & 
+                             (df_f['fecha_vencimiento'].dt.year == a)]['monto_total'].sum()
+            
+            with cols_meses[idx]:
+                st.markdown(f"### {nombre_mes} {a}")
+                st.markdown(f"## **${monto_mes:,.0f}**")
+    else:
+        st.info("No hay facturas pendientes para proyectar pagos.")
+
+# --- 2. COMPRAS (MULTI-PRODUCTO) ---
 elif menu == "📦 Compras":
     st.header("Ingreso de Compras")
     t1, t2 = st.tabs(["➕ Nueva Factura", "📜 Historial"])
@@ -95,32 +130,31 @@ elif menu == "📦 Compras":
         f_c = c2.date_input("Fecha Compra", datetime.now())
         f_v = c2.date_input("Fecha Vencimiento", datetime.now() + timedelta(days=30))
         
-        st.markdown("### 🛒 Detalle de Productos")
         conn = conectar_db()
         df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
         conn.close()
         
-        # VERIFICACIÓN CRÍTICA DE PRODUCTOS
         if df_inv.empty:
-            st.error("⚠️ NO HAY PRODUCTOS EN INVENTARIO. Ve al módulo 'Inventario' y crea productos primero.")
+            st.warning("⚠️ Crea productos en 'Inventario' primero.")
         else:
-            col_p1, col_p2, col_p3, col_p4 = st.columns([3, 1, 1, 1])
-            p_sel = col_p1.selectbox("Seleccionar Producto", df_inv['id'].astype(str) + " - " + df_inv['producto'])
-            c_p = col_p2.number_input("Cant.", min_value=0.0, step=0.1)
-            pr_p = col_p3.number_input("Precio Neto", min_value=0.0)
+            st.markdown("---")
+            cp1, cp2, cp3, cp4 = st.columns([3, 1, 1, 1])
+            p_sel = cp1.selectbox("Producto", df_inv['id'].astype(str) + " - " + df_inv['producto'])
+            cant = cp2.number_input("Cant.", min_value=0.0, step=0.1)
+            prec = cp3.number_input("Neto Unit.", min_value=0.0)
             
-            if col_p4.button("➕ Añadir"):
-                if c_p > 0:
+            if cp4.button("➕ Añadir"):
+                if cant > 0:
                     st.session_state['carrito'].append({
                         'id': int(p_sel.split(" - ")[0]), 'nombre': p_sel.split(" - ")[1],
-                        'cantidad': c_p, 'precio': pr_p, 'total': c_p * pr_p
+                        'cantidad': cant, 'precio': prec, 'total': cant * prec
                     })
                     st.rerun()
 
             if st.session_state['carrito']:
                 st.table(pd.DataFrame(st.session_state['carrito'])[['nombre', 'cantidad', 'precio', 'total']])
-                neto_t = sum(item['total'] for item in st.session_state['carrito'])
-                total_f = st.number_input("Total Final Factura (Neto + IVA + Impuestos)", value=neto_t * 1.19)
+                neto_t = sum(i['total'] for i in st.session_state['carrito'])
+                total_f = st.number_input("Total Final (IVA incluido)", value=neto_t * 1.19)
                 bod = st.selectbox("Bodega", ["Central", "Insumos", "Petróleo"])
                 
                 if st.button("💾 GUARDAR FACTURA COMPLETA"):
@@ -137,7 +171,7 @@ elif menu == "📦 Compras":
                             cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
                         conn.commit(); conn.close()
                         st.session_state['carrito'] = []
-                        st.success("¡Guardado!"); st.rerun()
+                        st.success("¡Factura guardada!"); st.rerun()
 
     with t2:
         conn = conectar_db()
@@ -146,12 +180,12 @@ elif menu == "📦 Compras":
 
 # --- 3. CUENTAS POR PAGAR ---
 elif menu == "💸 Cuentas por Pagar":
-    st.header("Pagos")
+    st.header("Gestión de Pagos")
     conn = conectar_db()
     df_p = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
     st.dataframe(df_p, use_container_width=True)
     if not df_p.empty:
-        id_pago = st.selectbox("Factura a Pagar ID", df_p['id'])
+        id_pago = st.selectbox("ID para Pagar", df_p['id'])
         if st.button("💰 Marcar como Pagado"):
             cursor = conn.cursor()
             cursor.execute("UPDATE facturas SET estado='Pagado' WHERE id=?", (id_pago,))
@@ -161,18 +195,16 @@ elif menu == "💸 Cuentas por Pagar":
 # --- 4. INVENTARIO ---
 elif menu == "🚜 Inventario":
     st.header("Maestro de Inventario")
-    t_inv1, t_inv2 = st.tabs(["📊 Stock", "➕ Crear Producto"])
-    
-    with t_inv2:
-        with st.form("nuevo_item"):
-            nom_p = st.text_input("Nombre (Ej: Urea)")
-            fam_p = st.selectbox("Familia", ["Insumos", "Fertilizantes", "Petróleo", "Semillas"])
-            if st.form_submit_button("Crear Producto"):
+    t1, t2 = st.tabs(["📊 Stock", "➕ Crear Producto"])
+    with t2:
+        with st.form("nuevo"):
+            n = st.text_input("Nombre (Ej: Petróleo)")
+            f = st.selectbox("Familia", ["Petróleo", "Insumos", "Fertilizantes", "Repuestos"])
+            if st.form_submit_button("Crear"):
                 conn = conectar_db(); cursor = conn.cursor()
-                cursor.execute("INSERT INTO inventario (producto, familia) VALUES (?,?)", (nom_p, fam_p))
-                conn.commit(); conn.close(); st.success("Producto creado con éxito!"); st.rerun()
-
-    with t_inv1:
+                cursor.execute("INSERT INTO inventario (producto, familia) VALUES (?,?)", (n, f))
+                conn.commit(); conn.close(); st.rerun()
+    with t1:
         conn = conectar_db()
         st.dataframe(pd.read_sql_query("SELECT * FROM inventario", conn), use_container_width=True)
         conn.close()
