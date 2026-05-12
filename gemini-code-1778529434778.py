@@ -31,15 +31,11 @@ def inicializar_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, 
         cantidad REAL, centro_costo TEXT, bodega TEXT, fecha DATE, factura_id INTEGER)''')
     
-    # MIGRACIÓN: Agregar nuevas columnas si no existen
-    cursor.execute("PRAGMA table_info(facturas)")
-    columnas = [info[1] for info in cursor.fetchall()]
-    if 'tipo' not in columnas:
-        cursor.execute("ALTER TABLE facturas ADD COLUMN tipo TEXT DEFAULT 'Factura'")
-    if 'metodo_pago' not in columnas:
-        cursor.execute("ALTER TABLE facturas ADD COLUMN metodo_pago TEXT")
-    if 'fecha_pago' not in columnas:
-        cursor.execute("ALTER TABLE facturas ADD COLUMN fecha_pago DATE")
+    # MIGRACIÓN: Asegurar columnas
+    cursor.execute("PRAGMA table_info(movimientos)")
+    columnas_mov = [info[1] for info in cursor.fetchall()]
+    if 'centro_costo' not in columnas_mov:
+        cursor.execute("ALTER TABLE movimientos ADD COLUMN centro_costo TEXT")
     
     conn.commit(); conn.close()
 
@@ -119,7 +115,7 @@ if menu == "🏠 Dashboard":
     else:
         st.info("No hay pagos pendientes para proyectar.")
 
-# --- 2. COMPRAS (HISTORIAL PERMANENTE) ---
+# --- 2. COMPRAS ---
 elif menu == "📦 Compras":
     st.header("Gestión de Compras y Gastos")
     t1, t2, t3 = st.tabs(["➕ Nueva Factura Insumos", "💸 Gasto Vario / Servicio", "🔍 Consultas e Historial"])
@@ -154,6 +150,7 @@ elif menu == "📦 Compras":
                 neto_t = sum(i['total'] for i in st.session_state['carrito'])
                 total_f = st.number_input("Total Final Factura", value=neto_t * 1.19)
                 bod = st.selectbox("Bodega", ["Central", "Insumos", "Petróleo"])
+                cc_compra = st.text_input("Centro de Costo Destino (Opcional)", "Bodega Central")
                 
                 if st.button("💾 GUARDAR FACTURA COMPLETA"):
                     conn = conectar_db(); cursor = conn.cursor()
@@ -163,8 +160,8 @@ elif menu == "📦 Compras":
                     for i in st.session_state['carrito']:
                         cursor.execute("INSERT INTO detalle_facturas (factura_id, producto_id, cantidad, precio_neto, total_linea) VALUES (?,?,?,?,?)",
                                        (id_fact, i['id'], i['cantidad'], i['precio'], i['total']))
-                        cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, bodega, fecha, factura_id) VALUES (?,?,?,?,?,?)",
-                                       (i['id'], "Entrada", i['cantidad'], bod, f_c, id_fact))
+                        cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, bodega, fecha, factura_id, centro_costo) VALUES (?,?,?,?,?,?,?)",
+                                       (i['id'], "Entrada", i['cantidad'], bod, f_c, id_fact, cc_compra))
                         cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
                     conn.commit(); conn.close()
                     st.session_state['carrito'] = []
@@ -190,7 +187,7 @@ elif menu == "📦 Compras":
                     conn.commit(); conn.close(); st.success("Gasto registrado"); st.rerun()
 
     with t3:
-        st.subheader("Consultas Históricas de Compras y Gastos")
+        st.subheader("Consultas Históricas")
         f1, f2, f3, f4 = st.columns(4)
         d_i = f1.date_input("Desde", datetime.now() - timedelta(days=90))
         d_f = f2.date_input("Hasta", datetime.now())
@@ -204,14 +201,9 @@ elif menu == "📦 Compras":
         
         df_hist = pd.read_sql_query(query, conn)
         st.dataframe(df_hist, use_container_width=True)
-        
-        if st.checkbox("Habilitar eliminación manual (Cuidado)"):
-            id_b = st.number_input("ID para borrar", min_value=0)
-            if st.button("❌ Borrar Definitivamente"):
-                eliminar_factura(id_b); st.rerun()
         conn.close()
 
-# --- 3. CUENTAS POR PAGAR (DETALLE DE PAGO) ---
+# --- 3. CUENTAS POR PAGAR ---
 elif menu == "💸 Cuentas por Pagar":
     st.header("Tesorería: Deudas Pendientes")
     conn = conectar_db()
@@ -223,38 +215,42 @@ elif menu == "💸 Cuentas por Pagar":
         st.subheader("Registrar Pago")
         id_pago = st.selectbox("Factura/Gasto a Pagar", df_p['id'])
         metodo = st.selectbox("Forma de Pago", ["Transferencia", "Efectivo", "Cheque", "Vale Vista", "Tarjeta"])
-        f_pago = st.date_input("Fecha en que se realizó el pago", datetime.now())
+        f_pago = st.date_input("Fecha de Pago", datetime.now())
         
         if st.button("💰 Confirmar Pago"):
             cursor = conn.cursor()
-            cursor.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", 
-                           (metodo, f_pago, id_pago))
-            conn.commit(); st.success(f"¡Pago registrado! El documento {id_pago} ahora figura como Pagado en el historial."); st.rerun()
+            cursor.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metodo, f_pago, id_pago))
+            conn.commit(); st.success(f"¡Pago registrado!"); st.rerun()
     else:
         st.success("✅ No hay deudas pendientes.")
     conn.close()
 
-# --- 4. INVENTARIO ---
+# --- 4. INVENTARIO (ACTUALIZADO CON CENTRO DE COSTO Y REPORTES) ---
 elif menu == "🚜 Inventario":
-    st.header("Inventario y Bodega")
-    tab1, tab2, tab3 = st.tabs(["📊 Stock", "🔄 Mov. Manual", "➕ Nuevo Producto"])
+    st.header("Control de Inventario y Aplicaciones")
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Stock", "🔄 Movimiento Manual", "➕ Nuevo Producto", "🔍 Reporte por CC"])
     
     with tab1:
         conn = conectar_db(); st.dataframe(pd.read_sql_query("SELECT * FROM inventario", conn), use_container_width=True); conn.close()
     
     with tab2:
+        st.subheader("Entradas o Salidas (Afecta Stock)")
         with st.form("mov_m"):
             conn = conectar_db(); prods = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
             p_s = st.selectbox("Producto", prods['id'].astype(str) + " - " + prods['producto']) if not prods.empty else None
             tipo_m = st.radio("Tipo", ["Entrada", "Salida"])
             cant_m = st.number_input("Cantidad", min_value=0.0)
-            if st.form_submit_button("Ejecutar"):
-                id_p = int(p_s.split(" - ")[0])
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha) VALUES (?,?,?,?)", (id_p, tipo_m, cant_m, datetime.now().date()))
-                ajuste = cant_m if tipo_m == "Entrada" else -cant_m
-                cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (ajuste, id_p))
-                conn.commit(); st.success("Stock actualizado"); st.rerun()
+            cc_m = st.text_input("Centro de Costo (ej. Cuartel A, Tractor 3, etc.)")
+            bod_m = st.selectbox("Bodega", ["Central", "Insumos", "Petróleo"])
+            if st.form_submit_button("Ejecutar Movimiento"):
+                if p_s:
+                    id_p = int(p_s.split(" - ")[0])
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, bodega) VALUES (?,?,?,?,?,?)", 
+                                   (id_p, tipo_m, cant_m, datetime.now().date(), cc_m, bod_m))
+                    ajuste = cant_m if tipo_m == "Entrada" else -cant_m
+                    cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (ajuste, id_p))
+                    conn.commit(); st.success("Movimiento registrado con éxito"); st.rerun()
             conn.close()
 
     with tab3:
@@ -263,4 +259,29 @@ elif menu == "🚜 Inventario":
             f = st.selectbox("Familia", ["Insumos", "Petróleo", "Fertilizantes", "Semillas"])
             if st.form_submit_button("Crear"):
                 conn = conectar_db(); cursor = conn.cursor(); cursor.execute("INSERT INTO inventario (producto, familia) VALUES (?,?)", (n, f))
-                conn.commit(); conn.close(); st.rerun()
+                conn.commit(); conn.close(); st.success("Producto creado!"); st.rerun()
+
+    with tab4:
+        st.subheader("Consulta de Aplicaciones y Salidas por Centro de Costo")
+        conn = conectar_db()
+        # Obtener lista de Centros de Costo únicos para filtrar
+        ccs = pd.read_sql_query("SELECT DISTINCT centro_costo FROM movimientos WHERE tipo='Salida' AND centro_costo IS NOT NULL AND centro_costo != ''", conn)
+        
+        col_f1, col_f2 = st.columns(2)
+        cc_filtro = col_f1.selectbox("Seleccionar Centro de Costo", ["Todos"] + list(ccs['centro_costo']))
+        
+        query_cc = """
+            SELECT m.fecha, i.producto, m.cantidad, m.centro_costo, m.bodega 
+            FROM movimientos m 
+            JOIN inventario i ON m.producto_id = i.id 
+            WHERE m.tipo = 'Salida'
+        """
+        if cc_filtro != "Todos":
+            query_cc += f" AND m.centro_costo = '{cc_filtro}'"
+        
+        df_cc = pd.read_sql_query(query_cc, conn)
+        st.dataframe(df_cc, use_container_width=True)
+        
+        if not df_cc.empty:
+            st.markdown(f"**Total acumulado de salidas para este filtro:** {df_cc['cantidad'].sum():,.1f} unidades")
+        conn.close()
