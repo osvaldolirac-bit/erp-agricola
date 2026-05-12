@@ -3,12 +3,11 @@ import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
 import os
-import calendar
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", layout="wide")
 
-# --- CONEXIÓN A BASE DE DATOS (Manteniendo v6) ---
+# --- CONEXIÓN A BASE DE DATOS ---
 def conectar_db():
     return sqlite3.connect('erp_concepcion_v6.db')
 
@@ -17,11 +16,15 @@ def inicializar_db():
     cursor.execute('''CREATE TABLE IF NOT EXISTS facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT, nro_documento TEXT, proveedor TEXT, 
         fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, estado TEXT DEFAULT 'Pendiente')''')
+    
+    # Aquí estaba el error, ahora está corregido:
     cursor.execute('''CREATE TABLE IF NOT EXISTS detalle_facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id INTEGER, producto_id INTEGER, 
-        cantidad REAL, precio_neto REAL, total_linea REAL)''")
+        cantidad REAL, precio_neto REAL, total_linea REAL)''')
+        
     cursor.execute('''CREATE TABLE IF NOT EXISTS inventario (
         id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0)''')
+    
     cursor.execute('''CREATE TABLE IF NOT EXISTS movimientos (
         id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, 
         cantidad REAL, centro_costo TEXT, bodega TEXT, fecha DATE, factura_id INTEGER)''')
@@ -56,7 +59,7 @@ with st.sidebar:
     menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Cuentas por Pagar", "🚜 Inventario"])
     st.markdown("---")
     
-    # PUNTO 1: BOTÓN DE RESPALDO
+    # BOTÓN DE RESPALDO
     if os.path.exists('erp_concepcion_v6.db'):
         with open('erp_concepcion_v6.db', 'rb') as f:
             st.download_button(
@@ -70,15 +73,14 @@ with st.sidebar:
         st.session_state['carrito'] = []
         st.rerun()
 
-# --- 1. DASHBOARD MODIFICADO ---
+# --- 1. DASHBOARD ---
 if menu == "🏠 Dashboard":
     st.header("📊 Resumen de Compromisos Financieros")
     conn = conectar_db()
     df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
     conn.close()
     
-    # Métricas principales (Sin Stock Total)
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     total_deuda = df_f['monto_total'].sum()
     col1.metric("Deuda Total Pendiente", f"${total_deuda:,.0f}")
     
@@ -89,15 +91,11 @@ if menu == "🏠 Dashboard":
         col2.metric("Facturas Vencidas", vencidas, delta="¡Urgente!" if vencidas > 0 else "", delta_color="inverse")
     
     st.markdown("---")
+    st.subheader("📅 Proyección de Pagos Mensuales (Monto Neto + IVA)")
     
-    # PUNTO 2 y 3: PROYECCIÓN NUMÉRICA (Mes actual + 3 meses)
-    st.subheader("📅 Proyección de Pagos Mensuales")
-    
-    # Calculamos los 4 meses a mostrar
     fecha_actual = datetime.now()
     meses_proyeccion = []
     for i in range(4):
-        # Manejo de cambio de año automático
         mes = (fecha_actual.month + i - 1) % 12 + 1
         anio = fecha_actual.year + (fecha_actual.month + i - 1) // 12
         meses_proyeccion.append((mes, anio))
@@ -108,17 +106,16 @@ if menu == "🏠 Dashboard":
         df_f['fecha_vencimiento'] = pd.to_datetime(df_f['fecha_vencimiento'])
         for idx, (m, a) in enumerate(meses_proyeccion):
             nombre_mes = obtener_nombre_mes(m)
-            # Filtramos por mes y año
             monto_mes = df_f[(df_f['fecha_vencimiento'].dt.month == m) & 
                              (df_f['fecha_vencimiento'].dt.year == a)]['monto_total'].sum()
             
             with cols_meses[idx]:
-                st.markdown(f"### {nombre_mes} {a}")
-                st.markdown(f"## **${monto_mes:,.0f}**")
+                st.markdown(f"### {nombre_mes}")
+                st.markdown(f"<h2 style='color: #2E7D32;'>${monto_mes:,.0f}</h2>", unsafe_allow_html=True)
     else:
         st.info("No hay facturas pendientes para proyectar pagos.")
 
-# --- 2. COMPRAS (MULTI-PRODUCTO) ---
+# --- 2. COMPRAS ---
 elif menu == "📦 Compras":
     st.header("Ingreso de Compras")
     t1, t2 = st.tabs(["➕ Nueva Factura", "📜 Historial"])
@@ -176,6 +173,9 @@ elif menu == "📦 Compras":
     with t2:
         conn = conectar_db()
         st.dataframe(pd.read_sql_query("SELECT * FROM facturas ORDER BY id DESC", conn), use_container_width=True)
+        id_borrar = st.number_input("ID para borrar", min_value=0)
+        if st.button("Eliminar Factura"):
+            eliminar_factura(id_borrar); st.rerun()
         conn.close()
 
 # --- 3. CUENTAS POR PAGAR ---
