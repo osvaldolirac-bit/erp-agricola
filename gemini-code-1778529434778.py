@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
-def conectar_db():
+def agricola_erp_v2.db():
     return sqlite3.connect('agricola_erp.db')
 
 def inicializar_db():
