@@ -7,6 +7,9 @@ import os
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", layout="wide")
 
+# --- SEGURIDAD ---
+CLAVE_SEGURIDAD = "2908"  # <--- CLAVE ACTUALIZADA SEGÚN TU SOLICITUD
+
 # --- CONEXIÓN A BASE DE DATOS ---
 def conectar_db():
     return sqlite3.connect('erp_concepcion_v6.db')
@@ -58,7 +61,7 @@ with st.sidebar:
     st.markdown("---")
     if os.path.exists('erp_concepcion_v6.db'):
         with open('erp_concepcion_v6.db', 'rb') as f:
-            st.download_button("💾 Descargar Respaldo DB", f, "respaldo.db", "application/x-sqlite3")
+            st.download_button("💾 Descargar Respaldo DB", f, "respaldo_agricola.db", "application/x-sqlite3")
     if st.button("🗑️ Limpiar Carrito"):
         st.session_state['carrito'] = []
         st.rerun()
@@ -145,7 +148,7 @@ elif menu == "📦 Compras":
                 conn.commit(); conn.close(); st.success("Registrado"); st.rerun()
 
     with t3:
-        st.subheader("Filtros Históricos")
+        st.subheader("Historial y Gestión de Registros")
         h1, h2, h3, h4 = st.columns(4)
         di = h1.date_input("Desde", datetime.now() - timedelta(days=90))
         df = h2.date_input("Hasta", datetime.now())
@@ -157,9 +160,23 @@ elif menu == "📦 Compras":
         if ef != "Todos": q += f" AND estado='{ef}'"
         st.dataframe(pd.read_sql_query(q, conn), use_container_width=True)
         st.markdown("---")
-        id_b = st.number_input("ID para borrar", min_value=0, step=1)
-        if st.button("❌ ELIMINAR ID SELECCIONADO"):
-            eliminar_factura(id_b); st.rerun()
+        
+        # ELIMINACIÓN PROTEGIDA CON TU NUEVA CLAVE
+        st.subheader("🗑️ Eliminar Registro")
+        col_del1, col_del2, col_del3 = st.columns([1, 1, 2])
+        id_b = col_del1.number_input("ID a borrar", min_value=0, step=1)
+        pass_input = col_del2.text_input("Clave de Seguridad (2908)", type="password")
+        
+        if col_del3.button("❌ ELIMINAR PERMANENTEMENTE"):
+            if pass_input == CLAVE_SEGURIDAD:
+                if id_b > 0:
+                    eliminar_factura(id_b)
+                    st.success(f"Registro {id_b} eliminado.")
+                    st.rerun()
+                else:
+                    st.warning("Indica un ID.")
+            else:
+                st.error("🔑 Clave incorrecta.")
         conn.close()
 
 # --- 3. CUENTAS POR PAGAR ---
@@ -176,7 +193,7 @@ elif menu == "💸 Cuentas por Pagar":
             cursor = conn.cursor()
             cursor.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, fec, id_p))
             conn.commit(); st.success("Pagado!"); st.rerun()
-    else: st.info("Sin deudas pendientes.")
+    else: st.info("Sin deudas.")
     conn.close()
 
 # --- 4. INVENTARIO ---
@@ -203,29 +220,15 @@ elif menu == "🚜 Inventario":
                     cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (aj, id_p)); conn.commit(); st.success("Listo"); st.rerun()
             conn.close()
     with tab3:
-        st.subheader("Crear nuevo producto en el Maestro")
+        st.subheader("Maestro de Productos")
         with st.form("np"):
-            n = st.text_input("Nombre del Producto (Ej: Urea 46%)")
-            # --- NUEVA LISTA DE FAMILIAS ---
-            familias_agricolas = [
-                "Fertilizante", 
-                "Herbicida", 
-                "Insecticida", 
-                "Fungicidas", 
-                "Bio estimulante", 
-                "Fertilizante foliar",
-                "Petróleo/Combustible",
-                "Otros"
-            ]
-            f = st.selectbox("Familia", familias_agricolas)
+            n = st.text_input("Nombre del Producto")
+            f = st.selectbox("Familia", ["Fertilizante", "Herbicida", "Insecticida", "Fungicidas", "Bio estimulante", "Fertilizante foliar", "Petróleo/Combustible", "Otros"])
             if st.form_submit_button("Crear"):
                 if n:
                     conn = conectar_db(); cursor = conn.cursor()
                     cursor.execute("INSERT INTO inventario (producto, familia) VALUES (?,?)", (n, f))
-                    conn.commit(); conn.close()
-                    st.success(f"Producto '{n}' creado con éxito."); st.rerun()
-                else:
-                    st.error("Por favor, ingresa un nombre para el producto.")
+                    conn.commit(); conn.close(); st.success("Creado"); st.rerun()
     with tab4:
         conn = conectar_db(); ccs = pd.read_sql_query("SELECT DISTINCT centro_costo FROM movimientos WHERE tipo='Salida' AND centro_costo != ''", conn)
         cc_f = st.selectbox("Filtrar por CC", ["Todos"] + list(ccs['centro_costo']))
