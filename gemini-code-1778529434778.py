@@ -13,25 +13,33 @@ def conectar_db():
 
 def inicializar_db():
     conn = conectar_db(); cursor = conn.cursor()
-    # Tablas Base
+    # Estructura base
     cursor.execute('''CREATE TABLE IF NOT EXISTS facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT, nro_documento TEXT, proveedor TEXT, 
         fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, 
-        estado TEXT DEFAULT 'Pendiente', tipo TEXT DEFAULT 'Factura')''')
+        estado TEXT DEFAULT 'Pendiente', tipo TEXT DEFAULT 'Factura',
+        metodo_pago TEXT, fecha_pago DATE)''')
+    
     cursor.execute('''CREATE TABLE IF NOT EXISTS detalle_facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id INTEGER, producto_id INTEGER, 
         cantidad REAL, precio_neto REAL, total_linea REAL)''')
+        
     cursor.execute('''CREATE TABLE IF NOT EXISTS inventario (
         id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0)''')
+    
     cursor.execute('''CREATE TABLE IF NOT EXISTS movimientos (
         id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, 
         cantidad REAL, centro_costo TEXT, bodega TEXT, fecha DATE, factura_id INTEGER)''')
     
-    # MIGRACIÓN CRÍTICA: Agregar columna 'tipo' si no existe
+    # MIGRACIÓN: Agregar nuevas columnas si no existen
     cursor.execute("PRAGMA table_info(facturas)")
     columnas = [info[1] for info in cursor.fetchall()]
     if 'tipo' not in columnas:
         cursor.execute("ALTER TABLE facturas ADD COLUMN tipo TEXT DEFAULT 'Factura'")
+    if 'metodo_pago' not in columnas:
+        cursor.execute("ALTER TABLE facturas ADD COLUMN metodo_pago TEXT")
+    if 'fecha_pago' not in columnas:
+        cursor.execute("ALTER TABLE facturas ADD COLUMN fecha_pago DATE")
     
     conn.commit(); conn.close()
 
@@ -64,7 +72,6 @@ with st.sidebar:
     menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Cuentas por Pagar", "🚜 Inventario"])
     st.markdown("---")
     
-    # BOTÓN DE RESPALDO
     if os.path.exists('erp_concepcion_v6.db'):
         with open('erp_concepcion_v6.db', 'rb') as f:
             st.download_button("💾 Descargar Respaldo DB", f, "respaldo_agricola.db", "application/x-sqlite3")
@@ -112,7 +119,7 @@ if menu == "🏠 Dashboard":
     else:
         st.info("No hay pagos pendientes para proyectar.")
 
-# --- 2. COMPRAS ---
+# --- 2. COMPRAS (HISTORIAL PERMANENTE) ---
 elif menu == "📦 Compras":
     st.header("Gestión de Compras y Gastos")
     t1, t2, t3 = st.tabs(["➕ Nueva Factura Insumos", "💸 Gasto Vario / Servicio", "🔍 Consultas e Historial"])
@@ -164,14 +171,14 @@ elif menu == "📦 Compras":
                     st.success("¡Factura guardada!"); st.rerun()
 
     with t2:
-        st.subheader("Gasto Directo / Sin Inventario")
+        st.subheader("Gasto Directo / Servicios")
         with st.form("form_gastos"):
             ga1, ga2 = st.columns(2)
             g_doc = ga1.text_input("N° Documento (Opcional)")
             g_prov = ga1.text_input("Proveedor o Persona")
-            g_desc = ga1.text_area("Concepto (ej: Pago Jornales)")
+            g_desc = ga1.text_area("Concepto")
             g_fecha = ga2.date_input("Fecha Gasto")
-            g_vence = ga2.date_input("Fecha Pago", datetime.now() + timedelta(days=7))
+            g_vence = ga2.date_input("Vencimiento del Pago", datetime.now() + timedelta(days=7))
             g_monto = ga2.number_input("Monto Total ($)", min_value=0.0)
             
             if st.form_submit_button("💾 REGISTRAR GASTO"):
@@ -183,27 +190,28 @@ elif menu == "📦 Compras":
                     conn.commit(); conn.close(); st.success("Gasto registrado"); st.rerun()
 
     with t3:
-        st.subheader("Filtros de Historial")
-        f1, f2, f3 = st.columns(3)
+        st.subheader("Consultas Históricas de Compras y Gastos")
+        f1, f2, f3, f4 = st.columns(4)
         d_i = f1.date_input("Desde", datetime.now() - timedelta(days=90))
         d_f = f2.date_input("Hasta", datetime.now())
         t_f = f3.selectbox("Tipo", ["Todos", "Factura", "Gasto Vario"])
+        e_f = f4.selectbox("Estado", ["Todos", "Pendiente", "Pagado"])
         
         conn = conectar_db()
-        # LA CONSULTA QUE DABA ERROR AHORA ESTÁ PROTEGIDA POR LA MIGRACIÓN
-        query = f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE fecha_compra BETWEEN '{d_i}' AND '{d_f}'"
+        query = f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo, metodo_pago, fecha_pago FROM facturas WHERE fecha_compra BETWEEN '{d_i}' AND '{d_f}'"
         if t_f != "Todos": query += f" AND tipo='{t_f}'"
+        if e_f != "Todos": query += f" AND estado='{e_f}'"
         
         df_hist = pd.read_sql_query(query, conn)
         st.dataframe(df_hist, use_container_width=True)
         
-        if st.checkbox("Habilitar eliminación"):
+        if st.checkbox("Habilitar eliminación manual (Cuidado)"):
             id_b = st.number_input("ID para borrar", min_value=0)
-            if st.button("❌ Eliminar Registro"):
+            if st.button("❌ Borrar Definitivamente"):
                 eliminar_factura(id_b); st.rerun()
         conn.close()
 
-# --- 3. CUENTAS POR PAGAR ---
+# --- 3. CUENTAS POR PAGAR (DETALLE DE PAGO) ---
 elif menu == "💸 Cuentas por Pagar":
     st.header("Tesorería: Deudas Pendientes")
     conn = conectar_db()
@@ -211,16 +219,22 @@ elif menu == "💸 Cuentas por Pagar":
     
     if not df_p.empty:
         st.dataframe(df_p, use_container_width=True)
+        st.divider()
+        st.subheader("Registrar Pago")
         id_pago = st.selectbox("Factura/Gasto a Pagar", df_p['id'])
-        if st.button("💰 Marcar como Pagado"):
+        metodo = st.selectbox("Forma de Pago", ["Transferencia", "Efectivo", "Cheque", "Vale Vista", "Tarjeta"])
+        f_pago = st.date_input("Fecha en que se realizó el pago", datetime.now())
+        
+        if st.button("💰 Confirmar Pago"):
             cursor = conn.cursor()
-            cursor.execute("UPDATE facturas SET estado='Pagado' WHERE id=?", (id_pago,))
-            conn.commit(); st.success(f"Registro {id_pago} Pagado."); st.rerun()
+            cursor.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", 
+                           (metodo, f_pago, id_pago))
+            conn.commit(); st.success(f"¡Pago registrado! El documento {id_pago} ahora figura como Pagado en el historial."); st.rerun()
     else:
-        st.success("✅ Todo al día.")
+        st.success("✅ No hay deudas pendientes.")
     conn.close()
 
-# --- 4. INVENTARIO (CON MOVIMIENTO MANUAL) ---
+# --- 4. INVENTARIO ---
 elif menu == "🚜 Inventario":
     st.header("Inventario y Bodega")
     tab1, tab2, tab3 = st.tabs(["📊 Stock", "🔄 Mov. Manual", "➕ Nuevo Producto"])
