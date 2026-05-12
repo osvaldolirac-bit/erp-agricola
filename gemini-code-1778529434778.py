@@ -8,7 +8,7 @@ import os
 st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", layout="wide")
 
 # --- SEGURIDAD ---
-CLAVE_SEGURIDAD = "2908"  # <--- CLAVE ACTUALIZADA SEGÚN TU SOLICITUD
+CLAVE_SEGURIDAD = "2908"
 
 # --- CONEXIÓN A BASE DE DATOS ---
 def conectar_db():
@@ -120,7 +120,7 @@ elif menu == "📦 Compras":
             if st.session_state['carrito']:
                 st.table(pd.DataFrame(st.session_state['carrito'])[['nombre', 'cantidad', 'precio', 'total']])
                 neto_t = sum(i['total'] for i in st.session_state['carrito'])
-                total_f = st.number_input("Total Factura", value=neto_t * 1.19)
+                total_f = st.number_input("Total Final Factura", value=neto_t * 1.19)
                 bod = st.selectbox("Bodega", ["Central", "Insumos", "Petróleo"])
                 if st.button("💾 GUARDAR FACTURA"):
                     conn = conectar_db(); cursor = conn.cursor()
@@ -161,45 +161,79 @@ elif menu == "📦 Compras":
         st.dataframe(pd.read_sql_query(q, conn), use_container_width=True)
         st.markdown("---")
         
-        # ELIMINACIÓN PROTEGIDA CON TU NUEVA CLAVE
+        # --- ELIMINACIÓN CORREGIDA (Privacidad de clave) ---
         st.subheader("🗑️ Eliminar Registro")
-        col_del1, col_del2, col_del3 = st.columns([1, 1, 2])
+        col_del1, col_del2, col_del3 = st.columns([1, 2, 2])
         id_b = col_del1.number_input("ID a borrar", min_value=0, step=1)
-        pass_input = col_del2.text_input("Clave de Seguridad (2908)", type="password")
+        pass_input = col_del2.text_input("Ingrese Clave de Autorización", type="password") # Corregido: ya no muestra la clave en el label
         
         if col_del3.button("❌ ELIMINAR PERMANENTEMENTE"):
             if pass_input == CLAVE_SEGURIDAD:
                 if id_b > 0:
-                    eliminar_factura(id_b)
-                    st.success(f"Registro {id_b} eliminado.")
-                    st.rerun()
-                else:
-                    st.warning("Indica un ID.")
-            else:
-                st.error("🔑 Clave incorrecta.")
+                    eliminar_factura(id_b); st.success(f"Registro {id_b} eliminado."); st.rerun()
+            else: 
+                if pass_input != "": st.error("🔑 Clave incorrecta.")
         conn.close()
 
 # --- 3. CUENTAS POR PAGAR ---
 elif menu == "💸 Cuentas por Pagar":
-    st.header("Pagos Pendientes")
+    st.header("Tesorería y Gestión de Pagos")
+    tp1, tp2, tp3 = st.tabs(["🔴 Pagos Pendientes", "🏢 Deuda por Proveedor", "📅 Deuda por Mes"])
+    
     conn = conectar_db()
-    df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente'", conn)
-    if not df_p.empty:
-        st.dataframe(df_p, use_container_width=True)
-        id_p = st.selectbox("ID a Pagar", df_p['id'])
-        met = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"])
-        fec = st.date_input("Fecha Pago", datetime.now())
-        if st.button("💰 MARCAR COMO PAGADO"):
-            cursor = conn.cursor()
-            cursor.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, fec, id_p))
-            conn.commit(); st.success("Pagado!"); st.rerun()
-    else: st.info("Sin deudas.")
+    df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total, tipo FROM facturas WHERE estado='Pendiente'", conn)
+    
+    with tp1:
+        if not df_p.empty:
+            st.subheader("Listado de Documentos Pendientes")
+            st.info("💡 Las filas en rojo indican documentos vencidos.")
+            
+            df_p['fecha_vencimiento'] = pd.to_datetime(df_p['fecha_vencimiento'])
+            hoy = pd.Timestamp(datetime.now().date())
+
+            def highlight_vencidos(row):
+                if row['fecha_vencimiento'] < hoy:
+                    return ['background-color: #ffcccc'] * len(row)
+                return [''] * len(row)
+
+            st.dataframe(df_p.style.apply(highlight_vencidos, axis=1), use_container_width=True)
+            
+            st.divider()
+            st.subheader("Registrar Pago")
+            id_p = st.selectbox("ID a Pagar", df_p['id'])
+            met = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque", "Vale Vista"])
+            fec = st.date_input("Fecha Pago", datetime.now())
+            if st.button("💰 MARCAR COMO PAGADO"):
+                cursor = conn.cursor()
+                cursor.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, fec, id_p))
+                conn.commit(); st.success("¡Pago registrado!"); st.rerun()
+        else:
+            st.success("✅ No hay deudas pendientes.")
+
+    with tp2:
+        if not df_p.empty:
+            st.subheader("Resumen de Deuda Total por Proveedor")
+            deuda_prov = df_p.groupby('proveedor')['monto_total'].sum().reset_index()
+            deuda_prov = deuda_prov.sort_values(by='monto_total', ascending=False)
+            st.table(deuda_prov.style.format({"monto_total": "${:,.0f}"}))
+        else:
+            st.info("Sin datos pendientes.")
+
+    with tp3:
+        if not df_p.empty:
+            st.subheader("Resumen de Compromisos por Mes de Vencimiento")
+            df_p['Mes'] = df_p['fecha_vencimiento'].dt.strftime('%m-%Y')
+            deuda_mes = df_p.groupby(['Mes'])['monto_total'].sum().reset_index()
+            st.table(deuda_mes.style.format({"monto_total": "${:,.0f}"}))
+        else:
+            st.info("Sin datos pendientes.")
+    
     conn.close()
 
 # --- 4. INVENTARIO ---
 elif menu == "🚜 Inventario":
     st.header("Bodega y Aplicaciones")
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Stock", "🔄 Mov. Manual", "➕ Nuevo Producto", "🔍 Reporte CC"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Stock Actual", "🔄 Mov. Manual", "➕ Nuevo Producto", "🔍 Reporte CC"])
     with tab1:
         conn = conectar_db()
         st.dataframe(pd.read_sql_query("SELECT * FROM inventario ORDER BY producto", conn), use_container_width=True)
@@ -223,7 +257,8 @@ elif menu == "🚜 Inventario":
         st.subheader("Maestro de Productos")
         with st.form("np"):
             n = st.text_input("Nombre del Producto")
-            f = st.selectbox("Familia", ["Fertilizante", "Herbicida", "Insecticida", "Fungicidas", "Bio estimulante", "Fertilizante foliar", "Petróleo/Combustible", "Otros"])
+            familias = ["Fertilizante", "Herbicida", "Insecticida", "Fungicidas", "Bio estimulante", "Fertilizante foliar", "Petróleo/Combustible", "Otros"]
+            f = st.selectbox("Familia", familias)
             if st.form_submit_button("Crear"):
                 if n:
                     conn = conectar_db(); cursor = conn.cursor()
