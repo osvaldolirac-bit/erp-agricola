@@ -19,6 +19,10 @@ NOMBRE_DB = 'erp_concepcion_v6.db'
 JSON_KEY = 'secretos.json'
 CLAVE_SEGURIDAD = "2908"
 
+# --- LISTAS MAESTRAS (CAMPOS FIJOS) ---
+FAMILIAS_INSUMOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSECTICIDA", "FUNGICIDA", "BIO ESTIMULANTE", "OTROS"]
+CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
+
 # --- UTILIDADES ---
 def f_puntos(v):
     try: return f"{int(v):,}".replace(",", ".")
@@ -91,18 +95,15 @@ if 'db_sincronizada' not in st.session_state:
 
 def inicializar_db():
     conn = conectar_db(); cursor = conn.cursor()
-    # Tablas Base
     cursor.execute("CREATE TABLE IF NOT EXISTS facturas (id INTEGER PRIMARY KEY AUTOINCREMENT, nro_documento TEXT, proveedor TEXT, fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, estado TEXT DEFAULT 'Pendiente', tipo TEXT DEFAULT 'Factura', metodo_pago TEXT, fecha_pago DATE)")
     cursor.execute("CREATE TABLE IF NOT EXISTS detalle_facturas (id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id INTEGER, producto_id INTEGER, cantidad REAL, precio_neto REAL, total_linea REAL)")
     cursor.execute("CREATE TABLE IF NOT EXISTS inventario (id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0)")
     cursor.execute("CREATE TABLE IF NOT EXISTS movimientos (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, cantidad REAL, centro_costo TEXT, fecha DATE, factura_id INTEGER)")
     
-    # --- MIGRACIÓN: AGREGAR COLUMNA CONCEPTO SI NO EXISTE ---
     cursor.execute("PRAGMA table_info(facturas)")
     columnas = [info[1] for info in cursor.fetchall()]
     if 'concepto' not in columnas:
         cursor.execute("ALTER TABLE facturas ADD COLUMN concepto TEXT")
-        conn.commit()
     
     conn.commit(); conn.close()
 
@@ -176,10 +177,7 @@ def modulo_compras():
     with t3:
         c_h1, c_h2 = st.columns(2)
         f_ini, f_fin = c_h1.date_input("Desde", datetime.now()-timedelta(days=60)), c_h2.date_input("Hasta", datetime.now())
-        conn = conectar_db()
-        # El query ahora funcionará porque inicializar_db() asegura que la columna exista
-        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo, concepto FROM facturas WHERE fecha_compra BETWEEN '{f_ini}' AND '{f_fin}' ORDER BY fecha_compra DESC", conn)
-        conn.close()
+        conn = conectar_db(); df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo, concepto FROM facturas WHERE fecha_compra BETWEEN '{f_ini}' AND '{f_fin}' ORDER BY fecha_compra DESC", conn); conn.close()
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
             pdf = descargar_pdf(df_h, "HISTORIAL COMPRAS"); st.download_button("📥 PDF Historial", pdf, "historial.pdf")
@@ -220,7 +218,7 @@ def modulo_tesoreria():
 
 def modulo_bodega():
     st.header("Inventario")
-    tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock", "🔍 Consultas", "🔄 Movimiento", "➕ Nuevo Insumo"])
+    tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock Actual", "🔍 Consultas CC", "🔄 Registrar Movimiento", "➕ Nuevo Insumo"])
     with tb1:
         conn = conectar_db(); df_s = pd.read_sql_query("SELECT id, producto, familia, stock FROM inventario", conn); conn.close()
         bus = st.text_input("🔍 Buscar Insumo")
@@ -228,17 +226,24 @@ def modulo_bodega():
         st.dataframe(df_s, use_container_width=True)
         pdf = descargar_pdf(df_s, "STOCK BODEGA"); st.download_button("📥 PDF Stock", pdf, "stock.pdf")
     with tb2:
-        conn = conectar_db(); cc_list = pd.read_sql_query("SELECT DISTINCT centro_costo FROM movimientos WHERE centro_costo IS NOT NULL", conn)
+        conn = conectar_db()
+        # --- CONSULTA POR CENTRO DE COSTO (CUARTEL) ---
+        cc_list = pd.read_sql_query("SELECT DISTINCT centro_costo FROM movimientos WHERE centro_costo IS NOT NULL", conn)
         if not cc_list.empty:
-            cc_s = st.selectbox("Centro de Costo", cc_list)
+            cc_s = st.selectbox("Seleccionar Cuartel para revisar gasto", cc_list)
             df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo='{cc_s}'", conn)
             st.dataframe(df_cc, use_container_width=True)
+            st.info(f"Mostrando movimientos del sector: {cc_s}")
+        else:
+            st.warning("No hay movimientos registrados en ningún Centro de Costo aún.")
         conn.close()
     with tb3:
         with st.form("mov_b"):
             conn = conectar_db(); prs = pd.read_sql_query("SELECT id, producto FROM inventario", conn); conn.close()
             p_m = st.selectbox("Insumo", prs['id'].astype(str) + " - " + prs['producto'])
-            tm, cm = st.radio("Acción", ["Salida", "Entrada"]), st.number_input("Cant.", min_value=0.1); cc_m = st.text_input("CC (Ej: Cuartel 1)")
+            tm, cm = st.radio("Acción", ["Salida (Uso en Campo)", "Entrada"]), st.number_input("Cant.", min_value=0.1)
+            # --- CENTROS DE COSTO RESTAURADOS AQUÍ ---
+            cc_m = st.selectbox("Centro de Costo (Cuartel)", CENTROS_COSTO)
             if st.form_submit_button("REGISTRAR"):
                 ip = int(p_m.split(" - ")[0]); conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo) VALUES (?,?,?,?,?)", (ip, tm, cm, datetime.now().date(), cc_m))
@@ -247,7 +252,9 @@ def modulo_bodega():
                 conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
     with tb4:
         with st.form("new_i"):
-            nn, ff = st.text_input("Nombre"), st.selectbox("Familia", ["Fertilizante", "Herbicida", "Insecticida", "Fungicidas", "Bio estimulante", "Petróleo", "Otros"])
+            st.subheader("Crear Producto Nuevo")
+            nn = st.text_input("Nombre Comercial")
+            ff = st.selectbox("Familia", FAMILIAS_INSUMOS)
             if st.form_submit_button("CREAR"):
                 conn = conectar_db(); conn.execute("INSERT INTO inventario (producto, familia, stock) VALUES (?,?,0)", (nn, ff)); conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
 
@@ -259,7 +266,7 @@ with st.sidebar:
     menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
     if st.button("🗑️ Vaciar Carrito"): st.session_state['carrito'] = []; st.rerun()
 
-# EJECUCIÓN DE MÓDULOS
+# EJECUCIÓN
 if menu == "🏠 Dashboard": modulo_dashboard()
 elif menu == "📦 Compras": modulo_compras()
 elif menu == "💸 Tesorería": modulo_tesoreria()
