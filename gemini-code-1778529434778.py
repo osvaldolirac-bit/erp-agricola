@@ -43,7 +43,6 @@ def generar_pdf(df, titulo):
         pdf.set_font("Arial", "", 7)
         for _, row in df.iterrows():
             for item in row:
-                # Formatear números en el PDF también
                 val = f_puntos(item) if isinstance(item, (int, float)) else str(item)
                 pdf.cell(w, 7, val[:20], border=1)
             pdf.ln()
@@ -98,4 +97,12 @@ with st.sidebar:
     if os.path.exists(DB_NAME):
         with open(DB_NAME, 'rb') as f:
             st.download_button("💾 Respaldo DB", f, DB_NAME, "application/x-sqlite3")
+    # CORRECCIÓN DE INDENTACIÓN AQUÍ:
     if st.button("🗑️ Vaciar Carrito"):
+        st.session_state['carrito'] = []
+        st.rerun()
+
+# --- 1. DASHBOARD ---
+if menu == "🏠 Dashboard":
+    st.header("📊 Resumen Financiero")
+    conn =
