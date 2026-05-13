@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 
-# Intentamos importar FPDF para reportes
+# --- DETECCIÓN DE LIBRERÍA PDF ---
 try:
     from fpdf import FPDF
     PDF_AVAILABLE = True
@@ -89,9 +89,15 @@ def obtener_nombre_mes(mes_num):
 inicializar_db()
 if 'carrito' not in st.session_state: st.session_state['carrito'] = []
 
-# --- SIDEBAR ---
+# --- SIDEBAR (CON DIAGNÓSTICO) ---
 with st.sidebar:
     st.title("AGRICOLA LA CONCEPCION")
+    if not PDF_AVAILABLE:
+        st.error("🚫 PDF DESHABILITADO\n\nAgregue 'fpdf' al archivo requirements.txt en su GitHub.")
+    else:
+        st.success("✅ Sistema PDF Activo")
+    
+    st.markdown("---")
     menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Cuentas por Pagar", "🚜 Inventario"])
     st.markdown("---")
     if os.path.exists(DB_NAME):
@@ -107,15 +113,12 @@ if menu == "🏠 Dashboard":
     conn = conectar_db()
     df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
     conn.close()
-    
     c1, c2 = st.columns(2)
     total = df_f['monto_total'].sum() if not df_f.empty else 0
     c1.metric("Deuda Pendiente Total", f"${f_puntos(total)}")
-    
     hoy = datetime.now().date()
     vencidas = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy].shape[0] if not df_f.empty else 0
     c2.metric("Documentos Vencidos", vencidas, delta_color="inverse")
-    
     st.subheader("📅 Proyección de Pagos (4 Meses)")
     cols_m = st.columns(4)
     for i in range(4):
@@ -133,12 +136,10 @@ if menu == "🏠 Dashboard":
 elif menu == "📦 Compras":
     st.header("Gestión de Compras")
     t1, t2, t3 = st.tabs(["➕ Factura", "💸 Gasto Vario", "🔍 Historial"])
-    
     with t1:
         c1, c2 = st.columns(2)
         nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor")
         f_c, f_v = c2.date_input("Fecha Compra"), c2.date_input("Vencimiento", datetime.now() + timedelta(days=30))
-        
         conn = conectar_db(); df_inv = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn); conn.close()
         if not df_inv.empty:
             cp1, cp2, cp3, cp4 = st.columns([3,1,1,1])
@@ -148,7 +149,6 @@ elif menu == "📦 Compras":
                 if cant > 0:
                     st.session_state['carrito'].append({'id': int(p_sel.split(" - ")[0]), 'nombre': p_sel.split(" - ")[1], 'cantidad': cant, 'precio': prec, 'total': cant * prec})
                     st.rerun()
-        
         if st.session_state['carrito']:
             df_car = pd.DataFrame(st.session_state['carrito'])
             st.dataframe(df_car[['nombre', 'cantidad', 'precio', 'total']].style.format({"precio": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
@@ -163,7 +163,6 @@ elif menu == "📦 Compras":
                         cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, factura_id, centro_costo, bodega) VALUES (?,?,?,?,?,?,?)", (i['id'], "Entrada", i['cantidad'], f_c, fid, "Bodega", "Central"))
                         cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
                     conn.commit(); conn.close(); st.session_state['carrito'] = []; st.success("Guardado!"); st.rerun()
-
     with t2:
         with st.form("fg"):
             st.subheader("Registrar Gasto Vario")
@@ -176,13 +175,11 @@ elif menu == "📦 Compras":
                     conn = conectar_db(); cursor = conn.cursor()
                     cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, estado) VALUES (?,?,?,?,?,?,?)", (doc, gp, gf, gv, gm, 'Gasto Vario', 'Pendiente'))
                     conn.commit(); conn.close(); st.success("Gasto guardado."); st.rerun()
-
     with t3:
         st.subheader("Historial de Compras y Gastos")
         h1, h2 = st.columns(2)
         di, d_f = h1.date_input("Desde", datetime.now() - timedelta(days=90), key="h1"), h2.date_input("Hasta", datetime.now(), key="h2")
         conn = conectar_db()
-        # CONSULTA AJUSTADA: Quitamos monto_neto para una vista más limpia
         query_h = f"SELECT id, nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, estado, tipo FROM facturas WHERE fecha_compra BETWEEN '{di}' AND '{d_f}'"
         df_h = pd.read_sql_query(query_h, conn)
         conn.close()
@@ -191,7 +188,6 @@ elif menu == "📦 Compras":
             if PDF_AVAILABLE:
                 pdf = generar_pdf(df_h, f"Historial {di} a {d_f}")
                 st.download_button("📥 PDF Historial", pdf, "historial.pdf", "application/pdf")
-        
         st.divider(); col_b1, col_b2, col_b3 = st.columns([1,1,2])
         id_b, pw = col_b1.number_input("ID a borrar", min_value=0, step=1), col_b2.text_input("Clave", type="password")
         if col_b3.button("❌ ELIMINAR"):
@@ -209,6 +205,10 @@ elif menu == "💸 Cuentas por Pagar":
             df_p['fecha_vencimiento'] = pd.to_datetime(df_p['fecha_vencimiento'])
             hoy = pd.Timestamp(datetime.now().date())
             st.dataframe(df_p.style.apply(lambda r: ['background-color: #ffcccc' if r.fecha_vencimiento < hoy else '' for _ in r], axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
+            if PDF_AVAILABLE:
+                pdf_p = generar_pdf(df_p, "Pendientes de Pago")
+                st.download_button("📥 PDF Pendientes", pdf_p, "pendientes.pdf", "application/pdf")
+            st.divider()
             id_p = st.selectbox("ID Pago", df_p['id'])
             met = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque", "Vale Vista"])
             if st.button("💰 PAGAR"):
@@ -221,6 +221,9 @@ elif menu == "💸 Cuentas por Pagar":
         df_pr = pd.read_sql_query(f"SELECT proveedor, SUM(monto_total) as Total FROM facturas WHERE estado='Pendiente' AND fecha_vencimiento BETWEEN '{f1}' AND '{f2}' GROUP BY proveedor", conn)
         if not df_pr.empty:
             st.table(df_pr.style.format({"Total": "${:,.0f}"}))
+            if PDF_AVAILABLE:
+                pdf_pr = generar_pdf(df_pr, "Deuda por Proveedor")
+                st.download_button("📥 PDF Proveedores", pdf_pr, "proveedores.pdf", "application/pdf")
     with tp3:
         r1, r2 = st.columns(2)
         ri, rf = r1.date_input("Vence Desde", datetime.now(), key="r1"), r2.date_input("Vence Hasta", datetime.now()+timedelta(days=30), key="r2")
@@ -228,6 +231,9 @@ elif menu == "💸 Cuentas por Pagar":
         if not df_r.empty:
             st.dataframe(df_r.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
             st.metric("Total en Rango", f"${f_puntos(df_r['monto_total'].sum())}")
+            if PDF_AVAILABLE:
+                pdf_r = generar_pdf(df_r, "Compromisos en Rango")
+                st.download_button("📥 PDF Rango", pdf_r, "rango.pdf", "application/pdf")
     conn.close()
 
 # --- 4. INVENTARIO ---
@@ -237,6 +243,9 @@ elif menu == "🚜 Inventario":
     with tab1:
         conn = conectar_db(); df_s = pd.read_sql_query("SELECT id, producto, familia, stock FROM inventario ORDER BY producto", conn); conn.close()
         st.dataframe(df_s, use_container_width=True)
+        if not df_s.empty and PDF_AVAILABLE:
+            pdf_s = generar_pdf(df_s, "Stock Actual")
+            st.download_button("📥 PDF Stock", pdf_s, "stock.pdf", "application/pdf")
     with tab2:
         with st.form("mm"):
             conn = conectar_db(); prods = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn)
@@ -262,3 +271,6 @@ elif menu == "🚜 Inventario":
         if cc_f != "Todos": q += f" AND m.centro_costo = '{cc_f}'"
         df_cc = pd.read_sql_query(q, conn); conn.close()
         st.dataframe(df_cc, use_container_width=True)
+        if not df_cc.empty and PDF_AVAILABLE:
+            pdf_cc = generar_pdf(df_cc, f"Reporte CC: {cc_f}")
+            st.download_button("📥 PDF Reporte CC", pdf_cc, "reporte_cc.pdf", "application/pdf")
