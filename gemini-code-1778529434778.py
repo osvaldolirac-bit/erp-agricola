@@ -4,16 +4,16 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 
-# --- LIBRERÍAS ---
+# --- LIBRERÍAS DE PERSISTENCIA Y REPORTES ---
 try:
     from fpdf import FPDF
     from pydrive2.auth import GoogleAuth
     from pydrive2.drive import GoogleDrive
     from oauth2client.service_account import ServiceAccountCredentials
 except ImportError:
-    st.error("Faltan librerías. Revisa requirements.txt")
+    st.error("Faltan librerías en el servidor. Revisa tu archivo requirements.txt")
 
-# --- CONFIGURACIÓN DRIVE ---
+# --- CONFIGURACIÓN DE PERSISTENCIA (GOOGLE DRIVE) ---
 ID_CARPETA_DRIVE = "1V7IwdbJPzxQ-hJQaVqOWejHHA1mNbgLo" 
 NOMBRE_DB = 'erp_concepcion_v6.db'
 JSON_KEY = 'secretos.json'
@@ -49,11 +49,13 @@ def guardar_en_drive():
         return True
     except: return False
 
-# --- CONFIG PÁGINA ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", layout="wide")
 
+# Sincronización inicial
 if 'db_sincronizada' not in st.session_state:
-    descargar_de_drive()
+    if descargar_de_drive():
+        st.toast("✅ Datos sincronizados desde Google Drive", icon="☁️")
     st.session_state['db_sincronizada'] = True
 
 CLAVE_SEGURIDAD = "2908"
@@ -62,29 +64,36 @@ def f_puntos(v):
     try: return f"{int(v):,}".replace(",", ".")
     except: return "0"
 
-# --- PDF MEJORADO ---
-def generar_pdf(df, titulo):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "AGRICOLA LA CONCEPCIÓN", ln=True, align="C")
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, titulo, ln=True, align="C")
-    pdf.ln(5)
-    pdf.set_font("Arial", "B", 8)
-    cols = df.columns
-    w = 190 / len(cols)
-    for col in cols: pdf.cell(w, 8, str(col), border=1, align="C")
-    pdf.ln()
-    pdf.set_font("Arial", "", 7)
-    for _, row in df.iterrows():
-        for item in row:
-            val = f_puntos(item) if isinstance(item, (int, float)) else str(item)
-            pdf.cell(w, 7, val[:20], border=1)
+# --- GENERADOR DE PDF CON ENCABEZADO DE EMPRESA ---
+def generar_pdf(df, titulo_reporte):
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, "AGRICOLA LA CONCEPCIÓN", ln=True, align="C")
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 10, titulo_reporte, ln=True, align="C")
+        pdf.ln(5)
+        pdf.set_font("Arial", "I", 8)
+        pdf.cell(0, 5, f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="R")
+        pdf.ln(5)
+        
+        pdf.set_font("Arial", "B", 8)
+        cols = df.columns
+        w = 190 / len(cols)
+        for col in cols: pdf.cell(w, 8, str(col), border=1, align="C")
         pdf.ln()
-    return pdf.output(dest="S").encode("latin-1")
+        
+        pdf.set_font("Arial", "", 7)
+        for _, row in df.iterrows():
+            for item in row:
+                val = f_puntos(item) if isinstance(item, (int, float)) else str(item)
+                pdf.cell(w, 7, val[:20], border=1)
+            pdf.ln()
+        return pdf.output(dest="S").encode("latin-1")
+    except: return None
 
-# --- BASE DE DATOS ---
+# --- BASE DE DATOS LOCAL ---
 def conectar_db(): return sqlite3.connect(NOMBRE_DB)
 
 def inicializar_db():
@@ -95,59 +104,72 @@ def inicializar_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS movimientos (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, cantidad REAL, centro_costo TEXT, fecha DATE, factura_id INTEGER)")
     conn.commit(); conn.close()
 
+def eliminar_factura(id_f):
+    conn = conectar_db(); cursor = conn.cursor()
+    detalles = cursor.execute("SELECT producto_id, cantidad FROM detalle_facturas WHERE factura_id=?", (id_f,)).fetchall()
+    for p_id, cant in detalles:
+        cursor.execute("UPDATE inventario SET stock = stock - ? WHERE id = ?", (cant, p_id))
+    cursor.execute("DELETE FROM movimientos WHERE factura_id=?", (id_f,))
+    cursor.execute("DELETE FROM detalle_facturas WHERE factura_id=?", (id_f,))
+    cursor.execute("DELETE FROM facturas WHERE id=?", (id_f,))
+    conn.commit(); conn.close(); guardar_en_drive()
+
 inicializar_db()
 if 'carrito' not in st.session_state: st.session_state['carrito'] = []
 
-# --- SIDEBAR ---
+# --- BARRA LATERAL ---
 with st.sidebar:
     st.title("LA CONCEPCIÓN ERP")
-    st.success("☁️ Drive: Activo" if os.path.exists(JSON_KEY) else "⚠️ Error Drive")
-    menu = st.radio("Menú", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
+    if os.path.exists(JSON_KEY): st.success("☁️ Sincronización Drive: ACTIVA")
+    else: st.error("⚠️ Falta secretos.json")
+    st.markdown("---")
+    menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
+    st.markdown("---")
     if st.button("🗑️ Vaciar Carrito"): st.session_state['carrito'] = []; st.rerun()
 
 # --- 1. DASHBOARD ---
 if menu == "🏠 Dashboard":
-    st.header("📊 Dashboard Financiero")
+    st.header("📊 Resumen Financiero")
     conn = conectar_db(); df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn); conn.close()
     
     c1, c2, c3 = st.columns(3)
     total_deuda = df_f['monto_total'].sum() if not df_f.empty else 0
-    c1.metric("Deuda Total", f"${f_puntos(total_deuda)}")
-    
+    c1.metric("Deuda Total Pendiente", f"${f_puntos(total_deuda)}")
     vencidas = 0
     if not df_f.empty:
         hoy = datetime.now().date()
         vencidas = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy].shape[0]
-    c2.metric("Vencidas", vencidas, delta_color="inverse")
-    c3.metric("Documentos", len(df_f))
+    c2.metric("Facturas Vencidas", vencidas, delta_color="inverse")
+    c3.metric("Total Documentos", len(df_f))
 
-    st.subheader("📅 Proyección 4 Meses")
-    cols_p = st.columns(4)
-    meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+    st.subheader("📅 Proyección de Pagos (4 Meses)")
+    cols_m = st.columns(4)
+    meses_n = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
     for i in range(4):
-        f = datetime.now() + timedelta(days=i*30)
-        m, a = f.month, f.year
-        val = 0
+        fp = datetime.now() + timedelta(days=i*30)
+        m, a = fp.month, fp.year
+        val_m = 0
         if not df_f.empty:
             df_f['fv'] = pd.to_datetime(df_f['fecha_vencimiento'])
-            val = df_f[(df_f['fv'].dt.month == m) & (df_f['fv'].dt.year == a)]['monto_total'].sum()
-        cols_p[i].metric(f"{meses[m-1]} {a}", f"${f_puntos(val)}")
+            val_m = df_f[(df_f['fv'].dt.month == m) & (df_f['fv'].dt.year == a)]['monto_total'].sum()
+        cols_m[i].metric(f"{meses_n[m-1]} {a}", f"${f_puntos(val_m)}")
 
 # --- 2. COMPRAS ---
 elif menu == "📦 Compras":
-    st.header("Ingreso de Compras")
-    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial"])
+    st.header("Módulo de Compras")
+    t1, t2, t3 = st.tabs(["➕ Factura de Insumos", "💸 Gasto Vario", "🔍 Historial con Filtros"])
     
     with t1:
         c1, c2 = st.columns(2)
-        nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor")
-        f_c, f_v = c2.date_input("Fecha Emisión"), c2.date_input("Vencimiento")
+        nro, prov = c1.text_input("Número Factura"), c1.text_input("Proveedor")
+        f_c, f_v = c2.date_input("Fecha Emisión", datetime.now()), c2.date_input("Fecha Vencimiento", datetime.now()+timedelta(days=30))
         
         conn = conectar_db(); df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn); conn.close()
         if not df_inv.empty:
+            st.subheader("🛒 Carrito de Compra")
             cp1, cp2, cp3, cp4 = st.columns([3,1,1,1])
-            p_sel = cp1.selectbox("Insumo", df_inv['id'].astype(str) + " - " + df_inv['producto'])
-            cant, prec = cp2.number_input("Cant.", min_value=0.1), cp3.number_input("Neto", min_value=0.0)
+            p_sel = cp1.selectbox("Producto", df_inv['id'].astype(str) + " - " + df_inv['producto'])
+            cant, prec = cp2.number_input("Cantidad", min_value=0.1), cp3.number_input("Neto Unitario", min_value=0.0)
             if cp4.button("➕"):
                 st.session_state['carrito'].append({'id': int(p_sel.split(" - ")[0]), 'nombre': p_sel.split(" - ")[1], 'cantidad': cant, 'precio': prec, 'total': cant * prec})
                 st.rerun()
@@ -156,118 +178,15 @@ elif menu == "📦 Compras":
             df_c = pd.DataFrame(st.session_state['carrito'])
             st.table(df_c[['nombre', 'cantidad', 'precio', 'total']])
             neto = df_c['total'].sum()
-            st.write(f"**Neto:** ${f_puntos(neto)} | **IVA:** ${f_puntos(neto*0.19)}")
-            m_total = st.number_input("Total Final Factura", value=float(neto*1.19))
-            if st.button("💾 GUARDAR FACTURA"):
+            st.info(f"Neto: ${f_puntos(neto)} | IVA (19%): ${f_puntos(neto*0.19)}")
+            m_final = st.number_input("Total Final Factura", value=float(neto*1.19))
+            if st.button("💾 GUARDAR FACTURA Y ACTUALIZAR STOCK"):
                 conn = conectar_db(); cursor = conn.cursor()
-                cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total) VALUES (?,?,?,?,?,?)", (nro, prov, f_c, f_v, neto, m_total))
+                cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total) VALUES (?,?,?,?,?,?)", (nro, prov, f_c, f_v, neto, m_final))
                 fid = cursor.lastrowid
                 for i in st.session_state['carrito']:
                     cursor.execute("INSERT INTO detalle_facturas (factura_id, producto_id, cantidad, precio_neto, total_linea) VALUES (?,?,?,?,?)", (fid, i['id'], i['cantidad'], i['precio'], i['total']))
                     cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
-                conn.commit(); conn.close(); guardar_en_drive(); st.session_state['carrito'] = []; st.rerun()
+                conn.commit(); conn.close(); guardar_en_drive(); st.session_state['carrito'] = []; st.success("✅ Guardado en Drive"); st.rerun()
 
-    with t2:
-        with st.form("gv"):
-            st.subheader("Registrar Gasto Directo")
-            g1, g2 = st.columns(2)
-            gp, gd = g1.text_input("Proveedor"), g1.text_input("N° Documento")
-            gm, gf = g2.number_input("Monto Total"), g2.date_input("Fecha")
-            # RESTAURADO: CUADRO DE DETALLE
-            g_con = st.text_area("Concepto o Detalle del Gasto")
-            if st.form_submit_button("💾 GUARDAR GASTO"):
-                conn = conectar_db(); cursor = conn.cursor()
-                cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (gd, gp, gf, gf, gm, 'Gasto Vario', g_con))
-                conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
-
-    with t3:
-        conn = conectar_db(); df_hist = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo FROM facturas ORDER BY id DESC", conn); conn.close()
-        st.dataframe(df_hist, use_container_width=True)
-        if st.button("📥 Descargar Historial PDF"):
-            st.download_button("Descargar", generar_pdf(df_hist, "HISTORIAL DE COMPRAS"), "historial.pdf")
-
-# --- 3. TESORERIA ---
-elif menu == "💸 Tesorería":
-    st.header("Cuentas por Pagar")
-    tp1, tp2, tp3 = st.tabs(["🔴 Pendientes", "🏢 Por Proveedor", "📅 Rango de Fechas"])
-    
-    conn = conectar_db()
-    with tp1:
-        df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente'", conn)
-        if not df_p.empty:
-            # RESTAURADO: COLOR ROJO PARA VENCIDOS
-            def color_vencido(row):
-                venc = pd.to_datetime(row['fecha_vencimiento']).date()
-                return ['background-color: #ffcccc' if venc < datetime.now().date() else '' for _ in row]
-            
-            st.dataframe(df_p.style.apply(color_vencido, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
-            st.write(f"**Deuda Pendiente Total:** ${f_puntos(df_p['monto_total'].sum())}")
-            
-            c1, c2 = st.columns(2)
-            id_pag = c1.selectbox("ID a Pagar", df_p['id'])
-            met = c2.selectbox("Método", ["Transferencia", "Cheque", "Efectivo"])
-            if st.button("💰 PAGAR"):
-                conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, datetime.now().date(), id_pag))
-                conn.commit(); guardar_en_drive(); st.rerun()
-        if st.button("📥 PDF Pendientes"):
-            st.download_button("Descargar", generar_pdf(df_p, "PENDIENTES DE PAGO"), "pendientes.pdf")
-
-    with tp2:
-        # RESTAURADO: FILTRO PROVEEDOR
-        prov_sel = st.selectbox("Seleccionar Proveedor", pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente'", conn))
-        df_prov = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{prov_sel}' AND estado='Pendiente'", conn)
-        st.table(df_prov)
-        st.metric(f"Total {prov_sel}", f"${f_puntos(df_prov['monto_total'].sum())}")
-
-    with tp3:
-        # RESTAURADO: FILTRO RANGO FECHAS
-        c_f1, c_f2 = st.columns(2)
-        f1, f2 = c_f1.date_input("Desde"), c_f2.date_input("Hasta")
-        df_r = pd.read_sql_query(f"SELECT nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND fecha_vencimiento BETWEEN '{f1}' AND '{f2}'", conn)
-        st.dataframe(df_r, use_container_width=True)
-        st.metric("Total Rango", f"${f_puntos(df_r['monto_total'].sum())}")
-    conn.close()
-
-# --- 4. BODEGA ---
-elif menu == "🚜 Bodega":
-    st.header("Inventario y Bodega")
-    tb1, tb2, tb3 = st.tabs(["📊 Stock", "🔍 Consultas", "🔄 Movimiento", "➕ Nuevo Insumo"])
-    
-    with tb1:
-        conn = conectar_db(); df_s = pd.read_sql_query("SELECT id, producto, familia, stock FROM inventario", conn); conn.close()
-        # RESTAURADO: BUSCADOR DE PRODUCTOS
-        search = st.text_input("🔍 Buscar Insumo")
-        if search: df_s = df_s[df_s['producto'].str.contains(search, case=False)]
-        st.dataframe(df_s, use_container_width=True)
-        if st.button("📥 PDF Stock"):
-            st.download_button("Descargar", generar_pdf(df_s, "INVENTARIO DE BODEGA"), "stock.pdf")
-
-    with tb2:
-        # RESTAURADO: CONSULTA POR CENTRO DE COSTO
-        conn = conectar_db()
-        cc_list = pd.read_sql_query("SELECT DISTINCT centro_costo FROM movimientos", conn)
-        cc_sel = st.selectbox("Seleccionar Centro de Costo / Cuartel", cc_list)
-        df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo='{cc_sel}'", conn)
-        conn.close()
-        st.dataframe(df_cc, use_container_width=True)
-
-    with tb3:
-        with st.form("mov"):
-            conn = conectar_db(); prods = pd.read_sql_query("SELECT id, producto FROM inventario", conn); conn.close()
-            ps = st.selectbox("Insumo", prods['id'].astype(str) + " - " + prods['producto'])
-            tm, cm = st.radio("Tipo", ["Salida (Uso)", "Entrada"]), st.number_input("Cantidad", min_value=0.1)
-            cc = st.text_input("Centro de Costo")
-            if st.form_submit_button("REGISTRAR"):
-                id_p = int(ps.split(" - ")[0])
-                conn = conectar_db(); cursor = conn.cursor()
-                cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo) VALUES (?,?,?,?,?)", (id_p, tm, cm, datetime.now().date(), cc))
-                f = 1 if tm == "Entrada" else -1
-                cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (cm*f, id_p))
-                conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
-
-    with tb3: # Es la pestaña 4, pero comparto el bloque
-        with st.form("ni"):
-            st.subheader("Crear Producto")
-            n = st.text_input("Nombre"); f = st.selectbox("Familia", ["Fertilizante", "Herbicida", "Petróleo", "Otros"])
-            if st.form_submit_button("CREAR"):
-                conn = conectar_db(); conn.execute("INSERT INTO inventario (producto, familia, stock) VALUES (?,?,0)", (n, f)); conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
+    with t2
