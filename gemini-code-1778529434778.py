@@ -11,7 +11,7 @@ try:
     from pydrive2.drive import GoogleDrive
     from oauth2client.service_account import ServiceAccountCredentials
 except ImportError:
-    st.error("Faltan librerías en el servidor. Revisa tu archivo requirements.txt")
+    st.error("Faltan librerías. Revisa tu archivo requirements.txt")
 
 # --- CONFIGURACIÓN DE PERSISTENCIA (GOOGLE DRIVE) ---
 ID_CARPETA_DRIVE = "1V7IwdbJPzxQ-hJQaVqOWejHHA1mNbgLo" 
@@ -54,8 +54,7 @@ st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", la
 
 # Sincronización inicial
 if 'db_sincronizada' not in st.session_state:
-    if descargar_de_drive():
-        st.toast("✅ Datos sincronizados desde Google Drive", icon="☁️")
+    descargar_de_drive()
     st.session_state['db_sincronizada'] = True
 
 CLAVE_SEGURIDAD = "2908"
@@ -64,7 +63,7 @@ def f_puntos(v):
     try: return f"{int(v):,}".replace(",", ".")
     except: return "0"
 
-# --- GENERADOR DE PDF CON ENCABEZADO DE EMPRESA ---
+# --- GENERADOR DE PDF ---
 def generar_pdf(df, titulo_reporte):
     try:
         pdf = FPDF()
@@ -93,7 +92,7 @@ def generar_pdf(df, titulo_reporte):
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
-# --- BASE DE DATOS LOCAL ---
+# --- BASE DE DATOS ---
 def conectar_db(): return sqlite3.connect(NOMBRE_DB)
 
 def inicializar_db():
@@ -120,11 +119,9 @@ if 'carrito' not in st.session_state: st.session_state['carrito'] = []
 # --- BARRA LATERAL ---
 with st.sidebar:
     st.title("LA CONCEPCIÓN ERP")
-    if os.path.exists(JSON_KEY): st.success("☁️ Sincronización Drive: ACTIVA")
+    if os.path.exists(JSON_KEY): st.success("☁️ Drive: ACTIVA")
     else: st.error("⚠️ Falta secretos.json")
-    st.markdown("---")
     menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
-    st.markdown("---")
     if st.button("🗑️ Vaciar Carrito"): st.session_state['carrito'] = []; st.rerun()
 
 # --- 1. DASHBOARD ---
@@ -134,13 +131,13 @@ if menu == "🏠 Dashboard":
     
     c1, c2, c3 = st.columns(3)
     total_deuda = df_f['monto_total'].sum() if not df_f.empty else 0
-    c1.metric("Deuda Total Pendiente", f"${f_puntos(total_deuda)}")
+    c1.metric("Deuda Pendiente", f"${f_puntos(total_deuda)}")
     vencidas = 0
     if not df_f.empty:
         hoy = datetime.now().date()
         vencidas = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy].shape[0]
-    c2.metric("Facturas Vencidas", vencidas, delta_color="inverse")
-    c3.metric("Total Documentos", len(df_f))
+    c2.metric("Vencidas", vencidas, delta_color="inverse")
+    c3.metric("Documentos", len(df_f))
 
     st.subheader("📅 Proyección de Pagos (4 Meses)")
     cols_m = st.columns(4)
@@ -157,19 +154,19 @@ if menu == "🏠 Dashboard":
 # --- 2. COMPRAS ---
 elif menu == "📦 Compras":
     st.header("Módulo de Compras")
-    t1, t2, t3 = st.tabs(["➕ Factura de Insumos", "💸 Gasto Vario", "🔍 Historial con Filtros"])
+    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial"])
     
     with t1:
         c1, c2 = st.columns(2)
         nro, prov = c1.text_input("Número Factura"), c1.text_input("Proveedor")
-        f_c, f_v = c2.date_input("Fecha Emisión", datetime.now()), c2.date_input("Fecha Vencimiento", datetime.now()+timedelta(days=30))
+        f_c, f_v = c2.date_input("Emisión"), c2.date_input("Vencimiento")
         
         conn = conectar_db(); df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn); conn.close()
         if not df_inv.empty:
-            st.subheader("🛒 Carrito de Compra")
+            st.subheader("🛒 Carrito")
             cp1, cp2, cp3, cp4 = st.columns([3,1,1,1])
             p_sel = cp1.selectbox("Producto", df_inv['id'].astype(str) + " - " + df_inv['producto'])
-            cant, prec = cp2.number_input("Cantidad", min_value=0.1), cp3.number_input("Neto Unitario", min_value=0.0)
+            cant, prec = cp2.number_input("Cant.", min_value=0.1), cp3.number_input("Neto Un.", min_value=0.0)
             if cp4.button("➕"):
                 st.session_state['carrito'].append({'id': int(p_sel.split(" - ")[0]), 'nombre': p_sel.split(" - ")[1], 'cantidad': cant, 'precio': prec, 'total': cant * prec})
                 st.rerun()
@@ -178,15 +175,6 @@ elif menu == "📦 Compras":
             df_c = pd.DataFrame(st.session_state['carrito'])
             st.table(df_c[['nombre', 'cantidad', 'precio', 'total']])
             neto = df_c['total'].sum()
-            st.info(f"Neto: ${f_puntos(neto)} | IVA (19%): ${f_puntos(neto*0.19)}")
             m_final = st.number_input("Total Final Factura", value=float(neto*1.19))
-            if st.button("💾 GUARDAR FACTURA Y ACTUALIZAR STOCK"):
+            if st.button("💾 GUARDAR FACTURA"):
                 conn = conectar_db(); cursor = conn.cursor()
-                cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total) VALUES (?,?,?,?,?,?)", (nro, prov, f_c, f_v, neto, m_final))
-                fid = cursor.lastrowid
-                for i in st.session_state['carrito']:
-                    cursor.execute("INSERT INTO detalle_facturas (factura_id, producto_id, cantidad, precio_neto, total_linea) VALUES (?,?,?,?,?)", (fid, i['id'], i['cantidad'], i['precio'], i['total']))
-                    cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
-                conn.commit(); conn.close(); guardar_en_drive(); st.session_state['carrito'] = []; st.success("✅ Guardado en Drive"); st.rerun()
-
-    with t2
