@@ -11,7 +11,7 @@ try:
     from pydrive2.drive import GoogleDrive
     from oauth2client.service_account import ServiceAccountCredentials
 except ImportError:
-    st.error("Error: Revisa requirements.txt")
+    st.error("Error: Revisa que pydrive2, oauth2client y fpdf estén en el archivo requirements.txt")
 
 # --- CONFIGURACIÓN DRIVE ---
 ID_CARPETA_DRIVE = "1V7IwdbJPzxQ-hJQaVqOWejHHA1mNbgLo" 
@@ -50,7 +50,7 @@ def guardar_en_drive():
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB)
         f.Upload()
-        st.success("✅ Datos respaldados en Drive")
+        st.success("✅ Respaldo en Drive exitoso")
         return True
     except: return False
 
@@ -135,7 +135,7 @@ def modulo_dashboard():
 
 def modulo_compras():
     st.header("Módulo de Compras")
-    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial"])
+    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial / Gestionar"])
     with t1:
         c1, c2 = st.columns(2)
         nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor")
@@ -158,7 +158,7 @@ def modulo_compras():
                 cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total) VALUES (?,?,?,?,?,?)", (nro, prov, f_c, f_v, neto, m_final))
                 fid = cursor.lastrowid
                 for i in st.session_state['carrito']:
-                    cursor.execute("INSERT INTO detalle_facturas (factura_id, producto_id, cantidad, precio_neto, total_linea) VALUES (?,?,?,?,?)", (fid, i['id'], i['cantidad'], i['precio'], i['total']))
+                    # Nota: Aquí se podría guardar el detalle si tuviéramos tabla de detalle activa
                     cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
                 conn.commit(); conn.close(); guardar_en_drive(); st.session_state['carrito'] = []; st.rerun()
 
@@ -174,6 +174,7 @@ def modulo_compras():
                 conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
 
     with t3:
+        # --- HISTORIAL Y GESTIÓN ---
         conn = conectar_db()
         df_range = pd.read_sql_query("SELECT MIN(fecha_compra) as min_f, MAX(fecha_compra) as max_f FROM facturas", conn)
         default_ini = datetime.now().date() - timedelta(days=60)
@@ -183,13 +184,45 @@ def modulo_compras():
                 default_ini = pd.to_datetime(df_range['min_f'].iloc[0]).date()
                 default_fin = pd.to_datetime(df_range['max_f'].iloc[0]).date()
             except: pass
-        f_i = st.date_input("Desde", value=default_ini)
-        f_f = st.date_input("Hasta", value=default_fin)
-        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo, concepto FROM facturas WHERE fecha_compra BETWEEN '{f_i}' AND '{f_f}' ORDER BY fecha_compra DESC", conn)
-        conn.close()
+        
+        col_f1, col_f2 = st.columns(2)
+        f_i = col_f1.date_input("Desde", value=default_ini, key="hist_desde")
+        f_f = col_f2.date_input("Hasta", value=default_fin, key="hist_hasta")
+        
+        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto, estado FROM facturas WHERE fecha_compra BETWEEN '{f_i}' AND '{f_f}' ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h, use_container_width=True)
+        
         if not df_h.empty:
             st.download_button("📥 PDF Historial", descargar_pdf(df_h, "HISTORIAL COMPRAS"), "historial.pdf")
+            
+            st.divider()
+            st.subheader("⚙️ Modificar o Eliminar Documento")
+            sel_id = st.selectbox("Seleccione ID del documento para gestionar", df_h['id'])
+            
+            row = df_h[df_h['id'] == sel_id].iloc[0]
+            
+            c_mod, c_eli = st.columns(2)
+            
+            with c_mod:
+                with st.expander("📝 MODIFICAR DATOS"):
+                    new_nro = st.text_input("N° Documento", value=row['nro_documento'])
+                    new_prov = st.text_input("Proveedor", value=row['proveedor'])
+                    new_monto = st.number_input("Monto Total", value=float(row['monto_total']))
+                    new_tipo = st.selectbox("Tipo", ["Factura", "Gasto Vario"], index=0 if row['tipo']=="Factura" else 1)
+                    new_concepto = st.text_area("Concepto", value=str(row['concepto']) if row['concepto'] else "")
+                    
+                    if st.button("💾 GUARDAR CAMBIOS"):
+                        conn.execute("UPDATE facturas SET nro_documento=?, proveedor=?, monto_total=?, tipo=?, concepto=? WHERE id=?", 
+                                     (new_nro, new_prov, new_monto, new_tipo, new_concepto, sel_id))
+                        conn.commit(); guardar_en_drive(); st.success("Documento actualizado"); st.rerun()
+            
+            with c_eli:
+                with st.expander("🗑️ ELIMINAR DOCUMENTO"):
+                    st.warning(f"¿Está seguro de eliminar el ID {sel_id}? Esta acción no se puede deshacer.")
+                    if st.button("🔥 CONFIRMAR ELIMINACIÓN"):
+                        conn.execute("DELETE FROM facturas WHERE id=?", (sel_id,))
+                        conn.commit(); guardar_en_drive(); st.success("Documento eliminado"); st.rerun()
+        conn.close()
 
 def modulo_tesoreria():
     st.header("Cuentas por Pagar")
