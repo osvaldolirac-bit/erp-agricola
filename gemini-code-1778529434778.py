@@ -62,7 +62,7 @@ def descargar_de_drive():
     except: return False
     return False
 
-# --- GENERADOR DE PDF ---
+# --- GENERADOR DE PDF CON TOTALES ---
 def descargar_pdf(df, titulo):
     try:
         pdf = FPDF()
@@ -72,19 +72,36 @@ def descargar_pdf(df, titulo):
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 10, titulo, ln=True, align="C")
         pdf.ln(5)
-        pdf.set_font("Helvetica", "B", 8)
+        
+        # Encabezados
+        pdf.set_font("Helvetica", "B", 9)
         cols = df.columns
         w = 190 / len(cols)
-        for col in cols: pdf.cell(w, 8, str(col), border=1, align="C")
+        for col in cols: pdf.cell(w, 8, str(col).upper(), border=1, align="C")
         pdf.ln()
-        pdf.set_font("Helvetica", "", 7)
+        
+        # Datos
+        pdf.set_font("Helvetica", "", 8)
+        suma_total = 0
         for _, row in df.iterrows():
-            for item in row:
+            for i, item in enumerate(row):
+                # Si es la columna de monto, la sumamos
+                if "monto" in df.columns[i].lower():
+                    try: suma_total += float(item)
+                    except: pass
+                
                 val = f_puntos(item) if isinstance(item, (int, float)) else str(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
+        
+        # FILA DE TOTAL (Novedad v6.70)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(w * (len(cols)-1), 8, "TOTAL REPORTE:", border=1, align="R")
+        pdf.cell(w, 8, f"${f_puntos(suma_total)}", border=1, align="L")
+        
         return pdf.output(dest="S").encode("latin-1")
-    except: return None
+    except Exception as e:
+        return None
 
 # --- INICIALIZACIÓN ---
 st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", layout="wide")
@@ -101,7 +118,6 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 inicializar_db()
-if 'carrito' not in st.session_state: st.session_state['carrito'] = []
 
 # --- MÓDULOS ---
 
@@ -114,7 +130,6 @@ def modulo_dashboard():
     hoy = datetime.now().date()
     inicio_mes_actual = hoy.replace(day=1)
     
-    # Cálculos Críticos
     total_pendiente = df_f['monto_total'].sum() if not df_f.empty else 0
     deuda_atrasada_prev = 0
     num_vencidos = 0
@@ -124,36 +139,23 @@ def modulo_dashboard():
         deuda_atrasada_prev = df_f[df_f['fv_date'] < inicio_mes_actual]['monto_total'].sum()
         num_vencidos = len(df_f[df_f['fv_date'] < hoy])
 
-    # Fila 1: Métricas Generales
     c1, c2 = st.columns(2)
     c1.metric("Deuda Total Pendiente", f"${f_puntos(total_pendiente)}")
-    c2.metric("Total Documentos en Cartera", len(df_f))
+    c2.metric("Total Documentos", len(df_f))
 
     st.markdown("---")
     
-    # RECUADRO ESPECIAL DE ALERTA
-    with st.container():
-        st.subheader("⚠️ ZONA DE ALERTA (Deudas Críticas)")
-        ca1, ca2 = st.columns(2)
-        ca1.metric(
-            "Monto Vencido Meses Anteriores", 
-            f"${f_puntos(deuda_atrasada_prev)}", 
-            delta="¡Urgente!", 
-            delta_color="inverse"
-        )
-        ca2.metric(
-            "Documentos Vencidos (Hoy)", 
-            num_vencidos, 
-            delta="Revisar Fechas", 
-            delta_color="inverse"
-        )
+    # ZONA DE ALERTA ESPECIAL (Solicitado v6.69)
+    st.subheader("⚠️ ESTADO DE ALERTA")
+    ca1, ca2 = st.columns(2)
+    ca1.metric("Monto Vencido Meses Anteriores", f"${f_puntos(deuda_atrasada_prev)}", delta="¡Urgente!", delta_color="inverse")
+    ca2.metric("Documentos Vencidos (Hoy)", num_vencidos, delta="Revisar Pagos", delta_color="inverse")
     
     st.markdown("---")
     
-    st.subheader("📅 Proyección de Compromisos por Mes")
+    st.subheader("📅 Proyección de Compromisos Mensuales")
     cols_m = st.columns(4)
     meses_n = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
-    
     for i in range(4):
         target_date = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
         m, a = target_date.month, target_date.year
@@ -164,7 +166,7 @@ def modulo_dashboard():
         cols_m[i].metric(f"{meses_n[m-1]} {a}", f"${f_puntos(val_m)}")
 
 def modulo_compras():
-    st.header("Módulo de Compras")
+    st.header("📦 Módulo de Compras")
     t1, t2, t3 = st.tabs(["➕ Factura", "💸 Gasto Vario", "🔍 Historial / Gestionar"])
     with t1:
         c1, c2 = st.columns(2)
@@ -176,9 +178,10 @@ def modulo_compras():
             p_sel = cp1.selectbox("Insumo", df_inv['id'].astype(str) + " - " + df_inv['producto'])
             cant, prec = cp2.number_input("Cant.", min_value=0.1), cp3.number_input("Neto Un.", min_value=0.0)
             if cp4.button("➕"):
+                if 'carrito' not in st.session_state: st.session_state['carrito'] = []
                 st.session_state['carrito'].append({'id': int(p_sel.split(" - ")[0]), 'nombre': p_sel.split(" - ")[1], 'cantidad': cant, 'precio': prec, 'total': cant * prec})
                 st.rerun()
-        if st.session_state['carrito']:
+        if st.session_state.get('carrito'):
             df_c = pd.DataFrame(st.session_state['carrito'])
             st.table(df_c[['nombre', 'cantidad', 'precio', 'total']])
             neto = df_c['total'].sum()
@@ -203,7 +206,7 @@ def modulo_compras():
         df_h = pd.read_sql_query("SELECT * FROM facturas ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
-            st.download_button("📥 PDF Historial", descargar_pdf(df_h, "HISTORIAL"), "historial.pdf")
+            st.download_button("📥 PDF Historial", descargar_pdf(df_h, "HISTORIAL COMPRAS"), "historial.pdf")
             st.divider()
             sel_id = st.selectbox("ID a gestionar", df_h['id'])
             row = df_h[df_h['id'] == sel_id].iloc[0]
@@ -239,11 +242,10 @@ def modulo_tesoreria():
         if not df_p.empty:
             def style_v(row):
                 v = pd.to_datetime(row['fecha_vencimiento']).date()
-                hoy = datetime.now().date()
-                return ['background-color: #ffcccc' if v < hoy else '' for _ in row]
+                return ['background-color: #ffcccc' if v < datetime.now().date() else '' for _ in row]
             st.dataframe(df_p.style.apply(style_v, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
-            st.metric("Total Deuda Pendiente", f"${f_puntos(df_p['monto_total'].sum())}")
-            st.download_button("📥 Descargar PDF Pendientes", descargar_pdf(df_p, "PENDIENTES"), "pendientes.pdf")
+            st.metric("Deuda Total en Pantalla", f"${f_puntos(df_p['monto_total'].sum())}")
+            st.download_button("📥 PDF Pendientes", descargar_pdf(df_p, "PENDIENTES GENERALES"), "pendientes.pdf")
             st.divider()
             c1, c2 = st.columns(2); id_p = c1.selectbox("ID Pago", df_p['id']); met = c2.selectbox("Medio", ["Transferencia", "Cheque", "Efectivo"])
             if st.button("💰 MARCAR COMO PAGADO"):
@@ -255,14 +257,17 @@ def modulo_tesoreria():
             ps = st.selectbox("Proveedor", provs['proveedor'])
             df_pr = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{ps}' AND estado='Pendiente' ORDER BY fecha_vencimiento ASC", conn)
             st.table(df_pr)
+            st.download_button(f"📥 PDF Proveedor {ps}", descargar_pdf(df_pr, f"PENDIENTES: {ps}"), f"pendientes_{ps}.pdf")
     with tp3:
-        v1, v2 = st.date_input("Desde V."), st.date_input("Hasta V.", datetime.now().date()+timedelta(days=30))
+        v1, v2 = st.date_input("Desde V.", datetime.now().date()), st.date_input("Hasta V.", datetime.now().date()+timedelta(days=30))
         df_v = pd.read_sql_query(f"SELECT nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND fecha_vencimiento BETWEEN '{v1}' AND '{v2}' ORDER BY fecha_vencimiento ASC", conn)
         st.dataframe(df_v, use_container_width=True)
+        if not df_v.empty:
+            st.download_button("📥 PDF Rango Seleccionado", descargar_pdf(df_v, f"VENCIMIENTOS: {v1} al {v2}"), "vencimientos_rango.pdf")
     conn.close()
 
 def modulo_bodega():
-    st.header("🚜 Inventario de Bodega")
+    st.header("🚜 Gestión de Bodega")
     tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock", "🔍 Consultas CC", "🔄 Movimiento", "➕ Nuevo Insumo"])
     CENTROS = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
     with tb1:
@@ -292,11 +297,8 @@ with st.sidebar:
     st.title("LA CONCEPCIÓN ERP")
     if os.path.exists(JSON_KEY):
         st.success("☁️ Drive: CONECTADO")
-        if st.button("🚀 Forzar Sincronización"): 
-            guardar_en_drive()
-    else: 
-        st.error("⚠️ Drive: DESCONECTADO")
-    
+        if st.button("🚀 Forzar Sincronización"): guardar_en_drive()
+    else: st.error("⚠️ Drive: DESCONECTADO")
     menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
 
 if menu == "🏠 Dashboard": modulo_dashboard()
