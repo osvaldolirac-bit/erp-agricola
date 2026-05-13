@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 
-# Intentamos importar FPDF para que los reportes funcionen
+# Intentamos importar FPDF para reportes
 try:
     from fpdf import FPDF
     PDF_AVAILABLE = True
@@ -18,7 +18,7 @@ st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", la
 CLAVE_SEGURIDAD = "2908"
 DB_NAME = 'erp_concepcion_v6.db'
 
-# --- FUNCIÓN DE FORMATEO CHILENO (1.000.000) ---
+# --- FUNCIÓN DE FORMATEO (1.000.000) ---
 def f_puntos(valor):
     try:
         return f"{int(valor):,}".replace(",", ".")
@@ -136,17 +136,14 @@ elif menu == "📦 Compras":
     
     with t1:
         c1, c2 = st.columns(2)
-        nro = c1.text_input("N° Factura")
-        prov = c1.text_input("Proveedor")
-        f_c = c2.date_input("Fecha Compra")
-        f_v = c2.date_input("Vencimiento", datetime.now() + timedelta(days=30))
+        nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor")
+        f_c, f_v = c2.date_input("Fecha Compra"), c2.date_input("Vencimiento", datetime.now() + timedelta(days=30))
         
         conn = conectar_db(); df_inv = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn); conn.close()
         if not df_inv.empty:
             cp1, cp2, cp3, cp4 = st.columns([3,1,1,1])
             p_sel = cp1.selectbox("Insumo", df_inv['id'].astype(str) + " - " + df_inv['producto'])
-            cant = cp2.number_input("Cant.", min_value=0.0)
-            prec = cp3.number_input("Neto", min_value=0.0)
+            cant, prec = cp2.number_input("Cant.", min_value=0.0), cp3.number_input("Neto", min_value=0.0)
             if cp4.button("➕"):
                 if cant > 0:
                     st.session_state['carrito'].append({'id': int(p_sel.split(" - ")[0]), 'nombre': p_sel.split(" - ")[1], 'cantidad': cant, 'precio': prec, 'total': cant * prec})
@@ -168,38 +165,35 @@ elif menu == "📦 Compras":
                     conn.commit(); conn.close(); st.session_state['carrito'] = []; st.success("Guardado!"); st.rerun()
 
     with t2:
-        # --- BLOQUE CORREGIDO DE GASTO VARIO ---
         with st.form("fg"):
             st.subheader("Registrar Gasto Vario")
             g1, g2 = st.columns(2)
-            gd = g1.text_input("N° Doc (Opcional)")
-            gp = g1.text_input("Proveedor")
-            gc = g1.text_area("Concepto")
-            gf = g2.date_input("Fecha Gasto")
-            gv = g2.date_input("Vencimiento", datetime.now() + timedelta(days=7))
-            gm = g2.number_input("Monto Total ($)", min_value=0.0)
-            
+            gd, gp, gc = g1.text_input("N° Doc (Opcional)"), g1.text_input("Proveedor"), g1.text_area("Concepto")
+            gf, gv, gm = g2.date_input("Fecha Gasto"), g2.date_input("Vencimiento", datetime.now() + timedelta(days=7)), g2.number_input("Monto Total ($)", min_value=0.0)
             if st.form_submit_button("💾 GUARDAR GASTO"):
                 if gp and gm > 0:
                     doc = gd if gd else f"G-{datetime.now().strftime('%y%m%d%H%M')}"
                     conn = conectar_db(); cursor = conn.cursor()
                     cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, estado) VALUES (?,?,?,?,?,?,?)", (doc, gp, gf, gv, gm, 'Gasto Vario', 'Pendiente'))
                     conn.commit(); conn.close(); st.success("Gasto guardado."); st.rerun()
-                else:
-                    st.error("Proveedor y Monto son obligatorios.")
 
     with t3:
+        st.subheader("Historial de Compras y Gastos")
         h1, h2 = st.columns(2)
         di, d_f = h1.date_input("Desde", datetime.now() - timedelta(days=90), key="h1"), h2.date_input("Hasta", datetime.now(), key="h2")
-        conn = conectar_db(); df_h = pd.read_sql_query(f"SELECT * FROM facturas WHERE fecha_compra BETWEEN '{di}' AND '{d_f}'", conn); conn.close()
+        conn = conectar_db()
+        # CONSULTA AJUSTADA: Quitamos monto_neto para una vista más limpia
+        query_h = f"SELECT id, nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, estado, tipo FROM facturas WHERE fecha_compra BETWEEN '{di}' AND '{d_f}'"
+        df_h = pd.read_sql_query(query_h, conn)
+        conn.close()
         if not df_h.empty:
             st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
             if PDF_AVAILABLE:
-                pdf = generar_pdf(df_h, "Historial de Compras")
+                pdf = generar_pdf(df_h, f"Historial {di} a {d_f}")
                 st.download_button("📥 PDF Historial", pdf, "historial.pdf", "application/pdf")
+        
         st.divider(); col_b1, col_b2, col_b3 = st.columns([1,1,2])
-        id_b = col_b1.number_input("ID a borrar", min_value=0, step=1)
-        pw = col_b2.text_input("Clave", type="password")
+        id_b, pw = col_b1.number_input("ID a borrar", min_value=0, step=1), col_b2.text_input("Clave", type="password")
         if col_b3.button("❌ ELIMINAR"):
             if pw == CLAVE_SEGURIDAD: eliminar_factura(id_b); st.success("Eliminado"); st.rerun()
             else: st.error("Clave Incorrecta")
@@ -227,9 +221,6 @@ elif menu == "💸 Cuentas por Pagar":
         df_pr = pd.read_sql_query(f"SELECT proveedor, SUM(monto_total) as Total FROM facturas WHERE estado='Pendiente' AND fecha_vencimiento BETWEEN '{f1}' AND '{f2}' GROUP BY proveedor", conn)
         if not df_pr.empty:
             st.table(df_pr.style.format({"Total": "${:,.0f}"}))
-            if PDF_AVAILABLE:
-                pdf_pr = generar_pdf(df_pr, "Deuda por Proveedor")
-                st.download_button("📥 PDF Proveedores", pdf_pr, "proveedores.pdf", "application/pdf")
     with tp3:
         r1, r2 = st.columns(2)
         ri, rf = r1.date_input("Vence Desde", datetime.now(), key="r1"), r2.date_input("Vence Hasta", datetime.now()+timedelta(days=30), key="r2")
@@ -246,9 +237,6 @@ elif menu == "🚜 Inventario":
     with tab1:
         conn = conectar_db(); df_s = pd.read_sql_query("SELECT id, producto, familia, stock FROM inventario ORDER BY producto", conn); conn.close()
         st.dataframe(df_s, use_container_width=True)
-        if not df_s.empty and PDF_AVAILABLE:
-            pdf_s = generar_pdf(df_s, "Stock Actual")
-            st.download_button("📥 PDF Stock", pdf_s, "stock.pdf", "application/pdf")
     with tab2:
         with st.form("mm"):
             conn = conectar_db(); prods = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn)
@@ -274,6 +262,3 @@ elif menu == "🚜 Inventario":
         if cc_f != "Todos": q += f" AND m.centro_costo = '{cc_f}'"
         df_cc = pd.read_sql_query(q, conn); conn.close()
         st.dataframe(df_cc, use_container_width=True)
-        if not df_cc.empty and PDF_AVAILABLE:
-            pdf_cc = generar_pdf(df_cc, f"Reporte CC: {cc_f}")
-            st.download_button("📥 PDF Reporte CC", pdf_cc, "reporte_cc.pdf", "application/pdf")
