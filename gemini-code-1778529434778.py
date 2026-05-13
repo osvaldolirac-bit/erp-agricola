@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 
-# Intentamos importar FPDF para reportes
+# Intentamos importar FPDF para que los reportes funcionen
 try:
     from fpdf import FPDF
     PDF_AVAILABLE = True
@@ -18,7 +18,7 @@ st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", la
 CLAVE_SEGURIDAD = "2908"
 DB_NAME = 'erp_concepcion_v6.db'
 
-# --- FUNCIÓN DE FORMATEO (1.000.000) ---
+# --- FUNCIÓN DE FORMATEO CHILENO (1.000.000) ---
 def f_puntos(valor):
     try:
         return f"{int(valor):,}".replace(",", ".")
@@ -107,12 +107,15 @@ if menu == "🏠 Dashboard":
     conn = conectar_db()
     df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
     conn.close()
+    
     c1, c2 = st.columns(2)
     total = df_f['monto_total'].sum() if not df_f.empty else 0
     c1.metric("Deuda Pendiente Total", f"${f_puntos(total)}")
+    
     hoy = datetime.now().date()
     vencidas = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy].shape[0] if not df_f.empty else 0
     c2.metric("Documentos Vencidos", vencidas, delta_color="inverse")
+    
     st.subheader("📅 Proyección de Pagos (4 Meses)")
     cols_m = st.columns(4)
     for i in range(4):
@@ -130,22 +133,25 @@ if menu == "🏠 Dashboard":
 elif menu == "📦 Compras":
     st.header("Gestión de Compras")
     t1, t2, t3 = st.tabs(["➕ Factura", "💸 Gasto Vario", "🔍 Historial"])
+    
     with t1:
         c1, c2 = st.columns(2)
         nro = c1.text_input("N° Factura")
         prov = c1.text_input("Proveedor")
         f_c = c2.date_input("Fecha Compra")
         f_v = c2.date_input("Vencimiento", datetime.now() + timedelta(days=30))
+        
         conn = conectar_db(); df_inv = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn); conn.close()
         if not df_inv.empty:
             cp1, cp2, cp3, cp4 = st.columns([3,1,1,1])
             p_sel = cp1.selectbox("Insumo", df_inv['id'].astype(str) + " - " + df_inv['producto'])
             cant = cp2.number_input("Cant.", min_value=0.0)
-            prec = cp3.number_input("Precio Neto", min_value=0.0)
+            prec = cp3.number_input("Neto", min_value=0.0)
             if cp4.button("➕"):
                 if cant > 0:
                     st.session_state['carrito'].append({'id': int(p_sel.split(" - ")[0]), 'nombre': p_sel.split(" - ")[1], 'cantidad': cant, 'precio': prec, 'total': cant * prec})
                     st.rerun()
+        
         if st.session_state['carrito']:
             df_car = pd.DataFrame(st.session_state['carrito'])
             st.dataframe(df_car[['nombre', 'cantidad', 'precio', 'total']].style.format({"precio": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
@@ -160,10 +166,32 @@ elif menu == "📦 Compras":
                         cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, factura_id, centro_costo, bodega) VALUES (?,?,?,?,?,?,?)", (i['id'], "Entrada", i['cantidad'], f_c, fid, "Bodega", "Central"))
                         cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
                     conn.commit(); conn.close(); st.session_state['carrito'] = []; st.success("Guardado!"); st.rerun()
+
+    with t2:
+        # --- BLOQUE CORREGIDO DE GASTO VARIO ---
+        with st.form("fg"):
+            st.subheader("Registrar Gasto Vario")
+            g1, g2 = st.columns(2)
+            gd = g1.text_input("N° Doc (Opcional)")
+            gp = g1.text_input("Proveedor")
+            gc = g1.text_area("Concepto")
+            gf = g2.date_input("Fecha Gasto")
+            gv = g2.date_input("Vencimiento", datetime.now() + timedelta(days=7))
+            gm = g2.number_input("Monto Total ($)", min_value=0.0)
+            
+            if st.form_submit_button("💾 GUARDAR GASTO"):
+                if gp and gm > 0:
+                    doc = gd if gd else f"G-{datetime.now().strftime('%y%m%d%H%M')}"
+                    conn = conectar_db(); cursor = conn.cursor()
+                    cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, estado) VALUES (?,?,?,?,?,?,?)", (doc, gp, gf, gv, gm, 'Gasto Vario', 'Pendiente'))
+                    conn.commit(); conn.close(); st.success("Gasto guardado."); st.rerun()
+                else:
+                    st.error("Proveedor y Monto son obligatorios.")
+
     with t3:
         h1, h2 = st.columns(2)
         di, d_f = h1.date_input("Desde", datetime.now() - timedelta(days=90), key="h1"), h2.date_input("Hasta", datetime.now(), key="h2")
-        conn = conectar_db(); df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado FROM facturas WHERE fecha_compra BETWEEN '{di}' AND '{d_f}'", conn); conn.close()
+        conn = conectar_db(); df_h = pd.read_sql_query(f"SELECT * FROM facturas WHERE fecha_compra BETWEEN '{di}' AND '{d_f}'", conn); conn.close()
         if not df_h.empty:
             st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
             if PDF_AVAILABLE:
