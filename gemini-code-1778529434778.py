@@ -12,6 +12,7 @@ CLAVE_SEGURIDAD = "2908"
 
 # --- CONEXIÓN A BASE DE DATOS ---
 def conectar_db():
+    # El sistema buscará tu archivo de respaldo si lo subiste con este nombre
     return sqlite3.connect('erp_concepcion_v6.db')
 
 def inicializar_db():
@@ -29,6 +30,15 @@ def inicializar_db():
     cursor.execute('''CREATE TABLE IF NOT EXISTS movimientos (
         id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, 
         cantidad REAL, centro_costo TEXT, bodega TEXT, fecha DATE, factura_id INTEGER)''')
+    
+    # Asegurar que existan las columnas de pago si la DB es antigua
+    cursor.execute("PRAGMA table_info(facturas)")
+    columnas = [info[1] for info in cursor.fetchall()]
+    if 'metodo_pago' not in columnas:
+        cursor.execute("ALTER TABLE facturas ADD COLUMN metodo_pago TEXT")
+    if 'fecha_pago' not in columnas:
+        cursor.execute("ALTER TABLE facturas ADD COLUMN fecha_pago DATE")
+        
     conn.commit(); conn.close()
 
 # --- FUNCIONES AUXILIARES ---
@@ -122,10 +132,11 @@ elif menu == "📦 Compras":
                 neto_t = sum(i['total'] for i in st.session_state['carrito'])
                 total_f = st.number_input("Total Final Factura", value=neto_t * 1.19)
                 bod = st.selectbox("Bodega", ["Central", "Insumos", "Petróleo"])
+                cc_compra = st.text_input("Centro de Costo Destino", "Bodega")
                 if st.button("💾 GUARDAR FACTURA"):
-                    conn = conectar_db(); cursor = conn.cursor()
-                    cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total, tipo) VALUES (?,?,?,?,?,?,?)", (nro, prov, f_c, f_v, neto_t, total_f, 'Factura'))
-                    id_f = cursor.lastrowid
-                    for i in st.session_state['carrito']:
-                        cursor.execute("INSERT INTO detalle_facturas (factura_id, producto_id, cantidad, precio_neto, total_linea) VALUES (?,?,?,?,?)", (id_f, i['id'], i['cantidad'], i['precio'], i['total']))
-                        cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, bodega, fecha, factura_id, centro_costo) VALUES (?,?,?,?,?,?,?)", (i['id'], "Entrada", i
+                    if nro and prov:
+                        conn = conectar_db(); cursor = conn.cursor()
+                        cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_neto, monto_total, tipo) VALUES (?,?,?,?,?,?,?)", (nro, prov, f_c, f_v, neto_t, total_f, 'Factura'))
+                        id_f = cursor.lastrowid
+                        for i in st.session_state['carrito']:
+                            cursor.execute("INSERT INTO detalle_facturas (factura_id, producto_id, cantidad, precio_neto, total_linea) VALUES (?,?,?,?,?)", (id_f, i['id'], i['cantidad'], i['precio'], i['total']))
