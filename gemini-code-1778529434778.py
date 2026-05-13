@@ -61,7 +61,7 @@ with st.sidebar:
     st.markdown("---")
     if os.path.exists('erp_concepcion_v6.db'):
         with open('erp_concepcion_v6.db', 'rb') as f:
-            st.download_button("💾 Descargar Respaldo DB", f, "respaldo_agricola.db", "application/x-sqlite3")
+            st.download_button("💾 Descargar Respaldo DB", f, "respaldo.db", "application/x-sqlite3")
     if st.button("🗑️ Limpiar Carrito"):
         st.session_state['carrito'] = []
         st.rerun()
@@ -161,11 +161,10 @@ elif menu == "📦 Compras":
         st.dataframe(pd.read_sql_query(q, conn), use_container_width=True)
         st.markdown("---")
         
-        # --- ELIMINACIÓN CORREGIDA (Privacidad de clave) ---
         st.subheader("🗑️ Eliminar Registro")
         col_del1, col_del2, col_del3 = st.columns([1, 2, 2])
         id_b = col_del1.number_input("ID a borrar", min_value=0, step=1)
-        pass_input = col_del2.text_input("Ingrese Clave de Autorización", type="password") # Corregido: ya no muestra la clave en el label
+        pass_input = col_del2.text_input("Ingrese Clave de Autorización", type="password")
         
         if col_del3.button("❌ ELIMINAR PERMANENTEMENTE"):
             if pass_input == CLAVE_SEGURIDAD:
