@@ -46,7 +46,7 @@ def guardar_en_drive():
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB)
         f.Upload()
-        st.success("✅ Datos sincronizados en la nube.")
+        st.success("✅ Datos sincronizados en Drive")
         return True
     except: return False
 
@@ -106,7 +106,7 @@ if 'carrito' not in st.session_state: st.session_state['carrito'] = []
 # --- MÓDULOS ---
 
 def modulo_dashboard():
-    st.header("📊 Dashboard de Gestión Agrícola")
+    st.header("📊 Dashboard de Gestión")
     conn = conectar_db()
     df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
     conn.close()
@@ -117,37 +117,37 @@ def modulo_dashboard():
     # Cálculos
     total_pendiente = df_f['monto_total'].sum() if not df_f.empty else 0
     deuda_atrasada_meses_previos = 0
-    if not df_f.empty:
-        df_f['fv'] = pd.to_datetime(df_f['fecha_vencimiento']).dt.date
-        # Solo lo que venció antes del primer día del mes actual
-        deuda_atrasada_meses_previos = df_f[df_f['fv'] < inicio_mes_actual]['monto_total'].sum()
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Deuda Total Pendiente", f"${f_puntos(total_pendiente)}")
-    c2.metric("Atrasado Meses Anteriores", f"${f_puntos(deuda_atrasada_meses_previos)}", delta="Revisar", delta_color="inverse")
-    c3.metric("Documentos Pendientes", len(df_f))
+    num_vencidos = 0
     
-    st.subheader("📅 Proyección de Compromisos Mensuales")
+    if not df_f.empty:
+        df_f['fv_date'] = pd.to_datetime(df_f['fecha_vencimiento']).dt.date
+        # Dinero atrasado (antes de este mes)
+        deuda_atrasada_meses_previos = df_f[df_f['fv_date'] < inicio_mes_actual]['monto_total'].sum()
+        # NÚMERO DE DOCUMENTOS VENCIDOS (A hoy)
+        num_vencidos = len(df_f[df_f['fv_date'] < hoy])
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Deuda Total Pendiente", f"${f_puntos(total_pendiente)}")
+    c2.metric("Atrasado Meses Previos", f"${f_puntos(deuda_atrasada_meses_previos)}", delta_color="inverse")
+    c3.metric("Documentos Vencidos", num_vencidos, delta="¡Alerta!", delta_color="inverse")
+    c4.metric("Total Pendientes (Cant.)", len(df_f))
+    
+    st.subheader("📅 Proyección de Pagos Mensuales")
     cols_m = st.columns(4)
     meses_n = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
     
     for i in range(4):
-        # Calculamos el mes y año para cada columna
         target_date = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
         m, a = target_date.month, target_date.year
-        
         val_m = 0
         if not df_f.empty:
-            # Sumamos TODO lo del mes, esté vencido o no (Mayo completo)
             df_f['dt'] = pd.to_datetime(df_f['fecha_vencimiento'])
             val_m = df_f[(df_f['dt'].dt.month == m) & (df_f['dt'].dt.year == a)]['monto_total'].sum()
-        
         cols_m[i].metric(f"{meses_n[m-1]} {a}", f"${f_puntos(val_m)}")
 
 def modulo_compras():
-    st.header("📦 Módulo de Compras")
-    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial / Gestionar"])
-    
+    st.header("Módulo de Compras")
+    t1, t2, t3 = st.tabs(["➕ Factura", "💸 Gasto Vario", "🔍 Historial / Gestionar"])
     with t1:
         c1, c2 = st.columns(2)
         nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor")
@@ -171,7 +171,6 @@ def modulo_compras():
                 for i in st.session_state['carrito']:
                     cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
                 conn.commit(); conn.close(); guardar_en_drive(); st.session_state['carrito'] = []; st.rerun()
-
     with t2:
         with st.form("gv"):
             gp, gd = st.text_input("Proveedor"), st.text_input("N° Doc")
@@ -181,7 +180,6 @@ def modulo_compras():
                 conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto, estado) VALUES (?,?,?,?,?,?,?,?)", (gd, gp, gf, gf, gm, 'Gasto Vario', g_con, 'Pendiente'))
                 conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
-
     with t3:
         conn = conectar_db()
         df_h = pd.read_sql_query("SELECT * FROM facturas ORDER BY fecha_compra DESC", conn)
@@ -189,17 +187,16 @@ def modulo_compras():
         if not df_h.empty:
             st.download_button("📥 PDF Historial", descargar_pdf(df_h, "HISTORIAL"), "historial.pdf")
             st.divider()
-            st.subheader("⚙️ Gestión de Documento")
             sel_id = st.selectbox("ID a gestionar", df_h['id'])
             row = df_h[df_h['id'] == sel_id].iloc[0]
             cm1, cm2 = st.columns(2)
             with cm1:
-                with st.expander("📝 MODIFICAR DATOS"):
+                with st.expander("📝 MODIFICAR"):
                     m_nro = st.text_input("N° Doc", row['nro_documento'])
                     m_monto = st.number_input("Monto Total", value=float(row['monto_total']))
                     m_fc = st.date_input("Nueva Fecha Compra", value=pd.to_datetime(row['fecha_compra']).date())
                     m_fv = st.date_input("Nueva Fecha Venc.", value=pd.to_datetime(row['fecha_vencimiento']).date())
-                    cl_m = st.text_input("Clave de Seguridad", type="password", key="clm")
+                    cl_m = st.text_input("Clave", type="password", key="clm")
                     if st.button("ACTUALIZAR"):
                         if cl_m == CLAVE_SEGURIDAD:
                             conn.execute("UPDATE facturas SET nro_documento=?, monto_total=?, fecha_compra=?, fecha_vencimiento=? WHERE id=?", (m_nro, m_monto, m_fc, m_fv, sel_id))
@@ -207,8 +204,7 @@ def modulo_compras():
                         else: st.error("Clave Incorrecta")
             with cm2:
                 with st.expander("🗑️ ELIMINAR"):
-                    st.warning(f"¿Eliminar ID {sel_id}?")
-                    cl_e = st.text_input("Clave de Seguridad", type="password", key="cle")
+                    cl_e = st.text_input("Clave", type="password", key="cle")
                     if st.button("CONFIRMAR ELIMINACIÓN"):
                         if cl_e == CLAVE_SEGURIDAD:
                             conn.execute("DELETE FROM facturas WHERE id=?", (sel_id,))
@@ -217,7 +213,7 @@ def modulo_compras():
         conn.close()
 
 def modulo_tesoreria():
-    st.header("💸 Cuentas por Pagar")
+    st.header("Cuentas por Pagar")
     tp1, tp2, tp3 = st.tabs(["🔴 Pendientes", "🏢 Por Proveedor", "📅 Por Vencimiento"])
     conn = conectar_db()
     with tp1:
@@ -227,11 +223,8 @@ def modulo_tesoreria():
                 v = pd.to_datetime(row['fecha_vencimiento']).date()
                 return ['background-color: #ffcccc' if v < datetime.now().date() else '' for _ in row]
             st.dataframe(df_p.style.apply(style_v, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
-            
-            # Restauración de Métrica y PDF
             st.metric("Total Deuda Pendiente", f"${f_puntos(df_p['monto_total'].sum())}")
             st.download_button("📥 Descargar PDF Pendientes", descargar_pdf(df_p, "PENDIENTES"), "pendientes.pdf")
-            
             st.divider()
             c1, c2 = st.columns(2); id_p = c1.selectbox("ID Pago", df_p['id']); met = c2.selectbox("Medio", ["Transferencia", "Cheque", "Efectivo"])
             if st.button("💰 MARCAR COMO PAGADO"):
@@ -250,39 +243,36 @@ def modulo_tesoreria():
     conn.close()
 
 def modulo_bodega():
-    st.header("🚜 Gestión de Bodega")
-    tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock Actual", "🔍 Consultas CC", "🔄 Movimiento", "➕ Nuevo Insumo"])
+    st.header("Inventario de Bodega")
+    tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock", "🔍 Consultas CC", "🔄 Movimiento", "➕ Nuevo Insumo"])
     CENTROS = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
     with tb1:
         conn = conectar_db(); df = pd.read_sql_query("SELECT * FROM inventario ORDER BY producto ASC", conn); conn.close()
         st.dataframe(df, use_container_width=True)
     with tb3:
-        tipo = st.radio("Tipo de Movimiento", ["Salida (Campo)", "Entrada"])
-        with st.form("mov_bodega"):
+        tipo = st.radio("Tipo", ["Salida (Campo)", "Entrada"])
+        with st.form("mov"):
             conn = conectar_db(); prs = pd.read_sql_query("SELECT id, producto FROM inventario ORDER BY producto", conn); conn.close()
             ps = st.selectbox("Insumo", prs['id'].astype(str) + " - " + prs['producto'])
-            cm = st.number_input("Cantidad", min_value=0.1)
-            cc = st.selectbox("Cuartel Destino", CENTROS) if tipo == "Salida (Campo)" else None
-            if st.form_submit_button("REGISTRAR MOVIMIENTO"):
+            cm = st.number_input("Cant.", min_value=0.1)
+            cc = st.selectbox("Cuartel", CENTROS) if tipo == "Salida (Campo)" else None
+            if st.form_submit_button("REGISTRAR"):
                 ip = int(ps.split(" - ")[0]); conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo) VALUES (?,?,?,?,?)", (ip, tipo, cm, datetime.now().date(), cc))
                 f = 1 if tipo == "Entrada" else -1
                 cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (cm*f, ip))
                 conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
     with tb4:
-        with st.form("nuevo_p"):
-            nn = st.text_input("Nombre Insumo"); ff = st.selectbox("Familia", ["FERTILIZANTE", "HERBICIDA", "INSECTICIDA", "OTROS"]); sm = st.number_input("Stock Mínimo", min_value=0.0)
-            if st.form_submit_button("CREAR PRODUCTO"):
+        with st.form("n"):
+            nn = st.text_input("Nombre"); ff = st.selectbox("Familia", ["FERTILIZANTE", "HERBICIDA", "INSECTICIDA", "OTROS"]); sm = st.number_input("Mínimo", min_value=0.0)
+            if st.form_submit_button("CREAR"):
                 conn = conectar_db(); conn.execute("INSERT INTO inventario (producto, familia, stock, stock_minimo) VALUES (?,?,?,?)", (nn, ff, 0, sm)); conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
 
 # --- NAVEGACIÓN ---
 with st.sidebar:
     st.title("LA CONCEPCIÓN ERP")
-    if os.path.exists(JSON_KEY):
-        st.success("☁️ Drive: CONECTADO")
-        if st.button("🚀 Forzar Sincronización"): guardar_en_drive()
-    else: st.error("⚠️ Drive: DESCONECTADO")
-    menu = st.radio("Menú de Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
+    st.success("☁️ Drive: CONECTADO" if os.path.exists(JSON_KEY) else "⚠️ Drive: DESCONECTADO")
+    menu = st.radio("Navegación", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
 
 if menu == "🏠 Dashboard": modulo_dashboard()
 elif menu == "📦 Compras": modulo_compras()
