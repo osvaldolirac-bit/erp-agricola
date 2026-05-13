@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 
-# Intentamos importar FPDF para las descargas
+# Intentamos importar FPDF
 try:
     from fpdf import FPDF
     PDF_AVAILABLE = True
@@ -18,22 +18,19 @@ st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", la
 CLAVE_SEGURIDAD = "2908"
 DB_NAME = 'erp_concepcion_v6.db'
 
-# --- FUNCIÓN DE FORMATEO CHILENO (Puntos en miles, sin decimales) ---
-def f_num(numero):
+# --- FUNCIÓN DE FORMATEO (1.000.000) ---
+def f_puntos(valor):
     try:
-        # Formatea con comas y luego cambia comas por puntos
-        return f"{int(numero):,}".replace(",", ".")
+        return f"{int(valor):,}".replace(",", ".")
     except:
         return "0"
 
-# --- DIAGNÓSTICO INICIAL ---
+# --- DIAGNÓSTICO ---
 if not PDF_AVAILABLE:
-    st.sidebar.error("⚠️ Falta fpdf en requirements.txt")
-if not os.path.exists(DB_NAME):
-    st.sidebar.warning(f"⚠️ No se detectó {DB_NAME}. Se iniciará vacía.")
+    st.sidebar.warning("⚠️ Sin PDF: Agregue 'fpdf' a requirements.txt")
 
 # --- FUNCIÓN GENERADORA DE PDF ---
-def exportar_pdf(df, titulo):
+def generar_pdf(df, titulo):
     if not PDF_AVAILABLE: return None
     try:
         pdf = FPDF()
@@ -47,13 +44,16 @@ def exportar_pdf(df, titulo):
         for col in cols: pdf.cell(w, 8, str(col), border=1, align="C")
         pdf.ln()
         pdf.set_font("Arial", "", 7)
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
             for item in row:
-                val = f_num(item) if isinstance(item, (int, float)) else str(item)
+                val = f_num_simple(item) if isinstance(item, (int, float)) else str(item)
                 pdf.cell(w, 7, val[:20], border=1)
             pdf.ln()
         return pdf.output(dest="S").encode("latin-1")
     except: return None
+
+def f_num_simple(n):
+    return f"{int(n):,}".replace(",", ".")
 
 # --- CONEXIÓN A BASE DE DATOS ---
 def conectar_db():
@@ -115,7 +115,7 @@ if menu == "🏠 Dashboard":
     
     c1, c2 = st.columns(2)
     total = df_f['monto_total'].sum() if not df_f.empty else 0
-    c1.metric("Deuda Pendiente Total", f"${f_num(total)}")
+    c1.metric("Deuda Pendiente Total", f"${f_puntos(total)}")
     
     hoy = datetime.now().date()
     vencidas = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy].shape[0] if not df_f.empty else 0
@@ -132,8 +132,14 @@ if menu == "🏠 Dashboard":
             monto = df_f[(df_f['fv'].dt.month == m) & (df_f['fv'].dt.year == a)]['monto_total'].sum()
         with cols_m[i]:
             st.markdown(f"**{obtener_nombre_mes(m)}**")
-            st.markdown(f"<h2 style='color: #2E7D32;'>${f_num(monto)}</h2>", unsafe_allow_html=True)
+            st.markdown(f"## ${f_puntos(monto)}")
 
 # --- 2. COMPRAS ---
 elif menu == "📦 Compras":
-    st
+    st.header("Gestión de Compras")
+    t1, t2, t3 = st.tabs(["➕ Factura", "💸 Gasto Vario", "🔍 Historial"])
+    
+    with t1:
+        c1, c2 = st.columns(2)
+        nro = c1.text_input("N° Factura")
+        prov = c1.text_input("Proveedor
