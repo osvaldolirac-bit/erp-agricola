@@ -120,7 +120,7 @@ elif menu == "📦 Compras":
             if st.session_state['carrito']:
                 st.table(pd.DataFrame(st.session_state['carrito'])[['nombre', 'cantidad', 'precio', 'total']])
                 neto_t = sum(i['total'] for i in st.session_state['carrito'])
-                total_f = st.number_input("Total Final Factura", value=neto_t * 1.19)
+                total_f = st.number_input("Total Factura", value=neto_t * 1.19)
                 bod = st.selectbox("Bodega", ["Central", "Insumos", "Petróleo"])
                 if st.button("💾 GUARDAR FACTURA"):
                     conn = conectar_db(); cursor = conn.cursor()
@@ -160,22 +160,18 @@ elif menu == "📦 Compras":
         if ef != "Todos": q += f" AND estado='{ef}'"
         st.dataframe(pd.read_sql_query(q, conn), use_container_width=True)
         st.markdown("---")
-        
-        # --- ELIMINACIÓN CORREGIDA (Privacidad de clave) ---
         st.subheader("🗑️ Eliminar Registro")
-        col_del1, col_del2, col_del3 = st.columns([1, 2, 2])
+        col_del1, col_del2, col_del3 = st.columns([1, 1, 2])
         id_b = col_del1.number_input("ID a borrar", min_value=0, step=1)
-        pass_input = col_del2.text_input("Ingrese Clave de Autorización", type="password") # Corregido: ya no muestra la clave en el label
-        
+        pass_input = col_del2.text_input("Clave de Seguridad", type="password")
         if col_del3.button("❌ ELIMINAR PERMANENTEMENTE"):
             if pass_input == CLAVE_SEGURIDAD:
                 if id_b > 0:
                     eliminar_factura(id_b); st.success(f"Registro {id_b} eliminado."); st.rerun()
-            else: 
-                if pass_input != "": st.error("🔑 Clave incorrecta.")
+            else: st.error("🔑 Clave incorrecta.")
         conn.close()
 
-# --- 3. CUENTAS POR PAGAR ---
+# --- 3. CUENTAS POR PAGAR (TABLA ROJA Y REPORTES) ---
 elif menu == "💸 Cuentas por Pagar":
     st.header("Tesorería y Gestión de Pagos")
     tp1, tp2, tp3 = st.tabs(["🔴 Pagos Pendientes", "🏢 Deuda por Proveedor", "📅 Deuda por Mes"])
@@ -185,12 +181,14 @@ elif menu == "💸 Cuentas por Pagar":
     
     with tp1:
         if not df_p.empty:
-            st.subheader("Listado de Documentos Pendientes")
+            st.subheader("Listado de Facturas y Gastos Pendientes")
             st.info("💡 Las filas en rojo indican documentos vencidos.")
             
+            # Formatear fecha para comparar
             df_p['fecha_vencimiento'] = pd.to_datetime(df_p['fecha_vencimiento'])
             hoy = pd.Timestamp(datetime.now().date())
 
+            # Función para aplicar color rojo a vencidos
             def highlight_vencidos(row):
                 if row['fecha_vencimiento'] < hoy:
                     return ['background-color: #ffcccc'] * len(row)
@@ -217,7 +215,7 @@ elif menu == "💸 Cuentas por Pagar":
             deuda_prov = deuda_prov.sort_values(by='monto_total', ascending=False)
             st.table(deuda_prov.style.format({"monto_total": "${:,.0f}"}))
         else:
-            st.info("Sin datos pendientes.")
+            st.info("No hay datos para mostrar.")
 
     with tp3:
         if not df_p.empty:
@@ -226,7 +224,7 @@ elif menu == "💸 Cuentas por Pagar":
             deuda_mes = df_p.groupby(['Mes'])['monto_total'].sum().reset_index()
             st.table(deuda_mes.style.format({"monto_total": "${:,.0f}"}))
         else:
-            st.info("Sin datos pendientes.")
+            st.info("No hay datos para mostrar.")
     
     conn.close()
 
