@@ -174,8 +174,27 @@ def modulo_compras():
                 conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
 
     with t3:
-        f_i, f_f = st.date_input("Desde", datetime.now()-timedelta(days=60)), st.date_input("Hasta", datetime.now())
-        conn = conectar_db(); df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo, concepto FROM facturas WHERE fecha_compra BETWEEN '{f_i}' AND '{f_f}' ORDER BY fecha_compra DESC", conn); conn.close()
+        # --- LÓGICA DE FECHAS DINÁMICAS (HISTORIAL) ---
+        conn = conectar_db()
+        df_range = pd.read_sql_query("SELECT MIN(fecha_compra) as min_f, MAX(fecha_compra) as max_f FROM facturas", conn)
+        
+        # Valores por defecto si la base está vacía
+        default_ini = datetime.now().date() - timedelta(days=60)
+        default_fin = datetime.now().date()
+
+        if not df_range.empty and df_range['min_f'].iloc[0]:
+            try:
+                default_ini = pd.to_datetime(df_range['min_f'].iloc[0]).date()
+                default_fin = pd.to_datetime(df_range['max_f'].iloc[0]).date()
+            except: pass
+
+        ch1, ch2 = st.columns(2)
+        f_i = ch1.date_input("Desde", value=default_ini)
+        f_f = ch2.date_input("Hasta", value=default_fin)
+        
+        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo, concepto FROM facturas WHERE fecha_compra BETWEEN '{f_i}' AND '{f_f}' ORDER BY fecha_compra DESC", conn)
+        conn.close()
+        
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
             st.download_button("📥 PDF Historial", descargar_pdf(df_h, "HISTORIAL COMPRAS"), "historial.pdf")
@@ -187,7 +206,6 @@ def modulo_tesoreria():
     with tp1:
         df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente'", conn)
         if not df_p.empty:
-            # --- COLOR ROJO PARA VENCIDOS ---
             def style_overdue(row):
                 venc = pd.to_datetime(row['fecha_vencimiento']).date()
                 hoy = datetime.now().date()
@@ -227,7 +245,6 @@ def modulo_bodega():
             st.dataframe(df_cc, use_container_width=True)
         conn.close()
     with tb3:
-        # --- MOVIMIENTO DINÁMICO ---
         tipo_mov = st.radio("Tipo de Movimiento", ["Salida (Campo)", "Entrada"])
         
         with st.form("mov_form"):
@@ -235,7 +252,6 @@ def modulo_bodega():
             ps = st.selectbox("Insumo", prs['id'].astype(str) + " - " + prs['producto'])
             cm = st.number_input("Cantidad", min_value=0.1)
             
-            # El Centro de Costo solo se pide si es Salida
             cc_m = None
             if tipo_mov == "Salida (Campo)":
                 cc_m = st.selectbox("Centro de Costo (Cuartel)", CENTROS_COSTO)
