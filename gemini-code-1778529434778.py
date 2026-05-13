@@ -82,7 +82,7 @@ def descargar_pdf(df, titulo):
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
-# --- INICIALIZACIÓN ---
+# --- INICIALIZACIÓN Y MIGRACIÓN ---
 st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", layout="wide")
 
 if 'db_sincronizada' not in st.session_state:
@@ -91,10 +91,19 @@ if 'db_sincronizada' not in st.session_state:
 
 def inicializar_db():
     conn = conectar_db(); cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS facturas (id INTEGER PRIMARY KEY AUTOINCREMENT, nro_documento TEXT, proveedor TEXT, fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, estado TEXT DEFAULT 'Pendiente', tipo TEXT DEFAULT 'Factura', metodo_pago TEXT, fecha_pago DATE, concepto TEXT)")
+    # Tablas Base
+    cursor.execute("CREATE TABLE IF NOT EXISTS facturas (id INTEGER PRIMARY KEY AUTOINCREMENT, nro_documento TEXT, proveedor TEXT, fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, estado TEXT DEFAULT 'Pendiente', tipo TEXT DEFAULT 'Factura', metodo_pago TEXT, fecha_pago DATE)")
     cursor.execute("CREATE TABLE IF NOT EXISTS detalle_facturas (id INTEGER PRIMARY KEY AUTOINCREMENT, factura_id INTEGER, producto_id INTEGER, cantidad REAL, precio_neto REAL, total_linea REAL)")
     cursor.execute("CREATE TABLE IF NOT EXISTS inventario (id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0)")
     cursor.execute("CREATE TABLE IF NOT EXISTS movimientos (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, cantidad REAL, centro_costo TEXT, fecha DATE, factura_id INTEGER)")
+    
+    # --- MIGRACIÓN: AGREGAR COLUMNA CONCEPTO SI NO EXISTE ---
+    cursor.execute("PRAGMA table_info(facturas)")
+    columnas = [info[1] for info in cursor.fetchall()]
+    if 'concepto' not in columnas:
+        cursor.execute("ALTER TABLE facturas ADD COLUMN concepto TEXT")
+        conn.commit()
+    
     conn.commit(); conn.close()
 
 inicializar_db()
@@ -153,7 +162,7 @@ def modulo_compras():
                 for i in st.session_state['carrito']:
                     cursor.execute("INSERT INTO detalle_facturas (factura_id, producto_id, cantidad, precio_neto, total_linea) VALUES (?,?,?,?,?)", (fid, i['id'], i['cantidad'], i['precio'], i['total']))
                     cursor.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (i['cantidad'], i['id']))
-                conn.commit(); conn.close(); guardar_en_drive(); st.session_state['carrito'] = []; st.rerun()
+                conn.commit(); conn.close(); guardar_en_drive(); st.session_state['carrito'] = []; st.success("✅ Guardado"); st.rerun()
     with t2:
         with st.form("gv"):
             st.subheader("Gasto Directo"); g1, g2 = st.columns(2)
@@ -163,11 +172,14 @@ def modulo_compras():
             if st.form_submit_button("💾 GUARDAR GASTO"):
                 conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto, estado) VALUES (?,?,?,?,?,?,?,?)", (gd, gp, gf, gf, gm, 'Gasto Vario', g_con, 'Pendiente'))
-                conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
+                conn.commit(); conn.close(); guardar_en_drive(); st.success("✅ Gasto Registrado"); st.rerun()
     with t3:
         c_h1, c_h2 = st.columns(2)
         f_ini, f_fin = c_h1.date_input("Desde", datetime.now()-timedelta(days=60)), c_h2.date_input("Hasta", datetime.now())
-        conn = conectar_db(); df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo, concepto FROM facturas WHERE fecha_compra BETWEEN '{f_ini}' AND '{f_fin}' ORDER BY fecha_compra DESC", conn); conn.close()
+        conn = conectar_db()
+        # El query ahora funcionará porque inicializar_db() asegura que la columna exista
+        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo, concepto FROM facturas WHERE fecha_compra BETWEEN '{f_ini}' AND '{f_fin}' ORDER BY fecha_compra DESC", conn)
+        conn.close()
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
             pdf = descargar_pdf(df_h, "HISTORIAL COMPRAS"); st.download_button("📥 PDF Historial", pdf, "historial.pdf")
