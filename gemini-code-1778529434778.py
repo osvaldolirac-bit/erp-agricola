@@ -10,6 +10,7 @@ from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. CONFIGURACIÓN Y CONSTANTES ---
+# ASEGÚRATE QUE ESTE ID SEA EL CORRECTO (sacado de la URL de tu carpeta de Drive)
 ID_CARPETA_DRIVE = "12tjxWa_RVRP5YuYd2sypjBO8bPuyMqo6" 
 NOMBRE_DB = 'erp_concepcion_v6.db'
 CLAVE_MAESTRA = "2908" 
@@ -18,14 +19,13 @@ hoy = datetime.now().date()
 FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSECTICIDA", "FUNGICIDA", "BIO ESTIMULANTE", "ACARICIDA", "REGULADOR DE CRECIMIENTO", "ADHERENTE / MOJANTE", "OTROS"]
 CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
 
-# --- 2. MOTOR DE CONEXIÓN REFORZADA A DRIVE ---
+# --- 2. MOTOR DE CONEXIÓN REFORZADA ---
 def obtener_drive():
     try:
         if "gcp_service_account" not in st.secrets:
             return None
         info = dict(st.secrets["gcp_service_account"])
         if "private_key" in info:
-            # Corrección vital para que el sensor verde funcione con secretos en una línea
             info["private_key"] = info["private_key"].replace("\\n", "\n")
         
         creds = ServiceAccountCredentials.from_json_keyfile_dict(
@@ -34,36 +34,47 @@ def obtener_drive():
         gauth = GoogleAuth()
         gauth.credentials = creds
         return GoogleDrive(gauth)
-    except:
+    except Exception as e:
         return None
 
 def guardar_en_drive():
     drive = obtener_drive()
     if not drive:
-        st.error("❌ Error: No se pudo autenticar con Google Drive.")
+        st.error("❌ Error Crítico: No se pudo autenticar con Google Drive.")
         return
 
     try:
+        # Intentamos buscar el archivo existente en la carpeta específica
         query = f"'{ID_CARPETA_DRIVE}' in parents and title='{NOMBRE_DB}' and trashed=false"
         lista = drive.ListFile({'q': query}).GetList()
         
         if lista:
+            # Si existe, lo actualizamos
             f = lista[0]
+            st.info(f"🔄 Actualizando archivo existente (ID: {f['id']})...")
         else:
-            f = drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
+            # Si no existe, lo creamos nuevo en esa carpeta
+            st.info("🆕 Creando nuevo respaldo en Drive...")
+            f = drive.CreateFile({
+                'title': NOMBRE_DB,
+                'parents': [{'id': ID_CARPETA_DRIVE}]
+            })
         
+        # Subida del archivo física
         f.SetContentFile(NOMBRE_DB)
         f.Upload()
-        st.success("✅ Respaldo sincronizado en Drive correctamente.")
+        st.success("✅ ¡Sincronización Exitosa! La base de datos está respaldada.")
+        
     except Exception as e:
-        # Intento de respaldo en raíz si el ID de carpeta falla
+        # Si falla por el ID de carpeta, intentamos en la raíz del robot para no fallar
+        st.warning("⚠️ Falló la carpeta específica. Intentando guardar en la raíz del Drive...")
         try:
-            f_backup = drive.CreateFile({'title': NOMBRE_DB + "_BACKUP"})
-            f_backup.SetContentFile(NOMBRE_DB)
-            f_backup.Upload()
-            st.warning("⚠️ Respaldo guardado en Raíz (revisar ID de carpeta).")
-        except:
-            st.error(f"❌ Error de escritura en Drive: {e}")
+            f_root = drive.CreateFile({'title': NOMBRE_DB + "_ROOT_BACKUP"})
+            f_root.SetContentFile(NOMBRE_DB)
+            f_root.Upload()
+            st.success("✅ Respaldo guardado en la raíz (revisa el ID de carpeta en el código).")
+        except Exception as e2:
+            st.error(f"❌ Error de API Google: {str(e2)}")
 
 def descargar_de_drive():
     drive = obtener_drive()
@@ -73,9 +84,12 @@ def descargar_de_drive():
             lista = drive.ListFile({'q': query}).GetList()
             if lista:
                 lista[0].GetContentFile(NOMBRE_DB)
-        except: pass
+                return True
+        except:
+            pass
+    return False
 
-# --- 3. BASE DE DATOS Y SEGURIDAD ---
+# --- 3. BASE DE DATOS ---
 def conectar_db():
     return sqlite3.connect(NOMBRE_DB, check_same_thread=False)
 
@@ -107,7 +121,7 @@ def inicializar_db():
             cursor.execute("INSERT INTO usuarios (email, password) VALUES (?,?)", (email, pw))
     conn.commit(); conn.close()
 
-# --- 4. UTILIDADES Y PDF ---
+# --- 4. FUNCIONES DE FORMATO Y PDF ---
 def f_puntos(v):
     try: return f"{int(round(float(v))):,}".replace(",", ".")
     except: return "0"
@@ -167,9 +181,8 @@ def login_page():
                 conn.close()
 
 def modulo_dashboard():
-    inyectar_css()
-    st.markdown("<h1>🏠 Dashboard Agrícola</h1>", unsafe_allow_html=True)
-    st.subheader(f"Usuario: {st.session_state['email']}")
+    st.markdown("<h1>🚜 ERP Agrícola La Concepción</h1>", unsafe_allow_html=True)
+    st.subheader(f"Bienvenido: {st.session_state['email']}")
     conn = conectar_db(); df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
     query_c = """
     SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (
@@ -187,7 +200,7 @@ def modulo_dashboard():
     c1.metric("DEUDA TOTAL", f"${f_puntos(t_d)}")
     with c2: st.markdown("MESES ANTERIORES"); st.markdown(f"<h2 style='color:red;'>${f_puntos(v_a)}</h2>", unsafe_allow_html=True)
     with c3: st.markdown("VENCIDOS HOY"); st.markdown(f"<h2 style='color:orange;'>{v_h}</h2>", unsafe_allow_html=True)
-    c4.metric("DOCS. PENDIENTES", f"{len(df_f)}")
+    c4.metric("PENDIENTES", f"{len(df_f)}")
     
     st.divider()
     col1, col2 = st.columns([1.5, 1])
@@ -206,8 +219,8 @@ def modulo_dashboard():
             st.markdown(f"<div style='background:white; padding:12px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; border:1px solid #ddd;'><b>{meses[ft.month-1]} {ft.year}</b> <span style='color:#2E7D32;'>${f_puntos(v)}</span></div>", unsafe_allow_html=True)
 
 def modulo_compras():
-    st.header("📦 Compras y Gastos")
-    t1, t2, t3 = st.tabs(["➕ Insumos", "💸 Gasto Vario", "🔍 Historial"])
+    st.header("📦 Compras y Historial")
+    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial"])
     conn = conectar_db()
     with t1:
         c1, c2 = st.columns(2); nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor"); fe, fv = c2.date_input("Emisión"), c2.date_input("Vencimiento")
@@ -226,19 +239,6 @@ def modulo_compras():
                     n_pmp = ((cur[0]*cur[1]) + (i['c']*i['p'])) / (cur[0]+i['c']) if (cur[0]+i['c']) > 0 else i['p']
                     conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (i['c'], n_pmp, i['id']))
                 conn.commit(); guardar_en_drive(); st.session_state['car'] = []; st.rerun()
-    with t2:
-        c1, c2 = st.columns(2); prov_g, nro_g = c1.text_input("Proveedor ", key="pg"), c2.text_input("N° Doc ", key="ng")
-        cf1, cf2 = st.columns(2); fe_g, fv_g = cf1.date_input("Compra", hoy, key="fg1"), cf2.date_input("Vence", hoy, key="fg2")
-        detalles_g = st.text_area("Concepto", height=70); ccs_sel = []; cols = st.columns(3)
-        for i, cc in enumerate(CENTROS_COSTO):
-            if cols[i % 3].checkbox(cc, key=f"gv_{cc}"): ccs_sel.append(cc)
-        m1, m2 = st.columns(2); m_n = m1.number_input("Neto Total", 0.0); iva = m2.radio("IVA al costo?", ["SÍ", "NO"])
-        if len(ccs_sel) > 0 and m_n > 0:
-            imp = (m_n / len(ccs_sel)) if iva == "SÍ" else (m_n / len(ccs_sel)) / 1.19
-            if st.button("💾 GUARDAR GASTO PRORRATEADO"):
-                conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_n*1.19, 'Gasto Vario', detalles_g))
-                for c in ccs_sel: conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g+"_P", prov_g, fe_g, fv_g, 0, 'Gasto Vario', c.upper(), imp, detalles_g))
-                conn.commit(); guardar_en_drive(); st.rerun()
     with t3:
         f1, f2 = st.date_input("Desde", hoy-timedelta(days=30)), st.date_input("Hasta", hoy)
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
@@ -269,25 +269,10 @@ def modulo_tesoreria():
             id_p = st.selectbox("ID Pago", df_p['id']); met = st.selectbox("Medio", ["Transferencia", "Efectivo", "Cheque"])
             if st.button("💰 PAGAR"):
                 conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, hoy, id_p)); conn.commit(); guardar_en_drive(); st.rerun()
-    with tp2:
-        df_pr = pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente' AND monto_total > 0", conn)
-        if not df_pr.empty:
-            p_sel = st.selectbox("Proveedor", df_pr['proveedor'])
-            df_det = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{p_sel}' AND estado='Pendiente' AND monto_total > 0", conn)
-            st.success(f"### DEUDA {p_sel}: ${f_puntos(df_det['monto_total'].sum())}")
-            st.dataframe(df_det.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
-            st.download_button("📥 PDF Proveedor", generar_pdf_blob(df_det, f"DEUDA {p_sel}"), "prov.pdf")
-    with tp3:
-        f1, f2 = st.date_input("Vence Desde", hoy), st.date_input("Vence Hasta", hoy+timedelta(days=30))
-        df_r = pd.read_sql_query(f"SELECT nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND monto_total > 0 AND fecha_vencimiento BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_vencimiento ASC", conn)
-        st.success(f"### DEUDA RANGO: ${f_puntos(df_r['monto_total'].sum() if not df_r.empty else 0)}")
-        if not df_r.empty:
-            st.dataframe(df_r.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
-            st.download_button("📥 PDF Rango", generar_pdf_blob(df_r, "VENCIMIENTOS"), "rango.pdf")
     conn.close()
 
 def modulo_bodega():
-    st.header("🚜 Bodega")
+    st.header("🚜 Gestión de Bodega")
     tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock", "🔄 Movimientos", "➕ Nuevo Insumo", "🔍 Consulta CC"])
     conn = conectar_db()
     with tb1:
@@ -324,38 +309,28 @@ def modulo_bodega():
                 conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado) VALUES (?,?,?,?,?,?)", (item['id'], tipo, ct, hoy, "", 0))
                 conn.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (ct, item['id']))
             conn.commit(); guardar_en_drive(); st.rerun()
-    with tb3:
-        with st.form("nuevo_p"):
-            n_p = st.text_input("Nombre del Producto"); f_p = st.selectbox("Familia", FAMILIAS_PRODUCTOS)
-            s_p = st.number_input("Stock Inicial", 0.0); p_p = st.number_input("Precio Neto Inicial", 0.0)
-            if st.form_submit_button("💾 CREAR PRODUCTO"):
-                conn.execute("INSERT INTO inventario (producto, familia, stock, precio_medio) VALUES (?,?,?,?)", (n_p, f_p, s_p, p_p))
-                conn.commit(); guardar_en_drive(); st.rerun()
-    with tb4:
-        cc_sel = st.selectbox("Cuartel", CENTROS_COSTO); h1, h2 = st.date_input("Desde", hoy-timedelta(days=365)), st.date_input("Hasta", hoy)
-        df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE UPPER(TRIM(m.centro_costo)) = '{cc_sel.upper()}' AND m.fecha BETWEEN '{h1}' AND '{h2}' ORDER BY m.fecha DESC", conn)
-        if not df_cc.empty: 
-            st.dataframe(df_cc.style.format({"cantidad": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
-            st.download_button("📥 PDF Movimientos por CC", generar_pdf_blob(df_cc, f"MOVIMIENTOS: {cc_sel}"), f"mov_{cc_sel}.pdf")
     conn.close()
 
-# --- 6. NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v11.3", layout="wide")
+# --- NAVEGACIÓN ---
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v11.2", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
 else:
+    # Intento de descarga inicial silencioso
     if 'init' not in st.session_state: 
         descargar_de_drive()
         st.session_state['init'] = True
+    
     with st.sidebar:
         st.title("MENÚ")
-        drive_conn = obtener_drive()
-        if drive_conn: st.markdown("🟢 **Drive: CONECTADO**")
+        d_conn = obtener_drive()
+        if d_conn: st.markdown("🟢 **Drive: CONECTADO**")
         else: st.markdown("🔴 **Drive: DESCONECTADO**")
         menu = st.radio("", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
         if st.button("🚀 Sincronizar"): guardar_en_drive()
         if st.button("🚪 Salir"): st.session_state.clear(); st.rerun()
+    
     if menu == "🏠 Dashboard": modulo_dashboard()
     elif menu == "📦 Compras": modulo_compras()
     elif menu == "💸 Tesorería": modulo_tesoreria()
