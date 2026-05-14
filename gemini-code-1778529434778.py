@@ -84,7 +84,7 @@ def generar_pdf_blob(df, titulo):
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
-# --- DRIVE ---
+# --- DRIVE INTEGRACIÓN ---
 def obtener_drive():
     try:
         if "gcp_service_account" not in st.secrets: return None
@@ -216,7 +216,7 @@ def modulo_compras():
     with t3:
         f1, f2 = st.date_input("Filtrar Desde", hoy-timedelta(days=30)), st.date_input("Hasta", hoy)
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
-        st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
+        st.dataframe(df_h.style.format({"monto_total": "${:Loc.0f}" if 'Loc' in str(df_h['monto_total'].dtype) else "${:,.0f}"}), use_container_width=True)
         if not df_h.empty:
             st.download_button("📥 PDF Historial", generar_pdf_blob(df_h, "HISTORIAL COMPRAS"), "compras.pdf")
             st.divider(); id_sel = st.selectbox("ID a Gestionar", df_h['id']); row = df_h[df_h['id'] == id_sel].iloc[0]
@@ -326,7 +326,7 @@ def modulo_costos():
         st.dataframe(df_res.style.apply(lambda r: ['font-weight: bold; background-color: #f1f8e9' if r['cc'] == "TOTAL GENERAL" else '' for _ in r], axis=1).format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.7", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
@@ -334,7 +334,10 @@ else:
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
     with st.sidebar:
         st.title("MENÚ")
-        if obtener_drive(): st.markdown("🟢 **Drive: CONECTADO**")
+        # INDICADOR DRIVE RESTAURADO CON VALIDACIÓN
+        drive = obtener_drive()
+        if drive: st.markdown("🟢 **Drive: CONECTADO**")
+        else: st.markdown("🔴 **Drive: DESCONECTADO**")
         menu = st.radio("", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega", "💰 COSTOS"])
         if st.button("🚀 Sincronizar"): guardar_en_drive()
         if st.button("🚪 Salir"): st.session_state.clear(); st.rerun()
