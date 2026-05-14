@@ -40,12 +40,10 @@ def inicializar_db():
 
 # --- 3. UTILIDADES (DRIVE, FORMATOS, PDF) ---
 def f_puntos(v):
-    """Formatea valores monetarios a enteros con separador de miles."""
     try: return f"{int(round(float(v))):,}".replace(",", ".")
     except: return "0"
 
 def f_decimal(v):
-    """Formatea cantidades de bodega con decimales."""
     try: return f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return "0,00"
 
@@ -102,10 +100,7 @@ def generar_pdf_blob(df, titulo, es_valorizado=False):
                     try: total_acum += float(item)
                     except: pass
                 if isinstance(item, (int, float)):
-                    if any(x in col_name for x in ["cantidad", "stock"]):
-                        val = f_decimal(item)
-                    else:
-                        val = f_puntos(item)
+                    val = f_decimal(item) if any(x in col_name for x in ["cantidad", "stock"]) else f_puntos(item)
                 else: val = str(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
@@ -158,10 +153,11 @@ def modulo_dashboard():
     with col_der:
         st.subheader("💰 Resumen Costos por Cuartel")
         if not df_c.empty:
-            # AGREGAR LÍNEA DE TOTAL GENERAL
             df_total = pd.DataFrame([{"cc": "TOTAL GENERAL", "total_neto": df_c["total_neto"].sum()}])
             df_display = pd.concat([df_c, df_total], ignore_index=True)
-            st.dataframe(df_display.style.format({"total_neto": "${:,.0f}"}), use_container_width=True)
+            def bold_total(row):
+                return ['font-weight: bold' if row['cc'] == "TOTAL GENERAL" else '' for _ in row]
+            st.dataframe(df_display.style.apply(bold_total, axis=1).format({"total_neto": "${:,.0f}"}), use_container_width=True)
 
 def modulo_compras():
     st.header("📦 Compras y Gastos")
@@ -272,7 +268,6 @@ def modulo_bodega():
             col_b1, col_b2 = st.columns(2)
             if col_b1.button("ACTUALIZAR BODEGA") and cl == CLAVE_SEGURIDAD:
                 conn.execute("UPDATE inventario SET producto=?, precio_medio=? WHERE id=?", (n_n, n_p, id_ins)); conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
-            # BOTÓN ELIMINAR PRODUCTO AGREGADO
             if col_b2.button("🗑️ ELIMINAR PRODUCTO") and cl == CLAVE_SEGURIDAD:
                 conn.execute("DELETE FROM inventario WHERE id=?", (id_ins,)); conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
         conn.close()
@@ -321,11 +316,13 @@ def modulo_costos():
     if not df_t.empty:
         df_total = pd.DataFrame([{"cc": "TOTAL GENERAL", "insumos": df_t["insumos"].sum(), "gastos": df_t["gastos"].sum(), "total": df_t["total"].sum()}])
         df_display = pd.concat([df_t, df_total], ignore_index=True)
-        st.dataframe(df_display.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
+        def bold_total(row):
+            return ['font-weight: bold' if row['cc'] == "TOTAL GENERAL" else '' for _ in row]
+        st.dataframe(df_display.style.apply(bold_total, axis=1).format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
         st.download_button("📥 PDF Costos", generar_pdf_blob(df_t, "COSTOS CONSOLIDADOS"), "costos.pdf")
 
 # --- 5. NAVEGACIÓN ---
-st.set_page_config(page_title="LA CONCEPCIÓN ERP v9.5", layout="wide")
+st.set_page_config(page_title="LA CONCEPCIÓN ERP v9.6", layout="wide")
 if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
 inicializar_db()
 with st.sidebar:
