@@ -84,7 +84,7 @@ def descargar_de_drive():
         if lista: lista[0].GetContentFile(NOMBRE_DB); return True
     except: return False
 
-# --- 4. GENERADOR DE REPORTES PDF ---
+# --- 4. GENERADOR DE REPORTES PDF (CORREGIDO CON DECIMALES) ---
 def descargar_pdf(df, titulo):
     try:
         pdf = FPDF()
@@ -97,17 +97,41 @@ def descargar_pdf(df, titulo):
         for col in cols: pdf.cell(w, 8, str(col).upper(), border=1, align="C")
         pdf.ln(); pdf.set_font("Helvetica", "", 7)
         suma_total = 0
+        
+        # Identificar si es un reporte de bodega para usar decimales
+        es_bodega = any(x in str(df.columns).lower() for x in ["cantidad", "stock"])
+
         for _, row in df.iterrows():
             for i, item in enumerate(row):
-                if any(x in df.columns[i].lower() for x in ["monto", "total", "cantidad"]):
+                col_name = df.columns[i].lower()
+                # Acumular total
+                if any(x in col_name for x in ["monto", "total", "cantidad", "stock"]):
                     try: suma_total += float(item)
                     except: pass
-                val = f_puntos(item) if isinstance(item, (int, float)) else str(item)
+                
+                # Formatear valor de la celda
+                if isinstance(item, (int, float)):
+                    if any(x in col_name for x in ["cantidad", "stock"]):
+                        # Formato decimal: 1.250,50
+                        val = f"{float(item):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    else:
+                        # Formato entero (dinero): 1.250
+                        val = f_puntos(item)
+                else:
+                    val = str(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
+            
         pdf.set_font("Helvetica", "B", 9)
         pdf.cell(w * (len(cols)-1), 8, "TOTAL REPORTE:", border=1, align="R")
-        pdf.cell(w, 8, f"{f_puntos(suma_total)}", border=1, align="L")
+        
+        # Formatear total del pie de página
+        if es_bodega:
+            val_total = f"{float(suma_total):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        else:
+            val_total = f"${f_puntos(suma_total)}"
+            
+        pdf.cell(w, 8, val_total, border=1, align="L")
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
@@ -288,7 +312,7 @@ def modulo_bodega():
         df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{cc_sel}' ORDER BY m.fecha DESC", conn); conn.close()
         if not df_cc.empty:
             st.dataframe(df_cc, use_container_width=True)
-            # BOTÓN PDF CONSULTA POR CUARTEL (CC) - ¡Agregado!
+            # BOTÓN PDF CONSULTA POR CUARTEL (CC) - ¡Corregido con decimales!
             st.download_button(f"📥 Descargar Reporte PDF {cc_sel}", descargar_pdf(df_cc, f"MOVIMIENTOS: {cc_sel}"), f"mov_{cc_sel}.pdf")
 
 # --- 9. NAVEGACIÓN ---
