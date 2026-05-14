@@ -35,17 +35,24 @@ def guardar_en_drive():
         st.error("❌ Error de autenticación.")
         return
     try:
+        # Buscamos el archivo existente (Usted debe haber subido uno con este nombre primero)
         query = f"'{ID_CARPETA_DRIVE}' in parents and title='{NOMBRE_DB}' and trashed=false"
         lista = drive.ListFile({'q': query}).GetList()
-        if lista: f = lista[0]
-        else: f = drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         
-        f.SetContentFile(NOMBRE_DB)
-        # Forzar el uso de la cuota del dueño de la carpeta (Usted)
-        f.Upload(param={'supportsAllDrives': True, 'useContentAsIndexableText': True})
-        st.success("✅ Sincronizado exitosamente.")
+        if lista:
+            f = lista[0]
+            f.SetContentFile(NOMBRE_DB)
+            # Al actualizar un archivo que YA ES DE USTED, no se usa la cuota del robot
+            f.Upload(param={'supportsAllDrives': True})
+            st.success("✅ Base de Datos sincronizada exitosamente.")
+        else:
+            st.warning("⚠️ No se encontró el archivo en Drive. Por favor, suba un archivo llamado erp_concepcion_v6.db manualmente a la carpeta una vez.")
+            # Intento de creación (puede fallar por cuota, pero es el último recurso)
+            f = drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
+            f.SetContentFile(NOMBRE_DB)
+            f.Upload(param={'supportsAllDrives': True})
     except Exception as e:
-        st.error(f"❌ Error de Cuota: {e}")
+        st.error(f"❌ Error de Cuota: Google impide al robot ser 'Dueño' de archivos. Asegúrese de que el archivo ya existe en la carpeta y el robot es 'Editor'.")
 
 def descargar_de_drive():
     drive = obtener_drive()
@@ -157,7 +164,6 @@ def modulo_dashboard():
     with c3: st.markdown("VENCIDOS HOY"); st.markdown(f"<h2 style='color:orange;'>{v_h}</h2>", unsafe_allow_html=True)
     c4.metric("PENDIENTES", f"{len(df_f)}")
     st.divider()
-    modulo_costos() # Mostrar costos también en Dashboard
 
 def modulo_compras():
     st.header("📦 Compras")
@@ -276,7 +282,7 @@ def modulo_costos():
         st.dataframe(df_res.style.apply(lambda r: ['font-weight: bold; background-color: #f1f8e9' if r['cc'] == "TOTAL GENERAL" else '' for _ in r], axis=1).format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- 6. NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v11.5", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v11.6", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
