@@ -38,7 +38,7 @@ def inicializar_db():
     conn.commit()
     conn.close()
 
-# --- 3. UTILIDADES (DRIVE, FORMATOS, PDF) ---
+# --- 3. UTILIDADES ---
 def f_puntos(v):
     try: return f"{int(v):,}".replace(",", ".")
     except: return "0"
@@ -61,7 +61,7 @@ def guardar_en_drive():
         lista = drive.ListFile({'q': query}).GetList()
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB); f.Upload()
-        st.success("✅ Respaldo en la nube sincronizado.")
+        st.success("✅ Respaldo en Drive OK.")
         return True
     except: return False
 
@@ -107,7 +107,7 @@ def generar_pdf_blob(df, titulo, es_valorizado=False):
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
-# --- 4. MÓDULOS DEL SISTEMA ---
+# --- 4. MÓDULOS ---
 
 def modulo_dashboard():
     st.header("📊 Tablero Maestro")
@@ -119,7 +119,7 @@ def modulo_dashboard():
         SELECT centro_costo, valor_imputado as val FROM movimientos WHERE tipo LIKE 'Salida%'
         UNION ALL
         SELECT centro_costo, monto_imputado as val FROM facturas WHERE tipo = 'Gasto Vario'
-    ) GROUP BY cc
+    ) WHERE centro_costo IS NOT NULL AND centro_costo != '' GROUP BY cc
     """
     df_c = pd.read_sql_query(query_c, conn)
     conn.close()
@@ -158,7 +158,7 @@ def modulo_dashboard():
 
 def modulo_compras():
     st.header("📦 Compras y Gastos")
-    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario Multi-CC", "🔍 Historial / Gestión"])
+    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario Proporcional", "🔍 Historial / Gestión"])
     
     with t1:
         c1, c2 = st.columns(2); nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor"); fe, fv = c2.date_input("Emisión"), c2.date_input("Vencimiento")
@@ -181,52 +181,57 @@ def modulo_compras():
                 conn.commit(); conn.close(); guardar_en_drive(); st.session_state['car'] = []; st.rerun()
 
     with t2:
-        st.subheader("Registro de Gasto Vario con Distribución")
+        st.subheader("Gasto Vario con Prorrateo Automático")
         c1, c2 = st.columns(2); prov_g, nro_g = c1.text_input("Proveedor ", key="pg"), c2.text_input("N° Documento ", key="ng")
-        detalles_g = st.text_area("Detalles del Gasto (Ej: Reparación motor bomba)", height=70)
+        detalles_g = st.text_area("Detalles / Concepto del Gasto", height=70)
+        
+        st.markdown("### 🏷️ ¿A qué cuarteles aplica este gasto?")
+        ccs_seleccionados = []
+        # Mostrar todos los CC con checkboxes en columnas
+        cols_cc = st.columns(3)
+        for idx, cc_name in enumerate(CENTROS_COSTO):
+            if cols_cc[idx % 3].checkbox(cc_name, key=f"cb_{cc_name}"):
+                ccs_seleccionados.append(cc_name)
         
         st.markdown("---")
-        st.markdown("### 🎯 Imputación a Centros de Costo")
-        ci1, ci2, ci3, ci4 = st.columns([2, 2, 2, 1])
-        cc_sel = ci1.selectbox("Cuartel Destino", CENTROS_COSTO)
-        monto_g = ci2.number_input("Monto Neto ($)", min_value=0.0, step=1000.0)
-        iva_g = ci3.radio("Cargar IVA al costo?", ["SÍ", "NO"], horizontal=True)
+        c_m1, c_m2 = st.columns(2)
+        monto_neto_total = c_m1.number_input("Monto Neto Total ($)", min_value=0.0)
+        iva_al_costo = c_m2.radio("¿Cargar IVA al costo de los cuarteles?", ["SÍ", "NO"])
         
-        if 'car_gv' not in st.session_state: st.session_state['car_gv'] = []
-        if ci4.button("Agregar ➕", key="add_gv"):
-            imp = monto_g if iva_g == "SÍ" else monto_g / 1.19
-            st.session_state['car_gv'].append({'cc': cc_sel.strip().upper(), 'neto': monto_g, 'imputado': imp})
-            st.rerun()
-
-        if st.session_state['car_gv']:
-            df_car_gv = pd.DataFrame(st.session_state['car_gv'])
-            st.table(df_car_gv.style.format({"neto": "${:,.0f}", "imputado": "${:,.0f}"}))
-            total_factura_g = st.number_input("Total Factura Real (Monto a pagar)", value=float(df_car_gv['neto'].sum()*1.19))
+        if len(ccs_seleccionados) > 0 and monto_neto_total > 0:
+            monto_por_cc = monto_neto_total / len(ccs_seleccionados)
+            imputacion_por_cc = monto_por_cc if iva_al_costo == "SÍ" else monto_por_cc / 1.19
+            st.info(f"Se imputarán **${f_puntos(imputacion_por_cc)}** netos a cada uno de los {len(ccs_seleccionados)} cuarteles marcados.")
             
-            col_b1, col_b2 = st.columns(2)
-            if col_b1.button("💾 GUARDAR GASTO DISTRIBUIDO"):
+            if st.button("💾 GUARDAR GASTO PRORRATEADO"):
                 conn = conectar_db()
-                # Insertar en facturas (Un solo documento para tesorería) con concepto de detalle
+                total_con_iva = monto_neto_total * 1.19
+                # Documento principal para tesorería
                 conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", 
-                             (nro_g, prov_g, hoy, hoy, total_factura_g, 'Gasto Vario', detalles_g))
-                
-                # Insertar imputaciones individuales para costos (Se desglosan por CC)
-                for i in st.session_state['car_gv']:
+                             (nro_g, prov_g, hoy, hoy, total_con_iva, 'Gasto Vario', detalles_g))
+                # Imputaciones automáticas
+                for cc in ccs_seleccionados:
                     conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", 
-                                 (nro_g + "_IMP", prov_g, hoy, hoy, 0, 'Gasto Vario', i['cc'], i['imputado'], detalles_g))
-                conn.commit(); conn.close(); guardar_en_drive(); st.session_state['car_gv'] = []; st.rerun()
-            if col_b2.button("🗑️ LIMPIAR TODO"):
-                st.session_state['car_gv'] = []; st.rerun()
+                                 (nro_g + "_AUTO", prov_g, hoy, hoy, 0, 'Gasto Vario', cc.upper(), imputacion_por_cc, detalles_g))
+                conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
+        else:
+            st.warning("Seleccione al menos un cuartel e ingrese el monto para procesar.")
 
     with t3:
         conn = conectar_db()
-        df_h = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo, concepto FROM facturas WHERE monto_total > 0 ORDER BY fecha_compra DESC", conn)
+        rf = conn.execute("SELECT MIN(fecha_compra), MAX(fecha_compra) FROM facturas").fetchone()
+        fmin = pd.to_datetime(rf[0]).date() if rf[0] else hoy-timedelta(days=365)
+        fmax = pd.to_datetime(rf[1]).date() if rf[1] else hoy
+        cf1, cf2 = st.columns(2)
+        h1, h2 = cf1.date_input("Desde", fmin), cf2.date_input("Hasta", fmax)
+        
+        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo, concepto FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{h1}' AND '{h2}' ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
             st.download_button("📥 PDF Historial", generar_pdf_blob(df_h, "HISTORIAL COMPRAS"), "historial.pdf")
             st.divider()
             id_sel = st.selectbox("ID Gestionar", df_h['id']); row = df_h[df_h['id'] == id_sel].iloc[0]
-            mn, mm = st.text_input("Nuevo N° Doc", row['nro_documento']), st.number_input("Nuevo Monto", value=float(row['monto_total']))
+            mn, mm = st.text_input("Nuevo N° Doc", row['nro_documento']), st.number_input("Nuevo Monto Total", value=float(row['monto_total']))
             cl = st.text_input("Clave", type="password", key="cl_h")
             col1, col2 = st.columns(2)
             if col1.button("✏️ MODIFICAR") and cl == CLAVE_SEGURIDAD:
@@ -243,13 +248,10 @@ def modulo_tesoreria():
 
     with tp1:
         df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND monto_total > 0 ORDER BY fecha_vencimiento ASC", conn)
-        total_p = df_p['monto_total'].sum() if not df_p.empty else 0
-        st.info(f"### 💰 DEUDA TOTAL PENDIENTE: ${f_puntos(total_p)}")
+        st.info(f"### 💰 DEUDA TOTAL PENDIENTE: ${f_puntos(df_p['monto_total'].sum() if not df_p.empty else 0)}")
         if not df_p.empty:
             st.dataframe(df_p.style.apply(estilo_vencido, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
-            st.download_button("📥 PDF Pendientes", generar_pdf_blob(df_p, "PENDIENTES GENERALES"), "pendientes.pdf")
-            st.divider()
-            c1, c2 = st.columns(2); id_p = c1.selectbox("ID Factura", df_p['id']); met = c2.selectbox("Medio", ["Transferencia", "Cheque", "Efectivo"])
+            id_p = st.selectbox("ID Pago", df_p['id']); met = st.selectbox("Medio", ["Transferencia", "Cheque", "Efectivo"])
             if st.button("💰 MARCAR PAGADO"):
                 conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, hoy, id_p)); conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
     with tp2:
@@ -258,7 +260,6 @@ def modulo_tesoreria():
             p_sel = st.selectbox("Proveedor", df_pr['proveedor']); df_f = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND proveedor='{p_sel}' AND monto_total > 0 ORDER BY fecha_vencimiento ASC", conn)
             st.success(f"### 🏢 DEUDA CON {p_sel}: ${f_puntos(df_f['monto_total'].sum())}")
             st.dataframe(df_f.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
-            st.download_button(f"📥 PDF Deuda {p_sel}", generar_pdf_blob(df_f, f"DEUDA {p_sel}"), "prov.pdf")
     with tp3:
         f1 = st.date_input("Vence Desde", datetime(2000, 1, 1)); f2 = st.date_input("Vence Hasta", datetime(2030, 12, 31))
         df_r = pd.read_sql_query(f"SELECT nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND monto_total > 0 AND fecha_vencimiento BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_vencimiento ASC", conn)
@@ -275,18 +276,15 @@ def modulo_bodega():
         if not df_s.empty:
             c1, c2 = st.columns(2); c1.download_button("📥 PDF Campo", generar_pdf_blob(df_s.drop(columns=['precio_medio']), "STOCK BODEGA"), "stock.pdf"); c2.download_button("💰 PDF Admin", generar_pdf_blob(df_s, "VALORIZACIÓN BODEGA", es_valorizado=True), "valor.pdf")
             st.divider(); id_ins = st.selectbox("ID Insumo", df_s['id']); item = df_s[df_s['id'] == id_ins].iloc[0]
-            n_n, n_p = st.text_input("Nombre ", item['producto']), st.number_input("Precio PMP ", value=float(item['precio_medio'])); cl = st.text_input("Clave ", type="password", key="cl_bod")
+            n_n, n_p = st.text_input("Nombre ", item['producto']), st.number_input("PMP ", value=float(item['precio_medio'])); cl = st.text_input("Clave ", type="password", key="cl_bod")
             if st.button("ACTUALIZAR BODEGA") and cl == CLAVE_SEGURIDAD:
                 conn.execute("UPDATE inventario SET producto=?, precio_medio=? WHERE id=?", (n_n, n_p, id_ins)); conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
-            if st.button("🗑️ ELIMINAR BODEGA") and cl == CLAVE_SEGURIDAD:
-                conn.execute("DELETE FROM inventario WHERE id=?", (id_ins,)); conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
-        conn.close()
     with tb2:
         tipo = st.radio("Acción ", ["Salida (Campo)", "Entrada"])
         with st.form("form_mov"):
             conn = conectar_db(); df_i = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn); conn.close()
             ps = st.selectbox("Producto ", df_i['id'].astype(str) + " - " + df_i['producto']); ct, cc = st.number_input("Cant ", min_value=0.01), st.selectbox("CC ", CENTROS_COSTO)
-            if st.form_submit_button("REGISTRAR MOVIMIENTO"):
+            if st.form_submit_button("REGISTRAR"):
                 item = df_i[df_i['id'] == int(ps.split(" - ")[0])].iloc[0]; val_imp = ct * item['precio_medio'] if "Salida" in tipo else 0
                 conn = conectar_db(); cur = conn.cursor(); cc_limpio = cc.strip().upper()
                 cur.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado) VALUES (?,?,?,?,?,?)", (item['id'], tipo, ct, hoy, cc_limpio, val_imp))
@@ -295,7 +293,7 @@ def modulo_bodega():
     with tb4:
         cc_sel = st.selectbox("Consultar Cuartel ", CENTROS_COSTO); conn = conectar_db()
         df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE UPPER(TRIM(m.centro_costo)) = '{cc_sel.strip().upper()}' ORDER BY m.fecha DESC", conn); conn.close()
-        if not df_cc.empty: st.dataframe(df_cc, use_container_width=True); st.download_button(f"📥 PDF {cc_sel}", generar_pdf_blob(df_cc, f"MOVIMIENTOS: {cc_sel}"), "mov.pdf")
+        if not df_cc.empty: st.dataframe(df_cc, use_container_width=True)
 
 def modulo_costos():
     st.header("💰 Gestión de Costos Consolidados")
@@ -309,21 +307,21 @@ def modulo_costos():
         SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%'
         UNION ALL
         SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario'
-    ) GROUP BY cc
+    ) WHERE centro_costo IS NOT NULL AND centro_costo != '' GROUP BY cc
     """
     df_t = pd.read_sql_query(query_t, conn); conn.close()
     st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
-    if not df_t.empty: st.download_button("📥 PDF Reporte de Costos", generar_pdf_blob(df_t, "COSTOS CONSOLIDADOS"), "costos.pdf")
+    if not df_t.empty: st.download_button("📥 PDF Costos", generar_pdf_blob(df_t, "COSTOS CONSOLIDADOS"), "costos.pdf")
 
 # --- 5. NAVEGACIÓN ---
-st.set_page_config(page_title="LA CONCEPCIÓN ERP v8.8", layout="wide")
+st.set_page_config(page_title="LA CONCEPCIÓN ERP v8.9", layout="wide")
 if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
 inicializar_db()
 with st.sidebar:
     st.title("LA CONCEPCIÓN")
     if "gcp_service_account" in st.secrets: st.markdown("🟢 **Drive: CONECTADO**")
     menu = st.radio("Módulos", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega", "💰 COSTOS"])
-    if st.button("🚀 Sincronizar"): guardar_en_drive()
+    if st.button("🚀 Sincronizar Ahora"): guardar_en_drive()
 
 if menu == "🏠 Dashboard": modulo_dashboard()
 elif menu == "📦 Compras": modulo_compras()
