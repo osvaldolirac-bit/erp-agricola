@@ -20,7 +20,7 @@ FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSEC
 CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
 METODOS_PAGO = ["TRANSFERENCIA", "CHEQUE", "EFECTIVO", "TARJETA", "OTRO"]
 
-# --- 2. MOTOR DRIVE (ANTI-QUOTA) ---
+# --- 2. MOTOR DRIVE ---
 def obtener_drive():
     try:
         if "gcp_service_account" not in st.secrets: return None
@@ -62,13 +62,11 @@ def hash_pw(password):
 
 def inicializar_db():
     conn = conectar_db(); cursor = conn.cursor()
-    # Tablas
     cursor.execute("CREATE TABLE IF NOT EXISTS facturas (id INTEGER PRIMARY KEY AUTOINCREMENT, nro_documento TEXT, proveedor TEXT, fecha_compra DATE, fecha_vencimiento DATE, monto_total REAL, estado TEXT DEFAULT 'Pendiente', tipo TEXT DEFAULT 'Factura', metodo_pago TEXT, fecha_pago DATE, centro_costo TEXT, monto_imputado REAL DEFAULT 0)")
     cursor.execute("CREATE TABLE IF NOT EXISTS inventario (id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0, precio_medio REAL DEFAULT 0)")
     cursor.execute("CREATE TABLE IF NOT EXISTS movimientos (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, cantidad REAL, centro_costo TEXT, fecha DATE, valor_imputado REAL DEFAULT 0)")
     cursor.execute("CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT)")
     
-    # Inserción de usuarios originales
     users = [
         ('osvaldolira@laconcepcion.cl', hash_pw('9083')),
         ('secretaria@laconcepcion.cl', hash_pw('1234')),
@@ -137,15 +135,31 @@ def modulo_compras():
             conn.commit(); guardar_en_drive(); st.rerun()
 
     with t2:
-        st.subheader("Gasto Directo a Cuartel (Checkboxes)")
-        g_prov, g_neto = st.text_input("Proveedor ", key="g_p"), st.number_input("Monto Neto Total", 0.0, key="g_m")
+        st.subheader("Gasto Directo a Cuartel")
+        g_prov = st.text_input("Proveedor ", key="g_p")
+        g_monto = st.number_input("Monto a Ingresar", 0.0, key="g_m")
+        
+        # NUEVA OPCIÓN: Neto o con IVA
+        tipo_valor = st.radio("El monto ingresado es:", ["Neto (Sistema calculará +19% IVA)", "Total (IVA Incluido)"], horizontal=True)
+        
+        st.write("Seleccione Cuarteles para prorratear:")
         cols = st.columns(3)
         ccs_g = [cc for i, cc in enumerate(CENTROS_COSTO) if cols[i%3].checkbox(cc, key=f"cg_{cc}")]
+        
         if st.button("💾 Registrar Gasto Vario") and ccs_g:
-            monto_p = g_neto / len(ccs_g)
+            # Lógica de cálculo
+            monto_final = g_monto * 1.19 if "Neto" in tipo_valor else g_monto
+            monto_por_cuartel = monto_final / len(ccs_g)
+            
             for c in ccs_g:
-                conn.execute("INSERT INTO facturas (proveedor, monto_total, tipo, centro_costo, monto_imputado, estado, fecha_compra) VALUES (?,?,?,?,?,?,?)", (g_prov, 0, 'Gasto Vario', c, monto_p, 'Imputado', hoy))
-            conn.commit(); guardar_en_drive(); st.rerun()
+                conn.execute("""INSERT INTO facturas 
+                    (proveedor, monto_total, tipo, centro_costo, monto_imputado, estado, fecha_compra) 
+                    VALUES (?,?,?,?,?,?,?)""", 
+                    (g_prov, 0, 'Gasto Vario', c, monto_por_cuartel, 'Imputado', hoy))
+            
+            conn.commit(); guardar_en_drive()
+            st.success(f"Gasto repartido: ${f_puntos(monto_por_cuartel)} por cada uno de los {len(ccs_g)} cuarteles.")
+            st.rerun()
 
     with t3:
         st.subheader("🔍 Historial con Gestión")
@@ -186,11 +200,9 @@ def modulo_bodega():
                 conn.execute("UPDATE inventario SET stock=stock-? WHERE id=?", (cant_s, pid))
                 conn.commit(); guardar_en_drive(); st.rerun()
     with t3:
-        st.subheader("🔍 Consulta por Cuartel")
         cc_sel = st.selectbox("Cuartel", CENTROS_COSTO)
         df_q = pd.read_sql_query(f"SELECT * FROM movimientos WHERE centro_costo='{cc_sel}'", conn)
         st.dataframe(df_q, use_container_width=True)
-        if not df_q.empty: st.download_button("📥 PDF Consulta", generar_pdf(df_q, f"MOV_{cc_sel}"), "cons.pdf")
     with t4:
         with st.form("ni"):
             n, f = st.text_input("Nombre"), st.selectbox("Familia", FAMILIAS_PRODUCTOS)
@@ -211,12 +223,10 @@ def modulo_tesoreria():
             id_p = st.selectbox("ID Factura", df_p['id']); metodo = st.selectbox("Método", METODOS_PAGO)
             if st.button("💰 Confirmar Pago"):
                 conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metodo, hoy, id_p)); conn.commit(); guardar_en_drive(); st.rerun()
-            st.download_button("📥 PDF Deuda", generar_pdf(df_p, "DEUDA"), "deuda.pdf")
     with t2:
         c1, c2 = st.columns(2); d_p, h_p = c1.date_input("Desde ", hoy-timedelta(days=30)), c2.date_input("Hasta ", hoy)
         df_h_p = pd.read_sql_query(f"SELECT * FROM facturas WHERE estado='Pagado' AND fecha_pago BETWEEN '{d_p}' AND '{h_p}'", conn)
         st.dataframe(df_h_p, use_container_width=True)
-        if not df_h_p.empty: st.download_button("📥 PDF Pagos", generar_pdf(df_h_p, "PAGOS"), "pagos.pdf")
     conn.close()
 
 def modulo_costos():
@@ -232,7 +242,7 @@ def modulo_costos():
     conn.close()
 
 # --- 6. NAVEGACIÓN Y LOGIN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v25.0", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v26.0", layout="wide")
 inicializar_db()
 
 if 'auth' not in st.session_state: st.session_state['auth'] = False
