@@ -24,7 +24,6 @@ def conectar_db():
 
 def inicializar_db():
     conn = conectar_db(); cursor = conn.cursor()
-    # Tablas Base
     cursor.execute("""CREATE TABLE IF NOT EXISTS facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT, nro_documento TEXT, proveedor TEXT, 
         fecha_compra DATE, fecha_vencimiento DATE, monto_neto REAL, monto_total REAL, 
@@ -37,7 +36,7 @@ def inicializar_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, 
         cantidad REAL, centro_costo TEXT, fecha DATE, valor_imputado REAL DEFAULT 0)""")
     
-    # Migración de seguridad por si existen tablas antiguas
+    # Asegurar columnas de la v7
     cursor.execute("PRAGMA table_info(facturas)")
     cols = [c[1] for c in cursor.fetchall()]
     if 'centro_costo' not in cols: cursor.execute("ALTER TABLE facturas ADD COLUMN centro_costo TEXT")
@@ -97,27 +96,27 @@ def descargar_pdf(df, titulo):
         cols = df.columns; w = 190 / len(cols)
         for col in cols: pdf.cell(w, 8, str(col).upper(), border=1, align="C")
         pdf.ln(); pdf.set_font("Helvetica", "", 7); suma_total = 0
-        es_bodega = any(x in str(df.columns).lower() for x in ["cantidad", "stock", "imputado", "valor"])
+        es_bodega_o_costo = any(x in str(df.columns).lower() for x in ["cantidad", "stock", "imputado", "valor", "precio"])
         for _, row in df.iterrows():
             for i, item in enumerate(row):
                 col_name = df.columns[i].lower()
-                if any(x in col_name for x in ["monto", "total", "cantidad", "stock", "valor", "imputado"]):
+                if any(x in col_name for x in ["monto", "total", "cantidad", "stock", "valor", "imputado", "precio"]):
                     try: suma_total += float(item)
                     except: pass
                 if isinstance(item, (int, float)):
-                    if any(x in col_name for x in ["cantidad", "stock", "valor", "imputado"]) and not "total" in col_name:
+                    if any(x in col_name for x in ["cantidad", "stock", "valor", "imputado", "precio"]) and not "total" in col_name:
                         val = f"{float(item):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                     else: val = f_puntos(item)
                 else: val = str(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
         pdf.set_font("Helvetica", "B", 9); pdf.cell(w * (len(cols)-1), 8, "TOTAL REPORTE:", border=1, align="R")
-        val_f = f"{float(suma_total):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if es_bodega else f"${f_puntos(suma_total)}"
+        val_f = f"{float(suma_total):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if es_bodega_o_costo else f"${f_puntos(suma_total)}"
         pdf.cell(w, 8, val_f, border=1, align="L")
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
-# --- 4. MÓDULOS DEL SISTEMA ---
+# --- 4. MÓDULOS ---
 
 def modulo_dashboard():
     st.header("📊 Dashboard de Control Maestro")
@@ -136,7 +135,7 @@ def modulo_dashboard():
     c2.metric("Atrasado Meses Anteriores", f"${f_puntos(atrasado_prev)}", delta="Crítico", delta_color="inverse")
     c3.metric("Docs. Vencidos (Hoy)", num_vencidos, delta="Alerta", delta_color="inverse")
     c4.metric("Total Pendientes", len(df_f))
-    if atrasado_prev > 0: st.error(f"🚨 Tienes ${f_puntos(atrasado_prev)} en deudas de meses pasados. ¡Priorizar!")
+    if atrasado_prev > 0: st.error(f"🚨 Priorizar pagos de meses anteriores: ${f_puntos(atrasado_prev)}")
     
     st.markdown("---")
     st.subheader("📅 Proyección Mensual de Pagos")
@@ -233,11 +232,15 @@ def modulo_bodega():
         conn = conectar_db(); df_s = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario ORDER BY producto ASC", conn)
         st.dataframe(df_s.style.format({"precio_medio": "${:,.2f}"}), use_container_width=True)
         if not df_s.empty:
-            st.download_button("📥 PDF Stock", descargar_pdf(df_s, "STOCK BODEGA"), "stock.pdf")
-            st.divider(); st.subheader("⚙️ Gestión y Valorización Inicial")
+            c_pdf1, c_pdf2 = st.columns(2)
+            df_tra = df_s.drop(columns=['precio_medio']) # PDF TRABAJADORES SIN PRECIOS
+            c_pdf1.download_button("📥 PDF Stock (Trabajadores)", descargar_pdf(df_tra, "STOCK BODEGA"), "stock_campo.pdf")
+            c_pdf2.download_button("💰 PDF Valorización (Administración)", descargar_pdf(df_s, "VALORIZACIÓN DE BODEGA"), "stock_admin.pdf")
+            
+            st.divider(); st.subheader("⚙️ Gestión de Catálogo")
             id_ins = st.selectbox("ID Insumo a Gestionar", df_s['id']); row_i = df_s[df_s['id'] == id_ins].iloc[0]
             mi_nom = st.text_input("Editar Nombre", row_i['producto']); mi_fam = st.selectbox("Editar Familia", FAMILIAS_PRODUCTOS, index=FAMILIAS_PRODUCTOS.index(row_i['familia']) if row_i['familia'] in FAMILIAS_PRODUCTOS else 0)
-            mi_pmp = st.number_input("Nuevo Precio Medio (Neto)", value=float(row_i['precio_medio']))
+            mi_pmp = st.number_input("Precio Medio (PMP)", value=float(row_i['precio_medio']))
             cl = st.text_input("Clave", type="password", key="mbod")
             cb1, cb2 = st.columns(2)
             if cb1.button("ACTUALIZAR") and cl == CLAVE_SEGURIDAD:
@@ -279,15 +282,15 @@ def modulo_costos():
     conn.close()
     df_total = pd.merge(df_ins, df_gas, on='centro_costo', how='outer').fillna(0)
     df_total['COSTO NETO TOTAL'] = df_total['total_insumos'] + df_total['total_gastos']
-    st.subheader("Resumen Económico por CC")
+    st.subheader("Resumen Económico Consolidado")
     st.dataframe(df_total.style.format({"total_insumos": "${:,.0f}", "total_gastos": "${:,.0f}", "COSTO NETO TOTAL": "${:,.0f}"}), use_container_width=True)
     c1, c2 = st.columns(2)
     with c1: st.subheader("Gasto en Insumos"); st.bar_chart(df_total.set_index('centro_costo')['total_insumos'])
-    with c2: st.subheader("Gasto Operacional"); st.bar_chart(df_total.set_index('centro_costo')['total_gastos'])
+    with c2: st.subheader("Gasto Operacional Directo"); st.bar_chart(df_total.set_index('centro_costo')['total_gastos'])
     if not df_total.empty: st.download_button("📥 Exportar Costos a PDF", descargar_pdf(df_total, "REPORTE DE COSTOS"), "costos.pdf")
 
 # --- 5. NAVEGACIÓN ---
-st.set_page_config(page_title="LA CONCEPCIÓN ERP v7.1", page_icon="🚜", layout="wide")
+st.set_page_config(page_title="LA CONCEPCIÓN ERP v7.3", page_icon="🚜", layout="wide")
 if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
 inicializar_db()
 with st.sidebar:
