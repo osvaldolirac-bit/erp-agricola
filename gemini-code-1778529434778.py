@@ -35,17 +35,21 @@ def guardar_en_drive():
         st.error("❌ Error de autenticación.")
         return
     try:
-        # Buscamos el archivo que USTED subió manualmente
         query = f"'{ID_CARPETA_DRIVE}' in parents and title='{NOMBRE_DB}' and trashed=false"
         lista = drive.ListFile({'q': query}).GetList()
         
         if lista:
             f = lista[0]
             f.SetContentFile(NOMBRE_DB)
-            f.Upload(param={'supportsAllDrives': True}) # Actualiza el contenido
-            st.success("✅ ¡Sincronización Exitosa!")
+            # Actualizamos el archivo (esto no consume cuota del robot si el dueño es usted)
+            f.Upload(param={'supportsAllDrives': True})
+            st.success("✅ Sincronización exitosa.")
         else:
-            st.error("❌ ERROR: No se encontró el archivo en Drive. Súbalo manualmente primero.")
+            st.warning("⚠️ No se encontró el archivo en Drive. Súbalo manualmente una vez con el nombre erp_concepcion_v6.db")
+            # Intento de creación por si acaso
+            f = drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
+            f.SetContentFile(NOMBRE_DB)
+            f.Upload(param={'supportsAllDrives': True})
     except Exception as e:
         st.error(f"❌ Error de Cuota: {e}")
 
@@ -135,20 +139,20 @@ def login_page():
     inyectar_css()
     st.markdown("<h1 style='text-align: center; color: #1B5E20; margin-top: 50px;'>🚜 ERP La Concepción</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 1.2, 1])
-    with c2:
+    with col2:
         with st.form("login_form"):
-            e, p = st.text_input("Email Corporativo"), st.text_input("Contraseña", type="password")
+            e, p = st.text_input("Email"), st.text_input("Clave", type="password")
             if st.form_submit_button("ACCEDER"):
                 conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
                 if cursor.fetchone():
                     st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
-                else: st.error("Acceso denegado.")
+                else: st.error("Fallo.")
                 conn.close()
 
 def modulo_dashboard():
     inyectar_css()
-    st.markdown("<h1>🏠 Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>🚜 Dashboard Agrícola</h1>", unsafe_allow_html=True)
     conn = conectar_db(); df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn); conn.close()
     t_d = df_f['monto_total'].sum() if not df_f.empty else 0
     v_a = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f.empty else 0
@@ -159,20 +163,7 @@ def modulo_dashboard():
     with c3: st.markdown("VENCIDOS HOY"); st.markdown(f"<h2 style='color:orange;'>{v_h}</h2>", unsafe_allow_html=True)
     c4.metric("PENDIENTES", f"{len(df_f)}")
     st.divider()
-
-def modulo_costos():
-    st.header("💰 Costos por Cuartel")
-    conn = conectar_db(); query = """
-    SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(val) as total
-    FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario') WHERE cc != '' GROUP BY cc """
-    df_t = pd.read_sql_query(query, conn); conn.close()
-    if not df_t.empty:
-        df_total = pd.DataFrame([{"cc": "TOTAL GENERAL", "insumos": df_t["insumos"].sum(), "gastos": df_t["gastos"].sum(), "total": df_t["total"].sum()}])
-        df_res = pd.concat([df_t, df_total], ignore_index=True)
-        st.dataframe(df_res.style.apply(lambda r: ['font-weight: bold; background-color: #f1f8e9' if r['cc'] == "TOTAL GENERAL" else '' for _ in r], axis=1).format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
-
-# ... [Resto de módulos: Compras, Tesorería, Bodega siguen igual] ...
-# (He mantenido la estructura completa internamente)
+    modulo_costos()
 
 def modulo_compras():
     st.header("📦 Compras")
@@ -181,14 +172,14 @@ def modulo_compras():
     with t1:
         c1, c2 = st.columns(2); nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor"); fe, fv = c2.date_input("Emisión"), c2.date_input("Vencimiento")
         df_inv = pd.read_sql_query("SELECT id, producto, stock, precio_medio FROM inventario ORDER BY producto", conn)
-        cp1, cp2, cp3, cp4 = st.columns([3,1,1,1]); ps = cp1.selectbox("Insumo", df_inv['id'].astype(str) + " - " + df_inv['producto']) if not df_inv.empty else None
-        ct, pr = cp2.number_input("Cant", 0.0), cp3.number_input("Neto", 0.0)
-        if cp4.button("Añadir") and ps:
+        ps = st.selectbox("Insumo", df_inv['id'].astype(str) + " - " + df_inv['producto']) if not df_inv.empty else None
+        ct, pr = st.number_input("Cant", 0.0), st.number_input("Neto", 0.0)
+        if st.button("Añadir") and ps:
             if 'car' not in st.session_state: st.session_state['car'] = []
             st.session_state['car'].append({'id': int(ps.split(" - ")[0]), 'n': ps.split(" - ")[1], 'c': ct, 'p': pr, 't': ct*pr}); st.rerun()
         if st.session_state.get('car'):
             df_car = pd.DataFrame(st.session_state['car']); st.table(df_car)
-            if st.button("💾 GUARDAR FACTURA"):
+            if st.button("💾 GUARDAR"):
                 total_f = df_car['t'].sum()*1.19
                 conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total) VALUES (?,?,?,?,?)", (nro, prov, fe, fv, total_f))
                 for i in st.session_state['car']:
@@ -209,6 +200,10 @@ def modulo_compras():
             conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_n*1.19, 'Gasto Vario', detalles_g))
             for c in ccs_sel: conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g+"_P", prov_g, fe_g, fv_g, 0, 'Gasto Vario', c.upper(), imp, detalles_g))
             conn.commit(); guardar_en_drive(); st.rerun()
+    with t3:
+        f1, f2 = st.date_input("Desde", hoy-timedelta(days=30)), st.date_input("Hasta", hoy)
+        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
+        st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
     conn.close()
 
 def modulo_tesoreria():
@@ -251,8 +246,19 @@ def modulo_bodega():
             conn.commit(); guardar_en_drive(); st.rerun()
     conn.close()
 
+def modulo_costos():
+    st.header("💰 Resumen Costos por Cuartel")
+    conn = conectar_db(); query = """
+    SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(val) as total
+    FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario') WHERE cc != '' GROUP BY cc """
+    df_t = pd.read_sql_query(query, conn); conn.close()
+    if not df_t.empty:
+        df_total = pd.DataFrame([{"cc": "TOTAL GENERAL", "insumos": df_t["insumos"].sum(), "gastos": df_t["gastos"].sum(), "total": df_t["total"].sum()}])
+        df_res = pd.concat([df_t, df_total], ignore_index=True)
+        st.dataframe(df_res.style.apply(lambda r: ['font-weight: bold; background-color: #f1f8e9' if r['cc'] == "TOTAL GENERAL" else '' for _ in r], axis=1).format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
+
 # --- 6. NAVEGACIÓN ---
-st.set_page_config(page_title="ERP v11.8", layout="wide")
+st.set_page_config(page_title="ERP v11.7", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
