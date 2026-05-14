@@ -14,7 +14,7 @@ ID_CARPETA_DRIVE = "12tjxWa_RVRP5YuYd2sypjBO8bPuyMqo6"
 NOMBRE_DB = 'erp_concepcion_v6.db'
 CLAVE_SEGURIDAD = "2908"
 
-# Fecha Global para evitar errores de referencia
+# Fecha Global
 hoy = datetime.now().date()
 
 FAMILIAS_PRODUCTOS = [
@@ -111,7 +111,7 @@ def descargar_pdf(df, titulo):
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
-# --- 5. MÓDULO DASHBOARD (ALERTA MESES ANTERIORES) ---
+# --- 5. MÓDULO DASHBOARD ---
 def modulo_dashboard():
     st.header("📊 Dashboard de Control Maestro")
     conn = conectar_db()
@@ -151,7 +151,7 @@ def modulo_dashboard():
             val_m = df_f[(df_f['dt'].dt.month == m) & (df_f['dt'].dt.year == a)]['monto_total'].sum()
         cols_p[i].metric(f"{meses_n[m-1]} {a}", f"${f_puntos(val_m)}")
 
-# --- 6. MÓDULO COMPRAS (CON PDF, MODIFICAR Y ELIMINAR) ---
+# --- 6. MÓDULO COMPRAS (CON HISTORIAL POR RANGO Y GESTIÓN TOTAL) ---
 def modulo_compras():
     st.header("📦 Compras e Insumos")
     t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial / Gestionar"])
@@ -186,11 +186,27 @@ def modulo_compras():
                 conn.commit(); conn.close(); guardar_en_drive(); st.rerun()
     
     with t3:
+        st.subheader("🔍 Filtro de Historial por Fecha")
         conn = conectar_db()
-        df_h = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo FROM facturas ORDER BY fecha_compra DESC", conn)
+        # Obtener fechas extremas para mostrar todo por defecto
+        res_fechas = conn.execute("SELECT MIN(fecha_compra), MAX(fecha_compra) FROM facturas").fetchone()
+        f_min = pd.to_datetime(res_fechas[0]).date() if res_fechas[0] else hoy - timedelta(days=365)
+        f_max = pd.to_datetime(res_fechas[1]).date() if res_fechas[1] else hoy
+        
+        cf1, cf2 = st.columns(2)
+        f_h1 = cf1.date_input("Desde (Compra)", f_min)
+        f_h2 = cf2.date_input("Hasta (Compra)", f_max)
+
+        df_h = pd.read_sql_query(f"""
+            SELECT id, nro_documento, proveedor, fecha_compra, monto_total, tipo 
+            FROM facturas 
+            WHERE fecha_compra BETWEEN '{f_h1}' AND '{f_h2}'
+            ORDER BY fecha_compra DESC
+        """, conn)
+        
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
-            st.download_button("📥 Descargar Historial PDF", descargar_pdf(df_h, "HISTORIAL DE COMPRAS"), "historial.pdf")
+            st.download_button("📥 Descargar Historial PDF", descargar_pdf(df_h, f"HISTORIAL COMPRAS ({f_h1} al {f_h2})"), "historial.pdf")
             st.divider(); c_ed1, c_ed2 = st.columns(2)
             id_sel = c_ed1.selectbox("ID a Gestionar", df_h['id']); row = df_h[df_h['id'] == id_sel].iloc[0]
             with st.expander("📝 MODIFICAR DOCUMENTO"):
@@ -210,7 +226,7 @@ def modulo_compras():
                     else: st.error("Clave Incorrecta")
         conn.close()
 
-# --- 7. MÓDULO TESORERÍA (SEMÁFORO Y RANGO REPUESTO) ---
+# --- 7. MÓDULO TESORERÍA ---
 def modulo_tesoreria():
     st.header("💸 Tesorería")
     tp1, tp2, tp3 = st.tabs(["🔴 Pendientes", "🏢 Por Proveedor", "📅 Por Rango Vencimiento"])
@@ -239,7 +255,6 @@ def modulo_tesoreria():
             st.download_button(f"📥 PDF {p_sel}", descargar_pdf(df_filt, f"DEUDA: {p_sel}"), f"pago_{p_sel}.pdf")
     
     with tp3:
-        st.subheader("Consultar Deudas por Rango de Vencimiento")
         f1, f2 = st.date_input("Vencimiento Desde", hoy), st.date_input("Vencimiento Hasta", hoy + timedelta(days=30))
         df_r = pd.read_sql_query(f"SELECT nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND fecha_vencimiento BETWEEN '{f1}' AND '{f2}'", conn)
         if not df_r.empty:
@@ -247,7 +262,7 @@ def modulo_tesoreria():
             st.download_button("📥 PDF Rango Selección", descargar_pdf(df_r, f"VENCIMIENTOS {f1} AL {f2}"), "rango.pdf")
     conn.close()
 
-# --- 8. MÓDULO BODEGA (CONSULTAS CC Y NUEVO INSUMO) ---
+# --- 8. MÓDULO BODEGA ---
 def modulo_bodega():
     st.header("🚜 Gestión de Bodega")
     tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock Actual", "🔄 Movimientos", "➕ Nuevo Insumo", "🔍 Consultas por CC"])
@@ -287,14 +302,13 @@ def modulo_bodega():
 
 # --- 9. NAVEGACIÓN ---
 st.set_page_config(page_title="AGRICOLA LA CONCEPCION ERP", page_icon="🚜", layout="wide")
-
 if 'sinc' not in st.session_state: descargar_de_drive(); st.session_state['sinc'] = True
 inicializar_db()
 with st.sidebar:
     st.title("LA CONCEPCIÓN ERP")
     if "gcp_service_account" in st.secrets: st.success("☁️ Drive: CONECTADO")
     menu = st.radio("Menú", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega"])
-    if st.button("🚀 Sincronizar"): guardar_en_drive()
+    if st.button("🚀 Sincronizar Ahora"): guardar_en_drive()
 
 if menu == "🏠 Dashboard": modulo_dashboard()
 elif menu == "📦 Compras": modulo_compras()
