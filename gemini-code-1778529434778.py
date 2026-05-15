@@ -164,7 +164,7 @@ def modulo_bodega():
         tipo_op = st.radio("3. Operación", ["Entrada", "Salida"], horizontal=True)
         
         if tipo_op == "Entrada":
-            p_n = st.number_input("Precio Neto Unitario", 0.0)
+            p_n = st.number_input("Precio Neto Unitario", 0.0, key="bod_in_p")
             if st.button("Confirmar Entrada"):
                 pid = int(ps.split(" - ")[0])
                 cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
@@ -175,7 +175,6 @@ def modulo_bodega():
         else:
             st.write("Seleccione CC destino (Reparto Proporcional):")
             cols_c = st.columns(3)
-            # Lista para capturar los seleccionados REALMENTE
             ccs_seleccionados = []
             for i, cc in enumerate(CENTROS_COSTO):
                 if cols_c[i%3].checkbox(cc, key=f"bod_chk_{cc}"):
@@ -185,17 +184,11 @@ def modulo_bodega():
                 if ps and ccs_seleccionados and cant_t > 0:
                     pid = int(ps.split(" - ")[0])
                     pmp = df_inv[df_inv['id']==pid]['precio_medio'].values[0]
-                    
-                    # CÁLCULO DE REPARTO
                     num_cc = len(ccs_seleccionados)
                     v_por_cc = (cant_t * pmp) / num_cc
                     c_por_cc = cant_t / num_cc
-                    
-                    # SE GRABA CADA REGISTRO
                     for c_dest in ccs_seleccionados:
-                        conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, centro_costo, valor_imputado, fecha) VALUES (?,?,?,?,?,?)", 
-                                     (pid, 'Salida', c_por_cc, c_dest, v_por_cc, hoy))
-                    
+                        conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, centro_costo, valor_imputado, fecha) VALUES (?,?,?,?,?,?)", (pid, 'Salida', c_por_cc, c_dest, v_por_cc, hoy))
                     conn.execute("UPDATE inventario SET stock = stock - ? WHERE id = ?", (cant_t, pid))
                     conn.commit(); guardar_en_drive(); st.rerun()
                 else:
@@ -206,7 +199,7 @@ def modulo_bodega():
         if not df_st.empty: st.download_button("📥 PDF Stock", generar_pdf(df_st, "STOCK"), "stock.pdf")
     with t3:
         cc_f = st.selectbox("Filtrar Cuartel", CENTROS_COSTO)
-        st.dataframe(pd.read_sql_query(f"SELECT * FROM movimientos WHERE centro_costo='{cc_f}'", conn), use_container_width=True)
+        df_q = pd.read_sql_query(f"SELECT * FROM movimientos WHERE centro_costo='{cc_f}'", conn); st.dataframe(df_q, use_container_width=True)
     with t4:
         with st.form("ni"):
             n, f, p = st.text_input("Nombre"), st.selectbox("Familia", FAMILIAS_PRODUCTOS), st.number_input("PMP Inicial", 0.0)
@@ -238,7 +231,7 @@ def modulo_costos():
     conn.close()
 
 # --- 5. NAVEGACIÓN ---
-st.set_page_config(page_title="ERP AGRICOLA v54", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v55", layout="wide")
 inicializar_db()
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 if not st.session_state['auth']:
