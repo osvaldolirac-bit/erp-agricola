@@ -127,8 +127,10 @@ def inyectar_css():
     st.markdown("""<style>
         .main { background-color: #f4f7f6; }
         .stMetric { background-color: white; padding: 15px; border-radius: 12px; border-left: 6px solid #2E7D32; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        /* Ajuste para que las cifras grandes no se corten */
         [data-testid="stMetricValue"] { font-size: 1.8rem !important; overflow-wrap: break-word; }
+        .custom-metric { background-color: white; padding: 15px; border-radius: 12px; border-left: 6px solid #2E7D32; box-shadow: 0 4px 6px rgba(0,0,0,0.05); min-height: 100px; }
+        .metric-label { font-size: 0.8rem; color: #666; font-weight: bold; text-transform: uppercase; }
+        .metric-value { font-size: 1.8rem; font-weight: bold; display: block; }
         h1, h2, h3 { color: #1B5E20; font-family: 'Arial'; }
         .stButton>button { border-radius: 8px; background-color: #2E7D32; color: white; font-weight: bold; }
         </style>""", unsafe_allow_html=True)
@@ -158,7 +160,7 @@ def modulo_dashboard():
     st.subheader(f"Usuario: {st.session_state['email']}")
     conn = conectar_db()
     
-    # DOCUMENTOS REALES ÚNICOS (Métrica fidedigna)
+    # DOCUMENTOS REALES ÚNICOS
     df_f_reales = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
     
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
@@ -172,13 +174,19 @@ def modulo_dashboard():
     v_a = df_f_reales[pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f_reales.empty else 0
     v_h = len(df_f_reales[pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.date < hoy]) if not df_f_reales.empty else 0
     
-    # --- REDISTRIBUCIÓN DE COLUMNAS (Para evitar cortes de texto) ---
-    c1, c2, c3, c4, c5 = st.columns([1.4, 1.4, 0.8, 0.8, 1])
-    c1.metric("DEUDA TOTAL", f"${f_puntos(t_d)}")
-    c2.metric("MESES ANT.", f"${f_puntos(v_a)}")
-    c3.metric("VENCIDAS", f"{v_h}")
-    c4.metric("PEND.", f"{len(df_f_reales)}")
-    c5.metric("PETRÓLEO", f"{f_decimal(saldo_pet)}L")
+    # --- REDISTRIBUCIÓN Y FORMATO V10.8.31 (COLORES Y ALERTAS) ---
+    c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1, 1, 1])
+    
+    with c1:
+        st.markdown(f"<div class='custom-metric'><span class='metric-label'>DEUDA TOTAL</span><span class='metric-value'>${f_puntos(t_d)}</span></div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"<div class='custom-metric'><span class='metric-label'>MESES ANTERIORES</span><span class='metric-value' style='color:red;'>${f_puntos(v_a)}</span><span style='color:red; font-size:0.7rem; font-weight:bold;'>⚠️ CRÍTICO</span></div>", unsafe_allow_html=True)
+    with c3:
+        st.markdown(f"<div class='custom-metric'><span class='metric-label'>VENCIDAS</span><span class='metric-value' style='color:orange;'>{v_h}</span></div>", unsafe_allow_html=True)
+    with c4:
+        st.markdown(f"<div class='custom-metric'><span class='metric-label'>PENDIENTES</span><span class='metric-value'>{len(df_f_reales)}</span></div>", unsafe_allow_html=True)
+    with c5:
+        st.markdown(f"<div class='custom-metric'><span class='metric-label'>PETRÓLEO</span><span class='metric-value'>{f_decimal(saldo_pet)}L</span></div>", unsafe_allow_html=True)
     
     st.divider()
     col1, col2 = st.columns([1.5, 1])
@@ -368,7 +376,7 @@ def modulo_costos():
     if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.30", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.31", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
