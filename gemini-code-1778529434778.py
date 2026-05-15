@@ -218,7 +218,7 @@ def modulo_petroleo():
             cols = st.columns(3); ccs_p = []
             for i, cc_n in enumerate(CENTROS_COSTO):
                 if cols[i%3].checkbox(cc_n, key=f"p_cc_{cc_n}"): ccs_p.append(cc_n)
-            if st.form_submit_button("⛽ REGISTRAR SALIDA"):
+            if st.form_submit_button("⛽ REGISTRAR"):
                 if lts_s > 0 and ccs_p and lts_s <= saldo:
                     l_rep = lts_s / len(ccs_p); v_rep = (lts_s * pmp_p) / len(ccs_p)
                     for c in ccs_p: conn.execute("INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?,?)", ("Salida", l_rep, vehi, resp, c.upper(), fec_s, v_rep))
@@ -252,33 +252,47 @@ def modulo_compras():
     with t2:
         c1, c2 = st.columns(2); prov_g, nro_g = c1.text_input("Proveedor ", key="pg"), c2.text_input("N° Doc ", key="ng")
         cf1, cf2 = st.columns(2); fe_g, fv_g = cf1.date_input("Compra", hoy, key="fg1"), cf2.date_input("Vence", hoy, key="fg2")
-        detalles_g = st.text_area("Concepto", height=70)
-        
-        st.markdown("### Seleccione Cuartel(es) para Imputar Costo (OPCIONAL)")
-        st.caption("Si no selecciona ningún CC, el gasto quedará registrado para pago pero NO sumará a los costos de los cuarteles.")
-        ccs_sel = []; cols = st.columns(3)
+        detalles_g = st.text_area("Concepto", height=70); ccs_sel = []; cols = st.columns(3)
         for i, cc in enumerate(CENTROS_COSTO):
             if cols[i % 3].checkbox(cc, key=f"gv_{cc}"): ccs_sel.append(cc)
-            
         m1, m2 = st.columns(2); m_n = m1.number_input("Neto Total", 0.0); iva = m2.radio("IVA al costo?", ["SÍ", "NO"])
-        
         if st.button("💾 GUARDAR GASTO VARIO"):
             if m_n > 0:
                 if len(ccs_sel) > 0:
-                    # Lógica original: Prorratear entre seleccionados
                     imp = (m_n / len(ccs_sel)) if iva == "SÍ" else (m_n / len(ccs_sel)) / 1.19
                     conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_n*1.19, 'Gasto Vario', detalles_g))
                     for c in ccs_sel: conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g+"_P", prov_g, fe_g, fv_g, 0, 'Gasto Vario', c.upper(), imp, detalles_g))
                 else:
-                    # NUEVA OPCIÓN: No imputar a ningún CC (quedará vacío para reportes de costo)
                     conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto, centro_costo, monto_imputado) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_n*1.19, 'Gasto Vario', detalles_g, "BODEGA/STOCK", 0))
-                
                 conn.commit(); guardar_en_drive(); st.rerun()
                 
     with t3:
         f1, f2 = st.date_input("Filtrar Desde", hoy-timedelta(days=30)), st.date_input("Hasta", hoy)
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
+        
+        # --- NUEVA GESTIÓN DE DOCUMENTOS (MODIFICAR/ELIMINAR) ---
+        st.divider()
+        st.subheader("🛠️ Gestión de Documentos")
+        id_doc = st.selectbox("ID de documento a gestionar", df_h['id'])
+        item_doc = df_h[df_h['id'] == id_doc].iloc[0]
+        c1, c2 = st.columns(2)
+        nuevo_nro = c1.text_input("Nuevo N° Doc", value=item_doc['nro_documento'])
+        nuevo_prov = c2.text_input("Nuevo Proveedor", value=item_doc['proveedor'])
+        nuevo_monto = st.number_input("Nuevo Monto Total", value=float(item_doc['monto_total']))
+        
+        cl = st.text_input("Clave de Autorización", type="password")
+        b1, b2 = st.columns(2)
+        if b1.button("✏️ MODIFICAR DOCUMENTO"):
+            if cl == CLAVE_MAESTRA:
+                conn.execute("UPDATE facturas SET nro_documento=?, proveedor=?, monto_total=? WHERE id=?", (nuevo_nro, nuevo_prov, nuevo_monto, id_doc))
+                conn.commit(); guardar_en_drive(); st.rerun()
+            else: st.error("Clave incorrecta.")
+        if b2.button("🗑️ ELIMINAR DOCUMENTO"):
+            if cl == CLAVE_MAESTRA:
+                conn.execute("DELETE FROM facturas WHERE id=?", (id_doc,))
+                conn.commit(); guardar_en_drive(); st.rerun()
+            else: st.error("Clave incorrecta.")
     conn.close()
 
 def modulo_tesoreria():
@@ -377,12 +391,12 @@ def modulo_bodega():
 
 def modulo_costos():
     st.header("💰 Costos Totales")
-    conn = conectar_db(); query = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, SUM(val) as total FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario' UNION ALL SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida') WHERE cc != '' GROUP BY cc"
+    conn = conectar_db(); query = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, SUM(val) as total FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario' UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') WHERE cc != '' GROUP BY cc"
     df_t = pd.read_sql_query(query, conn); conn.close()
     if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.11", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.12", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
