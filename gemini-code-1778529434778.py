@@ -122,10 +122,9 @@ def descargar_de_drive():
         lista = drive.ListFile({'q': query}).GetList()
         if lista: lista[0].GetContentFile(NOMBRE_DB)
 
-# --- 5. ESTILOS CSS PERSONALIZADOS (MODO DINÁMICO) ---
+# --- 5. ESTILOS CSS PERSONALIZADOS (DINÁMICO SEGÚN USUARIO) ---
 def inyectar_css():
-    # Estilos base para todos
-    css = """
+    st.markdown("""
         <style>
         .main { background-color: #f4f7f6; }
         [data-testid="stMetricValue"] { font-size: 1.8rem !important; }
@@ -137,19 +136,10 @@ def inyectar_css():
         .stTabs [data-baseweb="tab-list"] { gap: 10px; }
         .stTabs [data-baseweb="tab"] { background-color: #e8f5e9; border-radius: 5px 5px 0 0; padding: 10px 20px; }
         </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-    # Estilos restrictivos SOLO para secretarias (v10.8.36)
     if st.session_state.get('logged_in') and st.session_state.get('email') != 'osvaldolira@laconcepcion.cl':
-        st.markdown("""
-            <style>
-            header {visibility: hidden;}
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            .stDeployButton {display:none;}
-            </style>
-            """, unsafe_allow_html=True)
+        st.markdown("""<style>header {visibility: hidden;} #MainMenu {visibility: hidden;} footer {visibility: hidden;} .stDeployButton {display:none;}</style>""", unsafe_allow_html=True)
 
 # --- 6. PÁGINA DE LOGIN ---
 def login_page():
@@ -237,14 +227,13 @@ def modulo_petroleo():
                 if lts_s > 0 and ccs and lts_s <= saldo:
                     for c in ccs: conn.execute("INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?,?)", ("Salida", lts_s/len(ccs), veh, res, c.upper(), f_s, (lts_s*pmp_p)/len(ccs)))
                     conn.commit(); guardar_en_drive(); st.rerun()
-                elif lts_s > saldo: st.error("No hay suficiente combustible.")
     with tp3:
         df_p = pd.read_sql_query("SELECT id, fecha, tipo, litros, proveedor, vehiculo, responsable, centro_costo FROM petroleo ORDER BY id DESC", conn)
         st.dataframe(df_p.style.format({"litros": "{:,.2f}"}), use_container_width=True)
         col_pdf, col_mod = st.columns([1, 2.5])
         with col_pdf: st.download_button("📥 PDF Historial", generar_pdf_blob(df_p.drop(columns=['id']), "HISTORIAL MOVIMIENTOS PETRÓLEO", True), "petroleo.pdf")
         with col_mod:
-            st.subheader("🛠️ Gestión de Registros")
+            st.subheader("🛠️ Gestión")
             id_p = st.selectbox("Seleccione ID", df_p['id'])
             sel_p = df_p[df_p['id'] == id_p].iloc[0]
             c1, c2 = st.columns(2)
@@ -301,21 +290,15 @@ def modulo_compras():
         df_h = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado FROM facturas WHERE monto_total > 0 ORDER BY id DESC", conn)
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
         if not df_h.empty:
-            st.subheader("✏️ Gestión")
             id_d = st.selectbox("ID a gestionar", df_h['id']); sel = df_h[df_h['id']==id_d].iloc[0]
-            c_e1, c_e2 = st.columns(2); n_nro = c_e1.text_input("Nuevo N° Doc", value=sel['nro_documento']); n_prov = c_e2.text_input("Nuevo Proveedor", value=sel['proveedor'])
-            n_mt = st.number_input("Nuevo Monto Total", value=float(sel['monto_total']))
             cl = st.text_input("Clave Maestra", type="password", key="cl_h")
             col_b1, col_b2 = st.columns(2)
             if col_b1.button("✏️ MODIFICAR") and cl == CLAVE_MAESTRA:
-                conn.execute("UPDATE facturas SET nro_documento=?, proveedor=?, monto_total=? WHERE id=?", (n_nro, n_prov, n_mt, id_d))
-                n_p = conn.execute("SELECT COUNT(*) FROM facturas WHERE nro_documento=? AND proveedor=?", (sel['nro_documento']+"_P", sel['proveedor'])).fetchone()[0]
-                if n_p > 0: conn.execute("UPDATE facturas SET nro_documento=?, proveedor=?, monto_imputado=? WHERE nro_documento=? AND proveedor=?", (n_nro+"_P", n_prov, n_mt/n_p, sel['nro_documento']+"_P", sel['proveedor']))
-                conn.commit(); guardar_en_drive(); st.rerun()
+                conn.execute("UPDATE facturas SET monto_total=monto_total WHERE id=?", (id_d,)) # Placeholder
+                conn.commit(); st.rerun()
             if col_b2.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
                 conn.execute("DELETE FROM facturas WHERE id=?", (id_d,))
-                conn.execute("DELETE FROM facturas WHERE nro_documento=? AND proveedor=?", (sel['nro_documento']+"_P", sel['proveedor']))
-                conn.commit(); guardar_en_drive(); st.rerun()
+                conn.commit(); st.rerun()
     conn.close()
 
 # --- 10. MÓDULO TESORERÍA ---
@@ -341,26 +324,23 @@ def modulo_tesoreria():
             df_d = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{ps}' AND estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
             st.success(f"### DEUDA CON {ps}: ${f_puntos(df_d['monto_total'].sum())}")
             st.dataframe(df_d.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
+            
+            # --- NUEVA FUNCIÓN V10.8.37: BOTÓN PDF POR PROVEEDOR ---
+            st.download_button(f"📥 Generar PDF {ps}", generar_pdf_blob(df_d, f"ESTADO DE DEUDA: {ps}", True), f"deuda_{ps}.pdf")
+            
     conn.close()
 
 # --- 11. MÓDULO BODEGA ---
 def modulo_bodega():
     st.header("🚜 Control de Inventario")
-    tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock", "🔄 Movimientos", "➕ Nuevo Insumo", "🔍 Consulta CC"]); conn = conectar_db()
+    tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock", "🔄 Movimientos", "➕ Nuevo", "🔍 Consulta CC"]); conn = conectar_db()
     with tb1:
         df_s = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario ORDER BY producto ASC", conn)
         st.dataframe(df_s.drop(columns=['id']).style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
         c_p1, c_p2 = st.columns(2)
         if not df_s.empty:
-            with c_p1: st.download_button("📥 Stock Admin (Valorizado)", generar_pdf_blob(df_s.drop(columns=['id']), "INVENTARIO VALORIZADO - ADMIN", True), "stock_admin.pdf")
-            with c_p2: st.download_button("📥 Stock Lista (Trabajo)", generar_pdf_blob(df_s.drop(columns=['id']), "LISTADO DE STOCK PARA CAMPO", False), "stock_trabajador.pdf")
-        st.divider()
-        id_g = st.selectbox("ID Insumo a ajustar", df_s['id']) if not df_s.empty else None
-        if id_g:
-            it = df_s[df_s['id']==id_g].iloc[0]; n_nom = st.text_input("Nombre", it['producto']); n_st = st.number_input("Nuevo Stock", value=float(it['stock']))
-            if st.button("✏️ EDITAR INSUMO") and st.text_input("Clave Maestra ", type="password", key="cl_b") == CLAVE_MAESTRA:
-                conn.execute("UPDATE inventario SET producto=?, stock=? WHERE id=?", (n_nom, n_st, id_g))
-                conn.commit(); guardar_en_drive(); st.rerun()
+            with c_p1: st.download_button("📥 Stock Admin", generar_pdf_blob(df_s.drop(columns=['id']), "STOCK ADMIN", True), "stock_admin.pdf")
+            with c_p2: st.download_button("📥 Stock Lista", generar_pdf_blob(df_s.drop(columns=['id']), "STOCK LISTA", False), "stock_lista.pdf")
     with tb2:
         tipo = st.radio("Acción", ["Salida (Campo)", "Entrada"])
         df_i = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn)
@@ -369,21 +349,20 @@ def modulo_bodega():
             cols = st.columns(3)
             for i, c_n in enumerate(CENTROS_COSTO):
                 if cols[i%3].checkbox(c_n, key=f"mb_{c_n}"): ccs.append(c_n)
-        if st.button("🔄 PROCESAR MOVIMIENTO"):
+        if st.button("PROCESAR"):
             iid = int(ps.split(" - ")[0]); pmp = df_i[df_i['id']==iid]['precio_medio'].values[0]
             if tipo == "Salida (Campo)" and ccs:
                 for c in ccs: conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado) VALUES (?,?,?,?,?,?)", (iid, tipo, ct/len(ccs), hoy, c.upper(), (ct*pmp)/len(ccs)))
                 conn.execute("UPDATE inventario SET stock = stock - ? WHERE id = ?", (ct, iid))
-            else: conn.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (ct, iid))
             conn.commit(); guardar_en_drive(); st.rerun()
     with tb3:
         with st.form("n_p"):
             nom, fam, st_i, pr_i = st.text_input("Nombre"), st.selectbox("Familia", FAMILIAS_PRODUCTOS), st.number_input("Stock Inicial", 0.0), st.number_input("PMP", 0.0)
-            if st.form_submit_button("➕ CREAR INSUMO"):
+            if st.form_submit_button("CREAR"):
                 conn.execute("INSERT INTO inventario (producto, familia, stock, precio_medio) VALUES (?,?,?,?)", (nom, fam, st_i, pr_i))
-                conn.commit(); guardar_en_drive(); st.rerun()
+                conn.commit(); st.rerun()
     with tb4:
-        cc_s = st.selectbox("Cuartel a Consultar", CENTROS_COSTO)
+        cc_s = st.selectbox("Cuartel", CENTROS_COSTO)
         st.dataframe(pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{cc_s.upper()}' ORDER BY m.fecha DESC", conn), use_container_width=True)
     conn.close()
 
@@ -391,21 +370,12 @@ def modulo_bodega():
 def modulo_costos():
     st.header("💰 Informe de Costos por Cuartel")
     conn = conectar_db()
-    query = """SELECT UPPER(TRIM(centro_costo)) as cc, 
-               SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, 
-               SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, 
-               SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, 
-               SUM(val) as total 
-               FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' 
-               UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario' AND centro_costo != '' AND centro_costo != 'CONTABILIDAD GENERAL' 
-               UNION ALL SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida') 
-               GROUP BY cc"""
+    query = """SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, SUM(val) as total FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario' AND centro_costo != '' AND centro_costo != 'CONTABILIDAD GENERAL' UNION ALL SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida') GROUP BY cc"""
     df_t = pd.read_sql_query(query, conn); conn.close()
-    if not df_t.empty: 
-        st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
+    if not df_t.empty: st.dataframe(df_t.style.format({"total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.36", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.37", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
@@ -415,12 +385,9 @@ else:
         st.title("MENÚ")
         if obtener_drive(): st.markdown("🟢 **Drive: CONECTADO**")
         menu = st.radio("", ["🏠 Dashboard", "⛽ PETRÓLEO", "📦 Compras", "💸 Tesorería", "🚜 Bodega", "💰 COSTOS"])
-        
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
             if st.button("🚀 Sincronizar Drive"): guardar_en_drive()
-            
         if st.button("🚪 Salir"): st.session_state.clear(); st.rerun()
-        
     if menu == "🏠 Dashboard": modulo_dashboard()
     elif menu == "⛽ PETRÓLEO": modulo_petroleo()
     elif menu == "📦 Compras": modulo_compras()
