@@ -155,23 +155,28 @@ def modulo_dashboard():
     st.markdown("<h1>🚜 ERP Agrícola La Concepción</h1>", unsafe_allow_html=True)
     st.subheader(f"Usuario: {st.session_state['email']}")
     conn = conectar_db()
+    
+    # --- FILTRADO DE DOCUMENTOS REALES (IGNORA REPARTOS _P) ---
     df_f_reales = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
-    df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn); df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
+    
+    df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
+    df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
     saldo_pet = (df_p_c['l'].fillna(0).iloc[0]) - (df_p_s['l'].fillna(0).iloc[0])
+    
     query_c = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado FROM facturas WHERE tipo = 'Gasto Vario' AND centro_costo != '' UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"
     df_c = pd.read_sql_query(query_c, conn)
-    if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
-        with st.expander("👁️ Bitácora de Accesos Recientes"):
-            df_logs = pd.read_sql_query("SELECT email, fecha_hora FROM log_accesos ORDER BY fecha_hora DESC LIMIT 10", conn)
-            st.table(df_logs)
+    
     t_d = df_f_reales['monto_total'].sum() if not df_f_reales.empty else 0
     v_a = df_f_reales[pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f_reales.empty else 0
     v_h = len(df_f_reales[pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.date < hoy]) if not df_f_reales.empty else 0
+    
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("DEUDA TOTAL", f"${f_puntos(t_d)}")
     with c2: st.markdown("MESES ANTERIORES"); st.markdown(f"<h2 style='color:red;'>${f_puntos(v_a)}</h2>", unsafe_allow_html=True)
     with c3: st.markdown("VENCIDOS HOY"); st.markdown(f"<h2 style='color:orange;'>{v_h}</h2>", unsafe_allow_html=True)
-    c4.metric("DOCS. PENDIENTES", f"{len(df_f_reales)}"); c5.metric("SALDO PETRÓLEO", f"{f_decimal(saldo_pet)} Lts")
+    c4.metric("DOCS. PENDIENTES", f"{len(df_f_reales)}")
+    c5.metric("SALDO PETRÓLEO", f"{f_decimal(saldo_pet)} Lts")
+    
     st.divider()
     col1, col2 = st.columns([1.5, 1])
     with col1:
@@ -179,13 +184,34 @@ def modulo_dashboard():
         if not df_c.empty:
             df_total = pd.DataFrame([{"cc": "TOTAL GENERAL", "total_neto": df_c["total_neto"].sum()}])
             df_res = pd.concat([df_c, df_total], ignore_index=True)
-            def bold_t(row): return ['font-weight: bold; background-color: #E8F5E9' if row['cc'] == "TOTAL GENERAL" else '' for _ in row]
-            st.dataframe(df_res.style.apply(bold_t, axis=1).format({"total_neto": "${:,.0f}"}), use_container_width=True)
+            st.dataframe(df_res.style.format({"total_neto": "${:,.0f}"}), use_container_width=True)
+            
+    # --- PROYECCIÓN MENSUAL (REINCORPORADA) ---
+    with col2:
+        st.subheader("📅 Proyección de Vencimientos (4 Meses)")
+        meses_nombres = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        for i in range(4):
+            # Calculamos el mes objetivo partiendo del mes actual
+            fecha_proyeccion = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
+            mes_num = fecha_proyeccion.month
+            anio_num = fecha_proyeccion.year
+            
+            # Sumamos solo facturas reales que vencen en ese mes y año
+            df_mes = df_f_reales[(pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.month == mes_num) & 
+                                (pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.year == anio_num)]
+            total_mes = df_mes['monto_total'].sum() if not df_mes.empty else 0
+            
+            st.markdown(f"""
+                <div style='background:white; padding:12px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; border:1px solid #ddd;'>
+                    <b>{meses_nombres[mes_num-1]} {anio_num}</b> 
+                    <span style='color:#2E7D32; font-weight:bold;'>${f_puntos(total_mes)}</span>
+                </div>
+            """, unsafe_allow_html=True)
     conn.close()
 
 def modulo_petroleo():
     st.header("⛽ Gestión de Petróleo")
-    tp1, tp2, tp3 = st.tabs(["📥 Carga", "🚜 Salida", "📊 Historial"]); conn = conectar_db()
+    tp1, tp2, tp3 = st.tabs(["📥 Carga (Compra)", "🚜 Salida (Consumo)", "📊 Historial"]); conn = conectar_db()
     df_c = pd.read_sql_query("SELECT SUM(litros) as l, SUM(monto_total_compra) as m FROM petroleo WHERE tipo='Carga'", conn); df_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
     saldo = (df_c['l'].fillna(0).iloc[0]) - (df_s['l'].fillna(0).iloc[0]); pmp_p = (df_c['m'].fillna(0).iloc[0] / df_c['l'].fillna(1).iloc[0]) if df_c['l'].fillna(0).iloc[0] > 0 else 0
     st.sidebar.metric("LITROS EN ESTANQUE", f"{f_decimal(saldo)} Lts")
@@ -251,7 +277,7 @@ def modulo_compras():
                 conn.commit(); guardar_en_drive(); st.rerun()
     with t3:
         f1, f2 = st.date_input("Desde", datetime(2020, 1, 1).date()), st.date_input("Hasta", datetime(2030, 12, 31).date())
-        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY id DESC", conn)
+        df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
         if not df_h.empty:
             st.divider(); st.subheader("🛠️ Gestión de Documentos")
@@ -278,17 +304,14 @@ def modulo_compras():
 
 def modulo_tesoreria():
     st.header("💸 Tesorería")
-    tp1, tp2, tp3 = st.tabs(["🔴 Pendientes", "🏢 Proveedor", "📅 Rango de Vencimiento"]); conn = conectar_db()
+    tp1, tp2 = st.tabs(["🔴 Pendientes", "🏢 Proveedor"]); conn = conectar_db()
     with tp1:
         df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0 ORDER BY fecha_vencimiento ASC", conn)
         st.info(f"### DEUDA PENDIENTE: ${f_puntos(df_p['monto_total'].sum() if not df_p.empty else 0)}")
         if not df_p.empty:
             def style_vencidos(row): return ['background-color: #ffcccc' if pd.to_datetime(row['fecha_vencimiento']).date() < hoy else '' for _ in row]
             st.dataframe(df_p.style.apply(style_vencidos, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
-            
-            # --- CORRECCIÓN V10.8.28: BOTÓN PDF PENDIENTES ---
-            st.download_button("📥 Generar PDF de Pendientes", generar_pdf_blob(df_p.drop(columns=['id']), "LISTADO DE CUENTAS POR PAGAR (PENDIENTES)", True), "pendientes_tesoreria.pdf")
-            
+            st.download_button("📥 Generar PDF de Pendientes", generar_pdf_blob(df_p.drop(columns=['id']), "LISTADO DE CUENTAS POR PAGAR", True), "pendientes_tesoreria.pdf")
             st.divider(); id_p = st.selectbox("ID Factura", df_p['id']); met = st.selectbox("Medio", ["Transferencia", "Efectivo", "Cheque"])
             if st.button("💰 MARCAR PAGADO"):
                 conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, hoy, id_p)); conn.commit(); guardar_en_drive(); st.rerun()
@@ -365,7 +388,7 @@ def modulo_costos():
     if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.28", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.29", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
