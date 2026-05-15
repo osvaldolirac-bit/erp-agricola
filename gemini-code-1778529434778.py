@@ -162,7 +162,7 @@ def modulo_dashboard():
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
     df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
     saldo_pet = (df_p_c['l'].fillna(0).iloc[0]) - (df_p_s['l'].fillna(0).iloc[0])
-    query_c = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado FROM facturas WHERE tipo = 'Gasto Vario' UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"
+    query_c = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado FROM facturas WHERE tipo = 'Gasto Vario' AND centro_costo IS NOT NULL AND centro_costo != '' UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"
     df_c = pd.read_sql_query(query_c, conn)
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         with st.expander("👁️ Bitácora de Accesos Recientes"):
@@ -267,25 +267,18 @@ def modulo_compras():
                 conn.commit(); guardar_en_drive(); st.rerun()
                 
     with t3:
-        # RANGO AMPLIADO POR DEFECTO (2020-2030)
         f1, f2 = st.date_input("Filtrar Desde", datetime(2020, 1, 1).date()), st.date_input("Hasta", datetime(2030, 12, 31).date())
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
-        
         if not df_h.empty:
-            st.divider()
-            st.subheader("🛠️ Gestión de Documentos")
+            st.divider(); st.subheader("🛠️ Gestión de Documentos")
             id_doc = st.selectbox("ID de documento a gestionar", df_h['id'])
-            
-            # FILTRO DE SEGURIDAD PARA EVITAR INDEXERROR
             seleccion = df_h[df_h['id'] == id_doc]
             if not seleccion.empty:
-                item_doc = seleccion.iloc[0]
-                c1, c2 = st.columns(2)
+                item_doc = seleccion.iloc[0]; c1, c2 = st.columns(2)
                 nuevo_nro = c1.text_input("Nuevo N° Doc", value=item_doc['nro_documento'])
                 nuevo_prov = c2.text_input("Nuevo Proveedor", value=item_doc['proveedor'])
                 nuevo_monto = st.number_input("Nuevo Monto Total", value=float(item_doc['monto_total']))
-                
                 cl = st.text_input("Clave de Autorización", type="password")
                 b1, b2 = st.columns(2)
                 if b1.button("✏️ MODIFICAR DOCUMENTO"):
@@ -338,17 +331,11 @@ def modulo_bodega():
         if not df_s.empty:
             with col_pdf1: st.download_button("📥 PDF Stock Valorizado (Admin)", generar_pdf_blob(df_s.drop(columns=['id']), "INVENTARIO VALORIZADO - ADMIN", True), "stock_admin.pdf")
             with col_pdf2: st.download_button("📥 PDF Stock para Trabajador", generar_pdf_blob(df_s.drop(columns=['id']), "INVENTARIO - LISTADO TRABAJO", False), "stock_trabajador.pdf")
-        
-        st.divider()
-        st.subheader("🛠️ Gestión de Insumos")
+        st.divider(); st.subheader("🛠️ Gestión de Insumos")
         id_gest = st.selectbox("Seleccione ID del Insumo a gestionar", df_s['id'])
         item = df_s[df_s['id'] == id_gest].iloc[0]
-        c1, c2 = st.columns(2)
-        nuevo_nom = c1.text_input("Nuevo Nombre", value=item['producto'])
-        nueva_fam = c2.selectbox("Nueva Familia", FAMILIAS_PRODUCTOS, index=FAMILIAS_PRODUCTOS.index(item['familia']) if item['familia'] in FAMILIAS_PRODUCTOS else 0)
-        c3, c4 = st.columns(2)
-        nuevo_stock = c3.number_input("Ajuste Stock", value=float(item['stock']))
-        nuevo_pmp = c4.number_input("Ajuste PMP", value=float(item['precio_medio']))
+        c1, c2 = st.columns(2); nuevo_nom = c1.text_input("Nuevo Nombre", value=item['producto']); nueva_fam = c2.selectbox("Nueva Familia", FAMILIAS_PRODUCTOS, index=FAMILIAS_PRODUCTOS.index(item['familia']) if item['familia'] in FAMILIAS_PRODUCTOS else 0)
+        c3, c4 = st.columns(2); nuevo_stock = c3.number_input("Ajuste Stock", value=float(item['stock'])); nuevo_pmp = c4.number_input("Ajuste PMP", value=float(item['precio_medio']))
         cl = st.text_input("Clave de Autorización", type="password")
         b1, b2 = st.columns(2)
         if b1.button("✏️ MODIFICAR INSUMO"):
@@ -361,7 +348,6 @@ def modulo_bodega():
                 conn.execute("DELETE FROM inventario WHERE id=?", (id_gest,))
                 conn.commit(); guardar_en_drive(); st.rerun()
             else: st.error("Clave incorrecta.")
-
     with tb2:
         tipo = st.radio("Acción", ["Salida (Campo)", "Entrada"])
         df_i = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn)
@@ -382,8 +368,7 @@ def modulo_bodega():
             conn.commit(); guardar_en_drive(); st.rerun()
     with tb3:
         with st.form("nuevo_p"):
-            n_p = st.text_input("Nombre"); f_p = st.selectbox("Familia", FAMILIAS_PRODUCTOS)
-            s_p = st.number_input("Stock Inicial", 0.0); p_p = st.number_input("PMP", 0.0)
+            n_p = st.text_input("Nombre"); f_p = st.selectbox("Familia", FAMILIAS_PRODUCTOS); s_p = st.number_input("Stock Inicial", 0.0); p_p = st.number_input("PMP", 0.0)
             if st.form_submit_button("CREAR"):
                 conn.execute("INSERT INTO inventario (producto, familia, stock, precio_medio) VALUES (?,?,?,?)", (n_p, f_p, s_p, p_p))
                 conn.commit(); guardar_en_drive(); st.rerun()
@@ -396,12 +381,27 @@ def modulo_bodega():
 
 def modulo_costos():
     st.header("💰 Costos Totales")
-    conn = conectar_db(); query = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, SUM(val) as total FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario' UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') WHERE cc != '' GROUP BY cc"
+    conn = conectar_db()
+    # REFUERZO DE QUERY PARA EVITAR DatabaseError CON CAMPOS VACÍOS
+    query = """
+    SELECT UPPER(TRIM(centro_costo)) as cc, 
+           SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, 
+           SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, 
+           SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, 
+           SUM(val) as total 
+    FROM (
+        SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' AND centro_costo IS NOT NULL AND centro_costo != ''
+        UNION ALL 
+        SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario' AND centro_costo IS NOT NULL AND centro_costo != ''
+        UNION ALL 
+        SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' AND centro_costo IS NOT NULL AND centro_costo != ''
+    ) GROUP BY cc
+    """
     df_t = pd.read_sql_query(query, conn); conn.close()
     if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.14", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.15", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
