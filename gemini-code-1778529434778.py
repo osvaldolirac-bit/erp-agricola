@@ -156,6 +156,12 @@ def modulo_dashboard():
     st.markdown("<h1>🚜 ERP Agrícola La Concepción</h1>", unsafe_allow_html=True)
     st.subheader(f"Usuario: {st.session_state['email']}")
     conn = conectar_db(); df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
+    
+    # Cálculo de Petróleo para el Dashboard
+    df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
+    df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
+    saldo_petroleo = (df_p_c['l'].fillna(0).iloc[0]) - (df_p_s['l'].fillna(0).iloc[0])
+
     query_c = """
     SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (
         SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%'
@@ -171,16 +177,16 @@ def modulo_dashboard():
             df_logs = pd.read_sql_query("SELECT email, fecha_hora FROM log_accesos ORDER BY fecha_hora DESC LIMIT 10", conn)
             st.table(df_logs)
             
-    conn.close()
     t_d = df_f['monto_total'].sum() if not df_f.empty else 0
     v_a = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f.empty else 0
     v_h = len(df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy]) if not df_f.empty else 0
     
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("DEUDA TOTAL", f"${f_puntos(t_d)}")
     with c2: st.markdown("MESES ANTERIORES"); st.markdown(f"<h2 style='color:red;'>${f_puntos(v_a)}</h2>", unsafe_allow_html=True)
     with c3: st.markdown("VENCIDOS HOY"); st.markdown(f"<h2 style='color:orange;'>{v_h}</h2>", unsafe_allow_html=True)
     c4.metric("DOCS. PENDIENTES", f"{len(df_f)}")
+    c5.metric("PETRÓLEO SALDO", f"{f_decimal(saldo_petroleo)} Lts")
     
     st.divider()
     col1, col2 = st.columns([1.5, 1])
@@ -191,57 +197,61 @@ def modulo_dashboard():
             df_res = pd.concat([df_c, df_total], ignore_index=True)
             def bold_t(row): return ['font-weight: bold; background-color: #E8F5E9' if row['cc'] == "TOTAL GENERAL" else '' for _ in row]
             st.dataframe(df_res.style.apply(bold_t, axis=1).format({"total_neto": "${:,.0f}"}), use_container_width=True)
+    with col2:
+        st.subheader("📅 Proyección Mensual (4 Meses)")
+        meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+        for i in range(4):
+            ft = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
+            v = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == ft.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == ft.year)]['monto_total'].sum() if not df_f.empty else 0
+            st.markdown(f"<div style='background:white; padding:12px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; border:1px solid #ddd;'><b>{meses[ft.month-1]} {ft.year}</b> <span style='color:#2E7D32;'>${f_puntos(v)}</span></div>", unsafe_allow_html=True)
+    conn.close()
 
 def modulo_petroleo():
-    st.header("⛽ Gestión de Petróleo")
+    st.header("⛽ Gestión de Petróleo (Registro Independiente)")
     tp1, tp2, tp3 = st.tabs(["📥 Carga (Compra)", "🚜 Salida (Consumo)", "📊 Estado de Cuenta"])
     conn = conectar_db()
     
-    # Calcular Saldo y Precio Medio del Petróleo
-    df_cargas = pd.read_sql_query("SELECT SUM(litros) as l, SUM(monto_total_compra) as m FROM petroleo WHERE tipo='Carga'", conn)
-    df_salidas = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
-    l_totales = (df_cargas['l'].fillna(0).iloc[0]) - (df_salidas['l'].fillna(0).iloc[0])
-    pmp_petroleo = (df_cargas['m'].fillna(0).iloc[0] / df_cargas['l'].fillna(1).iloc[0]) if df_cargas['l'].fillna(0).iloc[0] > 0 else 0
+    df_c = pd.read_sql_query("SELECT SUM(litros) as l, SUM(monto_total_compra) as m FROM petroleo WHERE tipo='Carga'", conn)
+    df_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
+    saldo_l = (df_c['l'].fillna(0).iloc[0]) - (df_s['l'].fillna(0).iloc[0])
+    pmp_p = (df_c['m'].fillna(0).iloc[0] / df_c['l'].fillna(1).iloc[0]) if df_c['l'].fillna(0).iloc[0] > 0 else 0
     
-    st.sidebar.metric("LITROS EN ESTANQUE", f"{f_decimal(l_totales)} Lts")
+    st.sidebar.metric("LITROS EN ESTANQUE", f"{f_decimal(saldo_l)} Lts")
 
     with tp1:
-        with st.form("f_pet_carga"):
+        with st.form("p_carga"):
             c1, c2 = st.columns(2)
             lts = c1.number_input("Litros Comprados", 0.0)
             prov = c1.text_input("Proveedor")
-            monto_t = c2.number_input("Compra Total ($) - Incl. Impuestos", 0.0)
-            fec_c = c2.date_input("Fecha Compra", hoy)
-            if st.form_submit_button("💾 REGISTRAR COMPRA"):
-                conn.execute("INSERT INTO petroleo (tipo, litros, proveedor, monto_total_compra, fecha) VALUES (?,?,?,?,?)",
-                             ("Carga", lts, prov, monto_t, fec_c))
+            monto_t = c2.number_input("Monto Factura Total ($)", 0.0)
+            fec_c = c2.date_input("Fecha", hoy)
+            if st.form_submit_button("💾 REGISTRAR CARGA"):
+                conn.execute("INSERT INTO petroleo (tipo, litros, proveedor, monto_total_compra, fecha) VALUES (?,?,?,?,?)", ("Carga", lts, prov, monto_t, fec_c))
                 conn.commit(); guardar_en_drive(); st.rerun()
 
     with tp2:
-        with st.form("f_pet_salida"):
+        with st.form("p_salida"):
             c1, c2 = st.columns(2)
-            lts_s = c1.number_input("Litros Despachados", 0.0)
+            lts_s = c1.number_input("Litros a Despachar", 0.0)
             vehi = c1.text_input("Vehículo / Maquinaria")
             resp = c2.text_input("Responsable")
             fec_s = c2.date_input("Fecha Despacho", hoy)
-            st.markdown("### Seleccione Centro(s) de Costo:")
-            cols_cc = st.columns(3); ccs_p = []
+            st.markdown("### Seleccione Centros de Costo:")
+            cols_p = st.columns(3); ccs_p = []
             for i, cc_n in enumerate(CENTROS_COSTO):
-                if cols_cc[i%3].checkbox(cc_n, key=f"p_cc_{cc_n}"): ccs_p.append(cc_n)
-            
-            if st.form_submit_button("⛽ CONFIRMAR SALIDA"):
-                if lts_s > 0 and ccs_p and lts_s <= l_totales:
-                    l_por_cc = lts_s / len(ccs_p)
-                    v_por_cc = (lts_s * pmp_petroleo) / len(ccs_p)
+                if cols_p[i%3].checkbox(cc_n, key=f"p_cc_{cc_n}"): ccs_p.append(cc_n)
+            if st.form_submit_button("⛽ REGISTRAR SALIDA"):
+                if lts_s > 0 and ccs_p and lts_s <= saldo_l:
+                    l_rep = lts_s / len(ccs_p)
+                    v_rep = (lts_s * pmp_p) / len(ccs_p)
                     for c in ccs_p:
-                        conn.execute("INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?,?)",
-                                     ("Salida", l_por_cc, vehi, resp, c.upper(), fec_s, v_por_cc))
+                        conn.execute("INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?,?)", ("Salida", l_rep, vehi, resp, c.upper(), fec_s, v_rep))
                     conn.commit(); guardar_en_drive(); st.rerun()
-                else: st.error("Revise cantidad, saldo o selección de CC.")
+                else: st.error("Error: Revise litros, saldo o selección de cuartel.")
 
     with tp3:
-        df_pet = pd.read_sql_query("SELECT fecha, tipo, litros, proveedor, monto_total_compra as monto_compra, vehiculo, responsable, centro_costo FROM petroleo ORDER BY id DESC", conn)
-        st.dataframe(df_pet.style.format({"litros": "{:,.2f}", "monto_compra": "${:,.0f}"}), use_container_width=True)
+        df_log = pd.read_sql_query("SELECT fecha, tipo, litros, proveedor, monto_total_compra as monto_factura, vehiculo, responsable, centro_costo FROM petroleo ORDER BY id DESC", conn)
+        st.dataframe(df_log.style.format({"litros": "{:,.2f}", "monto_factura": "${:,.0f}"}), use_container_width=True)
     conn.close()
 
 def modulo_compras():
@@ -344,17 +354,18 @@ def modulo_bodega():
     with tb3:
         with st.form("nuevo_p"):
             n_p = st.text_input("Nombre"); f_p = st.selectbox("Familia", FAMILIAS_PRODUCTOS)
-            s_p = st.number_input("Stock Inicial", 0.0); p_p = st.number_input("Neto Inicial", 0.0)
+            s_p = st.number_input("Stock Inicial", 0.0); p_p = st.number_input("PMP Inicial", 0.0)
             if st.form_submit_button("💾 CREAR PRODUCTO"):
                 conn.execute("INSERT INTO inventario (producto, familia, stock, precio_medio) VALUES (?,?,?,?)", (n_p, f_p, s_p, p_p))
                 conn.commit(); guardar_en_drive(); st.rerun()
     with tb4:
-        cc_sel = st.selectbox("Cuartel", CENTROS_COSTO); df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE UPPER(TRIM(m.centro_costo)) = '{cc_sel.upper()}' ORDER BY m.fecha DESC", conn)
-        st.dataframe(df_cc, use_container_width=True)
+        cc_sel = st.selectbox("Cuartel", CENTROS_COSTO); h1, h2 = st.date_input("Desde", hoy-timedelta(days=365)), st.date_input("Hasta", hoy)
+        df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE UPPER(TRIM(m.centro_costo)) = '{cc_sel.upper()}' AND m.fecha BETWEEN '{h1}' AND '{h2}' ORDER BY m.fecha DESC", conn)
+        if not df_cc.empty: st.dataframe(df_cc.style.format({"cantidad": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
     conn.close()
 
 def modulo_costos():
-    st.header("💰 Costos")
+    st.header("💰 Costos Totales")
     conn = conectar_db(); query = """
     SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, SUM(val) as total
     FROM (
@@ -369,7 +380,7 @@ def modulo_costos():
         st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.2", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.4", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
