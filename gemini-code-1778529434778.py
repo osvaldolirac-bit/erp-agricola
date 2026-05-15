@@ -154,15 +154,12 @@ def login_page():
                     st.session_state['logged_in'] = True; st.session_state['email'] = e; st.rerun()
                 else: conn.close(); st.error("Email o clave incorrectos.")
 
-# --- 7. MÓDULO DASHBOARD (v10.8.31) ---
+# --- 7. MÓDULO DASHBOARD ---
 def modulo_dashboard():
     inyectar_css()
     st.markdown("<h1>🏠 Dashboard Informativo</h1>", unsafe_allow_html=True)
     conn = conectar_db()
-    
-    # Documentos reales únicos (filtra repartos _P para métricas)
     df_f_reales = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
-    
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
     df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
     saldo_pet = (df_p_c['l'].fillna(0).iloc[0]) - (df_p_s['l'].fillna(0).iloc[0])
@@ -188,8 +185,7 @@ def modulo_dashboard():
                       UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') 
                       WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"""
         df_c = pd.read_sql_query(query_cc, conn)
-        if not df_c.empty: 
-            st.dataframe(df_c.style.format({"total_neto": "${:,.0f}"}), use_container_width=True)
+        if not df_c.empty: st.dataframe(df_c.style.format({"total_neto": "${:,.0f}"}), use_container_width=True)
     with col2:
         st.subheader("📅 Vencimientos (4 Meses)")
         meses_n = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -199,7 +195,7 @@ def modulo_dashboard():
             st.markdown(f"<div style='background:white; padding:10px; border-radius:10px; margin-bottom:5px; display:flex; justify-content:space-between; border:1px solid #ddd;'><b>{meses_n[f_p.month-1]} {f_p.year}</b> <span style='color:#2E7D32;'>${f_puntos(total_m)}</span></div>", unsafe_allow_html=True)
     conn.close()
 
-# --- 8. MÓDULO PETRÓLEO (v10.8.32) ---
+# --- 8. MÓDULO PETRÓLEO (v10.8.33 - ELIMINAR AÑADIDO) ---
 def modulo_petroleo():
     st.header("⛽ Gestión de Petróleo")
     tp1, tp2, tp3 = st.tabs(["📥 Carga (Compra)", "🚜 Salida (Consumo)", "📊 Historial"]); conn = conectar_db()
@@ -233,16 +229,20 @@ def modulo_petroleo():
         col_pdf, col_mod = st.columns([1, 2.5])
         with col_pdf: st.download_button("📥 PDF Historial", generar_pdf_blob(df_p.drop(columns=['id']), "HISTORIAL MOVIMIENTOS PETRÓLEO", True), "petroleo.pdf")
         with col_mod:
-            st.subheader("✏️ Modificar Registro")
-            id_p = st.selectbox("ID a modificar", df_p['id'])
+            st.subheader("🛠️ Gestión de Registros")
+            id_p = st.selectbox("Seleccione ID", df_p['id'])
             sel_p = df_p[df_p['id'] == id_p].iloc[0]
             c1, c2 = st.columns(2)
             n_lts = c1.number_input("Nuevos Litros", value=float(sel_p['litros']))
-            n_prov_v = c2.text_input("Nuevo Proveedor/Vehículo", value=sel_p['proveedor'] if sel_p['tipo']=="Carga" else sel_p['vehiculo'])
+            n_prov_v = c2.text_input("Nuevo Prov/Veh", value=sel_p['proveedor'] if sel_p['tipo']=="Carga" else sel_p['vehiculo'])
             cl = st.text_input("Clave Maestra ", type="password", key="cl_p")
-            if st.button("💾 APLICAR CAMBIOS") and cl == CLAVE_MAESTRA:
+            b1, b2 = st.columns(2)
+            if b1.button("💾 MODIFICAR") and cl == CLAVE_MAESTRA:
                 if sel_p['tipo'] == "Carga": conn.execute("UPDATE petroleo SET litros=?, proveedor=? WHERE id=?", (n_lts, n_prov_v, id_p))
                 else: conn.execute("UPDATE petroleo SET litros=?, vehiculo=? WHERE id=?", (n_lts, n_prov_v, id_p))
+                conn.commit(); guardar_en_drive(); st.rerun()
+            if b2.button("🗑️ ELIMINAR REGISTRO") and cl == CLAVE_MAESTRA:
+                conn.execute("DELETE FROM petroleo WHERE id=?", (id_p,))
                 conn.commit(); guardar_en_drive(); st.rerun()
     conn.close()
 
@@ -390,7 +390,7 @@ def modulo_costos():
         st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.32", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.33", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
