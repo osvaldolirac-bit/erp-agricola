@@ -40,7 +40,7 @@ def guardar_en_drive():
             f = lista[0]
             f.SetContentFile(NOMBRE_DB)
             f.Upload(param={'supportsAllDrives': True})
-            st.success("✅ Datos sincronizados en Drive")
+            st.success("✅ Sincronizado en Drive")
     except Exception as e: st.error(f"Error Sincronización: {e}")
 
 def descargar_de_drive():
@@ -98,8 +98,11 @@ def modulo_dashboard():
 
     if not df_p.empty:
         total_deuda = df_p['monto_total'].sum()
-        # SOLUCIÓN AL TYPEERROR: Convertir a datetime antes de comparar
-        df_p['fecha_vencimiento'] = pd.to_datetime(df_p['fecha_vencimiento']).dt.date
+        # SOLUCIÓN DEFINITIVA ERROR DE FECHAS:
+        df_p['fecha_vencimiento'] = pd.to_datetime(df_p['fecha_vencimiento'], errors='coerce').dt.date
+        # Limpiar posibles nulos tras conversión
+        df_p = df_p.dropna(subset=['fecha_vencimiento'])
+        
         v_ant = df_p[df_p['fecha_vencimiento'] < inicio_mes]
         monto_rojo = v_ant['monto_total'].sum(); doc_rojo = len(v_ant)
         v_mes = df_p[(df_p['fecha_vencimiento'] >= inicio_mes) & (df_p['fecha_vencimiento'] < hoy)]
@@ -122,11 +125,14 @@ def modulo_compras():
         nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor")
         f_c, f_v = c2.date_input("Emisión"), c2.date_input("Vencimiento")
         df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
-        ps = st.selectbox("Insumo", df_inv['id'].astype(str) + " - " + df_inv['producto']) if not df_inv.empty else None
+        ps = st.selectbox("Insumo a comprar", df_inv['id'].astype(str) + " - " + df_inv['producto']) if not df_inv.empty else None
         cant, neto = st.number_input("Cantidad", 0.0), st.number_input("Neto Unitario", 0.0)
         if st.button("Guardar Factura Insumo"):
             total = (cant * neto) * 1.19
-            conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total) VALUES (?,?,?,?,?)", (nro, prov, f_c, f_v, total))
+            # Se agrega el nombre del insumo al concepto para registro
+            insumo_nombre = ps.split(" - ")[1] if ps else "Insumo"
+            conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, concepto) VALUES (?,?,?,?,?,?)", 
+                         (nro, prov, f_c, f_v, total, f"Compra: {insumo_nombre}"))
             if ps:
                 pid = int(ps.split(" - ")[0]); cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
                 n_pmp = ((cur[0]*cur[1]) + (cant*neto)) / (cur[0]+cant) if (cur[0]+cant) > 0 else neto
@@ -134,7 +140,6 @@ def modulo_compras():
             conn.commit(); guardar_en_drive(); st.rerun()
     with t2:
         gv_prov, gv_neto = st.text_input("Proveedor ", key="g_p"), st.number_input("Monto Neto ($)", 0.0, key="g_m")
-        # MEJORA: Cuadro para anotar detalle
         gv_det = st.text_area("Detalle del Gasto (Concepto)", placeholder="Ej: Repuestos, mano de obra, etc.")
         iva_costo = st.radio("¿IVA es costo para el CC?", ["Sí (Imputar Total)", "No (Imputar Neto)"], horizontal=True)
         cols = st.columns(3)
@@ -150,7 +155,6 @@ def modulo_compras():
         df_h = pd.read_sql_query(f"SELECT * FROM facturas WHERE fecha_compra BETWEEN '{d_h}' AND '{h_h}' ORDER BY id DESC", conn)
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
-            # MEJORA: Botón PDF en historial
             st.download_button("📥 Descargar Historial PDF", generar_pdf(df_h, "HISTORIAL COMPRAS"), "historial.pdf")
             st.divider()
             id_s = st.selectbox("ID Factura", df_h['id']); pw = st.text_input("Clave Maestra (2908)", type="password")
@@ -220,7 +224,7 @@ def modulo_costos():
     conn.close()
 
 # --- 6. NAVEGACIÓN Y LOGIN ---
-st.set_page_config(page_title="ERP AGRICOLA v33", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v34", layout="wide")
 inicializar_db()
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 if not st.session_state['auth']:
