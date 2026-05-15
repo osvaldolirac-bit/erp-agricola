@@ -15,6 +15,7 @@ ID_CARPETA_DRIVE = "12tjxWa_RVRP5YuYd2sypjBO8bPuyMqo6"
 NOMBRE_DB = 'erp_concepcion_v6.db'
 CLAVE_MAESTRA = "2908" 
 hoy = datetime.now().date()
+inicio_mes = hoy.replace(day=1)
 
 FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSECTICIDA", "FUNGICIDA", "BIO ESTIMULANTE", "ACARICIDA", "REGULADOR DE CRECIMIENTO", "ADHERENTE / MOJANTE", "OTROS"]
 CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
@@ -41,7 +42,7 @@ def guardar_en_drive():
             f = lista[0]
             f.SetContentFile(NOMBRE_DB)
             f.Upload(param={'supportsAllDrives': True})
-            st.success("✅ Sincronizado en Drive")
+            st.success("✅ Datos sincronizados en Drive")
     except Exception as e: st.error(f"Error Sincronización: {e}")
 
 def descargar_de_drive():
@@ -89,25 +90,35 @@ def generar_pdf(df, titulo):
         pdf.ln()
     return pdf.output(dest="S").encode("latin-1")
 
-# --- 5. MÓDULOS DEL SISTEMA ---
+# --- 5. MÓDULOS ---
 
 def modulo_dashboard():
     st.title("🏠 Dashboard")
     conn = conectar_db()
-    df_p = pd.read_sql_query("SELECT monto_total, fecha_vencimiento FROM facturas WHERE estado='Pendiente'", conn)
-    deuda_t = df_p['monto_total'].sum() if not df_p.empty else 0
-    vencidos = df_p[pd.to_datetime(df_p['fecha_vencimiento']).dt.date < hoy] if not df_p.empty else pd.DataFrame()
+    df_p = pd.read_sql_query("SELECT monto_total, fecha_vencimiento FROM facturas WHERE estado='Pendiente' AND tipo='Factura'", conn)
+    conn.close()
     
+    total_deuda = df_p['monto_total'].sum() if not df_p.empty else 0
+    
+    # Lógica de Semáforo de Vencimientos
+    vencidos_meses_ant = df_p[pd.to_datetime(df_p['fecha_vencimiento']).dt.date < inicio_mes] if not df_p.empty else pd.DataFrame()
+    vencidos_este_mes = df_p[(pd.to_datetime(df_p['fecha_vencimiento']).dt.date >= inicio_mes) & (pd.to_datetime(df_p['fecha_vencimiento']).dt.date < hoy)] if not df_p.empty else pd.DataFrame()
+
     c1, c2, c3 = st.columns(3)
-    c1.metric("DEUDA TOTAL", f"${f_puntos(deuda_t)}")
-    c2.metric("DOCS. VENCIDOS", len(vencidos), delta=f"${f_puntos(vencidos['monto_total'].sum())}" if not vencidos.empty else "0", delta_color="inverse")
+    c1.metric("DEUDA TOTAL", f"${f_puntos(total_deuda)}")
     
-    st.subheader("📅 Proyección de Pagos (4 Meses)")
-    if not df_p.empty:
-        df_p['mes'] = pd.to_datetime(df_p['fecha_vencimiento']).dt.strftime('%Y-%m')
-        proy = df_p.groupby('mes')['monto_total'].sum().reset_index().sort_values('mes').head(4)
-        st.bar_chart(proy.set_index('mes'))
-    st.divider(); modulo_costos(); conn.close()
+    with c2:
+        st.markdown("<p style='color:red; font-weight:bold; margin-bottom:0;'>MESES ANTERIORES</p>", unsafe_allow_html=True)
+        st.markdown(f"<h2 style='color:red; margin-top:0;'>${f_puntos(vencidos_meses_ant['monto_total'].sum())}</h2>", unsafe_allow_html=True)
+        st.caption(f"Documentos: {len(vencidos_meses_ant)}")
+
+    with c3:
+        st.markdown("<p style='color:orange; font-weight:bold; margin-bottom:0;'>VENCIDOS DEL MES</p>", unsafe_allow_html=True)
+        st.markdown(f"<h2 style='color:orange; margin-top:0;'>${f_puntos(vencidos_este_mes['monto_total'].sum())}</h2>", unsafe_allow_html=True)
+        st.caption(f"Documentos: {len(vencidos_este_mes)}")
+
+    st.divider()
+    modulo_costos()
 
 def modulo_compras():
     st.header("📦 Compras y Gastos")
@@ -119,7 +130,7 @@ def modulo_compras():
         f_c, f_v = c2.date_input("Emisión"), c2.date_input("Vencimiento")
         df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
         ps = st.selectbox("Insumo", df_inv['id'].astype(str) + " - " + df_inv['producto']) if not df_inv.empty else None
-        cant, neto = st.number_input("Cantidad", 0.0), st.number_input("Precio Neto Unitario", 0.0)
+        cant, neto = st.number_input("Cantidad", 0.0), st.number_input("Neto Unitario", 0.0)
         if st.button("Guardar Factura Insumo"):
             total = (cant * neto) * 1.19
             conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total) VALUES (?,?,?,?,?)", (nro, prov, f_c, f_v, total))
@@ -129,10 +140,8 @@ def modulo_compras():
                 conn.execute("UPDATE inventario SET stock=stock+?, precio_medio=? WHERE id=?", (cant, n_pmp, pid))
             conn.commit(); guardar_en_drive(); st.rerun()
     with t2:
-        st.subheader("Imputación Directa a CC")
         gv_prov, gv_neto = st.text_input("Proveedor ", key="g_p"), st.number_input("Monto Neto ($)", 0.0, key="g_m")
         iva_costo = st.radio("¿IVA es costo para el CC?", ["Sí (Imputar Total)", "No (Imputar Neto)"], horizontal=True)
-        st.write("Cuarteles (Prorrateo):")
         cols = st.columns(3)
         ccs_g = [cc for i, cc in enumerate(CENTROS_COSTO) if cols[i%3].checkbox(cc, key=f"cg_{cc}")]
         if st.button("Grabar Gasto") and ccs_g:
@@ -147,7 +156,7 @@ def modulo_compras():
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
             st.download_button("📥 PDF", generar_pdf(df_h, "HISTORIAL"), "hist.pdf")
-            id_s = st.selectbox("ID Factura", df_h['id']); pw = st.text_input("Clave (2908)", type="password")
+            id_s = st.selectbox("ID Factura", df_h['id']); pw = st.text_input("Clave Maestra (2908)", type="password")
             if st.button("🗑️ Eliminar") and pw == CLAVE_MAESTRA:
                 conn.execute("DELETE FROM facturas WHERE id=?", (id_s,)); conn.commit(); guardar_en_drive(); st.rerun()
     conn.close()
@@ -176,7 +185,7 @@ def modulo_bodega():
         df_q = pd.read_sql_query(f"SELECT * FROM movimientos WHERE centro_costo='{cc_sel}'", conn); st.dataframe(df_q, use_container_width=True)
     with t4:
         with st.form("ni"):
-            n, f, p_ini = st.text_input("Nombre"), st.selectbox("Familia", FAMILIAS_PRODUCTOS), st.number_input("PMP Inicial", 0.0)
+            n, f, p_ini = st.text_input("Nombre"), st.selectbox("Familia", FAMILIAS_PRODUCTOS), st.number_input("PMP Neto Inicial", 0.0)
             if st.form_submit_button("Crear"):
                 conn.execute("INSERT INTO inventario (producto, familia, precio_medio, stock) VALUES (?,?,?,0)", (n, f, p_ini)); conn.commit(); st.rerun()
     conn.close()
@@ -207,9 +216,10 @@ def modulo_costos():
     conn.close()
 
 # --- 6. NAVEGACIÓN Y LOGIN ---
-st.set_page_config(page_title="ERP AGRICOLA v29", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v30", layout="wide")
 inicializar_db()
 if 'auth' not in st.session_state: st.session_state['auth'] = False
+
 if not st.session_state['auth']:
     st.title("🚜 ERP LA CONCEPCIÓN")
     col1, col2, col3 = st.columns([1,1,1])
@@ -225,9 +235,14 @@ if not st.session_state['auth']:
 else:
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
     with st.sidebar:
-        menu = st.sidebar.radio("MENÚ", ["🏠 Dashboard", "📦 Compras", "🚜 Bodega", "💸 Tesorería", "📊 Costos"])
+        st.title("MENÚ")
+        drive = obtener_drive()
+        if drive: st.success("🟢 Nube Conectada")
+        else: st.error("🔴 Nube Desconectada")
+        menu = st.radio("", ["🏠 Dashboard", "📦 Compras", "🚜 Bodega", "💸 Tesorería", "📊 Costos"])
         if st.button("🚀 Sincronizar"): guardar_en_drive()
         if st.button("🚪 Salir"): st.session_state['auth'] = False; st.rerun()
+    
     if menu == "🏠 Dashboard": modulo_dashboard()
     elif menu == "📦 Compras": modulo_compras()
     elif menu == "🚜 Bodega": modulo_bodega()
