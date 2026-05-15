@@ -2,9 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
-import os
 import hashlib
-import io
 from fpdf import FPDF
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
@@ -21,7 +19,7 @@ FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSEC
 CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
 METODOS_PAGO = ["TRANSFERENCIA", "CHEQUE", "EFECTIVO", "TARJETA", "OTRO"]
 
-# --- 2. MOTOR DRIVE (ANTI-QUOTA) ---
+# --- 2. MOTOR DRIVE ---
 def obtener_drive():
     try:
         if "gcp_service_account" not in st.secrets: return None
@@ -67,13 +65,11 @@ def inicializar_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS inventario (id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0, precio_medio REAL DEFAULT 0)")
     cursor.execute("CREATE TABLE IF NOT EXISTS movimientos (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, cantidad REAL, centro_costo TEXT, fecha DATE, valor_imputado REAL DEFAULT 0)")
     cursor.execute("CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT)")
-    
     users = [('osvaldolira@laconcepcion.cl', hash_pw('9083')), ('secretaria@laconcepcion.cl', hash_pw('1234')), ('secretarialaconcepcion@gmail.com', hash_pw('5678'))]
     for email, pw in users:
         cursor.execute("INSERT OR IGNORE INTO usuarios (email, password) VALUES (?,?)", (email, pw))
     conn.commit(); conn.close()
 
-# --- 4. UTILIDADES ---
 def f_puntos(v):
     try: return f"{int(round(float(v))):,}".replace(",", ".")
     except: return "0"
@@ -90,7 +86,7 @@ def generar_pdf(df, titulo):
         pdf.ln()
     return pdf.output(dest="S").encode("latin-1")
 
-# --- 5. MÓDULOS ---
+# --- 4. MÓDULOS ---
 
 def modulo_dashboard():
     st.title("🏠 Dashboard")
@@ -102,6 +98,7 @@ def modulo_dashboard():
 
     if not df_p.empty:
         total_deuda = df_p['monto_total'].sum()
+        # SOLUCIÓN AL TYPEERROR: Convertir a datetime antes de comparar
         df_p['fecha_vencimiento'] = pd.to_datetime(df_p['fecha_vencimiento']).dt.date
         v_ant = df_p[df_p['fecha_vencimiento'] < inicio_mes]
         monto_rojo = v_ant['monto_total'].sum(); doc_rojo = len(v_ant)
@@ -137,7 +134,8 @@ def modulo_compras():
             conn.commit(); guardar_en_drive(); st.rerun()
     with t2:
         gv_prov, gv_neto = st.text_input("Proveedor ", key="g_p"), st.number_input("Monto Neto ($)", 0.0, key="g_m")
-        gv_det = st.text_area("Detalle del Gasto", placeholder="Indique qué se compró...")
+        # MEJORA: Cuadro para anotar detalle
+        gv_det = st.text_area("Detalle del Gasto (Concepto)", placeholder="Ej: Repuestos, mano de obra, etc.")
         iva_costo = st.radio("¿IVA es costo para el CC?", ["Sí (Imputar Total)", "No (Imputar Neto)"], horizontal=True)
         cols = st.columns(3)
         ccs_g = [cc for i, cc in enumerate(CENTROS_COSTO) if cols[i%3].checkbox(cc, key=f"cg_{cc}")]
@@ -152,7 +150,9 @@ def modulo_compras():
         df_h = pd.read_sql_query(f"SELECT * FROM facturas WHERE fecha_compra BETWEEN '{d_h}' AND '{h_h}' ORDER BY id DESC", conn)
         st.dataframe(df_h, use_container_width=True)
         if not df_h.empty:
-            st.download_button("📥 PDF Historial", generar_pdf(df_h, "HISTORIAL"), "hist.pdf")
+            # MEJORA: Botón PDF en historial
+            st.download_button("📥 Descargar Historial PDF", generar_pdf(df_h, "HISTORIAL COMPRAS"), "historial.pdf")
+            st.divider()
             id_s = st.selectbox("ID Factura", df_h['id']); pw = st.text_input("Clave Maestra (2908)", type="password")
             if st.button("🗑️ Eliminar") and pw == CLAVE_MAESTRA:
                 conn.execute("DELETE FROM facturas WHERE id=?", (id_s,)); conn.commit(); guardar_en_drive(); st.rerun()
@@ -199,7 +199,7 @@ def modulo_tesoreria():
         df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' ORDER BY fecha_vencimiento ASC", conn)
         if not df_p.empty:
             st.dataframe(df_p, use_container_width=True)
-            if not df_p.empty: st.download_button("📥 PDF Deuda", generar_pdf(df_p, "DEUDA"), "deuda.pdf")
+            st.download_button("📥 PDF Deuda Pendiente", generar_pdf(df_p, "DEUDA_PENDIENTE"), "deuda.pdf")
             id_p = st.selectbox("ID", df_p['id']); met = st.selectbox("Método", METODOS_PAGO)
             if st.button("💰 Pagar"):
                 conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, hoy, id_p)); conn.commit(); guardar_en_drive(); st.rerun()
@@ -220,7 +220,7 @@ def modulo_costos():
     conn.close()
 
 # --- 6. NAVEGACIÓN Y LOGIN ---
-st.set_page_config(page_title="ERP AGRICOLA v32", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v33", layout="wide")
 inicializar_db()
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 if not st.session_state['auth']:
