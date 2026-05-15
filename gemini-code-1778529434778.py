@@ -16,7 +16,8 @@ CLAVE_MAESTRA = "2908"
 hoy = datetime.now().date()
 
 FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSECTICIDA", "FUNGICIDA", "BIO ESTIMULANTE", "ACARICIDA", "REGULADOR DE CRECIMIENTO", "ADHERENTE / MOJANTE", "OTROS"]
-CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
+# --- ACTUALIZACIÓN CC: EL ESPINO AGREGADO ---
+CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "EL ESPINO", "OTROS"]
 
 # --- 2. MOTOR DE BASE DE DATOS Y SEGURIDAD ---
 def conectar_db():
@@ -162,11 +163,8 @@ def modulo_dashboard():
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
     df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
     saldo_pet = (df_p_c['l'].fillna(0).iloc[0]) - (df_p_s['l'].fillna(0).iloc[0])
-    
-    # Lógica de Costos para Dashboard (Sin el ajuste fijo para no ensuciar el resumen rápido si no es necesario)
     query_c = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado FROM facturas WHERE tipo = 'Gasto Vario' AND centro_costo IS NOT NULL AND centro_costo != '' UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"
     df_c = pd.read_sql_query(query_c, conn)
-    
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         with st.expander("👁️ Bitácora de Accesos Recientes"):
             df_logs = pd.read_sql_query("SELECT email, fecha_hora FROM log_accesos ORDER BY fecha_hora DESC LIMIT 10", conn)
@@ -276,7 +274,7 @@ def modulo_compras():
                 conn.commit(); guardar_en_drive(); st.rerun()
                 
     with t3:
-        f1, f2 = st.date_input("Filtrar Desde", datetime(2020, 1, 1).date()), st.date_input("Hasta", datetime(2030, 12, 31).date())
+        f1, f2 = st.date_input("Desde", datetime(2020, 1, 1).date()), st.date_input("Hasta", datetime(2030, 12, 31).date())
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
         
@@ -372,61 +370,19 @@ def modulo_bodega():
                 conn.commit(); guardar_en_drive(); st.rerun()
     with tb4:
         cc_sel = st.selectbox("Cuartel", CENTROS_COSTO)
-        df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{cc_sel.upper()}' ORDER BY m.fecha DESC", conn)
+        df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE UPPER(TRIM(m.centro_costo)) = '{cc_sel.upper()}' ORDER BY m.fecha DESC", conn)
         st.dataframe(df_cc.style.format({"cantidad": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
     conn.close()
 
 def modulo_costos():
     st.header("💰 Costos Totales")
     conn = conectar_db()
-    
-    # --- CORRECCIÓN V10.8.20: AJUSTE SALDO INICIAL CIRUELOS ---
-    # Traemos los datos crudos pero filtrando por fecha posterior a HOY para CIRUELOS
-    # Hoy es 2024-05-15 (Fecha de corte)
-    FECHA_CORTE = "2024-05-15"
-    SALDO_INICIAL_CIRUELOS = 10951000
-    
-    query = f"""
-    SELECT UPPER(TRIM(centro_costo)) as cc, 
-           SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, 
-           SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, 
-           SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, 
-           SUM(val) as total 
-    FROM (
-        SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos 
-        WHERE tipo LIKE 'Salida%' AND centro_costo IS NOT NULL AND centro_costo != '' 
-        AND (centro_costo != 'CIRUELOS' OR fecha > '{FECHA_CORTE}')
-        
-        UNION ALL 
-        
-        SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas 
-        WHERE tipo = 'Gasto Vario' AND centro_costo IS NOT NULL AND centro_costo != '' 
-        AND (centro_costo != 'CIRUELOS' OR fecha_compra > '{FECHA_CORTE}')
-        
-        UNION ALL 
-        
-        SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo 
-        WHERE tipo = 'Salida' AND centro_costo IS NOT NULL AND centro_costo != '' 
-        AND (centro_costo != 'CIRUELOS' OR fecha > '{FECHA_CORTE}')
-    ) GROUP BY cc
-    """
-    df_t = pd.read_sql_query(query, conn)
-    
-    # Si CIRUELOS existe, le sumamos el saldo inicial. Si no existe, lo creamos.
-    if 'CIRUELOS' in df_t['cc'].values:
-        df_t.loc[df_t['cc'] == 'CIRUELOS', 'total'] += SALDO_INICIAL_CIRUELOS
-        # Distribuimos el saldo inicial en "gastos" para que cuadre la visualización
-        df_t.loc[df_t['cc'] == 'CIRUELOS', 'gastos'] += SALDO_INICIAL_CIRUELOS
-    else:
-        nuevo_ciruelos = pd.DataFrame([{'cc': 'CIRUELOS', 'insumos': 0, 'gastos': SALDO_INICIAL_CIRUELOS, 'combustible': 0, 'total': SALDO_INICIAL_CIRUELOS}])
-        df_t = pd.concat([df_t, nuevo_ciruelos], ignore_index=True)
-    
-    conn.close()
-    if not df_t.empty: 
-        st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
+    query = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, SUM(val) as total FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' AND centro_costo != '' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario' AND centro_costo != '' UNION ALL SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' AND centro_costo != '') GROUP BY cc"
+    df_t = pd.read_sql_query(query, conn); conn.close()
+    if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.20", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.22", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
