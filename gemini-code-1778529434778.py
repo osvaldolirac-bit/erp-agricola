@@ -267,32 +267,37 @@ def modulo_compras():
                 conn.commit(); guardar_en_drive(); st.rerun()
                 
     with t3:
-        f1, f2 = st.date_input("Filtrar Desde", hoy-timedelta(days=30)), st.date_input("Hasta", hoy)
+        # RANGO AMPLIADO POR DEFECTO (2020-2030)
+        f1, f2 = st.date_input("Filtrar Desde", datetime(2020, 1, 1).date()), st.date_input("Hasta", datetime(2030, 12, 31).date())
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
         
-        # --- NUEVA GESTIÓN DE DOCUMENTOS (MODIFICAR/ELIMINAR) ---
-        st.divider()
-        st.subheader("🛠️ Gestión de Documentos")
-        id_doc = st.selectbox("ID de documento a gestionar", df_h['id'])
-        item_doc = df_h[df_h['id'] == id_doc].iloc[0]
-        c1, c2 = st.columns(2)
-        nuevo_nro = c1.text_input("Nuevo N° Doc", value=item_doc['nro_documento'])
-        nuevo_prov = c2.text_input("Nuevo Proveedor", value=item_doc['proveedor'])
-        nuevo_monto = st.number_input("Nuevo Monto Total", value=float(item_doc['monto_total']))
-        
-        cl = st.text_input("Clave de Autorización", type="password")
-        b1, b2 = st.columns(2)
-        if b1.button("✏️ MODIFICAR DOCUMENTO"):
-            if cl == CLAVE_MAESTRA:
-                conn.execute("UPDATE facturas SET nro_documento=?, proveedor=?, monto_total=? WHERE id=?", (nuevo_nro, nuevo_prov, nuevo_monto, id_doc))
-                conn.commit(); guardar_en_drive(); st.rerun()
-            else: st.error("Clave incorrecta.")
-        if b2.button("🗑️ ELIMINAR DOCUMENTO"):
-            if cl == CLAVE_MAESTRA:
-                conn.execute("DELETE FROM facturas WHERE id=?", (id_doc,))
-                conn.commit(); guardar_en_drive(); st.rerun()
-            else: st.error("Clave incorrecta.")
+        if not df_h.empty:
+            st.divider()
+            st.subheader("🛠️ Gestión de Documentos")
+            id_doc = st.selectbox("ID de documento a gestionar", df_h['id'])
+            
+            # FILTRO DE SEGURIDAD PARA EVITAR INDEXERROR
+            seleccion = df_h[df_h['id'] == id_doc]
+            if not seleccion.empty:
+                item_doc = seleccion.iloc[0]
+                c1, c2 = st.columns(2)
+                nuevo_nro = c1.text_input("Nuevo N° Doc", value=item_doc['nro_documento'])
+                nuevo_prov = c2.text_input("Nuevo Proveedor", value=item_doc['proveedor'])
+                nuevo_monto = st.number_input("Nuevo Monto Total", value=float(item_doc['monto_total']))
+                
+                cl = st.text_input("Clave de Autorización", type="password")
+                b1, b2 = st.columns(2)
+                if b1.button("✏️ MODIFICAR DOCUMENTO"):
+                    if cl == CLAVE_MAESTRA:
+                        conn.execute("UPDATE facturas SET nro_documento=?, proveedor=?, monto_total=? WHERE id=?", (nuevo_nro, nuevo_prov, nuevo_monto, id_doc))
+                        conn.commit(); guardar_en_drive(); st.rerun()
+                    else: st.error("Clave incorrecta.")
+                if b2.button("🗑️ ELIMINAR DOCUMENTO"):
+                    if cl == CLAVE_MAESTRA:
+                        conn.execute("DELETE FROM facturas WHERE id=?", (id_doc,))
+                        conn.commit(); guardar_en_drive(); st.rerun()
+                    else: st.error("Clave incorrecta.")
     conn.close()
 
 def modulo_tesoreria():
@@ -396,7 +401,7 @@ def modulo_costos():
     if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.12", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.14", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
