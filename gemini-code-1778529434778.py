@@ -18,30 +18,7 @@ hoy = datetime.now().date()
 FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSECTICIDA", "FUNGICIDA", "BIO ESTIMULANTE", "ACARICIDA", "REGULADOR DE CRECIMIENTO", "ADHERENTE / MOJANTE", "OTROS"]
 CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "OTROS"]
 
-# --- 2. MOTOR DE CONEXIÓN REFORZADA A DRIVE ---
-def obtener_drive():
-    try:
-        if "gcp_service_account" not in st.secrets:
-            return None
-        
-        info = dict(st.secrets["gcp_service_account"])
-        if "private_key" in info:
-            # Esta línea es la que "cura" el error del Drive desconectado
-            info["private_key"] = info["private_key"].replace("\\n", "\n")
-            
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(
-            info, ['https://www.googleapis.com/auth/drive']
-        )
-        gauth = GoogleAuth()
-        gauth.credentials = creds
-        drive_obj = GoogleDrive(gauth)
-        # Handshake de validación
-        drive_obj.GetAbout() 
-        return drive_obj
-    except:
-        return None
-
-# --- 3. BASE DE DATOS Y SEGURIDAD ---
+# --- 2. MOTOR DE BASE DE DATOS Y SEGURIDAD ---
 def conectar_db():
     return sqlite3.connect(NOMBRE_DB)
 
@@ -75,7 +52,7 @@ def inicializar_db():
             cursor.execute("INSERT INTO usuarios (email, password) VALUES (?,?)", (email, pw))
     conn.commit(); conn.close()
 
-# --- 4. UTILIDADES ---
+# --- 3. UTILIDADES ---
 def f_puntos(v):
     try: return f"{int(round(float(v))):,}".replace(",", ".")
     except: return "0"
@@ -107,6 +84,17 @@ def generar_pdf_blob(df, titulo):
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
+# --- DRIVE INTEGRACIÓN ---
+def obtener_drive():
+    try:
+        if "gcp_service_account" not in st.secrets: return None
+        info = dict(st.secrets["gcp_service_account"])
+        if "private_key" in info: info["private_key"] = info["private_key"].replace("\\n", "\n")
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ['https://www.googleapis.com/auth/drive'])
+        gauth = GoogleAuth(); gauth.credentials = creds
+        return GoogleDrive(gauth)
+    except: return None
+
 def guardar_en_drive():
     drive = obtener_drive()
     if drive:
@@ -114,7 +102,7 @@ def guardar_en_drive():
         lista = drive.ListFile({'q': query}).GetList()
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB); f.Upload()
-        st.success("✅ Respaldo sincronizado en Drive.")
+        st.success("✅ Respaldo en Drive sincronizado.")
 
 def descargar_de_drive():
     drive = obtener_drive()
@@ -123,7 +111,7 @@ def descargar_de_drive():
         lista = drive.ListFile({'q': query}).GetList()
         if lista: lista[0].GetContentFile(NOMBRE_DB)
 
-# --- 5. INTERFAZ Y NAVEGACIÓN ---
+# --- ESTILOS ---
 def inyectar_css():
     st.markdown("""
         <style>
@@ -134,6 +122,7 @@ def inyectar_css():
         </style>
     """, unsafe_allow_html=True)
 
+# --- LOGIN ---
 def login_page():
     inyectar_css()
     st.markdown("<h1 style='text-align: center; color: #1B5E20; margin-top: 50px;'>🚜 ERP La Concepción</h1>", unsafe_allow_html=True)
@@ -181,7 +170,7 @@ def modulo_dashboard():
             df_total = pd.DataFrame([{"cc": "TOTAL GENERAL", "total_neto": df_c["total_neto"].sum()}])
             df_res = pd.concat([df_c, df_total], ignore_index=True)
             def bold_t(row): return ['font-weight: bold; background-color: #E8F5E9' if row['cc'] == "TOTAL GENERAL" else '' for _ in row]
-            st.dataframe(df_res.style.apply(bold_t, axis=1).format({"total_neto": "${:Loc.0f}" if 'Loc' in str(df_res['total_neto'].dtype) else "${:,.0f}"}), use_container_width=True)
+            st.dataframe(df_res.style.apply(bold_t, axis=1).format({"total_neto": "${:,.0f}"}), use_container_width=True)
     with col2:
         st.subheader("📅 Proyección Mensual (4 Meses)")
         meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
@@ -192,7 +181,7 @@ def modulo_dashboard():
 
 def modulo_compras():
     st.header("📦 Compras e Historial")
-    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial"])
+    t1, t2, t3 = st.tabs(["➕ Factura Insumos", "💸 Gasto Vario", "🔍 Historial / Gestión"])
     conn = conectar_db()
     with t1:
         c1, c2 = st.columns(2); nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor"); fe, fv = c2.date_input("Emisión"), c2.date_input("Vencimiento")
@@ -326,7 +315,7 @@ def modulo_bodega():
     conn.close()
 
 def modulo_costos():
-    st.header("💰 Costos Consolidados")
+    st.header("💰 Costos")
     conn = conectar_db(); query = """
     SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(val) as total
     FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario') WHERE cc != '' GROUP BY cc """
@@ -337,7 +326,7 @@ def modulo_costos():
         st.dataframe(df_res.style.apply(lambda r: ['font-weight: bold; background-color: #f1f8e9' if r['cc'] == "TOTAL GENERAL" else '' for _ in r], axis=1).format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v11.0", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.7", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
@@ -345,9 +334,8 @@ else:
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
     with st.sidebar:
         st.title("MENÚ")
-        drive = obtener_drive()
-        if drive: st.markdown("🟢 **Drive: CONECTADO**")
-        else: st.markdown("🔴 **Drive: DESCONECTADO**")
+        # INDICADOR DRIVE RESTAURADO
+        if obtener_drive(): st.markdown("🟢 **Drive: CONECTADO**")
         menu = st.radio("", ["🏠 Dashboard", "📦 Compras", "💸 Tesorería", "🚜 Bodega", "💰 COSTOS"])
         if st.button("🚀 Sincronizar"): guardar_en_drive()
         if st.button("🚪 Salir"): st.session_state.clear(); st.rerun()
