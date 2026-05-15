@@ -122,9 +122,17 @@ def descargar_de_drive():
         lista = drive.ListFile({'q': query}).GetList()
         if lista: lista[0].GetContentFile(NOMBRE_DB)
 
-# --- 5. ESTILOS CSS PERSONALIZADOS ---
+# --- 5. ESTILOS CSS PERSONALIZADOS (ELIMINA SHARE Y MENÚS) ---
 def inyectar_css():
-    st.markdown("""<style>
+    st.markdown("""
+        <style>
+        /* ELIMINAR BOTÓN SHARE Y MENÚ DE OPCIONES DE STREAMLIT */
+        header {visibility: hidden;}
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        .stDeployButton {display:none;}
+        
+        /* ESTILOS ERP */
         .main { background-color: #f4f7f6; }
         [data-testid="stMetricValue"] { font-size: 1.8rem !important; }
         .custom-metric { background-color: white; padding: 15px; border-radius: 12px; border-left: 6px solid #2E7D32; box-shadow: 0 4px 6px rgba(0,0,0,0.05); min-height: 100px; }
@@ -134,7 +142,8 @@ def inyectar_css():
         .stButton>button { border-radius: 8px; background-color: #2E7D32; color: white; font-weight: bold; width: 100%; }
         .stTabs [data-baseweb="tab-list"] { gap: 10px; }
         .stTabs [data-baseweb="tab"] { background-color: #e8f5e9; border-radius: 5px 5px 0 0; padding: 10px 20px; }
-        </style>""", unsafe_allow_html=True)
+        </style>
+        """, unsafe_allow_html=True)
 
 # --- 6. PÁGINA DE LOGIN ---
 def login_page():
@@ -195,7 +204,7 @@ def modulo_dashboard():
             st.markdown(f"<div style='background:white; padding:10px; border-radius:10px; margin-bottom:5px; display:flex; justify-content:space-between; border:1px solid #ddd;'><b>{meses_n[f_p.month-1]} {f_p.year}</b> <span style='color:#2E7D32;'>${f_puntos(total_m)}</span></div>", unsafe_allow_html=True)
     conn.close()
 
-# --- 8. MÓDULO PETRÓLEO (v10.8.33 - ELIMINAR AÑADIDO) ---
+# --- 8. MÓDULO PETRÓLEO ---
 def modulo_petroleo():
     st.header("⛽ Gestión de Petróleo")
     tp1, tp2, tp3 = st.tabs(["📥 Carga (Compra)", "🚜 Salida (Consumo)", "📊 Historial"]); conn = conectar_db()
@@ -266,7 +275,7 @@ def modulo_compras():
                     cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i['id'],)).fetchone()
                     n_pmp = ((cur[0]*cur[1]) + (i['c']*i['p'])) / (cur[0]+i['c']) if (cur[0]+i['c']) > 0 else i['p']
                     conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (i['c'], n_pmp, i['id']))
-                conn.commit(); guardar_en_drive(); st.session_state['car'] = []; st.rerun()
+                conn.commit(); guardar_en_drive(); st.rerun()
     with t2:
         prov_g, nro_g = st.text_input("Proveedor ", key="pg"), st.text_input("N° Doc ", key="ng")
         cf1, cf2 = st.columns(2); fe_g, fv_g = cf1.date_input("Fecha Compra", hoy), cf2.date_input("Fecha Vencimiento", hoy)
@@ -390,7 +399,7 @@ def modulo_costos():
         st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.33", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.34", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
@@ -400,8 +409,13 @@ else:
         st.title("MENÚ")
         if obtener_drive(): st.markdown("🟢 **Drive: CONECTADO**")
         menu = st.radio("", ["🏠 Dashboard", "⛽ PETRÓLEO", "📦 Compras", "💸 Tesorería", "🚜 Bodega", "💰 COSTOS"])
-        if st.button("🚀 Sincronizar Drive"): guardar_en_drive()
+        
+        # --- RESTRICCIÓN DE SINCRONIZACIÓN (SOLO ADMIN) ---
+        if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
+            if st.button("🚀 Sincronizar Drive"): guardar_en_drive()
+            
         if st.button("🚪 Salir"): st.session_state.clear(); st.rerun()
+        
     if menu == "🏠 Dashboard": modulo_dashboard()
     elif menu == "⛽ PETRÓLEO": modulo_petroleo()
     elif menu == "📦 Compras": modulo_compras()
