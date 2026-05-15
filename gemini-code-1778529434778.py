@@ -98,24 +98,38 @@ def modulo_dashboard():
     df_p = pd.read_sql_query("SELECT monto_total, fecha_vencimiento FROM facturas WHERE estado='Pendiente' AND tipo='Factura'", conn)
     conn.close()
     
-    total_deuda = df_p['monto_total'].sum() if not df_p.empty else 0
-    
-    # Lógica de Semáforo de Vencimientos
-    vencidos_meses_ant = df_p[pd.to_datetime(df_p['fecha_vencimiento']).dt.date < inicio_mes] if not df_p.empty else pd.DataFrame()
-    vencidos_este_mes = df_p[(pd.to_datetime(df_p['fecha_vencimiento']).dt.date >= inicio_mes) & (pd.to_datetime(df_p['fecha_vencimiento']).dt.date < hoy)] if not df_p.empty else pd.DataFrame()
+    total_deuda = 0
+    monto_rojo = 0
+    doc_rojo = 0
+    monto_naranja = 0
+    doc_naranja = 0
+
+    if not df_p.empty:
+        total_deuda = df_p['monto_total'].sum()
+        df_p['fecha_vencimiento'] = pd.to_datetime(df_p['fecha_vencimiento']).dt.date
+        
+        # Rojos: Meses anteriores al actual
+        vencidos_ant = df_p[df_p['fecha_vencimiento'] < inicio_mes]
+        monto_rojo = vencidos_ant['monto_total'].sum()
+        doc_rojo = len(vencidos_ant)
+        
+        # Naranjas: Vencidos dentro del mes actual hasta ayer
+        vencidos_mes = df_p[(df_p['fecha_vencimiento'] >= inicio_mes) & (df_p['fecha_vencimiento'] < hoy)]
+        monto_naranja = vencidos_mes['monto_total'].sum()
+        doc_naranja = len(vencidos_mes)
 
     c1, c2, c3 = st.columns(3)
     c1.metric("DEUDA TOTAL", f"${f_puntos(total_deuda)}")
     
     with c2:
         st.markdown("<p style='color:red; font-weight:bold; margin-bottom:0;'>MESES ANTERIORES</p>", unsafe_allow_html=True)
-        st.markdown(f"<h2 style='color:red; margin-top:0;'>${f_puntos(vencidos_meses_ant['monto_total'].sum())}</h2>", unsafe_allow_html=True)
-        st.caption(f"Documentos: {len(vencidos_meses_ant)}")
+        st.markdown(f"<h2 style='color:red; margin-top:0;'>${f_puntos(monto_rojo)}</h2>", unsafe_allow_html=True)
+        st.caption(f"Documentos: {doc_rojo}")
 
     with c3:
         st.markdown("<p style='color:orange; font-weight:bold; margin-bottom:0;'>VENCIDOS DEL MES</p>", unsafe_allow_html=True)
-        st.markdown(f"<h2 style='color:orange; margin-top:0;'>${f_puntos(vencidos_este_mes['monto_total'].sum())}</h2>", unsafe_allow_html=True)
-        st.caption(f"Documentos: {len(vencidos_este_mes)}")
+        st.markdown(f"<h2 style='color:orange; margin-top:0;'>${f_puntos(monto_naranja)}</h2>", unsafe_allow_html=True)
+        st.caption(f"Documentos: {doc_naranja}")
 
     st.divider()
     modulo_costos()
@@ -216,7 +230,7 @@ def modulo_costos():
     conn.close()
 
 # --- 6. NAVEGACIÓN Y LOGIN ---
-st.set_page_config(page_title="ERP AGRICOLA v30", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v31", layout="wide")
 inicializar_db()
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 
