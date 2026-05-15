@@ -41,16 +41,17 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT)""")
     
-    # --- AJUSTE DE USUARIOS SOLICITADO ---
+    # --- NUEVA TABLA DE BITÁCORA ---
+    cursor.execute("""CREATE TABLE IF NOT EXISTS log_accesos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, fecha_hora DATETIME)""")
+    
     usuarios = [
         ('osvaldolira@laconcepcion.cl', hash_password('9083')),
-        ('secretaria@laconcepcion.cl', hash_password('9111')), # Nueva clave
-        ('secretarialaconcepcion2@gmail.com', hash_password('5678')) # Nuevo correo
+        ('secretaria@laconcepcion.cl', hash_password('9111')),
+        ('secretarialaconcepcion2@gmail.com', hash_password('5678'))
     ]
     
-    # Limpiamos la tabla para asegurar que los cambios se apliquen (o podrías borrarlos manualmente)
     cursor.execute("DELETE FROM usuarios") 
-    
     for email, pw in usuarios:
         cursor.execute("INSERT INTO usuarios (email, password) VALUES (?,?)", (email, pw))
         
@@ -139,8 +140,13 @@ def login_page():
                 conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
                 if cursor.fetchone():
+                    # --- REGISTRO DE BITÁCORA ---
+                    ahora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cursor.execute("INSERT INTO log_accesos (email, fecha_hora) VALUES (?,?)", (e, ahora))
+                    conn.commit()
                     st.session_state['logged_in'] = True; st.session_state['email'] = e; st.rerun()
                 else: st.error("Email o clave incorrectos.")
+                conn.close()
 
 # --- MÓDULOS ---
 def modulo_dashboard():
@@ -154,7 +160,15 @@ def modulo_dashboard():
         UNION ALL
         SELECT centro_costo, monto_imputado FROM facturas WHERE tipo = 'Gasto Vario'
     ) WHERE cc IS NOT NULL AND cc != '' GROUP BY cc """
-    df_c = pd.read_sql_query(query_c, conn); conn.close()
+    df_c = pd.read_sql_query(query_c, conn)
+    
+    # --- PESTAÑA DE VIGILANCIA (SOLO PARA OSVALDO) ---
+    if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
+        with st.expander("👁️ Bitácora de Accesos Recientes"):
+            df_logs = pd.read_sql_query("SELECT email, fecha_hora FROM log_accesos ORDER BY fecha_hora DESC LIMIT 10", conn)
+            st.table(df_logs)
+            
+    conn.close()
     
     t_d = df_f['monto_total'].sum() if not df_f.empty else 0
     v_a = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f.empty else 0
@@ -250,7 +264,7 @@ def modulo_tesoreria():
     with tp2:
         df_provs = pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente' AND monto_total > 0", conn)
         if not df_provs.empty:
-            p_sel = st.selectbox("Seleccione Proveedor", df_provs['provider'] if 'provider' in df_provs else df_provs['proveedor'])
+            p_sel = st.selectbox("Seleccione Proveedor", df_provs['proveedor'])
             df_det = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{p_sel}' AND estado='Pendiente' AND monto_total > 0", conn)
             st.success(f"### DEUDA CON {p_sel}: ${f_puntos(df_det['monto_total'].sum())}")
             st.dataframe(df_det.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
@@ -328,7 +342,7 @@ def modulo_costos():
         st.dataframe(df_res.style.apply(lambda r: ['font-weight: bold; background-color: #f1f8e9' if r['cc'] == "TOTAL GENERAL" else '' for _ in r], axis=1).format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.9", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
