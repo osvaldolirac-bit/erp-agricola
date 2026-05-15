@@ -140,13 +140,15 @@ def login_page():
                 conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
                 if cursor.fetchone():
-                    # --- REGISTRO DE BITÁCORA INMEDIATO ---
-                    ahora = (datetime.now() - timedelta(hours=4)).strftime('%Y-%m-%d %H:%M:%S') # Ajuste hora Chile aprox
+                    # --- REGISTRO DE BITÁCORA ---
+                    ahora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     cursor.execute("INSERT INTO log_accesos (email, fecha_hora) VALUES (?,?)", (e, ahora))
-                    conn.commit()
+                    conn.commit() # Aseguramos que se guarde antes de entrar
+                    conn.close()
                     st.session_state['logged_in'] = True; st.session_state['email'] = e; st.rerun()
-                else: st.error("Email o clave incorrectos.")
-                conn.close()
+                else: 
+                    conn.close()
+                    st.error("Email o clave incorrectos.")
 
 # --- MÓDULOS ---
 def modulo_dashboard():
@@ -165,13 +167,8 @@ def modulo_dashboard():
     # --- PESTAÑA DE VIGILANCIA (SOLO PARA OSVALDO) ---
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         with st.expander("👁️ Bitácora de Accesos Recientes"):
-            df_logs = pd.read_sql_query("SELECT email, fecha_hora FROM log_accesos ORDER BY fecha_hora DESC LIMIT 15", conn)
-            if not df_logs.empty:
-                st.table(df_logs)
-            else:
-                st.write("No hay registros de acceso aún.")
-            if st.button("🚀 Sincronizar Bitácora con Drive"):
-                guardar_en_drive()
+            df_logs = pd.read_sql_query("SELECT email, fecha_hora FROM log_accesos ORDER BY fecha_hora DESC LIMIT 10", conn)
+            st.table(df_logs)
             
     conn.close()
     
