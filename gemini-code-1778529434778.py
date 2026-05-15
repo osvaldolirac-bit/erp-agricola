@@ -158,23 +158,24 @@ def modulo_bodega():
         if not df_s.empty: st.download_button("📥 PDF Stock", generar_pdf(df_s, "STOCK"), "stock.pdf")
     
     with t2:
-        st.subheader("Registrar Movimiento de Producto")
+        st.subheader("Registrar Movimiento (Entrada o Salida)")
         df_inv = pd.read_sql_query("SELECT id, producto, stock, precio_medio FROM inventario", conn)
         ops = [f"{row['id']} - {row['producto']}" for _, row in df_inv.iterrows()]
         
-        ps = st.selectbox("Seleccione Producto", ops, key="mov_prod") if ops else None
-        cant = st.number_input("Cantidad", 0.0, key="mov_cant")
+        # Producto y Cantidad SIEMPRE visibles arriba
+        ps = st.selectbox("Seleccione Producto", ops, key="mov_prod_u") if ops else None
+        cant = st.number_input("Cantidad del Movimiento", 0.0, key="mov_cant_u")
         
-        es_salida = st.checkbox("¿Es una SALIDA a campo?")
+        # Checkbox para definir tipo de operación
+        es_salida = st.checkbox("¿Es una SALIDA a campo? (Si no marca, se registra como Entrada)")
         
         if es_salida:
-            st.info("Seleccione los Centros de Costo destino:")
+            st.warning("Configuración de SALIDA: Seleccione los Cuarteles")
             cols_cc = st.columns(3)
-            ccs_s = [cc for i, cc in enumerate(CENTROS_COSTO) if cols_cc[i%3].checkbox(cc, key=f"mov_cc_{cc}")]
+            ccs_s = [cc for i, cc in enumerate(CENTROS_COSTO) if cols_cc[i%3].checkbox(cc, key=f"mov_cc_u_{cc}")]
             
             if st.button("Confirmar Salida") and ps and ccs_s:
                 pid = int(ps.split(" - ")[0])
-                # PMP para el costo
                 pmp = df_inv[df_inv['id']==pid]['precio_medio'].values[0]
                 val_p = (cant * pmp) / len(ccs_s)
                 for c in ccs_s:
@@ -182,6 +183,7 @@ def modulo_bodega():
                 conn.execute("UPDATE inventario SET stock = stock - ? WHERE id = ?", (cant, pid))
                 conn.commit(); guardar_en_drive(); st.rerun()
         else:
+            st.info("Configuración de ENTRADA: Ajuste de stock en bodega")
             if st.button("Confirmar Entrada (Ajuste)"):
                 pid = int(ps.split(" - ")[0])
                 conn.execute("UPDATE inventario SET stock = stock + ? WHERE id = ?", (cant, pid))
@@ -192,9 +194,10 @@ def modulo_bodega():
         cc_sel = st.selectbox("Filtrar Cuartel", CENTROS_COSTO)
         df_q = pd.read_sql_query(f"SELECT * FROM movimientos WHERE centro_costo='{cc_sel}'", conn)
         st.dataframe(df_q, use_container_width=True)
+        if not df_q.empty: st.download_button("📥 PDF Consulta", generar_pdf(df_q, "MOVIMIENTOS"), "consulta.pdf")
     
     with t4:
-        with st.form("ni"):
+        with st.form("ni_u"):
             n, f, p = st.text_input("Nombre"), st.selectbox("Familia", FAMILIAS_PRODUCTOS), st.number_input("PMP Inicial", 0.0)
             if st.form_submit_button("Crear Insumo"):
                 conn.execute("INSERT INTO inventario (producto, familia, precio_medio, stock) VALUES (?,?,?,0)", (n, f, p))
@@ -224,7 +227,7 @@ def modulo_costos():
     conn.close()
 
 # --- 5. NAVEGACIÓN ---
-st.set_page_config(page_title="ERP AGRICOLA v40", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v41", layout="wide")
 inicializar_db()
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 if not st.session_state['auth']:
