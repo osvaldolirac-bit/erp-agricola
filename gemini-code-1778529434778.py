@@ -72,14 +72,12 @@ def generar_pdf_blob(df, titulo, incluir_precios=True):
         pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 10, titulo, ln=True, align="C")
         pdf.ln(5); pdf.set_font("Helvetica", "B", 8)
         
-        # Filtrar columnas si es para trabajador
         columnas_finales = df.columns
         if not incluir_precios:
             columnas_finales = [c for c in df.columns if "precio" not in c.lower() and "valor" not in c.lower() and "monto" not in c.lower()]
         
         df_pdf = df[columnas_finales]
         cols = df_pdf.columns; w = 190 / len(cols)
-        
         for col in cols: pdf.cell(w, 8, str(col).upper(), border=1, align="C")
         pdf.ln(); pdf.set_font("Helvetica", "", 7); total_acum = 0
         
@@ -90,21 +88,15 @@ def generar_pdf_blob(df, titulo, incluir_precios=True):
                     try: total_acum += float(item)
                     except: pass
                 
-                # Formateo de valores
-                if any(x in col_name for x in ["cantidad", "stock", "litros"]):
-                    val = f_decimal(item)
-                elif any(x in col_name for x in ["monto", "total", "precio", "valor"]):
-                    val = f_puntos(item)
-                else:
-                    val = str(item)
-                
+                if any(x in col_name for x in ["cantidad", "stock", "litros"]): val = f_decimal(item)
+                elif any(x in col_name for x in ["monto", "total", "precio", "valor"]): val = f_puntos(item)
+                else: val = str(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
             
         if incluir_precios and total_acum > 0:
             pdf.set_font("Helvetica", "B", 9); pdf.cell(w * (len(cols)-1), 8, "TOTAL FINAL:", border=1, align="R")
             pdf.cell(w, 8, f"${f_puntos(total_acum)}", border=1, align="L")
-        
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
@@ -172,37 +164,24 @@ def modulo_dashboard():
     st.markdown("<h1>🚜 ERP Agrícola La Concepción</h1>", unsafe_allow_html=True)
     st.subheader(f"Usuario: {st.session_state['email']}")
     conn = conectar_db(); df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
-    
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
     df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
     saldo_pet = (df_p_c['l'].fillna(0).iloc[0]) - (df_p_s['l'].fillna(0).iloc[0])
-
-    query_c = """
-    SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (
-        SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%'
-        UNION ALL
-        SELECT centro_costo, monto_imputado FROM facturas WHERE tipo = 'Gasto Vario'
-        UNION ALL
-        SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida'
-    ) WHERE cc IS NOT NULL AND cc != '' GROUP BY cc """
+    query_c = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado FROM facturas WHERE tipo = 'Gasto Vario' UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"
     df_c = pd.read_sql_query(query_c, conn)
-    
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         with st.expander("👁️ Bitácora de Accesos Recientes"):
             df_logs = pd.read_sql_query("SELECT email, fecha_hora FROM log_accesos ORDER BY fecha_hora DESC LIMIT 10", conn)
             st.table(df_logs)
-    
     t_d = df_f['monto_total'].sum() if not df_f.empty else 0
     v_a = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f.empty else 0
     v_h = len(df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy]) if not df_f.empty else 0
-    
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("DEUDA TOTAL", f"${f_puntos(t_d)}")
     with c2: st.markdown("MESES ANTERIORES"); st.markdown(f"<h2 style='color:red;'>${f_puntos(v_a)}</h2>", unsafe_allow_html=True)
     with c3: st.markdown("VENCIDOS HOY"); st.markdown(f"<h2 style='color:orange;'>{v_h}</h2>", unsafe_allow_html=True)
     c4.metric("DOCS. PENDIENTES", f"{len(df_f)}")
     c5.metric("SALDO PETRÓLEO", f"{f_decimal(saldo_pet)} Lts")
-    
     st.divider()
     col1, col2 = st.columns([1.5, 1])
     with col1:
@@ -326,17 +305,37 @@ def modulo_bodega():
     tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock", "🔄 Movimientos", "➕ Nuevo Insumo", "🔍 Consulta CC"])
     conn = conectar_db()
     with tb1:
-        df_s = pd.read_sql_query("SELECT producto, familia, stock, precio_medio FROM inventario ORDER BY producto ASC", conn)
-        st.dataframe(df_s.style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
-        
-        # BOTONES PDF
+        df_s = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario ORDER BY producto ASC", conn)
+        st.dataframe(df_s.drop(columns=['id']).style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
         col_pdf1, col_pdf2 = st.columns(2)
         if not df_s.empty:
-            with col_pdf1:
-                st.download_button("📥 PDF Stock Valorizado (Admin)", generar_pdf_blob(df_s, "INVENTARIO VALORIZADO - ADMIN", incluir_precios=True), "stock_admin.pdf")
-            with col_pdf2:
-                st.download_button("📥 PDF Stock para Trabajador", generar_pdf_blob(df_s, "INVENTARIO - LISTADO TRABAJO", incluir_precios=False), "stock_trabajador.pdf")
-                
+            with col_pdf1: st.download_button("📥 PDF Stock Valorizado (Admin)", generar_pdf_blob(df_s.drop(columns=['id']), "INVENTARIO VALORIZADO - ADMIN", True), "stock_admin.pdf")
+            with col_pdf2: st.download_button("📥 PDF Stock para Trabajador", generar_pdf_blob(df_s.drop(columns=['id']), "INVENTARIO - LISTADO TRABAJO", False), "stock_trabajador.pdf")
+        
+        st.divider()
+        st.subheader("🛠️ Gestión de Insumos")
+        id_gest = st.selectbox("Seleccione ID del Insumo a gestionar", df_s['id'])
+        item = df_s[df_s['id'] == id_gest].iloc[0]
+        c1, c2 = st.columns(2)
+        nuevo_nom = c1.text_input("Nuevo Nombre", value=item['producto'])
+        nueva_fam = c2.selectbox("Nueva Familia", FAMILIAS_PRODUCTOS, index=FAMILIAS_PRODUCTOS.index(item['familia']) if item['familia'] in FAMILIAS_PRODUCTOS else 0)
+        c3, c4 = st.columns(2)
+        nuevo_stock = c3.number_input("Ajuste Stock", value=float(item['stock']))
+        nuevo_pmp = c4.number_input("Ajuste PMP", value=float(item['precio_medio']))
+        
+        cl = st.text_input("Clave de Autorización", type="password")
+        b1, b2 = st.columns(2)
+        if b1.button("✏️ MODIFICAR INSUMO"):
+            if cl == CLAVE_MAESTRA:
+                conn.execute("UPDATE inventario SET producto=?, familia=?, stock=?, precio_medio=? WHERE id=?", (nuevo_nom, nueva_fam, nuevo_stock, nuevo_pmp, id_gest))
+                conn.commit(); guardar_en_drive(); st.rerun()
+            else: st.error("Clave incorrecta.")
+        if b2.button("🗑️ ELIMINAR INSUMO"):
+            if cl == CLAVE_MAESTRA:
+                conn.execute("DELETE FROM inventario WHERE id=?", (id_gest,))
+                conn.commit(); guardar_en_drive(); st.rerun()
+            else: st.error("Clave incorrecta.")
+
     with tb2:
         tipo = st.radio("Acción", ["Salida (Campo)", "Entrada"])
         df_i = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn)
@@ -366,27 +365,17 @@ def modulo_bodega():
         cc_sel = st.selectbox("Cuartel", CENTROS_COSTO); h1, h2 = st.date_input("Desde", hoy-timedelta(days=365), key="bc1"), st.date_input("Hasta", hoy, key="bc2")
         df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE UPPER(TRIM(m.centro_costo)) = '{cc_sel.upper()}' AND m.fecha BETWEEN '{h1}' AND '{h2}' ORDER BY m.fecha DESC", conn)
         st.dataframe(df_cc.style.format({"cantidad": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
-        if not df_cc.empty:
-            st.download_button(f"📥 Generar PDF {cc_sel}", generar_pdf_blob(df_cc, f"MOVIMIENTOS EN {cc_sel}"), f"movimientos_{cc_sel}.pdf")
+        if not df_cc.empty: st.download_button(f"📥 Generar PDF {cc_sel}", generar_pdf_blob(df_cc, f"MOVIMIENTOS EN {cc_sel}"), f"movimientos_{cc_sel}.pdf")
     conn.close()
 
 def modulo_costos():
     st.header("💰 Costos Totales")
-    conn = conectar_db(); query = """
-    SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, SUM(val) as total
-    FROM (
-        SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' 
-        UNION ALL 
-        SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario'
-        UNION ALL
-        SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida'
-    ) WHERE cc != '' GROUP BY cc """
+    conn = conectar_db(); query = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as combustible, SUM(val) as total FROM (SELECT centro_costo, valor_imputado as val, 'BODEGA' as fuente FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE tipo = 'Gasto Vario' UNION ALL SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida') WHERE cc != '' GROUP BY cc"
     df_t = pd.read_sql_query(query, conn); conn.close()
-    if not df_t.empty:
-        st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
+    if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.8", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.9", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
