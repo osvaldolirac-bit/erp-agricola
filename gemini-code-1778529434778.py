@@ -74,18 +74,6 @@ def f_puntos(v):
     try: return f"{int(round(float(v))):,}".replace(",", ".")
     except: return "0"
 
-def generar_pdf(df, titulo):
-    pdf = FPDF(); pdf.add_page(); pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, f"LA CONCEPCIÓN - {titulo}", ln=True, align="C")
-    pdf.set_font("Arial", "B", 8); pdf.ln(5)
-    cols = df.columns; w = 190 / len(cols)
-    for col in cols: pdf.cell(w, 8, str(col).upper(), border=1)
-    pdf.ln(); pdf.set_font("Arial", "", 7)
-    for _, row in df.iterrows():
-        for item in row: pdf.cell(w, 7, str(item)[:20], border=1)
-        pdf.ln()
-    return pdf.output(dest="S").encode("latin-1")
-
 # --- 4. MÓDULOS ---
 
 def modulo_dashboard():
@@ -109,45 +97,6 @@ def modulo_dashboard():
         st.markdown(f"<p style='color:red; font-weight:bold;'>MESES ANTERIORES</p><h2 style='color:red;'>${f_puntos(m_rojo)}</h2><small>Docs: {d_rojo}</small>", unsafe_allow_html=True)
     with c3:
         st.markdown(f"<p style='color:orange; font-weight:bold;'>VENCIDOS DEL MES</p><h2 style='color:orange;'>${f_puntos(m_naranja)}</h2><small>Docs: {d_naranja}</small>", unsafe_allow_html=True)
-    st.divider()
-
-def modulo_compras():
-    st.header("📦 Compras y Gastos")
-    t1, t2, t3 = st.tabs(["➕ Insumos", "💸 Gasto Vario", "🔍 Historial"])
-    conn = conectar_db()
-    with t1:
-        c1, c2 = st.columns(2)
-        nro, prov = c1.text_input("N° Factura"), c1.text_input("Proveedor")
-        f_c, f_v = c2.date_input("Emisión"), c2.date_input("Vencimiento")
-        df_inv = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
-        ops = [f"{row['id']} - {row['producto']}" for _, row in df_inv.iterrows()]
-        ps = st.selectbox("Seleccione Insumo", ops, key="compra_insumo_sel") if ops else None
-        cant, neto = st.number_input("Cantidad", 0.0), st.number_input("Neto Unitario", 0.0)
-        if st.button("Guardar Factura Insumo"):
-            total = (cant * neto) * 1.19
-            ins_nom = ps.split(" - ")[1] if ps else ""
-            conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, concepto) VALUES (?,?,?,?,?,?)", (nro, prov, f_c, f_v, total, f"Compra: {ins_nom}"))
-            if ps:
-                pid = int(ps.split(" - ")[0]); cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
-                n_pmp = ((cur[0]*cur[1]) + (cant*neto)) / (cur[0]+cant) if (cur[0]+cant) > 0 else neto
-                conn.execute("UPDATE inventario SET stock=stock+?, precio_medio=? WHERE id=?", (cant, n_pmp, pid))
-            conn.commit(); guardar_en_drive(); st.rerun()
-    with t2:
-        gv_prov, gv_neto = st.text_input("Proveedor ", key="g_p"), st.number_input("Monto Neto ($)", 0.0, key="g_m")
-        gv_det = st.text_area("Detalle del Gasto")
-        iva_costo = st.radio("¿IVA es costo para el CC?", ["Sí", "No"], horizontal=True)
-        cols = st.columns(3)
-        ccs_g = [cc for i, cc in enumerate(CENTROS_COSTO) if cols[i%3].checkbox(cc, key=f"cg_{cc}")]
-        if st.button("Grabar Gasto") and ccs_g:
-            m_imp = (gv_neto * 1.19) if "Sí" in iva_costo else gv_neto
-            m_por_cc = m_imp / len(ccs_g)
-            for c in ccs_g:
-                conn.execute("INSERT INTO facturas (proveedor, monto_total, tipo, centro_costo, monto_imputado, estado, fecha_compra, concepto) VALUES (?,?,?,?,?,?,?,?)", (gv_prov, gv_neto*1.19, 'Gasto Vario', c, m_por_cc, 'Pendiente', hoy, gv_det))
-            conn.commit(); guardar_en_drive(); st.rerun()
-    with t3:
-        df_h = pd.read_sql_query("SELECT * FROM facturas ORDER BY id DESC LIMIT 50", conn)
-        st.dataframe(df_h, use_container_width=True)
-    conn.close()
 
 def modulo_bodega():
     st.header("🚜 Gestión de Bodega")
@@ -160,41 +109,40 @@ def modulo_bodega():
     
     with t2:
         st.subheader("Registrar Movimiento")
+        # LEER PRODUCTOS
         df_inv = pd.read_sql_query("SELECT id, producto, stock, precio_medio FROM inventario", conn)
         ops = [f"{row['id']} - {row['producto']}" for _, row in df_inv.iterrows()]
         
-        # EL SELECTOR DE PRODUCTO (SIEMPRE VISIBLE)
-        ps = st.selectbox("1. Seleccione Producto / Insumo", ops, key="bod_mov_insumo") if ops else None
+        # SELECTOR PRINCIPAL (FUERA DE CUALQUIER CONDICIÓN)
+        ps = st.selectbox("1. Seleccione el Insumo o Producto", ops, key="selector_final_bodega") if ops else st.warning("No hay productos. Cree uno en la pestaña 'Nuevo Item'.")
         
-        cant = st.number_input("2. Ingrese Cantidad", 0.0, key="bod_mov_cant")
-        
-        st.write("3. Seleccione Tipo de Operación:")
-        c_in, c_out = st.columns(2)
-        check_entrada = c_in.checkbox("📥 ENTRADA (Ajuste/Carga)")
-        check_salida = c_out.checkbox("🔄 SALIDA (A campo)")
-        
-        if check_entrada:
-            p_unitario = st.number_input("Precio Neto Unitario (Actualiza PMP)", 0.0, key="bod_mov_pmp")
-            if st.button("Confirmar Entrada"):
-                if ps:
-                    pid = int(ps.split(" - ")[0])
+        if ps:
+            pid = int(ps.split(" - ")[0])
+            cant = st.number_input("2. Cantidad", min_value=0.0, key="cant_final_bodega")
+            
+            st.write("3. ¿Qué desea hacer?")
+            c_in, c_out = st.columns(2)
+            check_in = c_in.checkbox("📥 Entrada (Recibir Insumo)")
+            check_out = c_out.checkbox("🔄 Salida (A Campo)")
+            
+            if check_in:
+                p_unit = st.number_input("Precio Neto Unitario ($)", min_value=0.0, key="p_unit_final")
+                if st.button("Confirmar Entrada"):
                     cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
-                    nuevo_pmp = ((cur[0]*cur[1]) + (cant*p_unitario)) / (cur[0]+cant) if (cur[0]+cant) > 0 else p_unitario
-                    conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (cant, nuevo_pmp, pid))
-                    conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?)", (pid, 'Entrada', cant, 'BODEGA', hoy, p_unitario*cant))
+                    n_pmp = ((cur[0]*cur[1]) + (cant*p_unit)) / (cur[0]+cant) if (cur[0]+cant) > 0 else p_unit
+                    conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (cant, n_pmp, pid))
+                    conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?)", (pid, 'Entrada', cant, 'BODEGA', hoy, p_unit*cant))
                     conn.commit(); guardar_en_drive(); st.rerun()
-
-        elif check_salida:
-            st.write("Asignar a Centros de Costo:")
-            cols_cc = st.columns(3)
-            ccs_s = [cc for i, cc in enumerate(CENTROS_COSTO) if cols_cc[i%3].checkbox(cc, key=f"bod_cc_mov_{cc}")]
-            if st.button("Confirmar Salida"):
-                if ps and ccs_s:
-                    pid = int(ps.split(" - ")[0])
+            
+            elif check_out:
+                st.info("Seleccione los Cuarteles:")
+                cols_cc = st.columns(3)
+                ccs_s = [cc for i, cc in enumerate(CENTROS_COSTO) if cols_cc[i%3].checkbox(cc, key=f"cc_final_{cc}")]
+                if st.button("Confirmar Salida") and ccs_s:
                     pmp = df_inv[df_inv['id']==pid]['precio_medio'].values[0]
-                    m_por_cc = (cant * pmp) / len(ccs_s)
+                    v_por_cc = (cant * pmp) / len(ccs_s)
                     for c in ccs_s:
-                        conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, centro_costo, valor_imputado, fecha) VALUES (?,?,?,?,?,?)", (pid, 'Salida', cant/len(ccs_s), c, m_por_cc, hoy))
+                        conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, centro_costo, valor_imputado, fecha) VALUES (?,?,?,?,?,?)", (pid, 'Salida', cant/len(ccs_s), c, v_por_cc, hoy))
                     conn.execute("UPDATE inventario SET stock = stock - ? WHERE id = ?", (cant, pid))
                     conn.commit(); guardar_en_drive(); st.rerun()
 
@@ -204,11 +152,29 @@ def modulo_bodega():
         st.dataframe(df_q, use_container_width=True)
     
     with t4:
-        with st.form("nuevo_item_form"):
-            n, f, p = st.text_input("Nombre del Insumo"), st.selectbox("Familia", FAMILIAS_PRODUCTOS), st.number_input("PMP Inicial", 0.0)
+        with st.form("nuevo_item_vfinal"):
+            n = st.text_input("Nombre del Insumo")
+            f = st.selectbox("Familia", FAMILIAS_PRODUCTOS)
+            p = st.number_input("Precio Medio Inicial ($)", min_value=0.0)
             if st.form_submit_button("Crear Insumo"):
                 conn.execute("INSERT INTO inventario (producto, familia, precio_medio, stock) VALUES (?,?,?,0)", (n, f, p))
                 conn.commit(); st.rerun()
+    conn.close()
+
+def modulo_compras():
+    st.header("📦 Compras")
+    t1, t2 = st.tabs(["💸 Factura / Gasto", "🔍 Historial"])
+    conn = conectar_db()
+    with t1:
+        c1, c2 = st.columns(2)
+        nro, prov = c1.text_input("N° Documento"), c1.text_input("Proveedor")
+        f_c, f_v = c2.date_input("Emisión"), c2.date_input("Vencimiento")
+        monto = st.number_input("Monto Total ($)", min_value=0.0)
+        tipo = st.selectbox("Tipo", ["Factura", "Gasto Vario"])
+        cc_g = st.selectbox("Imputar a (solo si es Gasto Vario)", ["N/A"] + CENTROS_COSTO)
+        if st.button("Guardar Compra"):
+            conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo) VALUES (?,?,?,?,?,?,?)", (nro, prov, f_c, f_v, monto, tipo, cc_g))
+            conn.commit(); guardar_en_drive(); st.rerun()
     conn.close()
 
 def modulo_tesoreria():
@@ -223,18 +189,8 @@ def modulo_tesoreria():
             conn.commit(); guardar_en_drive(); st.rerun()
     conn.close()
 
-def modulo_costos():
-    st.header("📊 COSTOS")
-    conn = conectar_db()
-    q = "SELECT centro_costo, SUM(valor_imputado) as Total FROM movimientos GROUP BY centro_costo UNION ALL SELECT centro_costo, SUM(monto_imputado) as Total FROM facturas WHERE tipo='Gasto Vario' GROUP BY centro_costo"
-    df = pd.read_sql_query(q, conn)
-    if not df.empty:
-        res = df.groupby('centro_costo')['Total'].sum().reset_index()
-        st.table(res.style.format({"Total": "${:,.0f}"}))
-    conn.close()
-
 # --- 5. NAVEGACIÓN ---
-st.set_page_config(page_title="ERP AGRICOLA v44", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v45", layout="wide")
 inicializar_db()
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 if not st.session_state['auth']:
@@ -245,11 +201,11 @@ else:
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
     with st.sidebar:
         if obtener_drive(): st.success("🟢 Conectado")
-        menu = st.radio("MENÚ", ["🏠 Dashboard", "📦 Compras", "🚜 Bodega", "💸 Tesorería", "📊 Costos"])
+        menu = st.radio("MENÚ", ["🏠 Dashboard", "📦 Compras", "🚜 Bodega", "💸 Tesorería"])
         if st.button("🚀 Sincronizar"): guardar_en_drive()
         if st.button("🚪 Salir"): st.session_state['auth'] = False; st.rerun()
+    
     if menu == "🏠 Dashboard": modulo_dashboard()
     elif menu == "📦 Compras": modulo_compras()
     elif menu == "🚜 Bodega": modulo_bodega()
     elif menu == "💸 Tesorería": modulo_tesoreria()
-    elif menu == "📊 Costos": modulo_costos()
