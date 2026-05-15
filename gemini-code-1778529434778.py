@@ -154,23 +154,37 @@ def modulo_dashboard():
     inyectar_css()
     st.markdown("<h1>🚜 ERP Agrícola La Concepción</h1>", unsafe_allow_html=True)
     st.subheader(f"Usuario: {st.session_state['email']}")
-    conn = conectar_db(); df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente'", conn)
-    df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn); df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
+    conn = conectar_db()
+    
+    # --- CORRECCIÓN V10.8.26: MÉTRICAS BASADAS EN DOCUMENTOS REALES (IGNORA _P) ---
+    df_f_reales = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
+    
+    df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
+    df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida'", conn)
     saldo_pet = (df_p_c['l'].fillna(0).iloc[0]) - (df_p_s['l'].fillna(0).iloc[0])
+    
     query_c = "SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto FROM (SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' UNION ALL SELECT centro_costo, monto_imputado FROM facturas WHERE tipo = 'Gasto Vario' AND centro_costo != '' UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"
     df_c = pd.read_sql_query(query_c, conn)
+    
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         with st.expander("👁️ Bitácora de Accesos Recientes"):
             df_logs = pd.read_sql_query("SELECT email, fecha_hora FROM log_accesos ORDER BY fecha_hora DESC LIMIT 10", conn)
             st.table(df_logs)
-    t_d = df_f['monto_total'].sum() if not df_f.empty else 0
-    v_a = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f.empty else 0
-    v_h = len(df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy]) if not df_f.empty else 0
+            
+    t_d = df_f_reales['monto_total'].sum() if not df_f_reales.empty else 0
+    # Conteo de documentos físicos reales
+    c_docs_pendientes = len(df_f_reales)
+    
+    v_a = df_f_reales[pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f_reales.empty else 0
+    v_h = len(df_f_reales[pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.date < hoy]) if not df_f_reales.empty else 0
+    
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("DEUDA TOTAL", f"${f_puntos(t_d)}")
     with c2: st.markdown("MESES ANTERIORES"); st.markdown(f"<h2 style='color:red;'>${f_puntos(v_a)}</h2>", unsafe_allow_html=True)
     with c3: st.markdown("VENCIDOS HOY"); st.markdown(f"<h2 style='color:orange;'>{v_h}</h2>", unsafe_allow_html=True)
-    c4.metric("DOCS. PENDIENTES", f"{len(df_f)}"); c5.metric("SALDO PETRÓLEO", f"{f_decimal(saldo_pet)} Lts")
+    c4.metric("DOCS. PENDIENTES", f"{c_docs_pendientes}")
+    c5.metric("SALDO PETRÓLEO", f"{f_decimal(saldo_pet)} Lts")
+    
     st.divider()
     col1, col2 = st.columns([1.5, 1])
     with col1:
@@ -185,7 +199,7 @@ def modulo_dashboard():
         meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
         for i in range(4):
             ft = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
-            v = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == ft.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == ft.year)]['monto_total'].sum() if not df_f.empty else 0
+            v = df_f_reales[(pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.month == ft.month) & (pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.year == ft.year)]['monto_total'].sum() if not df_f_reales.empty else 0
             st.markdown(f"<div style='background:white; padding:12px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; border:1px solid #ddd;'><b>{meses[ft.month-1]} {ft.year}</b> <span style='color:#2E7D32;'>${f_puntos(v)}</span></div>", unsafe_allow_html=True)
     conn.close()
 
@@ -239,28 +253,22 @@ def modulo_compras():
                 conn.commit(); guardar_en_drive(); st.session_state['car'] = []; st.rerun()
     with t2:
         c1, c2 = st.columns(2); prov_g, nro_g = c1.text_input("Proveedor ", key="pg"), c2.text_input("N° Doc ", key="ng")
-        # --- FECHAS RESTAURADAS ---
         cf1, cf2 = st.columns(2); fe_g, fv_g = cf1.date_input("Fecha Compra", hoy, key="fg1"), cf2.date_input("Fecha Vencimiento", hoy, key="fg2")
         detalles_g = st.text_area("Concepto", height=70); ccs_sel = []; cols = st.columns(3)
         for i, cc in enumerate(CENTROS_COSTO):
             if cols[i % 3].checkbox(cc, key=f"gv_{cc}"): ccs_sel.append(cc)
-        
         m_total_con_iva = st.number_input("Monto Total Documento (con IVA)", 0.0)
         iva_costo = st.radio("¿Imputar el TOTAL al Centro de Costo?", ["SÍ", "NO (Imputar solo el NETO)"])
-        
         if st.button("💾 GUARDAR GASTO VARIO"):
             if m_total_con_iva > 0:
                 monto_imputar = m_total_con_iva if iva_costo == "SÍ" else (m_total_con_iva / 1.19)
                 if len(ccs_sel) > 0:
                     imp_indiv = monto_imputar / len(ccs_sel)
                     conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_total_con_iva, 'Gasto Vario', detalles_g))
-                    for c in ccs_sel: 
-                        conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g+"_P", prov_g, fe_g, fv_g, 0, 'Gasto Vario', c.upper(), imp_indiv, detalles_g))
+                    for c in ccs_sel: conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g+"_P", prov_g, fe_g, fv_g, 0, 'Gasto Vario', c.upper(), imp_indiv, detalles_g))
                 else:
-                    # Gasto registrado sin CC (Solo Contabilidad e Historial)
                     conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto, centro_costo, monto_imputado) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_total_con_iva, 'Gasto Vario', detalles_g, "CONTABILIDAD GENERAL", 0))
                 conn.commit(); guardar_en_drive(); st.rerun()
-                
     with t3:
         f1, f2 = st.date_input("Desde", datetime(2020, 1, 1).date()), st.date_input("Hasta", datetime(2030, 12, 31).date())
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
@@ -374,11 +382,13 @@ def modulo_costos():
         SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' AND centro_costo != ''
     ) GROUP BY cc
     """
-    df_t = pd.read_sql_query(query, conn); conn.close()
-    if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
+    df_t = pd.read_sql_query(query, conn)
+    conn.close()
+    if not df_t.empty: 
+        st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.25", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.26", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
