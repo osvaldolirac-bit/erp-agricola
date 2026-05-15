@@ -156,7 +156,7 @@ def modulo_dashboard():
     st.subheader(f"Usuario: {st.session_state['email']}")
     conn = conectar_db()
     
-    # --- CORRECCIÓN V10.8.26: MÉTRICAS BASADAS EN DOCUMENTOS REALES (IGNORA _P) ---
+    # --- CORRECCIÓN V10.8.27: CIFRAS DE DEUDA BASADAS EN DOCUMENTOS REALES (NO _P) ---
     df_f_reales = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
     
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga'", conn)
@@ -172,9 +172,6 @@ def modulo_dashboard():
             st.table(df_logs)
             
     t_d = df_f_reales['monto_total'].sum() if not df_f_reales.empty else 0
-    # Conteo de documentos físicos reales
-    c_docs_pendientes = len(df_f_reales)
-    
     v_a = df_f_reales[pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.date < hoy.replace(day=1)]['monto_total'].sum() if not df_f_reales.empty else 0
     v_h = len(df_f_reales[pd.to_datetime(df_f_reales['fecha_vencimiento']).dt.date < hoy]) if not df_f_reales.empty else 0
     
@@ -182,7 +179,7 @@ def modulo_dashboard():
     c1.metric("DEUDA TOTAL", f"${f_puntos(t_d)}")
     with c2: st.markdown("MESES ANTERIORES"); st.markdown(f"<h2 style='color:red;'>${f_puntos(v_a)}</h2>", unsafe_allow_html=True)
     with c3: st.markdown("VENCIDOS HOY"); st.markdown(f"<h2 style='color:orange;'>{v_h}</h2>", unsafe_allow_html=True)
-    c4.metric("DOCS. PENDIENTES", f"{c_docs_pendientes}")
+    c4.metric("DOCS. PENDIENTES", f"{len(df_f_reales)}")
     c5.metric("SALDO PETRÓLEO", f"{f_decimal(saldo_pet)} Lts")
     
     st.divider()
@@ -382,13 +379,11 @@ def modulo_costos():
         SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' AND centro_costo != ''
     ) GROUP BY cc
     """
-    df_t = pd.read_sql_query(query, conn)
-    conn.close()
-    if not df_t.empty: 
-        st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
+    df_t = pd.read_sql_query(query, conn); conn.close()
+    if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.26", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.27", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
