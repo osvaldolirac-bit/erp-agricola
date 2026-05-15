@@ -122,17 +122,11 @@ def descargar_de_drive():
         lista = drive.ListFile({'q': query}).GetList()
         if lista: lista[0].GetContentFile(NOMBRE_DB)
 
-# --- 5. ESTILOS CSS PERSONALIZADOS (ELIMINA SHARE Y MENÚS) ---
+# --- 5. ESTILOS CSS PERSONALIZADOS (MODO DINÁMICO) ---
 def inyectar_css():
-    st.markdown("""
+    # Estilos base para todos
+    css = """
         <style>
-        /* ELIMINAR BOTÓN SHARE Y MENÚ DE OPCIONES DE STREAMLIT */
-        header {visibility: hidden;}
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        .stDeployButton {display:none;}
-        
-        /* ESTILOS ERP */
         .main { background-color: #f4f7f6; }
         [data-testid="stMetricValue"] { font-size: 1.8rem !important; }
         .custom-metric { background-color: white; padding: 15px; border-radius: 12px; border-left: 6px solid #2E7D32; box-shadow: 0 4px 6px rgba(0,0,0,0.05); min-height: 100px; }
@@ -143,7 +137,19 @@ def inyectar_css():
         .stTabs [data-baseweb="tab-list"] { gap: 10px; }
         .stTabs [data-baseweb="tab"] { background-color: #e8f5e9; border-radius: 5px 5px 0 0; padding: 10px 20px; }
         </style>
-        """, unsafe_allow_html=True)
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
+    # Estilos restrictivos SOLO para secretarias (v10.8.36)
+    if st.session_state.get('logged_in') and st.session_state.get('email') != 'osvaldolira@laconcepcion.cl':
+        st.markdown("""
+            <style>
+            header {visibility: hidden;}
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stDeployButton {display:none;}
+            </style>
+            """, unsafe_allow_html=True)
 
 # --- 6. PÁGINA DE LOGIN ---
 def login_page():
@@ -399,7 +405,7 @@ def modulo_costos():
         st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.34", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.36", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
@@ -410,7 +416,6 @@ else:
         if obtener_drive(): st.markdown("🟢 **Drive: CONECTADO**")
         menu = st.radio("", ["🏠 Dashboard", "⛽ PETRÓLEO", "📦 Compras", "💸 Tesorería", "🚜 Bodega", "💰 COSTOS"])
         
-        # --- RESTRICCIÓN DE SINCRONIZACIÓN (SOLO ADMIN) ---
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
             if st.button("🚀 Sincronizar Drive"): guardar_en_drive()
             
