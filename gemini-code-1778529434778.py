@@ -71,29 +71,24 @@ def generar_pdf_blob(df, titulo, incluir_precios=True):
         pdf.cell(0, 10, "AGRICOLA LA CONCEPCIÓN", ln=True, align="C")
         pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 10, titulo, ln=True, align="C")
         pdf.ln(5); pdf.set_font("Helvetica", "B", 8)
-        
         columnas_finales = df.columns
         if not incluir_precios:
             columnas_finales = [c for c in df.columns if "precio" not in c.lower() and "valor" not in c.lower() and "monto" not in c.lower()]
-        
         df_pdf = df[columnas_finales]
         cols = df_pdf.columns; w = 190 / len(cols)
         for col in cols: pdf.cell(w, 8, str(col).upper(), border=1, align="C")
         pdf.ln(); pdf.set_font("Helvetica", "", 7); total_acum = 0
-        
         for _, row in df_pdf.iterrows():
             for i, item in enumerate(row):
                 col_name = df_pdf.columns[i].lower()
                 if any(x in col_name for x in ["monto", "total", "valor", "imputado"]):
                     try: total_acum += float(item)
                     except: pass
-                
                 if any(x in col_name for x in ["cantidad", "stock", "litros"]): val = f_decimal(item)
                 elif any(x in col_name for x in ["monto", "total", "precio", "valor"]): val = f_puntos(item)
                 else: val = str(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
-            
         if incluir_precios and total_acum > 0:
             pdf.set_font("Helvetica", "B", 9); pdf.cell(w * (len(cols)-1), 8, "TOTAL FINAL:", border=1, align="R")
             pdf.cell(w, 8, f"${f_puntos(total_acum)}", border=1, align="L")
@@ -257,16 +252,29 @@ def modulo_compras():
     with t2:
         c1, c2 = st.columns(2); prov_g, nro_g = c1.text_input("Proveedor ", key="pg"), c2.text_input("N° Doc ", key="ng")
         cf1, cf2 = st.columns(2); fe_g, fv_g = cf1.date_input("Compra", hoy, key="fg1"), cf2.date_input("Vence", hoy, key="fg2")
-        detalles_g = st.text_area("Concepto", height=70); ccs_sel = []; cols = st.columns(3)
+        detalles_g = st.text_area("Concepto", height=70)
+        
+        st.markdown("### Seleccione Cuartel(es) para Imputar Costo (OPCIONAL)")
+        st.caption("Si no selecciona ningún CC, el gasto quedará registrado para pago pero NO sumará a los costos de los cuarteles.")
+        ccs_sel = []; cols = st.columns(3)
         for i, cc in enumerate(CENTROS_COSTO):
             if cols[i % 3].checkbox(cc, key=f"gv_{cc}"): ccs_sel.append(cc)
+            
         m1, m2 = st.columns(2); m_n = m1.number_input("Neto Total", 0.0); iva = m2.radio("IVA al costo?", ["SÍ", "NO"])
-        if len(ccs_sel) > 0 and m_n > 0:
-            imp = (m_n / len(ccs_sel)) if iva == "SÍ" else (m_n / len(ccs_sel)) / 1.19
-            if st.button("💾 GUARDAR GASTO PRORRATEADO"):
-                conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_n*1.19, 'Gasto Vario', detalles_g))
-                for c in ccs_sel: conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g+"_P", prov_g, fe_g, fv_g, 0, 'Gasto Vario', c.upper(), imp, detalles_g))
+        
+        if st.button("💾 GUARDAR GASTO VARIO"):
+            if m_n > 0:
+                if len(ccs_sel) > 0:
+                    # Lógica original: Prorratear entre seleccionados
+                    imp = (m_n / len(ccs_sel)) if iva == "SÍ" else (m_n / len(ccs_sel)) / 1.19
+                    conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_n*1.19, 'Gasto Vario', detalles_g))
+                    for c in ccs_sel: conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g+"_P", prov_g, fe_g, fv_g, 0, 'Gasto Vario', c.upper(), imp, detalles_g))
+                else:
+                    # NUEVA OPCIÓN: No imputar a ningún CC (quedará vacío para reportes de costo)
+                    conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto, centro_costo, monto_imputado) VALUES (?,?,?,?,?,?,?,?,?)", (nro_g, prov_g, fe_g, fv_g, m_n*1.19, 'Gasto Vario', detalles_g, "BODEGA/STOCK", 0))
+                
                 conn.commit(); guardar_en_drive(); st.rerun()
+                
     with t3:
         f1, f2 = st.date_input("Filtrar Desde", hoy-timedelta(days=30)), st.date_input("Hasta", hoy)
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total, estado, tipo FROM facturas WHERE monto_total > 0 AND fecha_compra BETWEEN '{f1}' AND '{f2}' ORDER BY fecha_compra DESC", conn)
@@ -322,7 +330,6 @@ def modulo_bodega():
         c3, c4 = st.columns(2)
         nuevo_stock = c3.number_input("Ajuste Stock", value=float(item['stock']))
         nuevo_pmp = c4.number_input("Ajuste PMP", value=float(item['precio_medio']))
-        
         cl = st.text_input("Clave de Autorización", type="password")
         b1, b2 = st.columns(2)
         if b1.button("✏️ MODIFICAR INSUMO"):
@@ -375,7 +382,7 @@ def modulo_costos():
     if not df_t.empty: st.dataframe(df_t.style.format({"insumos": "${:,.0f}", "gastos": "${:,.0f}", "combustible": "${:,.0f}", "total": "${:,.0f}"}), use_container_width=True)
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.9", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.11", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
