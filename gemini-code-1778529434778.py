@@ -26,13 +26,28 @@ def hash_password(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def registrar_accion(accion, detalle):
-    """Auditoría Pro v10.8.49"""
+    """Huella digital de auditoría Pro v10.8.50"""
     user = st.session_state.get('email', 'Desconocido')
     fecha = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         conn = conectar_db()
         conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
                      (user, accion, detalle, fecha))
+        conn.commit()
+        conn.close()
+    except: pass
+
+def sanear_base_datos():
+    """ELIMINA REGISTROS HUÉRFANOS DE REPARTO (_P) QUE NO TIENEN PADRE"""
+    try:
+        conn = conectar_db()
+        # Seleccionamos registros hijos cuyos padres ya no existen
+        query = """
+            DELETE FROM facturas 
+            WHERE nro_documento LIKE '%_P' 
+            AND REPLACE(nro_documento, '_P', '') NOT IN (SELECT nro_documento FROM facturas WHERE nro_documento NOT LIKE '%_P')
+        """
+        conn.execute(query)
         conn.commit()
         conn.close()
     except: pass
@@ -70,6 +85,7 @@ def inicializar_db():
         for email, pw in usuarios:
             cursor.execute("INSERT INTO usuarios (email, password) VALUES (?,?)", (email, pw))
     conn.commit(); conn.close()
+    sanear_base_datos() # Limpiar duplicados huérfanos al arrancar
 
 # --- 3. UTILIDADES Y REPORTES PDF ---
 def f_puntos(v):
@@ -89,7 +105,7 @@ def generar_pdf_blob(df, titulo, incluir_precios=True):
         
         df_pdf = df.copy()
         if not incluir_precios:
-            # Filtro Pro: Elimina cualquier columna que sugiera valores monetarios
+            # Filtro estricto para trabajadores: ocultar cualquier columna de costo
             df_pdf = df_pdf[[c for c in df_pdf.columns if not any(x in c.lower() for x in ["precio", "valor", "monto", "pmp"])]]
         
         cols = df_pdf.columns; w = 190 / len(cols)
@@ -130,7 +146,7 @@ def guardar_en_drive():
         lista = drive.ListFile({'q': query}).GetList()
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB); f.Upload()
-        st.success("✅ Respaldo en Drive sincronizado.")
+        st.success("✅ Drive Sincronizado.")
 
 def descargar_de_drive():
     drive = obtener_drive()
@@ -196,15 +212,14 @@ def modulo_dashboard():
     st.divider()
     col1, col2 = st.columns([1.6, 1])
     with col1:
-        st.subheader("💰 Resumen Costos por Cuartel")
-        # LIMPIEZA DE HUÉRFANOS Y EXCLUSIÓN DE PADRES (Para corregir Ciruelos/Nogales)
+        st.subheader("💰 Resumen Costos Netos por Cuartel")
+        # Consulta de costos con filtro estricto de repartos reales (_P)
         query_cc = """SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto 
                       FROM (
                         SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' 
                         UNION ALL 
                         SELECT centro_costo, monto_imputado FROM facturas 
-                        WHERE nro_documento LIKE '%_P' 
-                        AND REPLACE(nro_documento, '_P', '') IN (SELECT nro_documento FROM facturas WHERE nro_documento NOT LIKE '%_P')
+                        WHERE nro_documento LIKE '%_P'
                         UNION ALL 
                         SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida'
                       ) WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"""
@@ -283,11 +298,10 @@ def modulo_compras():
         cols = st.columns(3)
         for i, cc in enumerate(CENTROS_COSTO):
             if cols[i%3].checkbox(cc, key=f"gv_{cc}"): sel_cc.append(cc)
-        mt = st.number_input("Total (IVA)", 0.0); iva = st.radio("¿Imputar Total?", ["SÍ", "NO (NETO)"])
+        mt = st.number_input("Total (IVA)", 0.0); iva = st.radio("¿Imputar TOTAL al CC?", ["SÍ", "NO (NETO)"])
         if st.button("💾 GUARDAR GASTO VARIO"):
-            # LANZALLAMAS PRO: Evita duplicados verificando si ya existe el padre
             check_exist = conn.execute("SELECT COUNT(*) FROM facturas WHERE nro_documento=? AND proveedor=?", (ng, pg)).fetchone()[0]
-            if check_exist > 0: st.error("⚠️ Este documento ya existe para este proveedor."); return
+            if check_exist > 0: st.error("⚠️ Este documento ya existe."); return
             imp = mt if iva == "SÍ" else mt/1.19
             if sel_cc:
                 conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (ng, pg, fg1, fg2, mt, 'Gasto Vario', det))
@@ -303,11 +317,10 @@ def modulo_compras():
         st.download_button("📥 PDF Historial", generar_pdf_blob(df_h.drop(columns=['id']), f"HISTORIAL {d1}-{d2}"), "historial.pdf")
         id_e = st.selectbox("ID factura", df_h['id']); cl = st.text_input("Master", type="password", key="cl_h")
         if st.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
-            # ELIMINACIÓN EN CASCADA PRO (Sanea duplicados de raíz)
             sel_f = df_h[df_h['id']==id_e].iloc[0]
             conn.execute("DELETE FROM facturas WHERE id=?", (id_e,))
             conn.execute("DELETE FROM facturas WHERE nro_documento=? AND proveedor=?", (sel_f['nro_documento']+"_P", sel_f['proveedor']))
-            conn.commit(); registrar_accion("ELIMINAR FACTURA CASCADA", f"ID {id_e} y sus particiones"); guardar_en_drive(); st.rerun()
+            conn.commit(); registrar_accion("ELIMINAR FACTURA CASCADA", f"ID {id_e}"); guardar_en_drive(); st.rerun()
     conn.close()
 
 # --- 10. MÓDULO TESORERÍA ---
@@ -325,10 +338,12 @@ def modulo_tesoreria():
             conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, hoy, id_pay))
             conn.commit(); registrar_accion("PAGO", f"Factura ID {id_pay}"); guardar_en_drive(); st.rerun()
     with tp2:
-        pr = st.selectbox("Proveedor", pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente'", conn)['proveedor'])
-        df_pr = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{pr}' AND estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
-        st.dataframe(df_pr.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
-        st.download_button(f"📥 PDF Deuda {pr}", generar_pdf_blob(df_pr, f"DEUDA {pr}"), f"deuda_{pr}.pdf")
+        df_list = pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente'", conn)
+        if not df_list.empty:
+            pr = st.selectbox("Proveedor", df_list['proveedor'])
+            df_pr = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{pr}' AND estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
+            st.dataframe(df_pr.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
+            st.download_button(f"📥 PDF Deuda {pr}", generar_pdf_blob(df_pr, f"DEUDA {pr}"), f"deuda_{pr}.pdf")
     conn.close()
 
 # --- 11. MÓDULO BODEGA ---
@@ -339,14 +354,14 @@ def modulo_bodega():
         df_s = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario", conn)
         st.dataframe(df_s.drop(columns=['id']).style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
         
-        # --- DOBLE PDF BODEGA V10.8.49 ---
+        # --- DOBLE PDF BODEGA V10.8.50 ---
         c_p1, c_p2 = st.columns(2)
         with c_p1:
             st.download_button("📥 PDF Admin (Valorizado)", generar_pdf_blob(df_s.drop(columns=['id']), "INVENTARIO VALORIZADO - ADMIN", True), "stock_admin.pdf")
         with c_p2:
-            st.download_button("📥 PDF Campo (Solo Cantidades)", generar_pdf_blob(df_s.drop(columns=['id']), "LISTADO DE STOCK - TRABAJADOR", False), "stock_trabajador.pdf")
+            st.download_button("📥 PDF Campo (Solo Stock)", generar_pdf_blob(df_s.drop(columns=['id']), "LISTADO DE STOCK - CAMPO", False), "stock_trabajador.pdf")
 
-        st.divider(); st.subheader("🛠️ Ajuste de Inventario")
+        st.divider(); st.subheader("🛠️ Ajustes")
         id_g = st.selectbox("ID Insumo", df_s['id'])
         item = df_s[df_s['id']==id_g].iloc[0]
         c1, c2 = st.columns(2)
@@ -358,16 +373,14 @@ def modulo_bodega():
             conn.execute("UPDATE inventario SET producto=?, stock=? WHERE id=?", (n_nom, n_st, id_g))
             conn.commit(); registrar_accion("BODEGA MOD", f"ID {id_g} a {n_nom}"); guardar_en_drive(); st.rerun()
         if col_b2.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
-            # VALIDACIÓN DE MOVIMIENTOS ASOCIADOS
             check = conn.execute("SELECT COUNT(*) FROM movimientos WHERE producto_id=?", (id_g,)).fetchone()[0]
-            if check > 0: st.error(f"⚠️ No se puede borrar: tiene {check} consumos en centros de costo.")
-            else:
-                conn.execute("DELETE FROM inventario WHERE id=?", (id_g,))
-                conn.commit(); registrar_accion("BODEGA ELIMINA", f"Insumo {item['producto']}"); guardar_en_drive(); st.rerun()
+            if check > 0: st.error(f"⚠️ No se puede borrar: tiene {check} consumos registrados."); return
+            conn.execute("DELETE FROM inventario WHERE id=?", (id_g,))
+            conn.commit(); registrar_accion("BODEGA ELIMINA", f"Insumo {item['producto']}"); guardar_en_drive(); st.rerun()
                 
     with tb2:
         df_i = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn)
-        ps = st.selectbox("Seleccione Insumo", df_i['id'].astype(str) + " - " + df_i['producto']); ct = st.number_input("Cant", 0.0)
+        ps = st.selectbox("Insumo", df_i['id'].astype(str) + " - " + df_i['producto']); ct = st.number_input("Cant", 0.0)
         sel_cc = []
         cols = st.columns(3)
         for i, c_n in enumerate(CENTROS_COSTO):
@@ -389,11 +402,13 @@ def modulo_bodega():
         st.dataframe(pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{cc_s.upper()}' ORDER BY m.fecha DESC", conn), use_container_width=True)
     conn.close()
 
-# --- 12. MÓDULO COSTOS (PRO REPARACIÓN FINAL) ---
+# --- 12. MÓDULO COSTOS ---
 def modulo_costos():
     st.header("💰 Informe Consolidado de Costos")
     conn = conectar_db()
-    # REPARACIÓN FORENSE: Suma particiones _P solo si su padre existe (evita huérfanos borrados)
+    # REPARACIÓN FORENSE: Se ejecuta cada vez que entras a costos para asegurar cifras reales
+    sanear_base_datos()
+    
     query_total = """SELECT UPPER(TRIM(centro_costo)) as cc, 
         SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
         SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -404,14 +419,13 @@ def modulo_costos():
             UNION ALL 
             SELECT centro_costo, monto_imputado as val, 'FACTURA' as fuente FROM facturas 
             WHERE nro_documento LIKE '%_P' 
-            AND REPLACE(nro_documento, '_P', '') IN (SELECT nro_documento FROM facturas)
             UNION ALL 
             SELECT centro_costo, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo='Salida'
         ) GROUP BY cc"""
     df_r = pd.read_sql_query(query_total, conn)
     if not df_r.empty:
         st.dataframe(df_r.style.format({"Insumos": "${:,.0f}","Gastos": "${:,.0f}","Combustible": "${:,.0f}","Total": "${:,.0f}"}), use_container_width=True)
-    else: st.info("No hay datos imputados.")
+    else: st.info("No hay datos.")
     conn.close()
 
 def modulo_seguridad():
@@ -427,7 +441,7 @@ def modulo_seguridad():
     conn.close()
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.49", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.50", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
