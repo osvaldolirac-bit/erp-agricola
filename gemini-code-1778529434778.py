@@ -26,7 +26,7 @@ def hash_password(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def registrar_accion(accion, detalle):
-    """Huella digital de auditoría Pro v10.8.47"""
+    """Huella digital de auditoría Pro v10.8.48"""
     user = st.session_state.get('email', 'Desconocido')
     fecha = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
@@ -86,10 +86,12 @@ def generar_pdf_blob(df, titulo, incluir_precios=True):
         pdf.cell(0, 10, "AGRICOLA LA CONCEPCIÓN", ln=True, align="C")
         pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 10, titulo, ln=True, align="C")
         pdf.ln(5); pdf.set_font("Helvetica", "B", 8)
+        
         df_pdf = df.copy()
         if not incluir_precios:
-            cols_to_drop = [c for c in df_pdf.columns if any(x in c.lower() for x in ["precio", "valor", "monto", "total"])]
-            df_pdf = df_pdf.drop(columns=cols_to_drop)
+            # Eliminar columnas que contienen precios o valores si el PDF es para trabajador
+            df_pdf = df_pdf[[c for c in df_pdf.columns if not any(x in c.lower() for x in ["precio", "valor", "monto", "pmp"])]]
+        
         cols = df_pdf.columns; w = 190 / len(cols)
         for col in cols: pdf.cell(w, 8, str(col).upper(), border=1, align="C")
         pdf.ln(); pdf.set_font("Helvetica", "", 7); total_acum = 0
@@ -100,7 +102,7 @@ def generar_pdf_blob(df, titulo, incluir_precios=True):
                     try: total_acum += float(item)
                     except: pass
                 if any(x in col_name for x in ["cantidad", "stock", "litros"]): val = f_decimal(item)
-                elif any(x in col_name for x in ["monto", "total", "precio", "valor"]): val = f_puntos(item)
+                elif any(x in col_name for x in ["monto", "total", "precio", "valor", "pmp"]): val = f_puntos(item)
                 else: val = str(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
@@ -195,15 +197,19 @@ def modulo_dashboard():
     col1, col2 = st.columns([1.6, 1])
     with col1:
         st.subheader("💰 Resumen Costos Netos por Cuartel")
+        # CONSULTA CORREGIDA V10.8.48: Ignora facturas "Padres" para evitar duplicados en Ciruelos/Nogales
         query_cc = """SELECT UPPER(TRIM(centro_costo)) as cc, SUM(monto_imputado) as total_neto 
-                      FROM (SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' 
-                      UNION ALL SELECT centro_costo, monto_imputado FROM facturas WHERE nro_documento LIKE '%_P' 
-                      UNION ALL SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida') 
-                      WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"""
+                      FROM (
+                        SELECT centro_costo, valor_imputado as monto_imputado FROM movimientos WHERE tipo LIKE 'Salida%' 
+                        UNION ALL 
+                        SELECT centro_costo, monto_imputado FROM facturas WHERE nro_documento LIKE '%_P'
+                        UNION ALL 
+                        SELECT centro_costo, valor_imputado as monto_imputado FROM petroleo WHERE tipo = 'Salida'
+                      ) WHERE cc IS NOT NULL AND cc != '' GROUP BY cc"""
         df_c = pd.read_sql_query(query_cc, conn)
         if not df_c.empty: st.dataframe(df_c.style.format({"total_neto": "${:,.0f}"}), use_container_width=True)
     with col2:
-        st.subheader("📅 Vencimientos 4 Meses")
+        st.subheader("📅 Vencimientos Proyectados")
         meses_n = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
         for i in range(4):
             f_p = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
@@ -241,10 +247,7 @@ def modulo_petroleo():
         st.dataframe(df_p.style.format({"litros": "{:,.2f}"}), use_container_width=True)
         st.download_button("📥 PDF Historial", generar_pdf_blob(df_p.drop(columns=['id']), "HISTORIAL PETROLEO"), "petroleo.pdf")
         col_m1, col_m2 = st.columns(2); id_p = col_m1.selectbox("ID a gestionar", df_p['id']); cl = col_m2.text_input("Clave Maestra", type="password", key="p_cl")
-        b1, b2 = st.columns(2)
-        if b1.button("✏️ MODIFICAR"):
-            if cl == CLAVE_MAESTRA: registrar_accion("MODIFICAR PETROLEO", f"ID {id_p}")
-        if b2.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
+        if st.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
             conn.execute("DELETE FROM petroleo WHERE id=?", (id_p,))
             conn.commit(); registrar_accion("ELIMINAR PETROLEO", f"ID {id_p}"); guardar_en_drive(); st.rerun()
     conn.close()
@@ -314,13 +317,15 @@ def modulo_tesoreria():
             conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, hoy, id_pay))
             conn.commit(); registrar_accion("PAGO", f"Factura ID {id_pay}"); guardar_en_drive(); st.rerun()
     with tp2:
-        pr = st.selectbox("Proveedor", pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente'", conn)['proveedor'])
-        df_pr = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{pr}' AND estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
-        st.dataframe(df_pr.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
-        st.download_button(f"📥 PDF Deuda {pr}", generar_pdf_blob(df_pr, f"DEUDA {pr}"), f"deuda_{pr}.pdf")
+        df_provs = pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente' AND monto_total > 0", conn)
+        if not df_provs.empty:
+            pr = st.selectbox("Seleccione Proveedor", df_provs['proveedor'])
+            df_pr = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{pr}' AND estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
+            st.dataframe(df_pr.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
+            st.download_button(f"📥 PDF Deuda {pr}", generar_pdf_blob(df_pr, f"DEUDA {pr}"), f"deuda_{pr}.pdf")
     conn.close()
 
-# --- 11. MÓDULO BODEGA (v10.8.47 - GESTION MOD/ELIMINA) ---
+# --- 11. MÓDULO BODEGA ---
 def modulo_bodega():
     st.header("🚜 Gestión de Bodega")
     tb1, tb2, tb3, tb4 = st.tabs(["📊 Stock Actual", "🔄 Salida Insumos", "➕ Nuevo Registro", "🔍 Historial CC"]); conn = conectar_db()
@@ -328,6 +333,13 @@ def modulo_bodega():
         df_s = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario", conn)
         st.dataframe(df_s.drop(columns=['id']).style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
         
+        # --- DOBLE PDF BODEGA V10.8.48 ---
+        c_p1, c_p2 = st.columns(2)
+        with c_p1:
+            st.download_button("📥 PDF Admin (Valorizado)", generar_pdf_blob(df_s.drop(columns=['id']), "INVENTARIO VALORIZADO - ADMIN", True), "stock_admin.pdf")
+        with c_p2:
+            st.download_button("📥 PDF Campo (Sin Precios)", generar_pdf_blob(df_s.drop(columns=['id']), "LISTADO DE STOCK - CAMPO", False), "stock_trabajador.pdf")
+
         st.divider(); st.subheader("🛠️ Gestión de Insumos")
         id_g = st.selectbox("ID de Insumo", df_s['id'])
         item = df_s[df_s['id']==id_g].iloc[0]
@@ -335,21 +347,14 @@ def modulo_bodega():
         n_nom = c1.text_input("Nombre Producto", item['producto'])
         n_st = c2.number_input("Ajuste de Stock", value=float(item['stock']))
         cl = st.text_input("Clave Maestra", type="password", key="cl_bod")
-        
         col_b1, col_b2 = st.columns(2)
         if col_b1.button("✏️ MODIFICAR INSUMO") and cl == CLAVE_MAESTRA:
             conn.execute("UPDATE inventario SET producto=?, stock=? WHERE id=?", (n_nom, n_st, id_g))
-            conn.commit(); registrar_accion("MODIFICACION BODEGA", f"Insumo ID {id_g} a {n_nom} (Stock: {n_st})")
+            conn.commit(); registrar_accion("MODIFICACION BODEGA", f"Insumo ID {id_g} a {n_nom}")
             guardar_en_drive(); st.rerun()
-            
-        if col_b2.button("🗑️ ELIMINAR DEFINITIVAMENTE") and cl == CLAVE_MAESTRA:
-            check_mov = conn.execute("SELECT COUNT(*) FROM movimientos WHERE producto_id=?", (id_g,)).fetchone()[0]
-            if check_mov > 0:
-                st.warning(f"⚠️ Este producto tiene {check_mov} salidas a cuarteles. Si lo borras, se perderá la trazabilidad histórica de costos.")
-                if st.button("ENTIENDO, BORRAR DE TODOS MODOS"):
-                    conn.execute("DELETE FROM inventario WHERE id=?", (id_g,))
-                    conn.commit(); registrar_accion("ELIMINACION CRITICA BODEGA", f"Insumo {item['producto']} borrado con movimientos")
-                    guardar_en_drive(); st.rerun()
+        if col_b2.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
+            check = conn.execute("SELECT COUNT(*) FROM movimientos WHERE producto_id=?", (id_g,)).fetchone()[0]
+            if check > 0: st.error(f"No se puede eliminar: tiene {check} consumos registrados en cuarteles.")
             else:
                 conn.execute("DELETE FROM inventario WHERE id=?", (id_g,))
                 conn.commit(); registrar_accion("ELIMINACION BODEGA", f"Insumo {item['producto']} borrado")
@@ -379,10 +384,11 @@ def modulo_bodega():
         st.dataframe(pd.read_sql_query(f"SELECT m.fecha, i.producto, m.tipo, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{cc_s.upper()}' ORDER BY m.fecha DESC", conn), use_container_width=True)
     conn.close()
 
-# --- 12. MÓDULO COSTOS (v10.8.47 - REPARADO) ---
+# --- 12. MÓDULO COSTOS (v10.8.48 - REPARACIÓN FINAL) ---
 def modulo_costos():
     st.header("💰 Informe Resolidado de Costos")
     conn = conectar_db()
+    # REPARACIÓN: Solo suma facturas con _P para evitar duplicidad de Ciruelos/Nogales
     query_total = """SELECT UPPER(TRIM(centro_costo)) as cc, 
         SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
         SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -398,7 +404,7 @@ def modulo_costos():
     df_r = pd.read_sql_query(query_total, conn)
     if not df_r.empty:
         st.dataframe(df_r.style.format({"Insumos": "${:,.0f}","Gastos": "${:,.0f}","Combustible": "${:,.0f}","Total": "${:,.0f}"}), use_container_width=True)
-    else: st.info("No hay datos de costos imputados aún.")
+    else: st.info("Sin datos.")
     conn.close()
 
 def modulo_seguridad():
@@ -414,7 +420,7 @@ def modulo_seguridad():
     conn.close()
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.47", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.48", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
