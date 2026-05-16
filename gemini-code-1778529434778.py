@@ -26,7 +26,7 @@ def hash_password(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def registrar_accion(accion, detalle):
-    """Guarda movimiento en la bitácora de auditoría (v10.8.44)"""
+    """Guarda movimiento en la bitácora de auditoría (v10.8.45)"""
     user = st.session_state.get('email', 'Desconocido')
     fecha = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
@@ -242,11 +242,7 @@ def modulo_petroleo():
         st.dataframe(df_p.style.format({"litros": "{:,.2f}"}), use_container_width=True)
         st.download_button("📥 PDF Historial", generar_pdf_blob(df_p.drop(columns=['id']), "HISTORIAL PETROLEO"), "petroleo.pdf")
         col_m1, col_m2 = st.columns(2); id_p = col_m1.selectbox("ID a gestionar", df_p['id']); cl = col_m2.text_input("Clave Maestra", type="password", key="p_cl")
-        b1, b2 = st.columns(2)
-        if b1.button("✏️ MODIFICAR") and cl == CLAVE_MAESTRA:
-             registrar_accion("MODIFICAR PETROLEO", f"ID {id_p}")
-             st.info("Modificación habilitada.")
-        if b2.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
+        if st.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
             conn.execute("DELETE FROM petroleo WHERE id=?", (id_p,))
             conn.commit(); registrar_accion("ELIMINAR PETROLEO", f"ID {id_p}"); guardar_en_drive(); st.rerun()
     conn.close()
@@ -296,12 +292,13 @@ def modulo_compras():
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
         st.download_button("📥 PDF Historial", generar_pdf_blob(df_h.drop(columns=['id']), f"HISTORIAL {d1}-{d2}"), "historial.pdf")
         id_e = st.selectbox("ID factura", df_h['id']); cl = st.text_input("Master", type="password", key="cl_h")
-        if st.button("🗑️ ELIMINAR") and cl == CLAVE_MAESTRA:
-            conn.execute("DELETE FROM facturas WHERE id=? OR nro_documento LIKE ?", (id_e, f"%{id_e}%_P"))
-            conn.commit(); registrar_accion("ELIMINAR FACTURA", f"ID {id_e}"); guardar_en_drive(); st.rerun()
+        if st.button("🗑️ ELIMINAR"):
+            if cl == CLAVE_MAESTRA:
+                conn.execute("DELETE FROM facturas WHERE id=? OR nro_documento LIKE ?", (id_e, f"%{id_e}%_P"))
+                conn.commit(); registrar_accion("ELIMINAR FACTURA", f"ID {id_e}"); guardar_en_drive(); st.rerun()
     conn.close()
 
-# --- 10. MÓDULO TESORERÍA (v10.8.44 - RESALTE ROJO VENCIDOS) ---
+# --- 10. MÓDULO TESORERÍA (RESALTE ROJO VENCIDOS) ---
 def modulo_tesoreria():
     st.header("💸 Cuentas por Pagar")
     tp1, tp2 = st.tabs(["🔴 Pendientes", "🏢 Por Proveedor"]); conn = conectar_db()
@@ -309,20 +306,17 @@ def modulo_tesoreria():
         df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0 ORDER BY fecha_vencimiento ASC", conn)
         st.info(f"### DEUDA PENDIENTE: ${f_puntos(df_p['monto_total'].sum())}")
         
-        # --- FUNCIÓN PARA RESALTAR VENCIDOS ---
         def resalte_vencidos(row):
             f_vence = pd.to_datetime(row['fecha_vencimiento']).date()
-            if f_vence < hoy:
-                return ['background-color: #ffcccc'] * len(row)
+            if f_vence < hoy: return ['background-color: #ffcccc'] * len(row)
             return [''] * len(row)
             
         st.dataframe(df_p.style.apply(resalte_vencidos, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
-        
         st.download_button("📥 PDF Deuda General", generar_pdf_blob(df_p.drop(columns=['id']), "LISTADO PENDIENTES"), "pendientes.pdf")
         id_pay = st.selectbox("ID a Pagar", df_p['id']); met = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"])
         if st.button("💰 MARCAR COMO PAGADO"):
             conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, hoy, id_pay))
-            conn.commit(); registrar_accion("PAGO", f"Factura ID {id_pay} pagada por {met}"); guardar_en_drive(); st.rerun()
+            conn.commit(); registrar_accion("PAGO", f"Factura ID {id_pay}"); guardar_en_drive(); st.rerun()
     with tp2:
         df_provs = pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente' AND monto_total > 0", conn)
         if not df_provs.empty:
@@ -373,22 +367,21 @@ def modulo_seguridad():
     with t1:
         df_b = pd.read_sql_query("SELECT * FROM bitacora ORDER BY id DESC", conn)
         st.dataframe(df_b, use_container_width=True)
-        st.download_button("📥 Bitácora CSV", df_b.to_csv(index=False), "auditoria.csv")
     with t2:
         df_a = pd.read_sql_query("SELECT * FROM log_accesos ORDER BY id DESC", conn)
         st.dataframe(df_a, use_container_width=True)
     conn.close()
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.44", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.45", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
 else:
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
     with st.sidebar:
-        st.title("MENÚ ERP")
-        # ESTADO CONECTADO (Sidebar - Debajo del Título)
+        st.title("ERP LA CONCEPCIÓN")
+        st.markdown("<h4 style='margin-top:-20px;'>MENÚ</h4>", unsafe_allow_html=True)
         st.markdown("<span style='color:green; font-weight:bold;'>🟢 CONECTADO</span>", unsafe_allow_html=True)
         st.divider()
         modulos = ["🏠 Dashboard", "⛽ PETRÓLEO", "📦 Compras", "💸 Tesorería", "🚜 Bodega", "💰 COSTOS"]
