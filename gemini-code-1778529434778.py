@@ -26,7 +26,7 @@ def hash_password(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def registrar_accion(accion, detalle):
-    """Guarda movimiento en la bitácora de auditoría (v10.8.43)"""
+    """Guarda movimiento en la bitácora de auditoría (v10.8.44)"""
     user = st.session_state.get('email', 'Desconocido')
     fecha = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
@@ -301,23 +301,35 @@ def modulo_compras():
             conn.commit(); registrar_accion("ELIMINAR FACTURA", f"ID {id_e}"); guardar_en_drive(); st.rerun()
     conn.close()
 
-# --- 10. MÓDULO TESORERÍA ---
+# --- 10. MÓDULO TESORERÍA (v10.8.44 - RESALTE ROJO VENCIDOS) ---
 def modulo_tesoreria():
     st.header("💸 Cuentas por Pagar")
-    tp1, tp2 = st.tabs(["🔴 Pendientes", "🏢 Proveedor"]); conn = conectar_db()
+    tp1, tp2 = st.tabs(["🔴 Pendientes", "🏢 Por Proveedor"]); conn = conectar_db()
     with tp1:
         df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0 ORDER BY fecha_vencimiento ASC", conn)
         st.info(f"### DEUDA PENDIENTE: ${f_puntos(df_p['monto_total'].sum())}")
-        st.dataframe(df_p.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
+        
+        # --- FUNCIÓN PARA RESALTAR VENCIDOS ---
+        def resalte_vencidos(row):
+            f_vence = pd.to_datetime(row['fecha_vencimiento']).date()
+            if f_vence < hoy:
+                return ['background-color: #ffcccc'] * len(row)
+            return [''] * len(row)
+            
+        st.dataframe(df_p.style.apply(resalte_vencidos, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
+        
+        st.download_button("📥 PDF Deuda General", generar_pdf_blob(df_p.drop(columns=['id']), "LISTADO PENDIENTES"), "pendientes.pdf")
         id_pay = st.selectbox("ID a Pagar", df_p['id']); met = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"])
         if st.button("💰 MARCAR COMO PAGADO"):
             conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (met, hoy, id_pay))
-            conn.commit(); registrar_accion("PAGO", f"Factura ID {id_pay}"); guardar_en_drive(); st.rerun()
+            conn.commit(); registrar_accion("PAGO", f"Factura ID {id_pay} pagada por {met}"); guardar_en_drive(); st.rerun()
     with tp2:
-        pr = st.selectbox("Seleccione Proveedor", pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente'", conn)['proveedor'])
-        df_pr = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{pr}' AND estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
-        st.dataframe(df_pr.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
-        st.download_button(f"📥 PDF Deuda {pr}", generar_pdf_blob(df_pr, f"DEUDA {pr}"), f"deuda_{pr}.pdf")
+        df_provs = pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente' AND monto_total > 0", conn)
+        if not df_provs.empty:
+            pr = st.selectbox("Seleccione Proveedor", df_provs['proveedor'])
+            df_pr = pd.read_sql_query(f"SELECT nro_documento, fecha_vencimiento, monto_total FROM facturas WHERE proveedor='{pr}' AND estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
+            st.dataframe(df_pr.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
+            st.download_button(f"📥 PDF Deuda {pr}", generar_pdf_blob(df_pr, f"DEUDA {pr}"), f"deuda_{pr}.pdf")
     conn.close()
 
 # --- 11. MÓDULO BODEGA ---
@@ -368,7 +380,7 @@ def modulo_seguridad():
     conn.close()
 
 # --- NAVEGACIÓN ---
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.42", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.44", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: login_page()
@@ -376,7 +388,7 @@ else:
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
     with st.sidebar:
         st.title("MENÚ ERP")
-        # ESTADO CONECTADO (Sidebar)
+        # ESTADO CONECTADO (Sidebar - Debajo del Título)
         st.markdown("<span style='color:green; font-weight:bold;'>🟢 CONECTADO</span>", unsafe_allow_html=True)
         st.divider()
         modulos = ["🏠 Dashboard", "⛽ PETRÓLEO", "📦 Compras", "💸 Tesorería", "🚜 Bodega", "💰 COSTOS"]
