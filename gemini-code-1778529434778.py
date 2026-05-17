@@ -40,7 +40,7 @@ DATA_ESP_HISTORICA = [
     ('2026-03-10', '23648', 'Soc. Los Olivos Pernos Hex', 16950), ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960),
     ('2026-03-09', '7826141', 'Ferretería codo hidráulico', 5750), ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942),
     ('2026-03-03', '2237580', 'Coagra Urea granulada', 198417), ('2026-03-06', '6966966', 'Electrocom Contractor', 220326),
-    ('2026-03-09', '349613', 'Equipos Riego Sonda nivel', 77571), ('2026-03-09', '54846', 'Autosystem Cable libre halógeno', 45346),
+    ('2026-03-09', '349613', 'Equipos Riego SPA Sonda nivel', 77571), ('2026-03-09', '54846', 'Autosystem Cable libre halógeno', 45346),
     ('2026-03-10', 'S/N', 'Alejandra Leviman', 112500), ('2026-03-10', '6854929', 'Electrocom Cable RV-K', 100399),
     ('2026-03-30', 'S/N', 'Carlos Zavala Sueldo Marzo', 620000), ('2026-03-18', 'CGE', 'Consumo Eléctrico', 309600),
     ('2026-03-14', '6991256', 'Electrocom Rele térmico', 27839), ('2026-03-15', 'S/N', 'Alejandra Leviman', 125000),
@@ -56,7 +56,7 @@ DATA_ESP_HISTORICA = [
     ('2026-05-15', '19509', 'Sendai Datalogger', 58362), ('2026-05-17', 'S/N', 'Arriendo María Paola Torrez', 7000000)
 ]
 
-# --- 2. MOTOR DE BASE DE DATOS Y UTILIDADES ---
+# --- 2. FUNCIONES DE APOYO ---
 
 def conectar_db():
     return sqlite3.connect(NOMBRE_DB)
@@ -100,19 +100,19 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS ajustes_costos (id INTEGER PRIMARY KEY AUTOINCREMENT, centro_costo TEXT, monto REAL, fecha DATE, motivo TEXT)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
     
-    # Inserción de Usuarios
+    # Usuarios base
     usuarios = [('osvaldolira@laconcepcion.cl', hash_password('9083')), ('secretaria@laconcepcion.cl', hash_password('9111'))]
     for u, p in usuarios:
         cursor.execute("INSERT OR IGNORE INTO usuarios (email, password) VALUES (?,?)", (u, p))
 
-    # Inyección de datos El Espino corregida
+    # Inyección de datos masiva El Espino
     cursor.execute("SELECT COUNT(*) FROM gastos_espino")
     if cursor.fetchone()[0] == 0:
         cursor.executemany("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", DATA_ESP_HISTORICA)
     
     conn.commit(); conn.close(); sanear_y_recalcular()
 
-# --- 3. GOOGLE DRIVE Y PDF ENGINE ---
+# --- 3. GOOGLE DRIVE Y MOTOR PDF ---
 
 def obtener_drive():
     try:
@@ -150,11 +150,10 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
         
         t_sum = total_manual
         if t_sum is None:
-            cols_dinero = ["monto", "total", "monto_total", "valor_imputado"]
+            cols_money = ["monto", "total", "monto_total", "valor_imputado"]
             for c in df_p.columns:
-                if any(x in c.lower() for x in cols_dinero):
-                    t_sum = df_p[c].sum()
-                    break
+                if any(x in c.lower() for x in cols_money):
+                    t_sum = df_p[c].sum(); break
 
         if modo_petroleo:
             df_p = df_p.drop(columns=[c for c in df_p.columns if any(x in c.lower() for x in ["imputado", "valor", "monto", "precio"])])
@@ -170,11 +169,10 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
         if incluir_precios and t_sum is not None:
-            pdf.set_font("Helvetica", "B", 9); pdf.cell(w*(len(cols)-1), 8, "TOTAL:", border=1, align="R")
+            pdf.set_font("Helvetica", "B", 9); pdf.cell(w*(len(cols)-1), 8, "TOTAL FINAL:", border=1, align="R")
             pdf.cell(w, 8, f"${f_puntos(t_sum)}", border=1, align="L")
         return pdf.output(dest="S").encode("latin-1")
-    except Exception as e:
-        return None
+    except Exception as e: return None
 
 def inyectar_css():
     st.markdown("""<style>
@@ -189,7 +187,7 @@ def inyectar_css():
     if st.session_state.get('logged_in') and st.session_state.get('email') != 'osvaldolira@laconcepcion.cl':
         st.markdown("<style>header {visibility: hidden;} #MainMenu {visibility: hidden;} footer {visibility: hidden;} .stDeployButton {display:none;}</style>", unsafe_allow_html=True)
 
-# --- 4. MÓDULOS ---
+# --- 4. MÓDULOS DEL SISTEMA ---
 
 def modulo_dashboard():
     st.markdown("<h1 style='text-align: center; color: #1B5E20;'>🚜 DASHBOARD PRINCIPAL</h1>", unsafe_allow_html=True)
@@ -312,8 +310,6 @@ def modulo_espino():
     t1, t2 = st.tabs(["➕ Registro", "📜 Historial"])
     conn = conectar_db()
     with t1:
-        df_anual = pd.read_sql_query(f"SELECT SUM(monto) as total FROM gastos_espino WHERE strftime('%Y', fecha) = '{hoy.year}'", conn)
-        st.markdown(f"#### 📅 Registro Año {hoy.year}")
         with st.form("esp_f"):
             f, d, it, mt = st.date_input("Fecha", hoy), st.text_input("Doc/Prov"), st.text_input("Descripción"), st.number_input("Monto ($)", 0.0)
             if st.form_submit_button("💾 GUARDAR GASTO"):
@@ -374,8 +370,8 @@ def modulo_bodega():
                 conn.execute("UPDATE inventario SET producto=?, stock=? WHERE id=?", (n_nom, round(n_st, 2), id_b)); conn.commit(); st.rerun()
     with t2:
         df_i = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn)
-        ps = st.selectbox("Insumo", df_i['id'].astype(str) + " - " + df_i['producto'])
-        ct = st.number_input("Cantidad", 0.0); ccs = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"mb_{cc}")]
+        ps = st.selectbox("Insumo", df_i['id'].astype(str) + " - " + df_i['producto']); ct = st.number_input("Cantidad", 0.0)
+        ccs = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"mb_{cc}")]
         if st.button("REGISTRAR SALIDA"):
             iid = int(ps.split(" - ")[0]); pmp = df_i[df_i['id']==iid]['precio_medio'].iloc[0]
             if ct > 0 and ccs:
@@ -383,15 +379,14 @@ def modulo_bodega():
                 conn.execute("UPDATE inventario SET stock = stock - ? WHERE id = ?", (round(ct, 2), iid)); conn.commit(); st.rerun()
     with t3:
         with st.form("ni"):
-            np = st.text_input("Nombre"); nf = st.selectbox("Familia", FAMILIAS_PRODUCTOS)
-            ns = st.number_input("Stock Inicial", 0.0); npr = st.number_input("PMP Neto", 0.0)
+            np = st.text_input("Nombre"); nf = st.selectbox("Familia", FAMILIAS_PRODUCTOS); ns = st.number_input("Stock Inicial", 0.0); npr = st.number_input("PMP Neto", 0.0)
             if st.form_submit_button("➕ CREAR"):
                 conn.execute("INSERT INTO inventario (producto, familia, stock, precio_medio) VALUES (?,?,?,?)", (np, nf, ns, npr)); conn.commit(); st.rerun()
     with t4:
         cc_q = st.selectbox("Cuartel", CENTROS_COSTO)
         df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{cc_q.upper()}' ORDER BY m.fecha DESC", conn)
         st.dataframe(df_cc.style.format({"cantidad": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
-        st.download_button("📥 PDF Movimientos", generar_pdf_blob(df_cc, f"MOVIMIENTOS EN {cc_q}"), "cc.pdf")
+        st.download_button(f"📥 PDF {cc_q}", generar_pdf_blob(df_cc, f"MOVIMIENTOS EN {cc_q}"), "cc.pdf")
     conn.close()
 
 def modulo_costos():
@@ -411,8 +406,7 @@ def modulo_costos():
             with st.form("aj"):
                 cc_a, m_a, mo = st.selectbox("CC", CENTROS_COSTO), st.number_input("Monto"), st.text_input("Motivo")
                 if st.form_submit_button("APLICAR"):
-                    conn.execute("INSERT INTO ajustes_costos (centro_costo, monto, fecha, motivo) VALUES (?,?,?,?)", (cc_a.upper(), m_a, hoy, mo))
-                    conn.commit(); st.rerun()
+                    conn.execute("INSERT INTO ajustes_costos (centro_costo, monto, fecha, motivo) VALUES (?,?,?,?)", (cc_a.upper(), m_a, hoy, mo)); conn.commit(); st.rerun()
     conn.close()
 
 def modulo_seguridad():
@@ -420,14 +414,12 @@ def modulo_seguridad():
     t1, t2 = st.tabs(["📜 Bitácora", "🔑 Accesos"])
     conn = conectar_db()
     with t1:
-        df_b = pd.read_sql_query("SELECT * FROM bitacora ORDER BY id DESC", conn)
-        st.dataframe(df_b, use_container_width=True)
+        df_b = pd.read_sql_query("SELECT * FROM bitacora ORDER BY id DESC", conn); st.dataframe(df_b, use_container_width=True)
     with t2:
-        df_a = pd.read_sql_query("SELECT * FROM log_accesos ORDER BY id DESC", conn)
-        st.dataframe(df_a, use_container_width=True)
+        df_a = pd.read_sql_query("SELECT * FROM log_accesos ORDER BY id DESC", conn); st.dataframe(df_a, use_container_width=True)
     conn.close()
 
-# --- 5. NAVEGACIÓN Y LOGIN ---
+# --- 5. LOGIN Y NAVEGACIÓN ---
 
 def login_page():
     inyectar_css()
@@ -445,7 +437,7 @@ def login_page():
                     st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Denegado")
 
-st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.89", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.90", layout="wide")
 inicializar_db()
 
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
@@ -455,8 +447,9 @@ else:
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
     inyectar_css()
     with st.sidebar:
-        st.title("MENÚ ERP")
-        st.markdown("<span style='color:green;'>🟢 CONECTADO</span>", unsafe_allow_html=True)
+        st.markdown("## 🚜 ERP AGRICOLA LA CONCEPCIÓN")
+        st.markdown("<span style='color:green;'>🟢 SISTEMA CONECTADO</span>", unsafe_allow_html=True)
+        st.divider()
         m_opts = { "🏠 DASHBOARD": "DASHBOARD", "⛽ Petróleo": "Petróleo", "📦 Compras": "Compras", "💸 Tesorería": "Tesorería", "🏠 Bodega": "Bodega", "🏡 El Espino": "Espino", "💰 Costos": "Costos" }
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl': m_opts["🕵️ Seguridad"] = "Seguridad"
         menu = m_opts[st.radio("Navegación", list(m_opts.keys()))]
