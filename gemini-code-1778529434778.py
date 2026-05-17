@@ -9,7 +9,7 @@ from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- 1. CONFIGURACIÓN Y CONSTANTES ---
+# --- 1. CONFIGURACIÓN, CONSTANTES Y ESTADOS ---
 ID_CARPETA_DRIVE = "12tjxWa_RVRP5YuYd2sypjBO8bPuyMqo6" 
 NOMBRE_DB = 'erp_concepcion_v6.db'
 CLAVE_MAESTRA = "2908" 
@@ -47,6 +47,7 @@ def registrar_accion(accion, detalle):
 def sanear_y_recalcular():
     try:
         conn = conectar_db()
+        # Elimina duplicados de prorrateo si la factura origen no existe
         conn.execute("DELETE FROM facturas WHERE nro_documento LIKE '%_P' AND REPLACE(nro_documento, '_P', '') NOT IN (SELECT nro_documento FROM facturas WHERE nro_documento NOT LIKE '%_P')")
         conn.commit(); conn.close()
     except: pass
@@ -63,49 +64,53 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS ajustes_costos (id INTEGER PRIMARY KEY AUTOINCREMENT, centro_costo TEXT, monto REAL, fecha DATE, motivo TEXT)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
     
+    # Usuarios por defecto
     usuarios = [('osvaldolira@laconcepcion.cl', hash_password('9083')), ('secretaria@laconcepcion.cl', hash_password('9111'))]
     for u, p in usuarios:
         cursor.execute("INSERT OR IGNORE INTO usuarios (email, password) VALUES (?,?)", (u, p))
 
+    # --- INYECCIÓN MASIVA DE DATOS EL ESPINO ---
     cursor.execute("SELECT COUNT(*) FROM gastos_espino")
     if cursor.fetchone()[0] == 0:
         datos_ex = [
             ('2025-11-12', '719', 'Alisud Auditoria GG', 1094530), ('2025-12-12', 'S/N', 'Carlos Zavala Anticipo', 0),
             ('2025-12-20', 'S/N', 'Alejandra Leviman', 150000), ('2025-12-20', 'S/N', 'Duilio Pruzzo Diferencia Gastos', 6051696),
             ('2025-12-20', 'S/N', 'Carlos Zavala Aguinaldo', 100000), ('2025-12-20', 'S/N', 'Alejandra Levimar Aguinaldo', 100000),
-            ('2025-12-24', 'S/N', 'Duilio Pruzzo Reembolso Impuesto', 178083), ('2025-12-27', 'S/N', 'Alejandra Leviman', 125000),
-            ('2025-12-29', 'S/N', 'Carlos Zavala Sueldo', 620000), ('2026-01-02', '2217085', 'Podastick Max / Konan', 146757),
+            ('2025-12-24', 'S/N', 'Duilio Pruzzo Reembolso Impuesto El Espino', 178083), ('2025-12-27', 'S/N', 'Alejandra Leviman', 125000),
+            ('2025-12-29', 'S/N', 'Carlos Zavala Sueldo', 620000), ('2026-01-02', '2217085', 'Podastick Max 3.8 L, Konan 240 SC 1L', 146757),
             ('2026-01-03', 'S/N', 'Alejandra Leviman', 259257), ('2026-01-06', 'S/N', 'Duilio Pruzzo', 256100),
-            ('2026-01-10', 'S/N', 'Alejandra Leviman', 137500), ('2026-01-13', 'Coagra', 'Productos agro', 196493),
-            ('2026-01-14', 'S/N', 'Carlos Lira V. Reembolso CZ', 140556), ('2026-01-17', 'S/N', 'Danixa Amaza', 25000),
-            ('2026-01-17', 'S/N', 'Alejandra Leviman', 137500), ('2026-01-20', '6323030', 'Podastik Max', 28575),
-            ('2026-01-20', '349898', 'Serrucho Podar', 8328), ('2026-01-25', 'S/N', 'Danixa Aplicación arañita', 50000),
-            ('2026-01-26', '2224579', 'Konan 240 SC', 79183), ('2026-01-28', '2225756', 'Konan / Acaban SC', 232576),
+            ('2026-01-10', 'S/N', 'Alejandra Leviman', 137500), ('2026-01-14', 'S/N', 'Carlos Lira V. Reembolso Imposiciones CZ', 140556),
+            ('2026-01-13', 'Coagra', 'Productos del agro', 196493), ('2026-01-17', 'S/N', 'Danixa Amaza', 25000),
+            ('2026-01-17', 'S/N', 'Alejandra Leviman', 137500), ('2026-01-20', '6323030', 'Podastik Max fitosanitarios', 28575),
+            ('2026-01-20', '349898', 'Serrucho Podar c/gancho', 8328), ('2026-01-25', 'S/N', 'Danixa Amaza Aplicación contra la arañita', 50000),
+            ('2026-01-26', '2224579', 'Konan 240 SC 1lt', 79183), ('2026-01-28', '2225756', 'Konan 240 SC 1lt y Acaban SC 1lt', 232576),
             ('2026-01-30', 'S/N', 'Carlos Zavala', 620000), ('2026-02-05', 'S/N', 'Danixa Amaza', 50000),
             ('2026-02-10', 'S/N', 'Carlos Zavala Imposiciones', 143483), ('2026-02-11', 'GD', 'Coagra Acaban 1lt', 89969),
             ('2026-02-12', 'S/N', 'Caceres M SPA', 1532084), ('2026-02-19', '13785', 'FerreMás Pala', 10690),
-            ('2026-03-02', '14895', 'Marcelo Caro Pernos', 11500), ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942),
-            ('2026-03-03', '2237580', 'Coagra Urea 25k', 198417), ('2026-03-06', '6966966', 'Electrocom Contractor', 220326),
-            ('2026-03-09', '7826141', 'Codo hidráulico 75mm', 5750), ('2026-03-09', '349613', 'Equipos Riego Sonda', 77571),
-            ('2026-03-09', '54846', 'Autosystem Cable libre', 45346), ('2026-03-10', '23648', 'Los Olivos Perno Hex', 16950),
-            ('2026-03-10', '6854929', 'Electrocom CableRV-K', 100399), ('2026-03-10', 'S/N', 'Alejandra Leviman', 112500),
-            ('2026-03-11', 'S/N', 'Gustavo Contador', 315000), ('2026-03-11', '349905', 'Motor sumergible 4"', 167171),
-            ('2026-03-11', '1427603', 'Vitel Cable reviflex', 108469), ('2026-03-11', '6954495', 'Electrocom Tubo', 27703),
-            ('2026-03-11', 'S/N', 'Imposiciones CZ feb', 143483), ('2026-03-11', 'S/N', 'Carlos Lira V.', 243882),
-            ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960), ('2026-03-12', 'S/N', 'Juan Zuñiga Pozo', 4830000),
-            ('2026-03-13', 'S/N', 'Héctor Zura', 300000), ('2026-03-14', '6991256', 'Electrocom Rele térmico', 27839),
-            ('2026-03-15', 'S/N', 'Alejandra Leviman', 125000), ('2026-03-18', 'CGE', 'Consumo Energía', 309600),
-            ('2026-03-30', 'S/N', 'Carlos Zavala Sueldo', 620000), ('2026-04-02', 'S/N', 'Alejandra Leviman sueldo', 112500),
-            ('2026-04-07', 'S/N', 'CGE feb y marzo', 924000), ('2026-04-10', 'S/N', 'CZ Imposiciones Marzo', 143483),
-            ('2026-04-13', '28803', 'Topagro Fascinate 150 SL', 143032), ('2026-04-17', '2248987', 'Coagra Sulfato zinc', 149190),
-            ('2026-04-17', 'S/N', 'Alejandra Leviman', 125000), ('2026-04-17', '7621', 'Fermaco Fumigador 16L', 37900),
-            ('2026-04-22', 'S/N', 'Duilio Pruzzo Saco urea', 28000), ('2026-04-30', 'S/N', 'Carlos Zavala Sueldo', 620000),
-            ('2026-04-30', 'S/N', 'Cáceres Heladas', 4545184), ('2026-05-08', 'BCI', 'Comisión tarjeta', 13368),
-            ('2026-05-12', 'S/N', 'CZ Imposiciones Abril', 143914), ('2026-05-15', '19509', 'Sendai Datalogger', 58362),
-            ('2026-05-17', 'S/N', 'María Paola Arriendo', 7000000)
+            ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500), ('2026-03-10', '23648', 'Soc. Los Olivos Pernos', 16950),
+            ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960), ('2026-03-09', '7826141', 'Ferretería codo hidráulico', 5750),
+            ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942), ('2026-03-03', '2237580', 'Coagra Urea granulada', 198417),
+            ('2026-03-06', '6966966', 'Electrocom Contractor', 220326), ('2026-03-09', '349613', 'Equipos Riego SPA Sonda', 77571),
+            ('2026-03-09', '54846', 'Autosystem Cable libre halógeno', 45346), ('2026-03-10', 'S/N', 'Alejandra Leviman', 112500),
+            ('2026-03-10', '6854929', 'Electrocom CableRV-K', 100399), ('2026-03-30', 'S/N', 'Carlos Zavala Sueldo Marzo', 620000),
+            ('2026-03-18', 'CGE', 'Consumo Eléctrico', 309600), ('2026-03-14', '6991256', 'Electrocom Rele térmico', 27839),
+            ('2026-03-15', 'S/N', 'Alejandra Leviman', 125000), ('2026-03-13', 'S/N', 'Héctor Zura', 300000),
+            ('2026-03-12', 'S/N', 'Juan Zuñiga Pozo', 4830000), ('2026-03-11', 'S/N', 'Punto Hidraulico Mufa', 29750),
+            ('2026-03-11', 'S/N', 'Gustavo Carreño Contador', 315000), ('2026-03-11', 'S/N', 'Carlos Lira V.', 243882),
+            ('2026-03-11', '349905', 'Motor sumergible 4"', 167171), ('2026-03-11', '1427603', 'Vitel Cable reviflex', 108469),
+            ('2026-03-11', '6954495', 'Electrocom Tubo curvable', 27703), ('2026-03-11', 'S/N', 'Imposiciones CZ feb', 143483),
+            ('2026-04-02', 'S/N', 'Alejandra Leviman sueldo', 112500), ('2026-04-07', 'S/N', 'CGE feb y marzo', 924000),
+            ('2026-04-13', '28803', 'Topagro Fascinate 150 SL', 143032), ('2026-04-10', 'S/N', 'CZ Imposiciones Marzo', 143483),
+            ('2026-04-17', '2248987', 'Coagra Sulfato zinc', 149190), ('2026-04-30', 'S/N', 'Carlos Zavala Sueldo', 620000),
+            ('2026-04-30', 'S/N', 'Cáceres M SPA Heladas', 4545184), ('2026-05-08', 'BCI', 'Comisión tarjeta', 13368),
+            ('2026-05-12', 'S/N', 'CZ Imposiciones Abril', 143914), ('2026-05-15', '19509', 'Importadora Sendai Datalogger', 58362),
+            ('2026-05-17', 'Arriendo', 'María Paola Torrez Ortiz', 7000000)
         ]
         cursor.executemany("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", datos_ex)
+    
     conn.commit(); conn.close(); sanear_y_recalcular()
+
+# --- 3. CONEXIÓN DRIVE Y PDF ---
 
 def obtener_drive():
     try:
@@ -124,7 +129,7 @@ def guardar_en_drive():
         lista = drive.ListFile({'q': query}).GetList()
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB); f.Upload()
-        st.success("✅ Datos sincronizados con Drive.")
+        st.success("✅ Respaldo Drive Actualizado.")
 
 def descargar_de_drive():
     drive = obtener_drive()
@@ -181,7 +186,7 @@ def inyectar_css():
     if st.session_state.get('logged_in') and st.session_state.get('email') != 'osvaldolira@laconcepcion.cl':
         st.markdown("<style>header {visibility: hidden;} #MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
-# --- 3. MÓDULOS DEL SISTEMA ---
+# --- 4. MÓDULOS ---
 
 def modulo_dashboard():
     st.markdown("<h1 style='text-align: center; color: #1B5E20;'>🚜 DASHBOARD PRINCIPAL</h1>", unsafe_allow_html=True)
@@ -193,12 +198,12 @@ def modulo_dashboard():
     
     m1, m2, m3, m4, m5 = st.columns(5)
     with m1: st.markdown(f"<div class='stMetric'><small>💰 DEUDA TOTAL</small><br><span class='metric-big'>${f_puntos(df_f['monto_total'].sum())}</span></div>", unsafe_allow_html=True)
-    p_dia = hoy.replace(day=1); d_critica = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < p_dia]['monto_total'].sum()
-    with m2: st.markdown(f"<div class='stMetric card-critico'><small>🔥 MESES ANTERIORES</small><br><span class='metric-red'>${f_puntos(d_critica)}</span><br><small style='color:red;'>CRÍTICO</small></div>", unsafe_allow_html=True)
+    p_dia = hoy.replace(day=1); d_crit = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < p_dia]['monto_total'].sum()
+    with m2: st.markdown(f"<div class='stMetric card-critico'><small>🔥 MESES ANTERIORES</small><br><span class='metric-red'>${f_puntos(d_crit)}</span></div>", unsafe_allow_html=True)
     v_count = len(df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy])
     with m3: st.markdown(f"<div class='stMetric card-vencida'><small>⚠️ VENCIDAS</small><br><span class='metric-blue'>{v_count}</span><br><small style='color:#1976d2;'>DOCUMENTOS</small></div>", unsafe_allow_html=True)
-    with m4: st.markdown(f"<div class='stMetric'><small>📄 PENDIENTES</small><br><span style='font-size:2rem; font-weight:600;'>{len(df_f)}</span><br><small>CARTERA</small></div>", unsafe_allow_html=True)
-    with m5: st.markdown(f"<div class='stMetric'><small>⛽ PETRÓLEO</small><br><span style='font-size:2rem; font-weight:600;'>{f_decimal(saldo_pet)}L</span><br><small>NETO</small></div>", unsafe_allow_html=True)
+    with m4: st.markdown(f"<div class='stMetric'><small>📄 PENDIENTES</small><br><span style='font-size:2rem; font-weight:600;'>{len(df_f)}</span></div>", unsafe_allow_html=True)
+    with m5: st.markdown(f"<div class='stMetric'><small>⛽ PETRÓLEO</small><br><span style='font-size:2rem; font-weight:600;'>{f_decimal(saldo_pet)}L</span></div>", unsafe_allow_html=True)
     
     st.divider(); c_izq, c_der = st.columns([1.6, 1])
     with c_izq:
@@ -222,7 +227,7 @@ def modulo_petroleo():
     with t1:
         with st.form("p_c"):
             l, mt, f = st.number_input("Litros", 0.0), st.number_input("Total Bruto ($)", 0.0), st.date_input("Fecha", hoy)
-            if st.form_submit_button("CARGAR"):
+            if st.form_submit_button("REGISTRAR CARGA"):
                 neto = (mt / 1.19) - (l * IMPUESTO_ESPECIFICO_LITRO)
                 conn.execute("INSERT INTO petroleo (tipo, litros, monto_total_compra, fecha) VALUES (?,?,?,?)", ("Carga", l, neto, f)); conn.commit(); guardar_en_drive(); st.rerun()
     with t2:
@@ -237,13 +242,13 @@ def modulo_petroleo():
     with t3:
         df = pd.read_sql_query("SELECT id, fecha, tipo, litros, vehiculo, responsable, centro_costo, valor_imputado FROM petroleo ORDER BY id DESC", conn)
         st.dataframe(df.style.format({"litros": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
-        st.download_button("📥 PDF Operativo", generar_pdf_blob(df, "HISTORIAL PETROLEO", modo_petroleo=True), "petroleo.pdf")
-        if st.button("🗑️ ELIMINAR") and st.text_input("Clave Maestro", type="password", key="cl_p") == CLAVE_MAESTRA:
+        st.download_button("📥 PDF Historial", generar_pdf_blob(df, "HISTORIAL PETROLEO", modo_petroleo=True), "petroleo.pdf")
+        if st.button("🗑️ ELIMINAR") and st.text_input("Clave Master", type="password", key="cl_p") == CLAVE_MAESTRA:
             id_p = st.selectbox("ID borrar", df['id']); conn.execute("DELETE FROM petroleo WHERE id=?", (id_p,)); conn.commit(); st.rerun()
     conn.close()
 
 def modulo_espino():
-    st.header("🏡 El Espino - Gestión de Gastos")
+    st.header("🏡 El Espino - Gestión")
     es_admin = (st.session_state.get('email') == 'osvaldolira@laconcepcion.cl')
     t1, t2 = st.tabs(["➕ Registro", "📜 Historial"]); conn = conectar_db()
     with t1:
@@ -260,19 +265,18 @@ def modulo_espino():
         f_ini = col1.date_input("Desde", f_min); f_fin = col2.date_input("Hasta", hoy)
         df_h = pd.read_sql_query(f"SELECT * FROM gastos_espino WHERE fecha BETWEEN '{f_ini}' AND '{f_fin}' ORDER BY fecha DESC", conn)
         
+        # MÉTRICA GASTO A LA FECHA (SUMATORIA DEL RANGO)
         st.markdown(f"<div class='stMetric' style='border-left-color:#1976d2;'><b>💰 GASTO EN ESTE PERÍODO ({f_ini} al {f_fin})</b><br><span style='font-size:1.8rem; color:#1976d2;'>${f_puntos(df_h['monto'].sum())}</span></div>", unsafe_allow_html=True)
         
         st.dataframe(df_h.style.format({"monto": "${:,.0f}"}), use_container_width=True)
-        st.download_button("📥 PDF El Espino", generar_pdf_blob(df_h.drop(columns=['id']), f"GASTOS EL ESPINO: {f_ini} / {f_fin}"), "espino.pdf")
+        st.download_button("📥 PDF El Espino", generar_pdf_blob(df_h.drop(columns=['id']), f"EL ESPINO: {f_ini} / {f_fin}"), "espino.pdf")
         if es_admin and not df_h.empty:
             st.divider(); id_e = st.selectbox("ID Editar", df_h['id'])
-            item_e = df_h[df_h['id']==id_e].iloc[0]
-            n_it = st.text_input("Nuevo Item", item_e['item']); n_mt = st.number_input("Nuevo Monto", value=float(item_e['monto']))
-            clv = st.text_input("Clave Master", type="password", key="cl_e")
-            c1, c2 = st.columns(2)
-            if c1.button("✏️ ACTUALIZAR") and clv == CLAVE_MAESTRA:
+            it_e = df_h[df_h['id']==id_e].iloc[0]
+            n_it = st.text_input("Nuevo Item", it_e['item']); n_mt = st.number_input("Nuevo Monto", value=float(it_e['monto']))
+            if st.button("✏️ ACTUALIZAR") and st.text_input("Clave Maestro", type="password", key="cl_e") == CLAVE_MAESTRA:
                 conn.execute("UPDATE gastos_espino SET item=?, monto=? WHERE id=?", (n_it, n_mt, id_e)); conn.commit(); st.rerun()
-            if c2.button("🗑️ ELIMINAR") and clv == CLAVE_MAESTRA:
+            if st.button("🗑️ ELIMINAR") and st.text_input("Clave Eliminar", type="password", key="cl_del") == CLAVE_MAESTRA:
                 conn.execute("DELETE FROM gastos_espino WHERE id=?", (id_e,)); conn.commit(); st.rerun()
     conn.close()
 
@@ -289,25 +293,29 @@ def modulo_tesoreria():
     conn.close()
 
 def modulo_bodega():
-    st.header("🏠 Gestión de Bodega")
+    st.header("🏠 Bodega")
     t1, t2, t3, t4 = st.tabs(["📊 Stock", "🔄 Salida", "➕ Registro", "🔍 Consulta CC"]); conn = conectar_db()
     with t1:
         df_s = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario", conn)
         st.dataframe(df_s.drop(columns=['id']).style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
         st.divider(); id_g = st.selectbox("ID Insumo", df_s['id']); item = df_s[df_s['id']==id_g].iloc[0]
         n_nom = st.text_input("Nombre", item['producto']); n_st = st.number_input("Stock", value=float(item['stock']))
-        clv = st.text_input("Clave Maestra", type="password", key="cl_b")
-        if st.button("✏️ MODIFICAR") and clv == CLAVE_MAESTRA:
+        if st.button("✏️ MODIFICAR") and st.text_input("Clave Maestra", type="password", key="cl_b") == CLAVE_MAESTRA:
             conn.execute("UPDATE inventario SET producto=?, stock=? WHERE id=?", (n_nom, round(n_st, 2), id_g)); conn.commit(); st.rerun()
     with t2:
         df_i = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn)
-        ps = st.selectbox("Insumo", df_i['id'].astype(str) + " - " + df_i['producto']); ct = st.number_input("Cant", 0.0)
+        ps = st.selectbox("Insumo", df_i['id'].astype(str) + " - " + df_i['producto']); ct = st.number_input("Cant Salida", 0.0)
         ccs = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"mb_{cc}")]
         if st.button("REGISTRAR SALIDA"):
             iid = int(ps.split(" - ")[0]); pmp = df_i[df_i['id']==iid]['precio_medio'].iloc[0]
             if ct > 0 and ccs:
                 for c in ccs: conn.execute("INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado) VALUES (?,?,?,?,?,?)", (iid, "Salida", ct/len(ccs), hoy, c.upper(), (ct/len(ccs)*pmp)))
                 conn.execute("UPDATE inventario SET stock = stock - ? WHERE id = ?", (round(ct, 2), iid)); conn.commit(); st.rerun()
+    with t3:
+        with st.form("ni"):
+            np, nf = st.text_input("Nombre"), st.selectbox("Familia", FAMILIAS_PRODUCTOS)
+            ns, npr = st.number_input("Stock"), st.number_input("Precio")
+            if st.form_submit_button("CREAR"): conn.execute("INSERT INTO inventario (producto, familia, stock, precio_medio) VALUES (?,?,?,?)", (np, nf, ns, npr)); conn.commit(); st.rerun()
     with t4:
         cc_q = st.selectbox("Cuartel", CENTROS_COSTO)
         df_cc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{cc_q.upper()}' ORDER BY m.fecha DESC", conn)
@@ -316,7 +324,7 @@ def modulo_bodega():
     conn.close()
 
 def modulo_compras():
-    st.header("📦 Compras")
+    st.header("📦 Compras y Gastos")
     t1, t2, t3 = st.tabs(["➕ Insumos", "💸 Gastos", "🔍 Historial"]); conn = conectar_db()
     with t1:
         c1, c2 = st.columns(2); nro, prov, fe, fv = c1.text_input("N° Doc"), c1.text_input("Proveedor"), c2.date_input("Emisión"), c2.date_input("Vence")
@@ -335,6 +343,16 @@ def modulo_compras():
                     n_pmp = ((cur[0]*cur[1]) + (i['c']*i['p'])) / (cur[0]+i['c']) if (cur[0]+i['c']) > 0 else i['p']
                     conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (i['c'], n_pmp, i['id']))
                 conn.commit(); st.session_state['car'] = []; guardar_en_drive(); st.rerun()
+    with t2:
+        pg, ng, fg1, fg2 = st.text_input("Prov"), st.text_input("N°"), st.date_input("Fecha C", hoy), st.date_input("Vence C", hoy)
+        sel_cc = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"gv_{cc}")]
+        mt = st.number_input("Total Bruto", 0.0); iva = st.radio("Imputar", ["SÍ (TOTAL)", "NO (NETO)"])
+        if st.button("💾 GUARDAR GASTO VARIO"):
+            imp = mt if iva == "SÍ (TOTAL)" else mt/1.19
+            if sel_cc:
+                conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total) VALUES (?,?,?,?,?)", (ng, pg, fg1, fg2, mt))
+                for c in sel_cc: conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, centro_costo, monto_imputado) VALUES (?,?,?,?,?,?,?)", (ng+"_P", pg, fg1, fg2, 0, c.upper(), imp/len(sel_cc)))
+            conn.commit(); st.rerun()
     with t3:
         df_h = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_compra, monto_total FROM facturas WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P' ORDER BY id DESC", conn)
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
@@ -353,7 +371,7 @@ def modulo_costos():
         st.download_button("📥 PDF Costos", generar_pdf_blob(df_r, "INFORME DE COSTOS", total_manual=tot), "costos.pdf")
     conn.close()
 
-# --- 4. LOGIN Y NAVEGACIÓN ---
+# --- 5. LOGIN Y NAVEGACIÓN ---
 
 def login_page():
     inyectar_css()
@@ -368,7 +386,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso denegado")
 
-st.set_page_config(page_title="ERP v10.8.85", layout="wide")
+st.set_page_config(page_title="ERP LA CONCEPCIÓN v10.8.86", layout="wide")
 inicializar_db()
 
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
