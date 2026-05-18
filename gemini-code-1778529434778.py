@@ -36,7 +36,6 @@ PRORRATEO_RRHH = {
     "NOGALES CRUZ DEL SUR": 0.1870
 }
 
-# DATA EL ESPINO INTEGRAL (65 REGISTROS HISTÓRICOS)
 DATA_ESP_HISTORICA = [
     ('2025-11-12', '719', 'Alisud Auditoria GG', 1094530), ('2025-12-12', 'S/N', 'Carlos Zavala Anticipo sueldo', 0),
     ('2025-12-20', 'S/N', 'Alejandra Leviman', 150000), ('2025-12-20', 'S/N', 'Duilio Pruzzo Diferencia en gastos', 6051696),
@@ -74,7 +73,7 @@ DATA_ESP_HISTORICA = [
 ]
 
 # =============================================================================
-# 2. MOTOR DE BASE DE DATOS Y UTILIDADES DRIVE (PERSISTENCIA TOTAL)
+# 2. MOTOR DE BASE DE DATOS Y DRIVE (INTEGRIDAD TOTAL)
 # =============================================================================
 
 def conectar_db():
@@ -133,13 +132,13 @@ def registrar_accion(accion, detalle):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1124_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1125_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (Hora Chile)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (Chile)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -483,6 +482,7 @@ def modulo_rrhh():
     with t_r[2]:
         df_h = pd.read_sql_query("SELECT p.nombre, h.mes, h.anio, h.costo_empresa FROM pagos_rrhh h JOIN personal p ON h.trabajador_id = p.id ORDER BY h.anio DESC", conn)
         st.dataframe(df_h.style.format({"costo_empresa": "${:,.0f}"}), use_container_width=True)
+        st.download_button("📥 PDF HISTORIAL RRHH", generar_pdf_blob(df_h, "PAGOS RECURSOS HUMANOS"), "rrhh.pdf", key="pdf_rh")
     conn.close()
 
 def modulo_costos():
@@ -490,18 +490,18 @@ def modulo_costos():
     q = """SELECT UPPER(TRIM(cc)) as Cuartel, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, SUM(CASE WHEN fuente = 'RRHH' THEN val ELSE 0 END) as RRHH, SUM(val) as Total FROM (SELECT centro_costo as cc, valor_imputado as val, 'BODEGA' as fuente FROM movimientos UNION ALL SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' UNION ALL SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' UNION ALL SELECT centro_costo as cc, monto_imputado as val, 'RRHH' as fuente FROM facturas WHERE nro_documento LIKE '%_RRHH') WHERE cc != '' GROUP BY cc"""
     dfr = pd.read_sql_query(q, conn)
     if not dfr.empty:
-        fila_t = pd.DataFrame([{'Cuartel': 'TOTALES', 'Insumos': dfr['Insumos'].sum(), 'Gastos': dfr['Gastos'].sum(), 'Petroleo': dfr['Petroleo'].sum(), 'RRHH': dfr['RRHH'].sum(), 'Total': dfr['Total'].sum()}])
+        fila_t = pd.DataFrame([{'Cuartel': 'TOTAL GENERAL', 'Insumos': dfr['Insumos'].sum(), 'Gastos': dfr['Gastos'].sum(), 'Petroleo': dfr['Petroleo'].sum(), 'RRHH': dfr['RRHH'].sum(), 'Total': dfr['Total'].sum()}])
         dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
         st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
-        st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr, "INFORME COSTOS"), "costos.pdf", key="pdf_costos")
+        st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr, "INFORME COSTOS POR CUARTEL"), "costos.pdf", key="pdf_costos")
     conn.close()
 
 def modulo_seguridad():
     st.header("🕵️ SEGURIDAD"); conn = conectar_db()
-    c1, c2 = st.columns(2); fi, ff = c1.date_input("Desde", hoy-timedelta(days=7), key="s_1"), c2.date_input("Hasta", hoy, key="s_2")
+    c1, c2 = st.columns(2); fi, ff = c1.date_input("Bitácora Desde", hoy-timedelta(days=7), key="s_1"), c2.date_input("Bitácora Hasta", hoy, key="s_2")
     dfb = pd.read_sql_query(f"SELECT usuario, accion, detalle, fecha_hora FROM bitacora WHERE DATE(fecha_hora) BETWEEN '{fi}' AND '{ff}' ORDER BY id DESC", conn)
     st.dataframe(dfb, use_container_width=True)
-    st.download_button("📥 PDF BITACORA", generar_pdf_blob(dfb, f"BITACORA ({fi} a {ff})"), "seguridad.pdf", key="pdf_s")
+    st.download_button("📥 PDF BITÁCORA", generar_pdf_blob(dfb, f"HISTORIAL SEGURIDAD ({fi} a {ff})"), "seguridad.pdf", key="pdf_s")
     conn.close()
 
 def login_page():
@@ -513,9 +513,9 @@ def login_page():
             if st.form_submit_button("ACCEDER"):
                 conn = conectar_db(); cursor = conn.cursor(); cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
-                else: st.error("Denegado")
+                else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.2.4", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.2.5", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
@@ -534,7 +534,6 @@ else:
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl' and st.button("🚀 SINCRONIZAR DRIVE"): guardar_en_drive()
         if st.button("🚪 CERRAR SESIÓN"): st.session_state.clear(); st.rerun()
     
-    # EJECUCIÓN EXPLÍCITA DE MÓDULOS (EVITA KEYERROR)
     if menu == "DASHBOARD": modulo_dashboard()
     elif menu == "Petróleo": modulo_petroleo()
     elif menu == "Compras": modulo_compras()
