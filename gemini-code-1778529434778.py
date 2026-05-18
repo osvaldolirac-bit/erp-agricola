@@ -19,7 +19,7 @@ hoy = datetime.now().date()
 FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSECTICIDA", "FUNGICIDA", "BIO ESTIMULANTE", "ACARICIDA", "REGULADOR DE CRECIMIENTO", "ADHERENTE / MOJANTE", "OTROS"]
 CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "EL ESPINO", "OTROS"]
 
-# --- DATA DE INYECCIÓN EL ESPINO ---
+# --- DATA DE INYECCIÓN EL ESPINO (LISTA COMPLETA) ---
 DATA_ESP_HISTORICA = [
     ('2025-11-12', '719', 'Alisud Auditoria GG', 1094530), ('2025-12-12', 'S/N', 'Carlos Zavala Anticipo sueldo', 0),
     ('2025-12-20', 'S/N', 'Alejandra Leviman', 150000), ('2025-12-20', 'S/N', 'Duilio Pruzzo Diferencia en gastos', 6051696),
@@ -50,7 +50,7 @@ DATA_ESP_HISTORICA = [
     ('2026-03-11', '1427603', 'Vitel Cable reviflex', 108469), ('2026-03-11', '6954495', 'Electrocom Tubo curvable', 27703),
     ('2026-03-11', 'S/N', 'Imposiciones CZ feb', 143483), ('2026-04-02', 'S/N', 'Alejandra Leviman sueldo', 112500),
     ('2026-04-07', 'S/N', 'CGE feb y marzo', 924000), ('2026-04-13', '28803', 'Topagro Fascinate 150 SL', 143032),
-    ('2026-04-10', 'S/N', 'CZ Imposiciones Marzo', 143483), ('2026-04-17', '2248987', 'Coagra Sulfato zinc', 149190),
+    ('2026-04-10', 'S/N', 'CZ Imposiciones Marzo', 143483), ('2026-04-17', '2248987', 'Coagra zinc', 149190),
     ('2026-04-30', 'S/N', 'Carlos Zavala Sueldo', 620000), ('2026-04-30', 'S/N', 'Cáceres Heladas', 4545184),
     ('2026-05-08', 'BCI', 'Comisión tarjeta', 13368), ('2026-05-12', 'S/N', 'CZ Imposiciones Abril', 143914),
     ('2026-05-15', '19509', 'Sendai Datalogger', 58362), ('2026-05-17', 'S/N', 'Arriendo María Paola Torrez', 7000000)
@@ -103,7 +103,7 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS libro_campo (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, n_orden TEXT, sector TEXT, est_fenologico TEXT, especie TEXT, motivo TEXT, producto TEXT, n_aplicacion INTEGER, ingrediente TEXT, dosis REAL, unidad_dosis TEXT, vol_total REAL, gasto_total REAL, unidad_gasto TEXT, tractor TEXT, maquina TEXT, aplicadores TEXT, car_etiqueta INTEGER, car_agenda INTEGER, car_mayor INTEGER, fecha_viable DATE)""")
     
-    # --- MIGRACIÓN AUTOMÁTICA: session_id ---
+    # MIGRACIÓN AUTOMÁTICA FORZADA PARA EVITAR SQLITE OPERATIONAL ERROR
     try:
         cursor.execute("SELECT session_id FROM log_accesos LIMIT 1")
     except sqlite3.OperationalError:
@@ -138,7 +138,7 @@ def guardar_en_drive():
         lista = drive.ListFile({'q': query}).GetList()
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB); f.Upload()
-        st.success("✅ Respaldo en Drive sincronizado.")
+        st.success("✅ Datos sincronizados con Google Drive.")
 
 def descargar_de_drive():
     drive = obtener_drive()
@@ -193,7 +193,6 @@ def inyectar_css():
     st.markdown(f"""<style>
         .main {{ background-color: #f4f7f6; }}
         .stMetric {{ background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 6px solid #2E7D32; }}
-        /* Fuente achicada para Deuda Total en Dashboard */
         [data-testid="stMetricValue"] {{ font-size: 1.55rem !important; font-weight: 800; color: #1B5E20; }}
         .metric-red {{ color: #d32f2f !important; font-size: 2.2rem !important; font-weight: 700; }}
         .metric-blue {{ color: #1976d2 !important; font-size: 2.2rem !important; font-weight: 700; }}
@@ -201,7 +200,7 @@ def inyectar_css():
         .card-vencida {{ border-left-color: #1976d2 !important; }}
         /* Sidebar: Usuario en Azul Fuerte */
         .sidebar-user {{ color: #0D47A1 !important; font-weight: 900; font-size: 1.1rem; }}
-        /* Radio Buttons (Navegación) en MAYÚSCULAS */
+        /* Navegación en MAYÚSCULAS */
         div[data-testid="stRadio"] label {{ text-transform: uppercase; font-weight: 700; font-size: 0.85rem; }}
         </style>""", unsafe_allow_html=True)
     if st.session_state.get('logged_in') and st.session_state.get('email') != 'osvaldolira@laconcepcion.cl':
@@ -308,7 +307,7 @@ def modulo_compras():
                     conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado) VALUES (?,?,?,?,?,?,?,?)", (ng+"_P", pg, fg1, fg2, 0, 'Gasto Vario', c.upper(), imp/len(sel_cc)))
             conn.commit(); registrar_accion("GASTO VARIO", ng); guardar_en_drive(); st.rerun()
     with t3:
-        cf1, cf2 = st.columns(2); fi_c = cf1.date_input("Desde Historial", hoy-timedelta(days=365)); ff_c = cf2.date_input("Hasta Historial", hoy)
+        cf1, cf2 = st.columns(2); fi_c = cf1.date_input("Desde Historial Compras", hoy-timedelta(days=365)); ff_c = cf2.date_input("Hasta Historial Compras", hoy)
         df_h = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total FROM facturas WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P' AND fecha_compra BETWEEN '{fi_c}' AND '{ff_c}' ORDER BY fecha_compra DESC", conn)
         st.dataframe(df_h.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
         st.download_button("📥 PDF HISTORIAL COMPRAS", generar_pdf_blob(df_h, "HISTORIAL COMPRAS"), "compras.pdf")
@@ -361,7 +360,7 @@ def modulo_libro_campo():
             c_may = max(c_et, c_ag); f_via = f + timedelta(days=c_may)
             with c6: st.info(f"Carencia Mayor: {c_may} días"); st.warning(f"FECHA COSECHA: {f_via.strftime('%d/%m/%Y')}")
             if st.form_submit_button("💾 GUARDAR APLICACIÓN"):
-                conn.execute("INSERT INTO libro_campo (fecha, n_orden, sector, est_fenologico, especie, motivo, producto, n_aplicacion, ingrediente, dosis, unidad_dosis, vol_total, gasto_total, unidad_gasto, tractor, maquina, aplicadores, car_etiqueta, car_agenda, car_mayor, fecha_viable) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (f, ord_n, cc, est, esp, mot, prod, n_ap, ing, dos, u_dos, vol, g_tot, u_gt, tra, maq, apli, c_et, c_ag, c_may, f_via))
+                conn.execute("INSERT INTO libro_campo (fecha, n_orden, sector, est_fenologico, especie, motivo, producto, n_aplicacion, ingrediente, dosis, unidad_dosis, vol_total, gasto_total, unidad_gasto, tractor, maquina, aplicadores, car_etiqueta, car_agenda, car_mayor, fecha_viable) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (f, ord_n, cc, est, esp, mot, prod, n_ap, ingrediente, dos, u_dos, vol, g_tot, u_gt, tra, maq, apli, c_et, c_ag, c_may, f_via))
                 conn.commit(); registrar_accion("LIBRO CAMPO", f"{prod} en {cc}"); st.success("Aplicación Registrada"); st.rerun()
     with t2:
         cc_q = st.selectbox("Filtrar Sector de Aplicación", ["TODOS"] + CENTROS_COSTO)
@@ -459,6 +458,16 @@ def modulo_seguridad():
 
 def login_page():
     inyectar_css()
+    # PRE-MIGRACIÓN: Asegurar que session_id existe antes del login
+    try:
+        conn = conectar_db(); cursor = conn.cursor()
+        cursor.execute("SELECT session_id FROM log_accesos LIMIT 1")
+        conn.close()
+    except sqlite3.OperationalError:
+        conn = conectar_db(); cursor = conn.cursor()
+        cursor.execute("ALTER TABLE log_accesos ADD COLUMN session_id TEXT")
+        conn.commit(); conn.close()
+
     st.markdown("<h1 style='text-align: center; color: #1B5E20; margin-top: 50px;'>🚜 ERP LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
@@ -468,24 +477,23 @@ def login_page():
                 conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
                 if cursor.fetchone():
-                    # Registro de acceso forzado en el momento exacto del login
+                    # Registro forzado en login con session_id
                     s_id = st.runtime.scriptrunner.add_script_run_ctx().streamlit_script_run_ctx.session_id
-                    cursor.execute("INSERT INTO log_accesos (email, fecha_hora, session_id) VALUES (?,?,?,?)", (e, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), s_id))
+                    cursor.execute("INSERT INTO log_accesos (email, fecha_hora, session_id) VALUES (?,?,?)", (e, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), s_id))
                     conn.commit(); conn.close()
                     st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado: Credenciales Incorrectas")
 
-st.set_page_config(page_title="ERP AGRICOLA v10.8.96", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v10.8.98", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']: login_page()
 else:
-    # --- ANCLAJE DE AUDITORÍA INCONDICIONAL (Solución definitiva para Accesos) ---
+    # --- ANCLAJE DE AUDITORÍA INCONDICIONAL (Definitivo) ---
     try:
         sess_id = st.runtime.scriptrunner.add_script_run_ctx().streamlit_script_run_ctx.session_id
         conn = conectar_db()
-        # Verificar si esta sesión específica ya está anotada para este email hoy
         check = conn.execute("SELECT COUNT(*) FROM log_accesos WHERE email=? AND session_id=?", (st.session_state['email'], sess_id)).fetchone()[0]
         if check == 0:
             conn.execute("INSERT INTO log_accesos (email, fecha_hora, session_id) VALUES (?,?,?)", (st.session_state['email'], datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sess_id))
