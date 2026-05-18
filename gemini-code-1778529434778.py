@@ -66,7 +66,7 @@ DATA_ESP_HISTORICA = [
 ]
 
 # =============================================================================
-# 2. MOTOR DE BASE DE DATOS Y UTILIDADES DRIVE (PERSISTENCIA TOTAL)
+# 2. MOTOR DE BASE DE DATOS Y UTILIDADES DRIVE (PERSISTENCIA ATÓMICA)
 # =============================================================================
 
 def conectar_db():
@@ -103,7 +103,7 @@ def guardar_en_drive():
             lista = drive.ListFile({'q': query}).GetList()
             f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
             f.SetContentFile(NOMBRE_DB); f.Upload()
-            st.toast("☁️ Nube Actualizada", icon="✅")
+            st.toast("☁️ Nube Sincronizada", icon="✅")
         except: pass
 
 def descargar_de_drive():
@@ -113,8 +113,7 @@ def descargar_de_drive():
         try:
             query = f"'{ID_CARPETA_DRIVE}' in parents and title='{NOMBRE_DB}' and trashed=false"
             lista = drive.ListFile({'q': query}).GetList()
-            if lista:
-                lista[0].GetContentFile(NOMBRE_DB)
+            if lista: lista[0].GetContentFile(NOMBRE_DB)
         except: pass
 
 def registrar_accion(accion, detalle):
@@ -128,7 +127,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def anclaje_sesion_definitivo():
-    """Registra entradas automáticamente en Bitácora con Hora Chile v11.1.3"""
+    """Registra entradas automáticamente en Bitácora con Hora Chile v11.1.4"""
     if st.session_state.get('logged_in'):
         tag = f"acceso_v111_final_rev_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
@@ -165,7 +164,7 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES: INDICADORES Y PDF
+# 3. UTILIDADES: INDICADORES Y PDF (REGLA DE ORO)
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -236,7 +235,7 @@ def modulo_dashboard():
     ind = obtener_indicadores()
     st.markdown(f'<div class="banner-econ">📈 INDICADORES ECONÓMICOS: UF: {ind["uf"]} | UTM: {ind["utm"]} | DÓLAR: {ind["dolar"]} | EURO: {ind["euro"]}</div>', unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center; color: #1B5E20;'>🚜 ERP AGRICOLA LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center; color: #0D47A1; font-weight: bold;'>USUARIO: {st.session_state['email']}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: #0D47A1; font-weight: bold;'>SESIÓN ACTIVA: {st.session_state['email']}</p>", unsafe_allow_html=True)
     conn = conectar_db(); df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
     df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida' OR (tipo='Ajuste Manual' AND litros < 0)", conn)
@@ -271,8 +270,11 @@ def modulo_petroleo():
     df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida' OR (tipo='Ajuste Manual' AND litros < 0)", conn)
     saldo_actual = (df_p_c['l'].fillna(0).iloc[0]) - abs(df_p_s['l'].fillna(0).iloc[0])
     st.markdown(f'<div class="saldo-banner">🛢️ SALDO ACTUAL EN TANQUE: {f_decimal(saldo_actual)} LITROS</div>', unsafe_allow_html=True)
+
     tabs_opts = ["📥 CARGA", "🚜 SALIDA", "📊 HISTORIAL"]
-    if st.session_state['email'] == 'osvaldolira@laconcepcion.cl': tabs_opts.append("⚙️ AJUSTE MANUAL")
+    if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
+        tabs_opts.append("⚙️ AJUSTE MANUAL")
+    
     t_sel = st.tabs(tabs_opts)
     
     with t_sel[0]:
@@ -322,7 +324,7 @@ def modulo_compras():
         dfi = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
         ps = st.selectbox("Insumo", dfi['id'].astype(str) + " - " + dfi['producto']) if not dfi.empty else None
         ct, pr = st.number_input("Cantidad", 0.0), st.number_input("Precio Neto Unit.", 0.0)
-        if st.button("➕ AGREGAR"):
+        if st.button("➕ AGREGAR AL DETALLE"):
             if 'car' not in st.session_state: st.session_state['car'] = []
             st.session_state['car'].append({'id': int(ps.split(" - ")[0]), 'n': ps.split(" - ")[1], 'c': ct, 'p': pr, 't': ct*pr}); st.rerun()
         if st.session_state.get('car'):
@@ -356,7 +358,7 @@ def modulo_compras():
             dfm = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_compra, monto_total FROM facturas WHERE nro_documento NOT LIKE '%_P' ORDER BY id DESC LIMIT 50", conn)
             st.dataframe(dfm.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
             idm = st.selectbox("ID Factura a Modificar/Borrar", dfm['id']); self = dfm[dfm['id']==idm].iloc[0]
-            nmonto = st.number_input("Nuevo Monto Total ($)", value=float(self['monto_total']))
+            nmonto = st.number_input("Modificar Monto ($)", value=float(self['monto_total']))
             clvm = st.text_input("Clave Maestra", type="password", key="clv_comp_mod")
             col1, col2 = st.columns(2)
             if col1.button("✏️ ACTUALIZAR MONTO"):
@@ -376,7 +378,7 @@ def modulo_espino():
     with t1:
         with st.form("esp_f"):
             f, d, it, mt = st.date_input("Fecha", hoy), st.text_input("Doc"), st.text_input("Descripción"), st.number_input("Monto ($)", 0.0)
-            if st.form_submit_button("💾 GUARDAR"):
+            if st.form_submit_button("💾 GUARDAR GASTO"):
                 conn.execute("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", (f, d, it, mt))
                 conn.commit(); registrar_accion("EL ESPINO", it); guardar_en_drive(); st.rerun()
     with t2:
@@ -399,7 +401,7 @@ def modulo_espino():
     conn.close()
 
 def modulo_libro_campo():
-    st.header("📒 LIBRO DE CAMPO (Ajuste v11.1.3)"); conn = conectar_db()
+    st.header("📒 LIBRO DE CAMPO (Ajuste v11.1.4)"); conn = conectar_db()
     t1, t2 = st.tabs(["📥 INGRESO APLICACIÓN", "📜 HISTORIAL POR SECTOR"])
     with t1:
         with st.form("lc_form"):
@@ -508,9 +510,13 @@ def modulo_costos():
 def modulo_seguridad():
     st.header("🕵️ SEGURIDAD Y AUDITORÍA"); conn = conectar_db()
     st.subheader("📜 BITÁCORA UNIFICADA (HORA CHILE Santiago)")
-    dfb = pd.read_sql_query("SELECT usuario, accion, detalle, fecha_hora FROM bitacora ORDER BY id DESC", conn)
+    c1, c2 = st.columns(2)
+    fi = c1.date_input("Bitácora Desde", hoy - timedelta(days=7))
+    ff = c2.date_input("Bitácora Hasta", hoy)
+    
+    dfb = pd.read_sql_query(f"SELECT usuario, accion, detalle, fecha_hora FROM bitacora WHERE DATE(fecha_hora) BETWEEN '{fi}' AND '{ff}' ORDER BY id DESC", conn)
     st.dataframe(dfb, use_container_width=True)
-    st.download_button("📥 PDF BITÁCORA", generar_pdf_blob(dfb, "HISTORIAL DE SEGURIDAD Y MOVIMIENTOS"), "seguridad.pdf")
+    st.download_button("📥 PDF BITÁCORA FILTRADA", generar_pdf_blob(dfb, f"HISTORIAL SEGURIDAD ({fi} a {ff})"), "seguridad.pdf")
     conn.close()
 
 # =============================================================================
@@ -528,7 +534,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.1.3", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.1.4", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
