@@ -66,7 +66,7 @@ DATA_ESP_HISTORICA = [
 ]
 
 # =============================================================================
-# 2. MOTOR DE BASE DE DATOS Y UTILIDADES DRIVE (BLINDAJE DE DATOS)
+# 2. MOTOR DE BASE DE DATOS Y UTILIDADES DRIVE (PERSISTENCIA TOTAL)
 # =============================================================================
 
 def conectar_db():
@@ -103,7 +103,7 @@ def guardar_en_drive():
             lista = drive.ListFile({'q': query}).GetList()
             f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
             f.SetContentFile(NOMBRE_DB); f.Upload()
-            st.toast("☁️ Nube Sincronizada", icon="✅")
+            st.toast("☁️ Nube Actualizada", icon="✅")
         except: pass
 
 def descargar_de_drive():
@@ -128,15 +128,15 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def anclaje_sesion_definitivo():
-    """Registra entradas automáticamente en Bitácora con Hora Chile Santiago v11.1.2"""
+    """Registra entradas automáticamente en Bitácora con Hora Chile v11.1.3"""
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v111_final_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v111_final_rev_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (Hora Chile Santiago)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (Chile Santiago)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -153,14 +153,19 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS ajustes_costos (id INTEGER PRIMARY KEY AUTOINCREMENT, centro_costo TEXT, monto REAL, fecha DATE, motivo TEXT)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS libro_campo (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, n_orden TEXT, sector TEXT, est_fenologico TEXT, especie TEXT, motivo TEXT, producto TEXT, n_aplicacion INTEGER, ingrediente TEXT, dosis REAL, unidad_dosis TEXT, vol_total REAL, gasto_total REAL, unidad_gasto TEXT, tractor TEXT, maquina TEXT, aplicadores TEXT, car_etiqueta INTEGER, car_agenda INTEGER, car_mayor INTEGER, fecha_viable DATE)""")
+    
     usuarios = [('osvaldolira@laconcepcion.cl', hash_password('9083')), ('secretaria@laconcepcion.cl', hash_password('9111'))]
-    for u, p in usuarios: cursor.execute("INSERT OR IGNORE INTO usuarios (email, password) VALUES (?,?)", (u, p))
+    for u, p in usuarios:
+        cursor.execute("INSERT OR IGNORE INTO usuarios (email, password) VALUES (?,?)", (u, p))
+
     cursor.execute("SELECT COUNT(*) FROM gastos_espino")
-    if cursor.fetchone()[0] == 0: cursor.executemany("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", DATA_ESP_HISTORICA)
+    if cursor.fetchone()[0] == 0:
+        cursor.executemany("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", DATA_ESP_HISTORICA)
+    
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES: INDICADORES Y PDF (REGLA DE ORO)
+# 3. UTILIDADES: INDICADORES Y PDF
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -175,7 +180,9 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
         pdf = FPDF(); pdf.add_page(); pdf.set_font("Helvetica", "B", 16)
         if modo_petroleo and saldo_petroleo is not None:
             pdf.cell(100, 10, "AGRICOLA LA CONCEPCIÓN", ln=0); pdf.set_font("Helvetica", "B", 10); pdf.cell(90, 10, f"SALDO ESTANQUE: {f_decimal(saldo_petroleo)} L", ln=1, align="R")
-        else: pdf.cell(0, 10, "AGRICOLA LA CONCEPCIÓN", ln=1, align="C")
+        else:
+            pdf.cell(0, 10, "AGRICOLA LA CONCEPCIÓN", ln=1, align="C")
+            
         pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 10, titulo, ln=True, align="C"); pdf.ln(5); pdf.set_font("Helvetica", "B", 8)
         
         df_p = df.copy()
@@ -292,7 +299,7 @@ def modulo_petroleo():
         st.download_button("📥 PDF HISTORIAL CON SALDO", generar_pdf_blob(dfp, "HISTORIAL PETROLEO", modo_petroleo=True, saldo_petroleo=saldo_actual), "petroleo.pdf")
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
             id_p = st.selectbox("ID borrar", dfp['id']); clv = st.text_input("Clave Master", type="password", key="cl_p")
-            if st.button("🗑️ ELIMINAR"):
+            if st.button("🗑️ ELIMINAR REGISTRO"):
                 if clv == CLAVE_MAESTRA:
                     conn.execute("DELETE FROM petroleo WHERE id=?", (id_p,))
                     conn.commit(); registrar_accion("DEL PETROLEO", f"ID {id_p}"); guardar_en_drive(); st.rerun()
@@ -349,7 +356,7 @@ def modulo_compras():
             dfm = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_compra, monto_total FROM facturas WHERE nro_documento NOT LIKE '%_P' ORDER BY id DESC LIMIT 50", conn)
             st.dataframe(dfm.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
             idm = st.selectbox("ID Factura a Modificar/Borrar", dfm['id']); self = dfm[dfm['id']==idm].iloc[0]
-            nmonto = st.number_input("Modificar Monto ($)", value=float(self['monto_total']))
+            nmonto = st.number_input("Nuevo Monto Total ($)", value=float(self['monto_total']))
             clvm = st.text_input("Clave Maestra", type="password", key="clv_comp_mod")
             col1, col2 = st.columns(2)
             if col1.button("✏️ ACTUALIZAR MONTO"):
@@ -392,24 +399,26 @@ def modulo_espino():
     conn.close()
 
 def modulo_libro_campo():
-    st.header("📒 LIBRO DE CAMPO"); conn = conectar_db()
-    t1, t2 = st.tabs(["📥 INGRESO", "📜 HISTORIAL SECTOR"])
+    st.header("📒 LIBRO DE CAMPO (Ajuste v11.1.3)"); conn = conectar_db()
+    t1, t2 = st.tabs(["📥 INGRESO APLICACIÓN", "📜 HISTORIAL POR SECTOR"])
     with t1:
         with st.form("lc_form"):
             c1, c2, c3 = st.columns(3)
-            with c1: f, ordn, cc = st.date_input("Fecha App", hoy), st.text_input("N° Orden"), st.selectbox("Sector", CENTROS_COSTO)
-            with c2: esp, prod, nap = st.text_input("Especie"), st.text_input("Producto"), st.number_input("N° App", 1)
-            with c3: ing, dos, vol = st.text_input("Ingrediente"), st.number_input("Dosis", 0.0), st.number_input("Volumen (Lt)", 0.0)
-            cet, cag = st.number_input("Carencia Etiqueta", 0), st.number_input("Carencia Agenda", 0)
-            cmay = max(cet, cag); fv = f + timedelta(days=cmay); st.warning(f"FECHA COSECHA VIABLE: {fv.strftime('%d/%m/%Y')}")
-            if st.form_submit_button("💾 GUARDAR"):
+            with c1: f, ordn, cc = st.date_input("Fecha App", hoy), st.text_input("N° Orden"), st.selectbox("Sector / Cuartel", CENTROS_COSTO)
+            with c2: esp, prod, nap = st.text_input("Especie"), st.text_input("Producto Comercial"), st.number_input("N° App", 1)
+            with c3: ing, dos, vol = st.text_input("Ingrediente Activo"), st.number_input("Dosis", 0.0), st.number_input("Volumen (Lt/Hac)", 0.0)
+            st.divider()
+            c4, c5 = st.columns(2)
+            cet, cag = c4.number_input("Carencia Etiqueta (Días)", 0), c5.number_input("Carencia Agenda (Días)", 0)
+            cmay = max(cet, cag); fv = f + timedelta(days=cmay); st.error(f"⚠️ FECHA COSECHA VIABLE: {fv.strftime('%d/%m/%Y')}")
+            if st.form_submit_button("💾 GUARDAR EN LIBRO"):
                 conn.execute("INSERT INTO libro_campo (fecha, n_orden, sector, especie, producto, n_aplicacion, ingrediente, dosis, vol_total, car_etiqueta, car_agenda, car_mayor, fecha_viable) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (f, ordn, cc, esp, prod, nap, ing, dos, vol, cet, cag, cmay, fv))
-                conn.commit(); registrar_accion("LIBRO CAMPO", prod); guardar_en_drive(); st.rerun()
+                conn.commit(); registrar_accion("LIBRO CAMPO", f"{prod} en {cc}"); guardar_en_drive(); st.rerun()
     with t2:
-        ccq = st.selectbox("Cuartel", ["TODOS"] + CENTROS_COSTO)
+        ccq = st.selectbox("Filtrar Cuartel", ["TODOS"] + CENTROS_COSTO)
         query = "SELECT * FROM libro_campo" if ccq == "TODOS" else f"SELECT * FROM libro_campo WHERE sector='{ccq}'"
         dflc = pd.read_sql_query(query, conn); st.dataframe(dflc, use_container_width=True)
-        st.download_button("📥 PDF LIBRO", generar_pdf_blob(dflc.drop(columns=['id']), "LIBRO DE CAMPO"), "libro_campo.pdf")
+        st.download_button("📥 PDF LIBRO DE CAMPO", generar_pdf_blob(dflc.drop(columns=['id']), "HISTORIAL LIBRO DE CAMPO"), "libro_campo.pdf")
     conn.close()
 
 def modulo_tesoreria():
@@ -424,7 +433,7 @@ def modulo_tesoreria():
         st.dataframe(dfp.style.apply(highlight_v, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
         st.download_button("📥 PDF PENDIENTES", generar_pdf_blob(dfp.drop(columns=['id']), "LISTADO DEUDA PENDIENTE GLOBAL"), "pendientes.pdf")
         st.divider(); idp = st.selectbox("ID Pago", dfp['id']); metp = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"])
-        if st.button("💰 PAGAR"):
+        if st.button("💰 MARCAR PAGADO"):
             conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, hoy, idp))
             conn.commit(); registrar_accion("PAGO", f"ID {idp}"); guardar_en_drive(); st.rerun()
     with t2:
@@ -436,11 +445,11 @@ def modulo_tesoreria():
             st.dataframe(dfpr.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
             st.download_button(f"📥 PDF {psel}", generar_pdf_blob(dfpr, f"ESTADO DE DEUDA: {psel}"), f"deuda_{psel}.pdf")
     with t3:
-        st.subheader("Panel de Auditoría de Pagos Realizados")
+        st.subheader("Auditoría de Pagos Realizados")
         c1, c2, c3 = st.columns([2, 1, 1.5])
         bsq = c1.text_input("🔍 Buscar N° Doc / Proveedor", key="bsq_t")
         met = c2.selectbox("💳 Método", ["TODOS", "Transferencia", "Efectivo", "Cheque"])
-        fi, ff = c3.date_input("Desde Pago", hoy - timedelta(days=30)), c3.date_input("Hasta Pago", hoy)
+        fi, ff = c3.date_input("Desde", hoy - timedelta(days=30)), c3.date_input("Hasta", hoy)
         qh = f"SELECT nro_documento, proveedor, monto_total, metodo_pago, fecha_pago FROM facturas WHERE estado='Pagado' AND nro_documento NOT LIKE '%_P' AND fecha_pago BETWEEN '{fi}' AND '{ff}'"
         if bsq: qh += f" AND (nro_documento LIKE '%{bsq}%' OR proveedor LIKE '%{bsq}%')"
         if met != "TODOS": qh += f" AND metodo_pago='{met}'"
@@ -451,16 +460,16 @@ def modulo_tesoreria():
 
 def modulo_bodega():
     st.header("🏠 GESTIÓN DE BODEGA"); conn = conectar_db()
-    t1, t2, t3, t4 = st.tabs(["📊 STOCK", "🔄 SALIDA", "➕ REGISTRO", "🔍 CONSULTA CC"])
+    t1, t2, t3, t4 = st.tabs(["📊 STOCK ACTUAL", "🔄 SALIDA", "➕ REGISTRO", "🔍 CONSULTA CC"])
     with t1:
         dfs = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario", conn); st.dataframe(dfs.style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
-            idb = st.selectbox("ID Insumo", dfs['id']); nst = st.number_input("Stock Real", 0.0)
+            idb = st.selectbox("ID Insumo", dfs['id']); nst = st.number_input("Nuevo Stock", 0.0)
             if st.button("CORREGIR"):
-                if st.text_input("Clave Bodega", type="password") == CLAVE_MAESTRA:
+                if st.text_input("Clave Master Bodega", type="password") == CLAVE_MAESTRA:
                     conn.execute("UPDATE inventario SET stock=? WHERE id=?", (nst, idb)); conn.commit(); registrar_accion("CORRECCION BODEGA", str(idb)); guardar_en_drive(); st.rerun()
     with t2:
-        dfi = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn); ps = st.selectbox("Insumo Salida", dfi['id'].astype(str) + " - " + dfi['producto']); ct = st.number_input("Cant", 0.0); ccs = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"mb_{cc}")]
+        dfi = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn); ps = st.selectbox("Insumo Salida", dfi['id'].astype(str) + " - " + dfi['producto']); ct = st.number_input("Cantidad", 0.0); ccs = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"mb_{cc}")]
         if st.button("REGISTRAR EGRESO"):
             iid = int(ps.split(" - ")[0]); pmp = dfi[dfi['id']==iid]['precio_medio'].iloc[0]
             if ct > 0 and ccs:
@@ -473,14 +482,14 @@ def modulo_bodega():
             if st.form_submit_button("➕ CREAR"):
                 conn.execute("INSERT INTO inventario (producto, familia, stock, precio_medio) VALUES (?,?,?,?)", (np, nf, ns, npr)); conn.commit(); registrar_accion("NUEVO INSUMO", np); guardar_en_drive(); st.rerun()
     with t4:
-        ccq = st.selectbox("Cuartel", CENTROS_COSTO)
+        ccq = st.selectbox("Cuartel de Consulta", CENTROS_COSTO)
         dfcc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{ccq.upper()}' ORDER BY m.fecha DESC", conn)
         st.dataframe(dfcc.style.format({"cantidad": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
     conn.close()
 
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS"); es_admin = (st.session_state.get('email') == 'osvaldolira@laconcepcion.cl'); conn = conectar_db()
-    t1, t2 = st.tabs(["📊 RESUMEN", "🔧 AJUSTES MANUALES"])
+    t1, t2 = st.tabs(["📊 RESUMEN POR CUARTEL", "🔧 AJUSTES MANUALES"])
     with t1:
         q = """SELECT UPPER(TRIM(cc)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, SUM(CASE WHEN fuente = 'AJUSTE' THEN val ELSE 0 END) as Ajustes, SUM(val) as Total FROM (SELECT centro_costo as cc, valor_imputado as val, 'BODEGA' as fuente FROM movimientos UNION ALL SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento LIKE '%_P' UNION ALL SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' UNION ALL SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos) WHERE cc != '' GROUP BY cc"""
         dfr = pd.read_sql_query(q, conn)
@@ -498,7 +507,7 @@ def modulo_costos():
 
 def modulo_seguridad():
     st.header("🕵️ SEGURIDAD Y AUDITORÍA"); conn = conectar_db()
-    st.subheader("📜 BITÁCORA UNIFICADA (HORA CHILE)")
+    st.subheader("📜 BITÁCORA UNIFICADA (HORA CHILE Santiago)")
     dfb = pd.read_sql_query("SELECT usuario, accion, detalle, fecha_hora FROM bitacora ORDER BY id DESC", conn)
     st.dataframe(dfb, use_container_width=True)
     st.download_button("📥 PDF BITÁCORA", generar_pdf_blob(dfb, "HISTORIAL DE SEGURIDAD Y MOVIMIENTOS"), "seguridad.pdf")
@@ -519,7 +528,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.1.2", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.1.3", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
