@@ -89,7 +89,7 @@ def registrar_accion(accion, detalle):
 
 def inicializar_db():
     conn = conectar_db(); cursor = conn.cursor()
-    # Saneamiento de tabla accesos para v10.9.5
+    # Saneamiento log_accesos v10.9.6
     cursor.execute("DROP TABLE IF EXISTS log_accesos")
     cursor.execute("CREATE TABLE log_accesos (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, fecha_hora DATETIME)")
     
@@ -147,7 +147,7 @@ def guardar_en_drive():
         lista = drive.ListFile({'q': query}).GetList()
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB); f.Upload()
-        st.success("✅ Respaldo Drive Sincronizado.")
+        st.success("✅ Respaldo en Drive Sincronizado.")
 
 def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_petroleo=False, orden_asc=False):
     try:
@@ -224,11 +224,11 @@ def modulo_dashboard():
     m1, m2, m3, m4, m5 = st.columns(5)
     with m1: st.metric("💰 DEUDA TOTAL", f"${f_puntos(df_f['monto_total'].sum())}")
     p_dia = hoy.replace(day=1); d_crit = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < p_dia]['monto_total'].sum()
-    with m2: st.markdown(f"<div class='stMetric'><small>🔥 MESES ANTERIORES</small><br><span class='metric-red'>${f_puntos(d_crit)}</span></div>", unsafe_allow_html=True)
+    with m2: st.markdown(f"<div class='stMetric card-critico'><small>🔥 MESES ANTERIORES</small><br><span class='metric-red'>${f_puntos(d_crit)}</span></div>", unsafe_allow_html=True)
     v_count = len(df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy])
-    with m3: st.markdown(f"<div class='stMetric'><small>⚠️ VENCIDAS</small><br><span class='metric-blue'>{v_count} docs</span></div>", unsafe_allow_html=True)
+    with m3: st.markdown(f"<div class='stMetric card-vencida'><small>⚠️ VENCIDAS</small><br><span class='metric-blue'>{v_count} docs</span></div>", unsafe_allow_html=True)
     with m4: st.metric("📄 PENDIENTES", f"{len(df_f)}")
-    with m5: st.metric("⛽ PETRÓLEO", f"{f_decimal(saldo_pet)} L")
+    with m5: st.metric("⛽ PETRÓLEO NETO", f"{f_decimal(saldo_pet)} L")
     
     st.divider()
     c_izq, c_der = st.columns([1.6, 1])
@@ -239,7 +239,7 @@ def modulo_dashboard():
         if not df_c.empty:
             st.dataframe(df_c.style.format({"total": "${:,.0f}"}), use_container_width=True)
     with c_der:
-        st.markdown("### 📅 FLUJO DE PAGOS")
+        st.markdown("### 📅 PROYECCIÓN PAGOS")
         for i in range(4):
             f_p = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
             total_m = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == f_p.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == f_p.year)]['monto_total'].sum() if not df_f.empty else 0
@@ -287,7 +287,7 @@ def modulo_compras():
             st.session_state['car'].append({'id': int(ps.split(" - ")[0]), 'n': ps.split(" - ")[1], 'c': ct, 'p': pr, 't': ct*pr}); st.rerun()
         if st.session_state.get('car'):
             st.table(pd.DataFrame(st.session_state['car']))
-            if st.button("💾 GUARDAR FACTURA"):
+            if st.button("💾 GUARDAR FACTURA COMPLETA"):
                 total_bruto = pd.DataFrame(st.session_state['car'])['t'].sum() * 1.19
                 conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total) VALUES (?,?,?,?,?)", (nro, prov, fe, fv, total_bruto))
                 for i in st.session_state['car']:
@@ -361,11 +361,14 @@ def modulo_tesoreria():
     t1, t2, t3 = st.tabs(["🔴 PENDIENTES", "🏢 DEUDA POR PROVEEDOR", "📜 HISTORIAL DE PAGOS"]); conn = conectar_db()
     with t1:
         df_p = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0 ORDER BY fecha_vencimiento ASC", conn)
-        st.error(f"### DEUDA PENDIENTE GLOBAL: ${f_puntos(df_p['monto_total'].sum())}")
+        st.warning(f"### DEUDA PENDIENTE GLOBAL: ${f_puntos(df_p['monto_total'].sum())}")
         
-        # TABLA EN ROJO v10.9.5 (CORREGIDO .map())
-        def color_rojo(val): return 'background-color: #FFCDD2; color: #B71C1C; font-weight: bold'
-        st.dataframe(df_p.style.map(color_rojo).format({"monto_total": "${:,.0f}"}), use_container_width=True)
+        # RESALTADO ROJO SOLO VENCIDAS v10.9.6
+        def highlight_vencidas(row):
+            is_vencida = pd.to_datetime(row['fecha_vencimiento']).date() < hoy
+            return ['background-color: #FFCDD2; color: #B71C1C; font-weight: bold' if is_vencida else '' for _ in row]
+        
+        st.dataframe(df_p.style.apply(highlight_vencidas, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
         
         st.download_button("📥 PDF PENDIENTES GLOBALES", generar_pdf_blob(df_p.drop(columns=['id']), "LISTADO DEUDA PENDIENTE GLOBAL"), "pendientes_global.pdf")
         st.divider()
@@ -388,13 +391,13 @@ def modulo_tesoreria():
 
 def modulo_bodega():
     st.header("🏠 GESTIÓN DE BODEGA")
-    t1, t2, t3 = st.tabs(["📊 STOCK", "🔄 SALIDA", "➕ REGISTRO"]); conn = conectar_db()
+    t1, t2, t3 = st.tabs(["📊 STOCK ACTUAL", "🔄 SALIDA", "➕ REGISTRO"]); conn = conectar_db()
     with t1:
         df_s = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario", conn)
         st.dataframe(df_s.style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
             id_b = st.selectbox("ID Editar", df_s['id']); n_st = st.number_input("Corregir Stock", 0.0)
-            if st.button("✏️ CORREGIR") and st.text_input("Clave Master", type="password", key="cl_bod") == CLAVE_MAESTRA:
+            if st.button("✏️ CORREGIR") and st.text_input("Clave Bodega", type="password", key="cl_bod") == CLAVE_MAESTRA:
                 conn.execute("UPDATE inventario SET stock=? WHERE id=?", (n_st, id_b)); conn.commit(); st.rerun()
     with t2:
         df_i = pd.read_sql_query("SELECT id, producto, precio_medio FROM inventario", conn)
@@ -465,17 +468,17 @@ def login_page():
                     st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v10.9.5", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v10.9.6", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']: login_page()
 else:
-    if 'acceso_f_v1095_ok' not in st.session_state:
+    if 'acceso_f_v1096_ok' not in st.session_state:
         try:
             conn = conectar_db()
             conn.execute("INSERT INTO log_accesos (email, fecha_hora) VALUES (?,?)", (st.session_state['email'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-            conn.commit(); conn.close(); st.session_state['acceso_f_v1095_ok'] = True
+            conn.commit(); conn.close(); st.session_state['acceso_f_v1096_ok'] = True
         except: pass
     
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
