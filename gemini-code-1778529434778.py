@@ -19,7 +19,7 @@ hoy = datetime.now().date()
 FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSECTICIDA", "FUNGICIDA", "BIO ESTIMULANTE", "ACARICIDA", "REGULADOR DE CRECIMIENTO", "ADHERENTE / MOJANTE", "OTROS"]
 CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "EL ESPINO", "OTROS"]
 
-# --- DATA DE INYECCIÓN EL ESPINO (LISTA COMPLETA) ---
+# --- DATA DE INYECCIÓN EL ESPINO ---
 DATA_ESP_HISTORICA = [
     ('2025-11-12', '719', 'Alisud Auditoria GG', 1094530), ('2025-12-12', 'S/N', 'Carlos Zavala Anticipo sueldo', 0),
     ('2025-12-20', 'S/N', 'Alejandra Leviman', 150000), ('2025-12-20', 'S/N', 'Duilio Pruzzo Diferencia en gastos', 6051696),
@@ -96,18 +96,12 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS inventario (id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0, stock_minimo REAL DEFAULT 0, precio_medio REAL DEFAULT 0)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS movimientos (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, cantidad REAL, centro_costo TEXT, fecha DATE, valor_imputado REAL DEFAULT 0)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT)""")
-    cursor.execute("""CREATE TABLE IF NOT EXISTS log_accesos (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, fecha_hora DATETIME, session_id TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS log_accesos (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, fecha_hora DATETIME)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS petroleo (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT, litros REAL, proveedor TEXT, monto_total_compra REAL, vehiculo TEXT, responsable TEXT, centro_costo TEXT, fecha DATE, valor_imputado REAL)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS bitacora (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora DATETIME)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS ajustes_costos (id INTEGER PRIMARY KEY AUTOINCREMENT, centro_costo TEXT, monto REAL, fecha DATE, motivo TEXT)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS libro_campo (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, n_orden TEXT, sector TEXT, est_fenologico TEXT, especie TEXT, motivo TEXT, producto TEXT, n_aplicacion INTEGER, ingrediente TEXT, dosis REAL, unidad_dosis TEXT, vol_total REAL, gasto_total REAL, unidad_gasto TEXT, tractor TEXT, maquina TEXT, aplicadores TEXT, car_etiqueta INTEGER, car_agenda INTEGER, car_mayor INTEGER, fecha_viable DATE)""")
-    
-    # MIGRACIÓN AUTOMÁTICA FORZADA PARA EVITAR SQLITE OPERATIONAL ERROR
-    try:
-        cursor.execute("SELECT session_id FROM log_accesos LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE log_accesos ADD COLUMN session_id TEXT")
     
     usuarios = [('osvaldolira@laconcepcion.cl', hash_password('9083')), ('secretaria@laconcepcion.cl', hash_password('9111'))]
     for u, p in usuarios:
@@ -138,7 +132,7 @@ def guardar_en_drive():
         lista = drive.ListFile({'q': query}).GetList()
         f = lista[0] if lista else drive.CreateFile({'title': NOMBRE_DB, 'parents': [{'id': ID_CARPETA_DRIVE}]})
         f.SetContentFile(NOMBRE_DB); f.Upload()
-        st.success("✅ Datos sincronizados con Google Drive.")
+        st.success("✅ Respaldo en Drive sincronizado.")
 
 def descargar_de_drive():
     drive = obtener_drive()
@@ -156,16 +150,16 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
         
         df_p = df.copy()
         if orden_asc and 'fecha' in [c.lower() for c in df_p.columns]:
-            col_fecha = [c for c in df_p.columns if c.lower() == 'fecha'][0]
-            df_p[col_fecha] = pd.to_datetime(df_p[col_fecha])
-            df_p = df_p.sort_values(by=col_fecha, ascending=True)
-            df_p[col_fecha] = df_p[col_fecha].dt.date
+            col_f = [c for c in df_p.columns if c.lower() == 'fecha'][0]
+            df_p[col_f] = pd.to_datetime(df_p[col_f])
+            df_p = df_p.sort_values(by=col_f, ascending=True)
+            df_p[col_f] = df_p[col_f].dt.date
 
         t_sum = total_manual
         if t_sum is None:
-            cols_money = ["monto", "total", "monto_total", "valor_imputado", "gasto_total"]
+            cols_m = ["monto", "total", "monto_total", "valor_imputado", "gasto_total", "monto_imputado"]
             for c in df_p.columns:
-                if any(x in c.lower() for x in cols_money):
+                if any(x in c.lower() for x in cols_m):
                     t_sum = df_p[c].sum(); break
 
         if modo_petroleo:
@@ -193,13 +187,14 @@ def inyectar_css():
     st.markdown(f"""<style>
         .main {{ background-color: #f4f7f6; }}
         .stMetric {{ background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 6px solid #2E7D32; }}
-        [data-testid="stMetricValue"] {{ font-size: 1.55rem !important; font-weight: 800; color: #1B5E20; }}
+        /* Ajuste de fuente para Deuda Total en Dashboard */
+        [data-testid="stMetricValue"] {{ font-size: 1.5rem !important; font-weight: 800; color: #1B5E20; }}
         .metric-red {{ color: #d32f2f !important; font-size: 2.2rem !important; font-weight: 700; }}
         .metric-blue {{ color: #1976d2 !important; font-size: 2.2rem !important; font-weight: 700; }}
         .card-critico {{ border-left-color: #d32f2f !important; }}
         .card-vencida {{ border-left-color: #1976d2 !important; }}
-        /* Sidebar: Usuario en Azul Fuerte */
-        .sidebar-user {{ color: #0D47A1 !important; font-weight: 900; font-size: 1.1rem; }}
+        /* Sidebar: Usuario en Azul FUERTE */
+        .sidebar-user {{ color: #0D47A1 !important; font-weight: 900; font-size: 1.15rem; }}
         /* Navegación en MAYÚSCULAS */
         div[data-testid="stRadio"] label {{ text-transform: uppercase; font-weight: 700; font-size: 0.85rem; }}
         </style>""", unsafe_allow_html=True)
@@ -360,7 +355,7 @@ def modulo_libro_campo():
             c_may = max(c_et, c_ag); f_via = f + timedelta(days=c_may)
             with c6: st.info(f"Carencia Mayor: {c_may} días"); st.warning(f"FECHA COSECHA: {f_via.strftime('%d/%m/%Y')}")
             if st.form_submit_button("💾 GUARDAR APLICACIÓN"):
-                conn.execute("INSERT INTO libro_campo (fecha, n_orden, sector, est_fenologico, especie, motivo, producto, n_aplicacion, ingrediente, dosis, unidad_dosis, vol_total, gasto_total, unidad_gasto, tractor, maquina, aplicadores, car_etiqueta, car_agenda, car_mayor, fecha_viable) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (f, ord_n, cc, est, esp, mot, prod, n_ap, ingrediente, dos, u_dos, vol, g_tot, u_gt, tra, maq, apli, c_et, c_ag, c_may, f_via))
+                conn.execute("INSERT INTO libro_campo (fecha, n_orden, sector, est_fenologico, especie, motivo, producto, n_aplicacion, ingrediente, dosis, unidad_dosis, vol_total, gasto_total, unidad_gasto, tractor, maquina, aplicadores, car_etiqueta, car_agenda, car_mayor, fecha_viable) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (f, ord_n, cc, est, esp, mot, prod, n_ap, ing, dos, u_dos, vol, g_tot, u_gt, tra, maq, apli, c_et, c_ag, c_may, f_via))
                 conn.commit(); registrar_accion("LIBRO CAMPO", f"{prod} en {cc}"); st.success("Aplicación Registrada"); st.rerun()
     with t2:
         cc_q = st.selectbox("Filtrar Sector de Aplicación", ["TODOS"] + CENTROS_COSTO)
@@ -432,18 +427,42 @@ def modulo_bodega():
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS")
     es_admin = (st.session_state.get('email') == 'osvaldolira@laconcepcion.cl')
-    t1, t2 = st.tabs(["📊 RESUMEN", "🔧 AJUSTES MANUALES"]); conn = conectar_db()
+    t1, t2, t3 = st.tabs(["📊 RESUMEN", "🔍 DETALLE POR CUARTEL", "🔧 AJUSTES MANUALES"]); conn = conectar_db()
     with t1:
         q = """SELECT UPPER(TRIM(cc)) as cc, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, SUM(CASE WHEN fuente = 'AJUSTE' THEN val ELSE 0 END) as Ajustes, SUM(val) as Total FROM (SELECT centro_costo as cc, valor_imputado as val, 'BODEGA' as fuente FROM movimientos UNION ALL SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento LIKE '%_P' UNION ALL SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo='Salida' UNION ALL SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos) WHERE cc != '' AND cc != 'BODEGA' GROUP BY cc"""
         df_r = pd.read_sql_query(q, conn)
         if not df_r.empty:
+            total_operacion = df_r['Total'].sum()
             df_m = df_r.copy() if es_admin else df_r.drop(columns=['Ajustes'])
+            # Agregar Fila de TOTAL GENERAL
+            fila_total = pd.DataFrame([{'cc': 'TOTAL GENERAL', 'Insumos': df_r['Insumos'].sum(), 'Gastos': df_r['Gastos'].sum(), 'Petroleo': df_r['Petroleo'].sum(), 'Ajustes': df_r['Ajustes'].sum() if es_admin else 0, 'Total': total_operacion}])
+            df_m = pd.concat([df_m, fila_total], ignore_index=True)
             st.dataframe(df_m.style.format({c: ("${:,.0f}" if c != 'cc' else str) for c in df_m.columns if c != 'cc'}), use_container_width=True)
-            st.download_button("📥 PDF INFORME DE COSTOS", generar_pdf_blob(df_r, "INFORME DE COSTOS"), "costos.pdf")
+            st.download_button("📥 PDF RESUMEN DE COSTOS", generar_pdf_blob(df_r, "INFORME RESUMEN DE COSTOS POR CUARTEL"), "resumen_costos.pdf")
     with t2:
+        cc_sel = st.selectbox("Seleccione Cuartel para Detalle", CENTROS_COSTO)
+        q_det = f"""
+            SELECT fecha, nro_documento as Doc, concepto as Detalle, monto_imputado as Monto FROM facturas WHERE centro_costo='{cc_sel.upper()}' AND nro_documento LIKE '%_P'
+            UNION ALL
+            SELECT m.fecha, 'BODEGA' as Doc, i.producto as Detalle, m.valor_imputado as Monto FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo='{cc_sel.upper()}'
+            UNION ALL
+            SELECT fecha, 'PETROLEO' as Doc, vehiculo || '-' || responsable as Detalle, valor_imputado as Monto FROM petroleo WHERE centro_costo='{cc_sel.upper()}' AND tipo='Salida'
+            UNION ALL
+            SELECT fecha, 'AJUSTE' as Doc, motivo as Detalle, monto as Monto FROM ajustes_costos WHERE centro_costo='{cc_sel.upper()}'
+            ORDER BY fecha DESC
+        """
+        df_det = pd.read_sql_query(q_det, conn)
+        st.subheader(f"Desglose de Gastos: {cc_sel}")
+        if not df_det.empty:
+            st.dataframe(df_det.style.format({"Monto": "${:,.0f}"}), use_container_width=True)
+            st.markdown(f"**Total Imputado en {cc_sel}:** `${f_puntos(df_det['Monto'].sum())}`")
+            st.download_button(f"📥 PDF DETALLE {cc_sel}", generar_pdf_blob(df_det, f"DETALLE DE COSTOS IMPUTADOS: {cc_sel}"), f"detalle_costos_{cc_sel}.pdf")
+        else:
+            st.info("No hay gastos imputados en este cuartel.")
+    with t3:
         if es_admin:
             with st.form("aj_form"):
-                cc_a, m_a, mo = st.selectbox("Cuartel para Ajuste", CENTROS_COSTO), st.number_input("Monto Ajuste ($)"), st.text_input("Motivo Ajuste")
+                cc_a, m_a, mo = st.selectbox("CC para Ajuste", CENTROS_COSTO), st.number_input("Monto Ajuste ($)"), st.text_input("Motivo Ajuste")
                 if st.form_submit_button("APLICAR AJUSTE"): conn.execute("INSERT INTO ajustes_costos (centro_costo, monto, fecha, motivo) VALUES (?,?,?,?)", (cc_a.upper(), m_a, hoy, mo)); conn.commit(); registrar_accion("AJUSTE COSTO", f"{cc_a} ${m_a}"); st.rerun()
     conn.close()
 
@@ -458,15 +477,12 @@ def modulo_seguridad():
 
 def login_page():
     inyectar_css()
-    # PRE-MIGRACIÓN: Asegurar que session_id existe antes del login
+    # REPARACIÓN PREVENTIVA log_accesos
     try:
-        conn = conectar_db(); cursor = conn.cursor()
-        cursor.execute("SELECT session_id FROM log_accesos LIMIT 1")
-        conn.close()
-    except sqlite3.OperationalError:
-        conn = conectar_db(); cursor = conn.cursor()
-        cursor.execute("ALTER TABLE log_accesos ADD COLUMN session_id TEXT")
+        conn = conectar_db(); cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS log_accesos (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, fecha_hora DATETIME)")
         conn.commit(); conn.close()
+    except: pass
 
     st.markdown("<h1 style='text-align: center; color: #1B5E20; margin-top: 50px;'>🚜 ERP LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.2, 1])
@@ -477,29 +493,23 @@ def login_page():
                 conn = conectar_db(); cursor = conn.cursor()
                 cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
                 if cursor.fetchone():
-                    # Registro forzado en login con session_id
-                    s_id = st.runtime.scriptrunner.add_script_run_ctx().streamlit_script_run_ctx.session_id
-                    cursor.execute("INSERT INTO log_accesos (email, fecha_hora, session_id) VALUES (?,?,?)", (e, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), s_id))
+                    # Registro simple de acceso en el login
+                    cursor.execute("INSERT INTO log_accesos (email, fecha_hora) VALUES (?,?)", (e, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
                     conn.commit(); conn.close()
                     st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado: Credenciales Incorrectas")
 
-st.set_page_config(page_title="ERP AGRICOLA v10.8.98", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v10.8.99", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']: login_page()
 else:
-    # --- ANCLAJE DE AUDITORÍA INCONDICIONAL (Definitivo) ---
-    try:
-        sess_id = st.runtime.scriptrunner.add_script_run_ctx().streamlit_script_run_ctx.session_id
+    # REGISTRO DE SEGURIDAD REACTIVO (Captura actividad sin session_id conflictivo)
+    if 'acceso_v10899' not in st.session_state:
         conn = conectar_db()
-        check = conn.execute("SELECT COUNT(*) FROM log_accesos WHERE email=? AND session_id=?", (st.session_state['email'], sess_id)).fetchone()[0]
-        if check == 0:
-            conn.execute("INSERT INTO log_accesos (email, fecha_hora, session_id) VALUES (?,?,?)", (st.session_state['email'], datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sess_id))
-            conn.commit()
-        conn.close()
-    except: pass
+        conn.execute("INSERT INTO log_accesos (email, fecha_hora) VALUES (?,?)", (st.session_state['email'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        conn.commit(); conn.close(); st.session_state['acceso_v10899'] = True
     
     if 'init' not in st.session_state: descargar_de_drive(); st.session_state['init'] = True
     inyectar_css()
