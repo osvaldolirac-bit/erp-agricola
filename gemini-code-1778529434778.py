@@ -133,13 +133,13 @@ def registrar_accion(accion, detalle):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1133_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1134_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.3)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.4)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -188,7 +188,7 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
             cf = [c for c in df_p.columns if c.lower() == 'fecha'][0]; df_p[cf] = pd.to_datetime(df_p[cf]); df_p = df_p.sort_values(by=cf, ascending=True); df_p[cf] = df_p[cf].dt.date
         t_sum = total_manual if total_manual else 0
         if total_manual is None:
-            cols_m = ["monto", "total", "monto_total", "valor_imputado", "gasto_total", "monto_imputado", "costo_empresa", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota"]
+            cols_m = ["monto", "total", "monto_total", "valor_imputado", "gasto_total", "monto_imputado", "costo_empresa", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota", "ajustes"]
             for c in df_p.columns:
                 if any(x in c.lower() for x in cols_m):
                     try: t_sum += df_p[c].sum()
@@ -201,7 +201,7 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
             for i, item in enumerate(row):
                 val = str(item)
                 col_n = df_p.columns[i].lower()
-                if any(x in col_n for x in ["monto", "total", "valor", "costo", "liquido", "leyes", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota"]): val = f_puntos(item)
+                if any(x in col_n for x in ["monto", "total", "valor", "costo", "liquido", "leyes", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota", "ajustes"]): val = f_puntos(item)
                 elif any(x in col_n for x in ["litros", "cantidad", "stock", "volumen", "dosis"]): val = f_decimal(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
@@ -294,7 +294,6 @@ def modulo_petroleo():
                     for c in ccs: conn.execute("INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?,?)", ("Salida", ls/len(ccs), v, r, c.upper(), fs, (ls/len(ccs)*pmp)))
                     conn.commit(); registrar_accion("PETROLEO", f"Salida {ls}L"); guardar_en_drive(); st.rerun()
     with t_p[2]:
-        # AJUSTE RANGO DE FECHAS ABIERTO DESDE BASE DE DATOS v11.3.3
         f_min_q = conn.execute("SELECT MIN(fecha) FROM petroleo").fetchone()[0]
         f_min_p = pd.to_datetime(f_min_q).date() if f_min_q else hoy - timedelta(days=365)
         
@@ -330,7 +329,7 @@ def modulo_compras():
                     conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (i['c'], npmp, i['id']))
                 conn.commit(); st.session_state['car'] = []; registrar_accion("COMPRA", nro); guardar_en_drive(); st.rerun()
     with t_sel[1]:
-        pg, ng, fg1, fg2 = st.text_input("Proveedor", key="gv_1"), st.text_input("N° Doc", key="gv_2"), st.date_input("Fecha", hoy, key="gv_3"), st.date_input("Vence", hoy, key="gv_4")
+        pg, ng, fg1, fg2 = st.text_input("Proveedor Gasto", key="gv_1"), st.text_input("N° Doc", key="gv_2"), st.date_input("Fecha Gasto", hoy, key="gv_3"), st.date_input("Vence Gasto", hoy, key="gv_4")
         selcc = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"gv_cc_{cc}")]
         mt = st.number_input("Bruto ($)", 0.0, key="gv_5"); iva = st.radio("Imputar Bruto?", ["SI", "NO (NETO)"], key="gv_6")
         if st.button("💾 GUARDAR GASTO", key="gv_7"):
@@ -347,7 +346,7 @@ def modulo_compras():
         with t_sel[3]:
             idm = st.selectbox("ID Factura", dfh['id'], key="mod_comp_1") if not dfh.empty else None
             clvm = st.text_input("Clave Master", type="password", key="mod_comp_2")
-            if st.button("🗑️ ELIMINAR REGISTRO RAÍZ", key="mod_comp_3"):
+            if st.button("🗑️ ELIMINAR TOTAL", key="mod_comp_3"):
                 if clvm == CLAVE_MAESTRA:
                     sel = dfh[dfh['id']==idm].iloc[0]
                     conn.execute("DELETE FROM facturas WHERE id=?", (idm,))
@@ -431,7 +430,6 @@ def modulo_espino():
                 conn.execute("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", (f, d, it, mt))
                 conn.commit(); registrar_accion("EL ESPINO", it); guardar_en_drive(); st.rerun()
     with t_e[1]:
-        # AJUSTE APERTURA TOTAL DE RANGO DE FECHAS v11.3.3
         f_min_q = conn.execute("SELECT MIN(fecha) FROM gastos_espino").fetchone()[0]
         f_min_e = pd.to_datetime(f_min_q).date() if f_min_q else hoy - timedelta(days=365)
         
@@ -439,10 +437,8 @@ def modulo_espino():
         fi_e = c1.date_input("Desde", f_min_e, key="eh_1")
         ff_e = c2.date_input("Hasta", hoy, key="eh_2")
         
-        # CONSULTA CON FILTRO ABIERTO Y ORDEN CRONOLÓGICO ASCENDENTE
         dfh = pd.read_sql_query(f"SELECT * FROM gastos_espino WHERE fecha BETWEEN '{fi_e}' AND '{ff_e}' ORDER BY fecha ASC", conn)
         
-        # MOSTRAR GASTO ACUMULADO DE LA TEMPORADA FILTRADA EN PANTALLA
         total_acumulado = dfh['monto'].sum()
         st.markdown(f"<div style='background-color:#E8F5E9; padding:15px; border-radius:10px; border:2px solid #2E7D32; color:#1B5E20; font-size:1.4rem; font-weight:bold; text-align:center; margin-bottom:15px;'>💰 GASTO ACUMULADO EL ESPINO A LA FECHA: ${f_puntos(total_acumulado)}</div>", unsafe_allow_html=True)
         
@@ -550,13 +546,39 @@ def modulo_rrhh():
 
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS"); conn = conectar_db()
-    q = """SELECT UPPER(TRIM(cc)) as Cuartel, SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, SUM(CASE WHEN fuente = 'RRHH' THEN val ELSE 0 END) as RRHH, SUM(val) as Total FROM (SELECT centro_costo as cc, valor_imputado as val, 'BODEGA' as fuente FROM movimientos UNION ALL SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' UNION ALL SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' UNION ALL SELECT centro_costo as cc, monto_imputado as val, 'RRHH' as fuente FROM facturas WHERE nro_documento LIKE '%_RRHH') WHERE cc != '' GROUP BY cc"""
+    # REPOSICIÓN MÓDULO COSTOS HISTORIAL CON COLUMNA AJUSTES v11.3.4
+    q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
+                  SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
+                  SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
+                  SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, 
+                  SUM(CASE WHEN fuente = 'RRHH' THEN val ELSE 0 END) as RRHH, 
+                  SUM(CASE WHEN fuente = 'AJUSTE' THEN val ELSE 0 END) as Ajustes,
+                  SUM(val) as Total 
+           FROM (
+               SELECT centro_costo as cc, valor_imputado as val, 'BODEGA' as fuente FROM movimientos 
+               UNION ALL 
+               SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
+               UNION ALL 
+               SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' 
+               UNION ALL 
+               SELECT centro_costo as cc, monto_imputado as val, 'RRHH' as fuente FROM facturas WHERE nro_documento LIKE '%_RRHH'
+               UNION ALL
+               SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos
+           ) WHERE cc != '' GROUP BY cc"""
     dfr = pd.read_sql_query(q, conn)
     if not dfr.empty:
-        fila_t = pd.DataFrame([{'Cuartel': 'TOTAL GENERAL', 'Insumos': dfr['Insumos'].sum(), 'Gastos': dfr['Gastos'].sum(), 'Petroleo': dfr['Petroleo'].sum(), 'RRHH': dfr['RRHH'].sum(), 'Total': dfr['Total'].sum()}])
+        fila_t = pd.DataFrame([{
+            'Cuartel': 'TOTAL GENERAL', 
+            'Insumos': dfr['Insumos'].sum(), 
+            'Gastos': dfr['Gastos'].sum(), 
+            'Petroleo': dfr['Petroleo'].sum(), 
+            'RRHH': dfr['RRHH'].sum(), 
+            'Ajustes': dfr['Ajustes'].sum(),
+            'Total': dfr['Total'].sum()
+        }])
         dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
         st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
-        st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr, "INFORME COSTOS POR CUARTEL"), "costos.pdf", key="cost_pdf_f")
+        st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr_f, "INFORME COSTOS CONSOLIDADOS POR CUARTEL"), "costos.pdf", key="cost_pdf_f")
     conn.close()
 
 def modulo_seguridad():
@@ -578,7 +600,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.3.3", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.3.4", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
