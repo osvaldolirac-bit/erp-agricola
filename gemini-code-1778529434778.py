@@ -133,13 +133,13 @@ def registrar_accion(accion, detalle):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1138_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1139_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.8)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.9)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -508,7 +508,6 @@ def modulo_rrhh():
         df_act = pd.read_sql_query("SELECT id, nombre FROM personal WHERE estado='Activo'", conn)
         if not df_act.empty:
             st.subheader("Configuración de Remuneración Fija")
-            # CORRECCIÓN DE TYPO ELIMINANDO EL ARGUMENTO ERRÓNEO 'dfa =' v11.3.8
             ts = st.selectbox("Seleccionar Trabajador", df_act['id'].astype(str) + " - " + df_act['nombre'], key="rh_remu_1")
             tid = int(ts.split(" - ")[0])
             with st.form("rh_remu_f"):
@@ -538,8 +537,14 @@ def modulo_rrhh():
             with st.form("rh_mov"):
                 tm = st.selectbox("Trabajador", df_act['id'].astype(str) + " - " + df_act['nombre'], key="rh_mov_1")
                 tid_m = int(tm.split(" - ")[0]); tnom_m = tm.split(" - ")[1]
+                
+                # CIRUGÍA EXACTA: CONSULTA COMPLETAMENTE DINÁMICA DE LA FICHA ECONÓMICA v11.3.9
                 ficha = conn.execute("SELECT sueldo_pactado, (monto_prestamo/NULLIF(cuotas_prestamo,0)), suple_fijo FROM remuneraciones_fichas WHERE trabajador_id=?", (tid_m,)).fetchone()
-                if ficha: st.info(f"💡 Pactado: ${f_puntos(ficha[0])} | Cuota Préstamo: ${f_puntos(ficha[1] if ficha[1] else 0)} | Suple: ${f_puntos(ficha[2])}")
+                if ficha: 
+                    st.info(f"💡 {tnom_m} -> Pactado: ${f_puntos(ficha[0])} | Cuota Préstamo: ${f_puntos(ficha[1] if ficha[1] else 0)} | Suple Fijo: ${f_puntos(ficha[2])}")
+                else:
+                    st.info(f"💡 {tnom_m} -> No tiene una Ficha Económica configurada en la pestaña '💼 REMUNERACIONES'")
+                    
                 c1, c2 = st.columns(2); m = st.selectbox("Mes", ["01","02","03","04","05","06","07","08","09","10","11","12"], index=int(hora_chile().month)-1); a = st.number_input("Año", value=hora_chile().year)
                 lic = st.checkbox("Licencia"); liq, ley = st.number_input("Líquido Mes", 0.0), st.number_input("Previred", 0.0)
                 if st.form_submit_button("REGISTRAR Y PRORRATEAR"):
@@ -611,7 +616,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.3.8", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.3.9", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
