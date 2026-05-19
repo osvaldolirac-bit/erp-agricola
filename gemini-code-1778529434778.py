@@ -133,13 +133,13 @@ def registrar_accion(accion, detalle):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1134_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1135_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.4)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.5)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -546,7 +546,6 @@ def modulo_rrhh():
 
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS"); conn = conectar_db()
-    # REPOSICIÓN MÓDULO COSTOS HISTORIAL CON COLUMNA AJUSTES v11.3.4
     q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                   SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
                   SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -578,7 +577,10 @@ def modulo_costos():
         }])
         dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
         st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
-        st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr_f, "INFORME COSTOS CONSOLIDADOS POR CUARTEL"), "costos.pdf", key="cost_pdf_f")
+        
+        # CIRUGÍA EXACTA: EXCLUIR COLUMNA 'AJUSTES' EXCLUSIVAMENTE DEL REPORTE PDF v11.3.5
+        dfr_pdf = dfr_f.drop(columns=['Ajustes']) if 'Ajustes' in dfr_f.columns else dfr_f
+        st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr_pdf, "INFORME COSTOS CONSOLIDADOS POR CUARTEL"), "costos.pdf", key="cost_pdf_f")
     conn.close()
 
 def modulo_seguridad():
@@ -600,7 +602,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.3.4", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.3.5", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
