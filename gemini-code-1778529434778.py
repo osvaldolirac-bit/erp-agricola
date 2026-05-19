@@ -133,13 +133,13 @@ def registrar_accion(accion, detalle):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1139_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1140_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.9)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.0)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -534,25 +534,36 @@ def modulo_rrhh():
     
     with t_r[2]:
         if not df_act.empty:
-            with st.form("rh_mov"):
-                tm = st.selectbox("Trabajador", df_act['id'].astype(str) + " - " + df_act['nombre'], key="rh_mov_1")
-                tid_m = int(tm.split(" - ")[0]); tnom_m = tm.split(" - ")[1]
+            # REDISEÑO RADICAL Y DESACOPLADO DEL PASO 3 PARA DESBLOQUEAR EL SELECTBOX v11.4.0
+            lista_t = (df_act['id'].astype(str) + " - " + df_act['nombre']).tolist()
+            tm = st.selectbox("Trabajador", lista_t, key="rh_mov_1")
+            
+            if tm:
+                tid_m = int(tm.split(" - ")[0])
+                tnom_m = tm.split(" - ")[1]
                 
-                # CIRUGÍA EXACTA: CONSULTA COMPLETAMENTE DINÁMICA DE LA FICHA ECONÓMICA v11.3.9
+                # Búsqueda instantánea en caliente sin pasar por el estado de la sesión
                 ficha = conn.execute("SELECT sueldo_pactado, (monto_prestamo/NULLIF(cuotas_prestamo,0)), suple_fijo FROM remuneraciones_fichas WHERE trabajador_id=?", (tid_m,)).fetchone()
                 if ficha: 
                     st.info(f"💡 {tnom_m} -> Pactado: ${f_puntos(ficha[0])} | Cuota Préstamo: ${f_puntos(ficha[1] if ficha[1] else 0)} | Suple Fijo: ${f_puntos(ficha[2])}")
                 else:
                     st.info(f"💡 {tnom_m} -> No tiene una Ficha Económica configurada en la pestaña '💼 REMUNERACIONES'")
-                    
-                c1, c2 = st.columns(2); m = st.selectbox("Mes", ["01","02","03","04","05","06","07","08","09","10","11","12"], index=int(hora_chile().month)-1); a = st.number_input("Año", value=hora_chile().year)
-                lic = st.checkbox("Licencia"); liq, ley = st.number_input("Líquido Mes", 0.0), st.number_input("Previred", 0.0)
+            
+            with st.form("rh_mov_form"):
+                c1, c2 = st.columns(2)
+                m = st.selectbox("Mes", ["01","02","03","04","05","06","07","08","09","10","11","12"], index=int(hora_chile().month)-1)
+                a = st.number_input("Año", value=hora_chile().year)
+                lic = st.checkbox("Licencia")
+                liq, ley = st.number_input("Líquido Mes", 0.0), st.number_input("Previred", 0.0)
+                
                 if st.form_submit_button("REGISTRAR Y PRORRATEAR"):
-                    tot = liq + ley if not lic else 0
-                    conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', hoy))
-                    for cc, p in PRORRATEO_RRHH.items(): 
-                        conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, monto_total, tipo, centro_costo, monto_imputado, estado) VALUES (?,?,?,?,?,?,?,?)", (f"RRHH_{tid_m}_{m}{a}", tnom_m, f"{a}-{m}-01", 0, 'RRHH', cc, tot*p, 'Pagado'))
-                    conn.commit(); registrar_accion("RRHH PAGO", tnom_m); guardar_en_drive(); st.rerun()
+                    if tm:
+                        tot = liq + ley if not lic else 0
+                        conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', hoy))
+                        for cc, p in PRORRATEO_RRHH.items(): 
+                            conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, monto_total, tipo, centro_costo, monto_imputado, estado) VALUES (?,?,?,?,?,?,?,?)", (f"RRHH_{tid_m}_{m}{a}", tnom_m, f"{a}-{m}-01", 0, 'RRHH', cc, tot*p, 'Pagado'))
+                        conn.commit(); registrar_accion("RRHH PAGO", tnom_m); guardar_en_drive(); st.rerun()
+                        
     with t_r[3]:
         df_h = pd.read_sql_query("SELECT p.nombre, h.mes, h.anio, h.costo_empresa FROM pagos_rrhh h JOIN personal p ON h.trabajador_id = p.id ORDER BY h.anio DESC, h.mes DESC", conn)
         st.dataframe(df_h.style.format({"costo_empresa": "${:,.0f}"}), use_container_width=True)
@@ -616,7 +627,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.3.9", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.4.0", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
