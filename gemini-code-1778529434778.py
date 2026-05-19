@@ -133,13 +133,13 @@ def registrar_accion(accion, detalle):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1140_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1141_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.0)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.1)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -520,10 +520,11 @@ def modulo_rrhh():
                     conn.commit(); registrar_accion("RRHH FICHA", ts); guardar_en_drive(); st.rerun()
             
             st.divider(); st.subheader("💰 Provisión de Fondos (Fin de Mes)")
+            # CIRUGÍA MATEMÁTICA CON COALESCE PARA RESOLVER EL EFECTO NULL EN TRABAJADORES SIN PRÉSTAMO v11.4.1
             q_prov = """SELECT p.nombre, f.sueldo_pactado as Pactado, 
-                        (f.monto_prestamo/NULLIF(f.cuotas_prestamo,0)) as Cuota, 
+                        COALESCE(f.monto_prestamo/NULLIF(f.cuotas_prestamo,0), 0) as Cuota, 
                         f.suple_fijo as Suple, 
-                        (f.sueldo_pactado - (f.monto_prestamo/NULLIF(f.cuotas_prestamo,0)) - f.suple_fijo) as Saldo_Pago
+                        (f.sueldo_pactado - COALESCE(f.monto_prestamo/NULLIF(f.cuotas_prestamo,0), 0) - f.suple_fijo) as Saldo_Pago
                         FROM personal p 
                         JOIN remuneraciones_fichas f ON p.id = f.trabajador_id 
                         WHERE p.estado='Activo'"""
@@ -534,7 +535,6 @@ def modulo_rrhh():
     
     with t_r[2]:
         if not df_act.empty:
-            # REDISEÑO RADICAL Y DESACOPLADO DEL PASO 3 PARA DESBLOQUEAR EL SELECTBOX v11.4.0
             lista_t = (df_act['id'].astype(str) + " - " + df_act['nombre']).tolist()
             tm = st.selectbox("Trabajador", lista_t, key="rh_mov_1")
             
@@ -542,7 +542,6 @@ def modulo_rrhh():
                 tid_m = int(tm.split(" - ")[0])
                 tnom_m = tm.split(" - ")[1]
                 
-                # Búsqueda instantánea en caliente sin pasar por el estado de la sesión
                 ficha = conn.execute("SELECT sueldo_pactado, (monto_prestamo/NULLIF(cuotas_prestamo,0)), suple_fijo FROM remuneraciones_fichas WHERE trabajador_id=?", (tid_m,)).fetchone()
                 if ficha: 
                     st.info(f"💡 {tnom_m} -> Pactado: ${f_puntos(ficha[0])} | Cuota Préstamo: ${f_puntos(ficha[1] if ficha[1] else 0)} | Suple Fijo: ${f_puntos(ficha[2])}")
@@ -627,7 +626,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.4.0", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.4.1", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
