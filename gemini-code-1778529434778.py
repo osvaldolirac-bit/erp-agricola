@@ -133,13 +133,13 @@ def registrar_accion(accion, detalle):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1135_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1137_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.5)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.3.7)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -156,7 +156,17 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS ajustes_costos (id INTEGER PRIMARY KEY AUTOINCREMENT, centro_costo TEXT, monto REAL, fecha DATE, motivo TEXT)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS libro_campo (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, n_orden TEXT, sector TEXT, est_fenologico TEXT, especie TEXT, motivo TEXT, producto TEXT, n_aplicacion INTEGER, ingrediente TEXT, dosis REAL, unidad_dosis TEXT, vol_total REAL, gasto_total REAL, unidad_gasto TEXT, tractor TEXT, maquina TEXT, aplicadores TEXT, car_etiqueta INTEGER, car_agenda INTEGER, car_mayor INTEGER, fecha_viable DATE)""")
-    cursor.execute("""CREATE TABLE IF NOT EXISTS personal (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, rut TEXT UNIQUE, cargo TEXT, fecha_contrato DATE, estado TEXT DEFAULT 'Activo')""")
+    
+    # VERIFICACIÓN INTEGRAL DE COLUMNAS REALES (PRAGMA) PARA EVITAR OPERATIONALERROR v11.3.7
+    cursor.execute("CREATE TABLE IF NOT EXISTS personal (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, rut TEXT UNIQUE, cargo TEXT, fecha_contrato DATE, estado TEXT DEFAULT 'Activo')")
+    cursor.execute("PRAGMA table_info(personal)")
+    columnas = [col[1] for col in cursor.fetchall()]
+    if 'fecha_contrato' not in columnas:
+        try:
+            cursor.execute("ALTER TABLE personal ADD COLUMN fecha_contrato DATE")
+        except Exception:
+            pass
+        
     cursor.execute("""CREATE TABLE IF NOT EXISTS remuneraciones_fichas (trabajador_id INTEGER PRIMARY KEY, sueldo_pactado REAL, monto_prestamo REAL DEFAULT 0, cuotas_prestamo INTEGER DEFAULT 0, suple_fijo REAL DEFAULT 0, FOREIGN KEY(trabajador_id) REFERENCES personal(id))""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS pagos_rrhh (id INTEGER PRIMARY KEY AUTOINCREMENT, trabajador_id INTEGER, mes TEXT, anio INTEGER, liquido REAL, leyes_sociales REAL, costo_empresa REAL, tipo TEXT, fecha_registro DATE)""")
     usuarios = [('osvaldolira@laconcepcion.cl', hash_password('9083')), ('secretaria@laconcepcion.cl', hash_password('9111'))]
@@ -364,7 +374,7 @@ def modulo_tesoreria():
             return ['background-color: #FFCDD2; color: #B71C1C; font-weight: bold' if pd.to_datetime(row['fecha_vencimiento']).date() < hoy else '' for _ in row]
         st.dataframe(dfp.style.apply(highlight_v, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
         st.download_button("📥 PDF PENDIENTES", generar_pdf_blob(dfp, "DEUDAS PENDIENTES"), "pendientes.pdf", key="t_pdf_1")
-        idp = st.selectbox("Pagar ID", dfp['id'], key="t_p1"); metp = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"], key="t_p2")
+        idp = st.selectbox("ID Pago", dfp['id'], key="t_p1"); metp = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"], key="t_p2")
         if st.button("💰 MARCAR PAGADO", key="t_p3"):
             conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, hoy, idp))
             conn.commit(); registrar_accion("PAGO", str(idp)); guardar_en_drive(); st.rerun()
@@ -480,7 +490,7 @@ def modulo_rrhh():
             c1, c2, c3 = st.columns(3); n, r, c = c1.text_input("Nombre"), c2.text_input("RUT"), c3.text_input("Cargo")
             f_cont = st.date_input("Fecha Contrato", hoy)
             if st.form_submit_button("REGISTRAR"):
-                conn.execute("INSERT INTO personal (nombre, rut, cargo, fecha_contrato) VALUES (?,?,?,?)", (n, r, c, f_cont)); conn.commit(); registrar_accion("RRHH", n); guardar_en_drive(); st.rerun()
+                conn.execute("INSERT INTO personal (nombre, rut, cargo, fecha_contrato) VALUES (?,?,?,?)", (n, r, c, str(f_cont))); conn.commit(); registrar_accion("RRHH", n); guardar_en_drive(); st.rerun()
         df_p = pd.read_sql_query("SELECT * FROM personal", conn)
         st.dataframe(df_p, use_container_width=True)
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl' and not df_p.empty:
@@ -499,7 +509,7 @@ def modulo_rrhh():
         df_act = pd.read_sql_query("SELECT id, nombre FROM personal WHERE estado='Activo'", conn)
         if not df_act.empty:
             st.subheader("Configuración de Remuneración Fija")
-            ts = st.selectbox("Seleccionar Trabajador", df_act['id'].astype(str) + " - " + df_act['nombre'], key="rh_remu_1")
+            ts = st.selectbox("Seleccionar Trabajador", dfa = df_act['id'].astype(str) + " - " + df_act['nombre'], key="rh_remu_1")
             tid = int(ts.split(" - ")[0])
             with st.form("rh_remu_f"):
                 p_sueldo = st.number_input("Sueldo Líquido Pactado ($)", 0.0)
@@ -578,7 +588,6 @@ def modulo_costos():
         dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
         st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
         
-        # CIRUGÍA EXACTA: EXCLUIR COLUMNA 'AJUSTES' EXCLUSIVAMENTE DEL REPORTE PDF v11.3.5
         dfr_pdf = dfr_f.drop(columns=['Ajustes']) if 'Ajustes' in dfr_f.columns else dfr_f
         st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr_pdf, "INFORME COSTOS CONSOLIDADOS POR CUARTEL"), "costos.pdf", key="cost_pdf_f")
     conn.close()
@@ -602,7 +611,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.3.5", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.3.7", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
