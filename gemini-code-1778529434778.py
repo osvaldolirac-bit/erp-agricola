@@ -133,13 +133,13 @@ def registrar_accion(accion, detalle):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1141_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1142_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.1)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.2)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -520,7 +520,6 @@ def modulo_rrhh():
                     conn.commit(); registrar_accion("RRHH FICHA", ts); guardar_en_drive(); st.rerun()
             
             st.divider(); st.subheader("💰 Provisión de Fondos (Fin de Mes)")
-            # CIRUGÍA MATEMÁTICA CON COALESCE PARA RESOLVER EL EFECTO NULL EN TRABAJADORES SIN PRÉSTAMO v11.4.1
             q_prov = """SELECT p.nombre, f.sueldo_pactado as Pactado, 
                         COALESCE(f.monto_prestamo/NULLIF(f.cuotas_prestamo,0), 0) as Cuota, 
                         f.suple_fijo as Suple, 
@@ -571,6 +570,8 @@ def modulo_rrhh():
 
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS"); conn = conectar_db()
+    
+    # Consulta raíz que une todos los movimientos operacionales y ajustes
     q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                   SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
                   SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -589,8 +590,11 @@ def modulo_costos():
                UNION ALL
                SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos
            ) WHERE cc != '' GROUP BY cc"""
+    
     dfr = pd.read_sql_query(q, conn)
+    
     if not dfr.empty:
+        # Generamos la fila de sumatorias totales
         fila_t = pd.DataFrame([{
             'Cuartel': 'TOTAL GENERAL', 
             'Insumos': dfr['Insumos'].sum(), 
@@ -601,10 +605,45 @@ def modulo_costos():
             'Total': dfr['Total'].sum()
         }])
         dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
-        st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
         
+        # SEGREGACIÓN DE VISUALIZACIÓN EN PANTALLA WEB v11.4.2 (SOLO OSVALDO VE LA COLUMNA DE AJUSTES)
+        if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
+            st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
+        else:
+            # Para la secretaria u otros roles se remueve completamente la columna del visor web
+            df_reducido = dfr_f.drop(columns=['Ajustes']) if 'Ajustes' in dfr_f.columns else dfr_f
+            st.dataframe(df_reducido.style.format({c: "${:,.0f}" for c in df_reducido.columns if c != 'Cuartel'}), use_container_width=True)
+        
+        # El PDF siempre va consolidado y limpio (Sin la columna Ajustes para mantener la estructura limpia)
         dfr_pdf = dfr_f.drop(columns=['Ajustes']) if 'Ajustes' in dfr_f.columns else dfr_f
         st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr_pdf, "INFORME COSTOS CONSOLIDADOS POR CUARTEL"), "costos.pdf", key="cost_pdf_f")
+        
+    # FORMULARIO DE INGRESO DE AJUSTE CON CLAVE MAESTRA EXCLUSIVO PARA EL ADMINISTRADOR v11.4.2
+    if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
+        st.divider()
+        st.subheader("➕ INGRESAR AJUSTE DE COSTOS (EXCLUSIVO)")
+        with st.form("form_ajuste_manual"):
+            cc_aj = st.selectbox("Centro de Costo / Cuartel", CENTROS_COSTO)
+            f_aj = st.date_input("Fecha Ajuste", hoy)
+            mot_aj = st.text_input("Motivo / Glosa del Ajuste")
+            monto_aj = st.number_input("Monto Ajuste ($) - Valores negativos restan costo", value=0.0)
+            clv_aj = st.text_input("Clave Maestra de Autorización", type="password")
+            
+            if st.form_submit_button("GUARDAR AJUSTE EN CUARTEL"):
+                if clv_aj == CLAVE_MAESTRA:
+                    if monto_aj != 0 and mot_aj.strip() != "":
+                        conn.execute("INSERT INTO ajustes_costos (centro_costo, monto, fecha, motivo) VALUES (?,?,?,?)", 
+                                     (cc_aj.upper(), monto_aj, str(f_aj), mot_aj.strip()))
+                        conn.commit()
+                        registrar_accion("AJUSTE COSTOS", f"Cuartel: {cc_aj} | Monto: {monto_aj} | Motivo: {mot_aj}")
+                        guardar_en_drive()
+                        st.success("✅ Ajuste ingresado y balance general recalculado con éxito.")
+                        st.rerun()
+                    else:
+                        st.error("❌ Por favor completa el motivo y asegúrate de que el monto sea distinto de cero.")
+                else:
+                    st.error("❌ Clave Maestra de Autorización Incorrecta. Operación cancelada.")
+                    
     conn.close()
 
 def modulo_seguridad():
@@ -626,7 +665,7 @@ def login_page():
                 if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.4.1", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.4.2", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
