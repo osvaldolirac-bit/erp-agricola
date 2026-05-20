@@ -10,6 +10,9 @@ from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
 import requests
 import io
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # =============================================================================
 # 1. CONFIGURACIÓN, CONSTANTES Y MOTOR HORARIO (CHILE UTC-4)
@@ -53,7 +56,7 @@ DATA_ESP_HISTORICA = [
     ('2026-01-30', 'S/N', 'Carlos Zavala', 620000), ('2026-01-30', 'S/N', 'Duilio Pruzzo', 0),
     ('2026-02-05', 'S/N', 'Danixa Amaza', 50000), ('2026-02-10', 'S/N', 'Carlos Zavala Imposiciones', 143483),
     ('2026-02-11', 'GD', 'Coagra Acaban 1lt', 89969), ('2026-02-12', 'S/N', 'Caceres M SPA', 1532084),
-    ('2026-02-19', '13785', 'FerreMás Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
+    ('2026-02-19', '13785', 'FerreMais Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
     ('2026-03-10', '23648', 'Soc. Los Olivos Pernos Hex', 16950), ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960),
     ('2026-03-09', '7826141', 'Ferreteria codo hidráulico', 5750), ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942),
     ('2026-03-03', '2237580', 'Coagra Urea granulada', 198417), ('2026-03-06', '6966966', 'Electrocom Contractor', 220326),
@@ -74,7 +77,7 @@ DATA_ESP_HISTORICA = [
 ]
 
 # =============================================================================
-# 2. MOTOR DE BASE DE DATOS Y UTILIDADES DRIVE
+# 2. MOTOR DE BASE DE DATOS, UTILIDADES DRIVE Y ALERTA SMTP
 # =============================================================================
 
 def conectar_db():
@@ -131,15 +134,67 @@ def registrar_accion(accion, detalle):
         st.cache_data.clear() 
     except: pass
 
+def enviar_correo_alerta(usuario_intruso):
+    """Despacha una alerta SMTP de alta velocidad (espejo) si ingresa un usuario secundario v11.4.3"""
+    try:
+        if "gmail_smtp" not in st.secrets:
+            return
+        conf = st.secrets["gmail_smtp"]
+        
+        emisor = conf["correo_emisor"]
+        clave = conf["clave_application"] if "clave_application" in conf else conf["clave_aplicacion"]
+        receptor = conf["correo_receptor"]
+        
+        f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
+        
+        msg = MIMEMultipart()
+        msg['From'] = emisor
+        msg['To'] = receptor
+        msg['Subject'] = f"🚨 ALERTA: Acceso Detectado en ERP La Concepción"
+        
+        cuerpo = f"""
+        <html>
+        <body style='font-family: sans-serif; padding: 20px; background-color: #f4f7f6;'>
+            <div style='background-color: white; padding: 25px; border-radius: 10px; border-top: 5px solid #d32f2f; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                <h2 style='color: #d32f2f; margin-top: 0;'>🚜 Alerta de Seguridad Perimetral</h2>
+                <p>Se ha registrado un inicio de sesión en la plataforma de un usuario distinto al administrador principal.</p>
+                <hr style='border: 0; border-top: 1px solid #eee;'>
+                <p><b>👤 Usuario Conectado:</b> <span style='color: #0d47a1; font-weight: bold;'>{usuario_intruso}</span></p>
+                <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
+                <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
+                <hr style='border: 0; border-top: 1px solid #eee;'>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.4.3.</small>
+            </div>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(cuerpo, 'html'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(emisor, clave)
+        server.sendmail(emisor, receptor, msg.as_string())
+        server.quit()
+    except Exception as e:
+        # Aislamiento total: si el SMTP falla, el ERP sigue arriba y guarda el log en bitácora
+        try:
+            conn = conectar_db()
+            f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
+            conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
+                         ("SISTEMA", "FALLO_SMTP", str(e)[:150], f_h))
+            conn.commit(); conn.close()
+        except:
+            pass
+
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1142_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1143_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.2)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.3)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -571,7 +626,6 @@ def modulo_rrhh():
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS"); conn = conectar_db()
     
-    # Consulta raíz que une todos los movimientos operacionales y ajustes
     q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                   SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
                   SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -594,7 +648,6 @@ def modulo_costos():
     dfr = pd.read_sql_query(q, conn)
     
     if not dfr.empty:
-        # Generamos la fila de sumatorias totales
         fila_t = pd.DataFrame([{
             'Cuartel': 'TOTAL GENERAL', 
             'Insumos': dfr['Insumos'].sum(), 
@@ -606,19 +659,16 @@ def modulo_costos():
         }])
         dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
         
-        # SEGREGACIÓN DE VISUALIZACIÓN EN PANTALLA WEB v11.4.2 (SOLO OSVALDO VE LA COLUMNA DE AJUSTES)
+        # SEGREGACIÓN DE VISUALIZACIÓN EN PANTALLA WEB v11.4.3 (SOLO OSVALDO VE LA COLUMNA DE AJUSTES)
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
             st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
         else:
-            # Para la secretaria u otros roles se remueve completamente la columna del visor web
             df_reducido = dfr_f.drop(columns=['Ajustes']) if 'Ajustes' in dfr_f.columns else dfr_f
             st.dataframe(df_reducido.style.format({c: "${:,.0f}" for c in df_reducido.columns if c != 'Cuartel'}), use_container_width=True)
         
-        # El PDF siempre va consolidado y limpio (Sin la columna Ajustes para mantener la estructura limpia)
         dfr_pdf = dfr_f.drop(columns=['Ajustes']) if 'Ajustes' in dfr_f.columns else dfr_f
         st.download_button("📥 PDF COSTOS", generar_pdf_blob(dfr_pdf, "INFORME COSTOS CONSOLIDADOS POR CUARTEL"), "costos.pdf", key="cost_pdf_f")
         
-    # FORMULARIO DE INGRESO DE AJUSTE CON CLAVE MAESTRA EXCLUSIVO PARA EL ADMINISTRADOR v11.4.2
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         st.divider()
         st.subheader("➕ INGRESAR AJUSTE DE COSTOS (EXCLUSIVO)")
@@ -662,10 +712,15 @@ def login_page():
             e, p = st.text_input("Usuario"), st.text_input("Clave", type="password")
             if st.form_submit_button("ACCEDER"):
                 conn = conectar_db(); cursor = conn.cursor(); cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
-                if cursor.fetchone(): st.session_state['logged_in'], st.session_state['email'] = True, e; st.rerun()
+                if cursor.fetchone(): 
+                    # EVALUACIÓN DE INTRUSOS EN TIEMPO REAL v11.4.3
+                    if e != "osvaldolira@laconcepcion.cl":
+                        enviar_correo_alerta(e)
+                    st.session_state['logged_in'], st.session_state['email'] = True, e
+                    st.rerun()
                 else: st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.4.2", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.4.3", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
