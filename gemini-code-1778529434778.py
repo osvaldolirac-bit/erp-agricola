@@ -56,7 +56,7 @@ DATA_ESP_HISTORICA = [
     ('2026-01-30', 'S/N', 'Carlos Zavala', 620000), ('2026-01-30', 'S/N', 'Duilio Pruzzo', 0),
     ('2026-02-05', 'S/N', 'Danixa Amaza', 50000), ('2026-02-10', 'S/N', 'Carlos Zavala Imposiciones', 143483),
     ('2026-02-11', 'GD', 'Coagra Acaban 1lt', 89969), ('2026-02-12', 'S/N', 'Caceres M SPA', 1532084),
-    ('2026-02-19', '13785', 'FerreMás Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
+    ('2026-02-19', '13785', 'FerreMais Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
     ('2026-03-10', '23648', 'Soc. Los Olivos Pernos Hex', 16950), ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960),
     ('2026-03-09', '7826141', 'Ferreteria codo hidráulico', 5750), ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942),
     ('2026-03-03', '2237580', 'Coagra Urea granulada', 198417), ('2026-03-06', '6966966', 'Electrocom Contractor', 220326),
@@ -135,7 +135,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
-    """Despacha una alerta SMTP de alta velocidad (espejo) v11.4.9"""
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.0"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -174,7 +174,7 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.4.9.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.0.</small>
             </div>
         </body>
         </html>
@@ -198,13 +198,13 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1149_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1150_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.9)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.0)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -262,7 +262,7 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.4.9
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.0
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -312,7 +312,6 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
     except: return None
 
 def inyectar_css():
-    # AISLAMIENTO QUIRÚRGICO v11.4.9: EL CSS DE BLOQUEO SOLO OPERA PARA LAS SECRETARIAS, DEJA LIBRE AL ADMINISTRADOR
     user_activo = st.session_state.get('email', '')
     
     css_comun = """<style>
@@ -326,7 +325,6 @@ def inyectar_css():
         </style>"""
         
     if user_activo != 'osvaldolira@laconcepcion.cl':
-        # Escudo blindado de ocultamiento únicamente si NO eres el administrador principal
         css_comun += """<style>
             #MainMenu {visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}
             header {visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}
@@ -389,7 +387,7 @@ def modulo_dashboard():
         for i in range(4):
             fp = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
             totalm = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == fp.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == fp.year)]['monto_total'].sum() if not df_f.empty else 0
-            st.markdown(f"<div style='background white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
     conn.close()
 
 def modulo_petroleo():
@@ -409,7 +407,7 @@ def modulo_petroleo():
                     neto = (mt / 1.19) - (l * IMPUESTO_ESPECIFICO_LITRO)
                     conn.execute("INSERT INTO petroleo (tipo, litros, monto_total_compra, fecha) VALUES (?,?,?,?)", ("Carga", l, neto, str(f)))
                     conn.commit(); registrar_accion("PETROLEO", f"Carga {l}L"); guardar_en_drive()
-                    st.success("✅ Carga de estanque guardada con éxito y campos vaciados.")
+                    st.success("✅ Carga de estanque guardada con éxito y formulario vaciado.")
                     st.rerun()
     with t_p[1]:
         with st.form("p_s", clear_on_submit=True):
@@ -479,7 +477,6 @@ def modulo_compras():
             st.markdown("#### 🛒 Productos en el Carro Actual:")
             st.table(pd.DataFrame(st.session_state['car']))
             
-            # 🔥 INYECCIÓN v11.4.9: BOTÓN DE ARREPENTIMIENTO PARA ELIMINAR LÍNEA DEL CARRO
             if st.button("🗑️ ELIMINAR ÚLTIMO ÍTEM DEL CARRO", key="comp_btn_undo"):
                 if len(st.session_state['car']) > 0:
                     st.session_state['car'].pop()
@@ -850,9 +847,15 @@ def modulo_rrhh():
             isel = df_p[df_p['id']==id_p].iloc[0]
             un, ur, uc = st.text_input("Modificar Nombre", isel['nombre']), st.text_input("Modificar RUT", isel['rut']), st.text_input("Modificar Cargo", isel['cargo'])
             
-            # 🔥 INYECCIÓN v11.4.9: SELECTOR DE FECHA DE CONTRATO COMPATIBLE PARA EDICIÓN
-            f_cont_ant = isel['fecha_contrato'] if isel['fecha_contrato'] else "2026-05-19"
-            ue_fecha_cont = st.date_input("Modificar Fecha Contrato / Ingreso", datetime.strptime(str(f_cont_ant), "%Y-%m-%d").date())
+            # 🔥 INYECCIÓN MAESTRA ANTINULOS v11.5.0: EVITA EL TRACEBACK STRPTIME SI LA COLUMNA ES NULA O NONE
+            f_cont_ant = isel['fecha_contrato']
+            if not f_cont_ant or str(f_cont_ant).strip() == "" or str(f_cont_ant).lower() == "none":
+                fecha_objeto_segura = hoy
+            else:
+                try: fecha_objeto_segura = datetime.strptime(str(f_cont_ant), "%Y-%m-%d").date()
+                except: fecha_objeto_segura = hoy
+                
+            ue_fecha_cont = st.date_input("Modificar Fecha Contrato / Ingreso", fecha_objeto_segura)
             
             col1, col2 = st.columns(2)
             if col1.button("✏️ MODIFICAR REGISTRO PERSONAL"):
@@ -882,7 +885,7 @@ def modulo_rrhh():
                 if st.form_submit_button("GUARDAR FICHA ECONÓMICA"):
                     conn.execute("INSERT OR REPLACE INTO remuneraciones_fichas (trabajador_id, sueldo_pactado, monto_prestamo, cuotas_prestamo, suple_fijo) VALUES (?,?,?,?,?)", (tid, p_sueldo, p_prest, p_cuotas, p_suple))
                     conn.commit(); registrar_accion("RRHH FICHA", ts); guardar_en_drive()
-                    st.success("✅ Ficha económica de remuneraciones fijas guardada.")
+                    st.success("¼ Ficha económica de remuneraciones fijas guardada.")
                     st.rerun()
             
             st.divider(); st.subheader("💰 Provisión de Fondos (Fin de Mes)")
@@ -1061,7 +1064,7 @@ def login_page():
                     enviar_correo_alerta(e, exitoso=False)
                     st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.4.9", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.5.0", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
