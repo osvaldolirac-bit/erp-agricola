@@ -135,7 +135,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
-    """Despacha una alerta SMTP de alta velocidad (espejo) v11.4.8"""
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.4.9"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -174,7 +174,7 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.4.8.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.4.9.</small>
             </div>
         </body>
         </html>
@@ -198,13 +198,13 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1148_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1149_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.8)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.9)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -262,7 +262,7 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS ULTRA AGRESIVO v11.4.8
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.4.9
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -312,30 +312,38 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
     except: return None
 
 def inyectar_css():
-    st.markdown(f"""<style>
-        .main {{ background-color: #f4f7f6; }}
-        .stMetric {{ background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 6px solid #2E7D32; }}
-        [data-testid="stMetricValue"] {{ font-size: 1.5rem !important; font-weight: 800; color: #1B5E20; }}
-        .sidebar-user {{ color: #0D47A1 !important; font-weight: 900; font-size: 1.1rem; }}
-        .banner-econ {{ background: #0D47A1; color: white; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 20px; font-size: 0.9rem; }}
-        .saldo-banner {{ background: #E8F5E9; color: #1B5E20; padding: 15px; border-radius: 10px; border: 2px solid #2E7D32; text-align: center; margin-bottom: 20px; font-size: 1.4rem; font-weight: 800; }}
-        .alert-roja {{ background: #FFEBEE; color: #B71C1C; padding: 10px; border-radius: 8px; border: 2px solid #E57373; margin-bottom: 10px; font-weight: bold; text-align: center; }}
+    # AISLAMIENTO QUIRÚRGICO v11.4.9: EL CSS DE BLOQUEO SOLO OPERA PARA LAS SECRETARIAS, DEJA LIBRE AL ADMINISTRADOR
+    user_activo = st.session_state.get('email', '')
+    
+    css_comun = """<style>
+        .main { background-color: #f4f7f6; }
+        .stMetric { background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 6px solid #2E7D32; }
+        [data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 800; color: #1B5E20; }
+        .sidebar-user { color: #0D47A1 !important; font-weight: 900; font-size: 1.1rem; }
+        .banner-econ { background: #0D47A1; color: white; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 20px; font-size: 0.9rem; }
+        .saldo-banner { background: #E8F5E9; color: #1B5E20; padding: 15px; border-radius: 10px; border: 2px solid #2E7D32; text-align: center; margin-bottom: 20px; font-size: 1.4rem; font-weight: 800; }
+        .alert-roja { background: #FFEBEE; color: #B71C1C; padding: 10px; border-radius: 8px; border: 2px solid #E57373; margin-bottom: 10px; font-weight: bold; text-align: center; }
+        </style>"""
         
-        #MainMenu {{visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}}
-        header {{visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}}
-        footer {{visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}}
-        [data-testid="stToolbar"] {{visibility: hidden !important; display: none !important; opacity: 0 !important;}}
-        [data-testid="stDecoration"] {{visibility: hidden !important; display: none !important; opacity: 0 !important;}}
-        
-        button[title="Manage app"] {{display: none !important; visibility: hidden !important; opacity: 0 !important; width: 0px !important; height: 0px !important;}}
-        .stAppDeployButton {{display: none !important; visibility: hidden !important; opacity: 0 !important;}}
-        div[data-testid="stStatusWidget"] {{display: none !important; visibility: hidden !important;}}
-        iframe[title="Manage app"] {{display: none !important; visibility: hidden !important; width: 0px !important; height: 0px !important;}}
-        div[class*="viewerBadge"] {{display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0px !important;}}
-        div[class*="deploy"] {{display: none !important; visibility: hidden !important; opacity: 0 !important;}}
-        button[class*="deploy"] {{display: none !important; visibility: hidden !important; opacity: 0 !important;}}
-        .viewerBadge {{display: none !important; visibility: hidden !important; opacity: 0 !important;}}
-        </style>""", unsafe_allow_html=True)
+    if user_activo != 'osvaldolira@laconcepcion.cl':
+        # Escudo blindado de ocultamiento únicamente si NO eres el administrador principal
+        css_comun += """<style>
+            #MainMenu {visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}
+            header {visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}
+            footer {visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}
+            [data-testid="stToolbar"] {visibility: hidden !important; display: none !important; opacity: 0 !important;}
+            [data-testid="stDecoration"] {visibility: hidden !important; display: none !important; opacity: 0 !important;}
+            button[title="Manage app"] {display: none !important; visibility: hidden !important; opacity: 0 !important; width: 0px !important; height: 0px !important;}
+            .stAppDeployButton {display: none !important; visibility: hidden !important; opacity: 0 !important;}
+            div[data-testid="stStatusWidget"] {display: none !important; visibility: hidden !important;}
+            iframe[title="Manage app"] {display: none !important; visibility: hidden !important; width: 0px !important; height: 0px !important;}
+            div[class*="viewerBadge"] {display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0px !important;}
+            div[class*="deploy"] {display: none !important; visibility: hidden !important; opacity: 0 !important;}
+            button[class*="deploy"] {display: none !important; visibility: hidden !important; opacity: 0 !important;}
+            .viewerBadge {display: none !important; visibility: hidden !important; opacity: 0 !important;}
+            </style>"""
+            
+    st.markdown(css_comun, unsafe_allow_html=True)
 
 # =============================================================================
 # 4. MÓDULOS DEL SISTEMA
@@ -381,7 +389,7 @@ def modulo_dashboard():
         for i in range(4):
             fp = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
             totalm = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == fp.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == fp.year)]['monto_total'].sum() if not df_f.empty else 0
-            st.markdown(f"<div style='background:white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
     conn.close()
 
 def modulo_petroleo():
@@ -392,7 +400,6 @@ def modulo_petroleo():
     st.markdown(f'<div class="saldo-banner">🛢️ SALDO ACTUAL EN TANQUE: {f_decimal(saldo_actual)} LITROS</div>', unsafe_allow_html=True)
     t_p = st.tabs(["📥 CARGA", "🚜 SALIDA", "📊 HISTORIAL"])
     with t_p[0]:
-        # RUTINA DE LIMPIEZA ASOCIADA A FORM KEY v11.4.8
         with st.form("p_c", clear_on_submit=True):
             l = st.number_input("Litros Carga", 0.0, key="pet_c_l")
             mt = st.number_input("Total Bruto ($)", 0.0, key="pet_c_m")
@@ -402,7 +409,7 @@ def modulo_petroleo():
                     neto = (mt / 1.19) - (l * IMPUESTO_ESPECIFICO_LITRO)
                     conn.execute("INSERT INTO petroleo (tipo, litros, monto_total_compra, fecha) VALUES (?,?,?,?)", ("Carga", l, neto, str(f)))
                     conn.commit(); registrar_accion("PETROLEO", f"Carga {l}L"); guardar_en_drive()
-                    st.success("✅ Carga de estanque guardada con éxito y formulario vaciado.")
+                    st.success("✅ Carga de estanque guardada con éxito y campos vaciados.")
                     st.rerun()
     with t_p[1]:
         with st.form("p_s", clear_on_submit=True):
@@ -457,7 +464,6 @@ def modulo_compras():
         dfi = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
         ps = st.selectbox("Insumo", dfi['id'].astype(str) + " - " + dfi['producto'], key="comp_insumo_sel") if not dfi.empty else None
         
-        # Uso de clear_on_submit controlado para el sub-formulario del carro
         with st.form("add_item_car_form", clear_on_submit=True):
             ct = st.number_input("Cantidad", 0.0, key="comp_cant")
             pr = st.number_input("Neto Unitario ($)", 0.0, key="comp_neto")
@@ -473,7 +479,13 @@ def modulo_compras():
             st.markdown("#### 🛒 Productos en el Carro Actual:")
             st.table(pd.DataFrame(st.session_state['car']))
             
-            # VACIADO AUTOMÁTICO CRÍTICO DE LA CABECERA v11.4.8 POST-GUARDADO TOTAL
+            # 🔥 INYECCIÓN v11.4.9: BOTÓN DE ARREPENTIMIENTO PARA ELIMINAR LÍNEA DEL CARRO
+            if st.button("🗑️ ELIMINAR ÚLTIMO ÍTEM DEL CARRO", key="comp_btn_undo"):
+                if len(st.session_state['car']) > 0:
+                    st.session_state['car'].pop()
+                    st.toast("🗑️ Último ítem removido del carro", icon="⚠️")
+                    st.rerun()
+            
             if st.button("💾 GUARDAR FACTURA COMPLETA", key="comp_btn_save"):
                 if nro.strip() == "" or prov.strip() == "":
                     st.error("❌ No puedes guardar una factura con el Proveedor o Número en blanco.")
@@ -487,7 +499,6 @@ def modulo_compras():
                         conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (i['c'], npmp, i['id']))
                     conn.commit()
                     
-                    # Forzamos el vaciado del estado para que queden limpios en blanco v11.4.8
                     st.session_state['car'] = []
                     st.session_state['comp_nro'] = ""
                     st.session_state['comp_prov'] = ""
@@ -675,7 +686,6 @@ def modulo_libro_campo():
         
         st.markdown(f"### 📋 Nueva Orden N° `{siguiente_correlativo:05d}`")
         
-        # ADICIÓN DE AMPLIACIÓN DE UNIDADES Y CLEAR ON SUBMIT EN LIBRO v11.4.8
         with st.form("lc_reestructurado", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             fe_app = c1.date_input("Fecha de Aplicación", hoy, key="lca_1")
@@ -686,7 +696,6 @@ def modulo_libro_campo():
             ingre_act = c2.text_input("Ingrediente Activo", key="lca_5")
             dos_base = c2.number_input("Dosis Base (Por cada 100 LT de Agua)", min_value=0.0, format="%.2f", key="lca_6")
             
-            # UNIDADES AMPLIADAS EXIGIDAS: GRAMOS, CC, KG, LITROS v11.4.8
             uni_dos = c2.selectbox("Unidad de Medida Dosis", ["Gramos (g)", "Centímetros Cúbicos (cc)", "Kilogramos (kg)", "Litros (L)"], key="lca_7")
             
             total_agua = c3.number_input("Total Agua Aplicada (Volumen Litros)", min_value=0.0, format="%.1f", key="lca_8")
@@ -767,7 +776,6 @@ def modulo_libro_campo():
                     e_ing = ce2.text_input("Modificar Ing. Activo", r_act['ingrediente'] if r_act['ingrediente'] else "")
                     e_dosis = ce2.number_input("Modificar Dosis Base", value=float(r_act['dosis']) if r_act['dosis'] else 0.0, format="%.2f")
                     
-                    # Soporte de unidades completas ampliadas en el selector de edición v11.4.8
                     u_d_str = str(r_act['unidad_dosis']) if r_act['unidad_dosis'] else ""
                     opts_u_edit = ["Gramos (g)", "Centímetros Cúbicos (cc)", "Kilogramos (kg)", "Litros (L)"]
                     idx_u_edit = opts_u_edit.index(u_d_str) if u_d_str in opts_u_edit else 0
@@ -838,16 +846,27 @@ def modulo_rrhh():
         df_p = pd.read_sql_query("SELECT * FROM personal", conn)
         st.dataframe(df_p, use_container_width=True)
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl' and not df_p.empty:
-            st.divider(); id_p = st.selectbox("ID Personal", df_p['id'], key="rh_edit_id")
+            st.divider(); id_p = st.selectbox("ID Personal a Gestionar", df_p['id'], key="rh_edit_id")
             isel = df_p[df_p['id']==id_p].iloc[0]
-            un, ur, uc = st.text_input("Nuevo Nombre", isel['nombre']), st.text_input("Nuevo RUT", isel['rut']), st.text_input("Nuevo Cargo", isel['cargo'])
+            un, ur, uc = st.text_input("Modificar Nombre", isel['nombre']), st.text_input("Modificar RUT", isel['rut']), st.text_input("Modificar Cargo", isel['cargo'])
+            
+            # 🔥 INYECCIÓN v11.4.9: SELECTOR DE FECHA DE CONTRATO COMPATIBLE PARA EDICIÓN
+            f_cont_ant = isel['fecha_contrato'] if isel['fecha_contrato'] else "2026-05-19"
+            ue_fecha_cont = st.date_input("Modificar Fecha Contrato / Ingreso", datetime.strptime(str(f_cont_ant), "%Y-%m-%d").date())
+            
             col1, col2 = st.columns(2)
-            if col1.button("✏️ MODIFICAR"):
+            if col1.button("✏️ MODIFICAR REGISTRO PERSONAL"):
                 if st.text_input("Master", type="password", key="rh_p1") == CLAVE_MAESTRA:
-                    conn.execute("UPDATE personal SET nombre=?, rut=?, cargo=? WHERE id=?", (un, ur, uc, id_p)); conn.commit(); guardar_en_drive(); st.rerun()
-            if col2.button("🗑️ ELIMINAR"):
+                    conn.execute("UPDATE personal SET nombre=?, rut=?, cargo=?, fecha_contrato=? WHERE id=?", (un, ur, uc, str(ue_fecha_cont), id_p))
+                    conn.commit(); registrar_accion("UPDATE RRHH", un); guardar_en_drive()
+                    st.success("✏️ Ficha del trabajador actualizada con éxito.")
+                    st.rerun()
+            if col2.button("🗑️ ELIMINAR TRABAJADOR"):
                 if st.text_input("Master", type="password", key="rh_p2") == CLAVE_MAESTRA:
-                    conn.execute("DELETE FROM personal WHERE id=?", (id_p,)); conn.commit(); guardar_en_drive(); st.rerun()
+                    conn.execute("DELETE FROM personal WHERE id=?", (id_p,))
+                    conn.commit(); registrar_accion("DELETE RRHH", isel['nombre']); guardar_en_drive()
+                    st.warning("🗑️ Trabajador borrado del sistema.")
+                    st.rerun()
 
     with t_r[1]:
         df_act = pd.read_sql_query("SELECT id, nombre FROM personal WHERE estado='Activo'", conn)
@@ -901,12 +920,12 @@ def modulo_rrhh():
                     st.info(f"💡 {tnom_m} -> No tiene una Ficha Económica configurada en la pestaña '💼 REMUNERACIONES'")
             
             with st.form("rh_mov_form", clear_on_submit=True):
-                c1, c2 = st.columns(2)
-                m = st.selectbox("Mes", ["01","02","03","04","05","06","07","08","09","10","11","12"], index=int(hora_chile().month)-1, key="rhm_m")
-                a = st.number_input("Año", value=hora_chile().year, key="rhm_a")
-                lic = st.checkbox("Licencia Médica (Costo Empresa Cero)", key="rhm_l")
-                liq = st.number_input("Líquido Mes Real a Pago ($)", 0.0, key="rhm_liq")
-                ley = st.number_input("Leyes Sociales / Previred ($)", 0.0, key="rhm_prev")
+                c1, rhm_col = st.columns(2)
+                m = c1.selectbox("Mes", ["01","02","03","04","05","06","07","08","09","10","11","12"], index=int(hora_chile().month)-1, key="rhm_m")
+                a = c1.number_input("Año", value=hora_chile().year, key="rhm_a")
+                lic = rhm_col.checkbox("Licencia Médica (Costo Empresa Cero)", key="rhm_l")
+                liq = rhm_col.number_input("Líquido Mes Real a Pago ($)", 0.0, key="rhm_liq")
+                ley = rhm_col.number_input("Leyes Sociales / Previred ($)", 0.0, key="rhm_prev")
                 
                 if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
                     if tm:
@@ -1042,7 +1061,7 @@ def login_page():
                     enviar_correo_alerta(e, exitoso=False)
                     st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.4.8", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.4.9", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
