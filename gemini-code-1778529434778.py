@@ -135,7 +135,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
-    """Despacha una alerta SMTP de alta velocidad (espejo) v11.4.6"""
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.4.7"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -174,7 +174,7 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.4.6.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.4.7.</small>
             </div>
         </body>
         </html>
@@ -198,13 +198,13 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1146_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1147_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.6)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.7)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -216,7 +216,7 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS inventario (id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0, stock_minimo REAL DEFAULT 0, precio_medio REAL DEFAULT 0)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS movimientos (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, cantidad REAL, centro_costo TEXT, fecha DATE, valor_imputado REAL DEFAULT 0)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT)""")
-    cursor.execute("""CREATE TABLE IF NOT EXISTS petroleo (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT, litros REAL, proveedor TEXT, monto_total_compra REAL, vehiculo TEXT, responsable TEXT, centro_costo TEXT, fecha DATE, valor_imputado REAL)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS if not exists petroleo (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT, litros REAL, proveedor TEXT, monto_total_compra REAL, vehiculo TEXT, responsable TEXT, centro_costo TEXT, fecha DATE, valor_imputado REAL)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS bitacora (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora DATETIME)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS ajustes_costos (id INTEGER PRIMARY KEY AUTOINCREMENT, centro_costo TEXT, monto REAL, fecha DATE, motivo TEXT)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
@@ -262,7 +262,7 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS ABSOLUTO DE SEGURIDAD v11.4.6
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS ULTRA AGRESIVO v11.4.7
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -312,7 +312,7 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
     except: return None
 
 def inyectar_css():
-    # EXTERMINACIÓN TOTAL DEL BOTÓN MANAGE APP, GITHUB Y BARRAS NATIVAS DE STREAMLIT CLOUD v11.4.6
+    # INYECTOR COMPUESTO DE ESTILOS RADICALES CON SELECTORES DINÁMICOS v11.4.7
     st.markdown(f"""<style>
         .main {{ background-color: #f4f7f6; }}
         .stMetric {{ background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 6px solid #2E7D32; }}
@@ -322,20 +322,24 @@ def inyectar_css():
         .saldo-banner {{ background: #E8F5E9; color: #1B5E20; padding: 15px; border-radius: 10px; border: 2px solid #2E7D32; text-align: center; margin-bottom: 20px; font-size: 1.4rem; font-weight: 800; }}
         .alert-roja {{ background: #FFEBEE; color: #B71C1C; padding: 10px; border-radius: 8px; border: 2px solid #E57373; margin-bottom: 10px; font-weight: bold; text-align: center; }}
         
-        /* BLOQUE DE DESTRUCCIÓN DE ENLACES DE DESARROLLO Y BOTÓN MANAGE APP VIA INYECCIÓN CSS CRÍTICA */
-        #MainMenu {{visibility: hidden !important; display: none !important;}}
-        header {{visibility: hidden !important; display: none !important;}}
-        footer {{visibility: hidden !important; display: none !important;}}
-        [data-testid="stToolbar"] {{visibility: hidden !important; display: none !important;}}
-        [data-testid="stDecoration"] {{visibility: hidden !important; display: none !important;}}
+        /* BLOQUE RADICAL DE ANULACIÓN DE INTERFAZ DE DESARROLLO (BARRAS Y ENLACES EXTERNOS) */
+        #MainMenu {{visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}}
+        header {{visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}}
+        footer {{visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}}
+        [data-testid="stToolbar"] {{visibility: hidden !important; display: none !important; opacity: 0 !important;}}
+        [data-testid="stDecoration"] {{visibility: hidden !important; display: none !important; opacity: 0 !important;}}
         
-        /* Exterminio específico de la barra inferior flotante de Streamlit Cloud ("Manage app" / "Viewer badge") */
-        .stAppDeployButton {{display: none !important; visibility: hidden !important;}}
+        /* INYECCIÓN DE FUERZA BRUTA CONTRA EL CONTENEDOR GRIS INFERIOR DE STREAMLIT CLOUD */
+        button[title="Manage app"] {{display: none !important; visibility: hidden !important; opacity: 0 !important; width: 0px !important; height: 0px !important;}}
+        .stAppDeployButton {{display: none !important; visibility: hidden !important; opacity: 0 !important;}}
         div[data-testid="stStatusWidget"] {{display: none !important; visibility: hidden !important;}}
-        div.viewerBadge {{display: none !important; visibility: hidden !important;}}
-        iframe[title="Manage app"] {{display: none !important; visibility: hidden !important;}}
-        div[class^="viewerBadge"] {{display: none !important; visibility: hidden !important;}}
-        button[title="Manage app"] {{display: none !important; visibility: hidden !important;}}
+        
+        /* Ocultamiento dinámico avanzado por patrones de coincidencia difusa */
+        iframe[title="Manage app"] {{display: none !important; visibility: hidden !important; width: 0px !important; height: 0px !important;}}
+        div[class*="viewerBadge"] {{display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0px !important;}}
+        div[class*="deploy"] {{display: none !important; visibility: hidden !important; opacity: 0 !important;}}
+        button[class*="deploy"] {{display: none !important; visibility: hidden !important; opacity: 0 !important;}}
+        .viewerBadge {{display: none !important; visibility: hidden !important; opacity: 0 !important;}}
         </style>""", unsafe_allow_html=True)
 
 # =============================================================================
@@ -620,7 +624,6 @@ def modulo_espino():
 def modulo_libro_campo():
     st.header("📒 LIBRO DE CAMPO AGRICOLA"); conn = conectar_db()
     
-    # SEPARACIÓN E INYECCIÓN DE PESTAÑAS SEGREGADAS v11.4.6
     sub_tabs = ["📥 INGRESO APLICACIÓN", "📜 HISTORIAL AUDITABLE"]
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         sub_tabs.append("🛠️ MODIFICAR / ELIMINAR")
@@ -695,7 +698,6 @@ def modulo_libro_campo():
                                generar_pdf_blob(dflc_f, f"REGISTRO FITOSANITARIO Y APLICACIONES AGRICOLAS", incluir_precios=False), 
                                "libro_campo.pdf", key="lc_pdf_btn")
 
-    # NUEVA PESTAÑA EXCLUSIVA DE MODIFICACIÓN Y ELIMINACIÓN CON CLAVE MAESTRA v11.4.6
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         with t_l[2]:
             st.markdown("### 🛠️ Panel de Modificación / Borrado de Registros")
@@ -706,29 +708,34 @@ def modulo_libro_campo():
                                            df_mod_list['n_aplicacion'].astype(str) + " | " + df_mod_list['fecha'] + " | " + df_mod_list['sector'] + " | " + df_mod_list['producto'])
                 sel_id_app = int(sel_app_str.split(" | ")[0])
                 
-                # Cargar el registro actual
                 r_act = pd.read_sql_query(f"SELECT * FROM libro_campo WHERE n_aplicacion = {sel_id_app}", conn).iloc[0]
                 
                 with st.form("form_edit_libro"):
                     st.markdown(f"#### Editando Registro Correlativo: `{sel_id_app:05d}`")
                     ce1, ce2, ce3 = st.columns(3)
-                    e_fecha = ce1.date_input("Modificar Fecha", datetime.strptime(r_act['fecha'], "%Y-%m-%d").date())
+                    
+                    # BLINDAJE ANTINULOS MEJORADO v11.4.7
+                    f_valida = r_act['fecha'] if r_act['fecha'] else "2026-05-19"
+                    e_fecha = ce1.date_input("Modificar Fecha", datetime.strptime(str(f_valida), "%Y-%m-%d").date())
                     e_cuartel = ce1.selectbox("Modificar Cuartel", CENTROS_COSTO, index=CENTROS_COSTO.index(r_act['sector']) if r_act['sector'] in CENTROS_COSTO else 0)
-                    e_especie = ce1.text_input("Modificar Especie", r_act['especie'])
+                    e_especie = ce1.text_input("Modificar Especie", r_act['especie'] if r_act['especie'] else "")
                     
-                    e_prod = ce2.text_input("Modificar Producto", r_act['producto'])
-                    e_ing = ce2.text_input("Modificar Ing. Activo", r_act['ingrediente'])
-                    e_dosis = ce2.number_input("Modificar Dosis Base", value=float(r_act['dosis']), format="%.2f")
-                    e_un_dos = ce2.selectbox("Modificar Unidad Dosis", ["Gramos (g)", "Centímetros Cúbicos (cc)"], index=0 if "Gram" in r_act['unidad_dosis'] else 1)
+                    e_prod = ce2.text_input("Modificar Producto", r_act['producto'] if r_act['producto'] else "")
+                    e_ing = ce2.text_input("Modificar Ing. Activo", r_act['ingrediente'] if r_act['ingrediente'] else "")
+                    e_dosis = ce2.number_input("Modificar Dosis Base", value=float(r_act['dosis']) if r_act['dosis'] else 0.0, format="%.2f")
                     
-                    e_agua = ce3.number_input("Modificar Vol Agua", value=float(r_act['vol_total']), format="%.1f")
-                    e_total_pr = ce3.number_input("Modificar Total Producto", value=float(r_act['gasto_total']), format="%.2f")
+                    # Parche estructural definitivo antinulos para frenar TypeErrors
+                    u_d_str = str(r_act['unidad_dosis']) if r_act['unidad_dosis'] else ""
+                    e_un_dos = ce2.selectbox("Modificar Unidad Dosis", ["Gramos (g)", "Centímetros Cúbicos (cc)"], index=0 if "Gram" in u_d_str else 1)
+                    
+                    e_agua = ce3.number_input("Modificar Vol Agua", value=float(r_act['vol_total']) if r_act['vol_total'] else 0.0, format="%.1f")
+                    e_total_pr = ce3.number_input("Modificar Total Producto", value=float(r_act['gasto_total']) if r_act['gasto_total'] else 0.0, format="%.2f")
                     
                     st.divider()
                     ce4, ce5, ce6 = st.columns(3)
-                    e_apli = ce4.text_input("Modificar Aplicadores", r_act['aplicadores'])
-                    e_maq = ce5.text_input("Modificar Maquinaria", r_act['maquina'])
-                    e_tract = ce6.text_input("Modificar Tractor", r_act['tractor'])
+                    e_apli = ce4.text_input("Modificar Aplicadores", r_act['aplicadores'] if r_act['aplicadores'] else "")
+                    e_maq = ce5.text_input("Modificar Maquinaria", r_act['maquina'] if r_act['maquina'] else "")
+                    e_tract = ce6.text_input("Modificar Tractor", r_act['tractor'] if r_act['tractor'] else "")
                     
                     st.markdown("### 🔐 Autorización de Cambios:")
                     clv_auth = st.text_input("Ingrese Clave Maestra para Guardar o Eliminar", type="password", key="clv_lc_edit")
@@ -754,7 +761,7 @@ def modulo_libro_campo():
                             
                     if btn_del:
                         if clv_auth == CLAVE_MAESTRA:
-                            conn.execute(f"DELETE FROM libro_campo WHERE n_aplicacion = {sel_id_app}", conn)
+                            conn.execute(f"DELETE FROM libro_campo WHERE n_aplicacion = {sel_id_app}")
                             conn.commit()
                             registrar_accion("DELETE LIBRO", f"App N°{sel_id_app}")
                             guardar_en_drive()
@@ -960,7 +967,8 @@ def modulo_seguridad():
     conn.close()
 
 def login_page():
-    inyectar_css(); st.markdown("<h1 style='text-align: center; color: #1B5E20; margin-top: 50px;'>🚜 ERP AGRICOLA LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
+    inyectar_css()
+    st.markdown("<h1 style='text-align: center; color: #1B5E20; margin-top: 50px;'>🚜 ERP AGRICOLA LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
         with st.form("login"):
@@ -978,7 +986,7 @@ def login_page():
                     enviar_correo_alerta(e, exitoso=False)
                     st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.4.6", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.4.7", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
