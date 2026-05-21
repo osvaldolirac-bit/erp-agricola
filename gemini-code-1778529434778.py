@@ -56,7 +56,7 @@ DATA_ESP_HISTORICA = [
     ('2026-01-30', 'S/N', 'Carlos Zavala', 620000), ('2026-01-30', 'S/N', 'Duilio Pruzzo', 0),
     ('2026-02-05', 'S/N', 'Danixa Amaza', 50000), ('2026-02-10', 'S/N', 'Carlos Zavala Imposiciones', 143483),
     ('2026-02-11', 'GD', 'Coagra Acaban 1lt', 89969), ('2026-02-12', 'S/N', 'Caceres M SPA', 1532084),
-    ('2026-02-19', '13785', 'FerreMais Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
+    ('2026-02-19', '13785', 'FerreMás Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
     ('2026-03-10', '23648', 'Soc. Los Olivos Pernos Hex', 16950), ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960),
     ('2026-03-09', '7826141', 'Ferreteria codo hidráulico', 5750), ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942),
     ('2026-03-03', '2237580', 'Coagra Urea granulada', 198417), ('2026-03-06', '6966966', 'Electrocom Contractor', 220326),
@@ -216,7 +216,10 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS inventario (id INTEGER PRIMARY KEY AUTOINCREMENT, producto TEXT, familia TEXT, stock REAL DEFAULT 0, stock_minimo REAL DEFAULT 0, precio_medio REAL DEFAULT 0)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS movimientos (id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT, cantidad REAL, centro_costo TEXT, fecha DATE, valor_imputado REAL DEFAULT 0)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT)""")
-    cursor.execute("""CREATE TABLE IF NOT EXISTS if not exists petroleo (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT, litros REAL, proveedor TEXT, monto_total_compra REAL, vehiculo TEXT, responsable TEXT, centro_costo TEXT, fecha DATE, valor_imputado REAL)""")
+    
+    # 🛠️ CORRECCIÓN DE SINTAXIS CRÍTICA v11.4.7 (SE ELIMINÓ EL DUPLICADO 'if not exists')
+    cursor.execute("""CREATE TABLE IF NOT EXISTS petroleo (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT, litros REAL, proveedor TEXT, monto_total_compra REAL, vehiculo TEXT, responsable TEXT, centro_costo TEXT, fecha DATE, valor_imputado REAL)""")
+    
     cursor.execute("""CREATE TABLE IF NOT EXISTS bitacora (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora DATETIME)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS ajustes_costos (id INTEGER PRIMARY KEY AUTOINCREMENT, centro_costo TEXT, monto REAL, fecha DATE, motivo TEXT)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
@@ -312,7 +315,7 @@ def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_p
     except: return None
 
 def inyectar_css():
-    # INYECTOR COMPUESTO DE ESTILOS RADICALES CON SELECTORES DINÁMICOS v11.4.7
+    # REFACTORIZACIÓN ULTRA AGRESIVA CON SELECTORES UNIVERSALES CONTRA MANAGE APP v11.4.7
     st.markdown(f"""<style>
         .main {{ background-color: #f4f7f6; }}
         .stMetric {{ background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 6px solid #2E7D32; }}
@@ -714,7 +717,6 @@ def modulo_libro_campo():
                     st.markdown(f"#### Editando Registro Correlativo: `{sel_id_app:05d}`")
                     ce1, ce2, ce3 = st.columns(3)
                     
-                    # BLINDAJE ANTINULOS MEJORADO v11.4.7
                     f_valida = r_act['fecha'] if r_act['fecha'] else "2026-05-19"
                     e_fecha = ce1.date_input("Modificar Fecha", datetime.strptime(str(f_valida), "%Y-%m-%d").date())
                     e_cuartel = ce1.selectbox("Modificar Cuartel", CENTROS_COSTO, index=CENTROS_COSTO.index(r_act['sector']) if r_act['sector'] in CENTROS_COSTO else 0)
@@ -724,7 +726,7 @@ def modulo_libro_campo():
                     e_ing = ce2.text_input("Modificar Ing. Activo", r_act['ingrediente'] if r_act['ingrediente'] else "")
                     e_dosis = ce2.number_input("Modificar Dosis Base", value=float(r_act['dosis']) if r_act['dosis'] else 0.0, format="%.2f")
                     
-                    # Parche estructural definitivo antinulos para frenar TypeErrors
+                    # Filtro seguro antinulos en Libro de Campo v11.4.7
                     u_d_str = str(r_act['unidad_dosis']) if r_act['unidad_dosis'] else ""
                     e_un_dos = ce2.selectbox("Modificar Unidad Dosis", ["Gramos (g)", "Centímetros Cúbicos (cc)"], index=0 if "Gram" in u_d_str else 1)
                     
