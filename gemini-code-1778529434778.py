@@ -134,8 +134,8 @@ def registrar_accion(accion, detalle):
         st.cache_data.clear() 
     except: pass
 
-def enviar_correo_alerta(usuario_intruso):
-    """Despacha una alerta SMTP de alta velocidad (espejo) si ingresa un usuario secundario v11.4.3"""
+def enviar_correo_alerta(usuario_intruso, exitoso=True):
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.4.5"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -150,20 +150,31 @@ def enviar_correo_alerta(usuario_intruso):
         msg = MIMEMultipart()
         msg['From'] = emisor
         msg['To'] = receptor
-        msg['Subject'] = f"🚨 ALERTA: Acceso Detectado en ERP La Concepción"
+        
+        if exitoso:
+            msg['Subject'] = f"🚨 ALERTA: Acceso Detectado en ERP La Concepción"
+            tipo_alerta = "Inicio de Sesión Exitoso"
+            color_borde = "#0d47a1"
+            detalle_msg = "Se ha registrado un inicio de sesión exitoso en la plataforma de un usuario secundario."
+        else:
+            msg['Subject'] = f"🔥 ADVERTENCIA: Intento de Acceso RECHAZADO en ERP"
+            tipo_alerta = "Intento de Acceso Fallido / Clave Incorrecta"
+            color_borde = "#d32f2f"
+            detalle_msg = "Se ha bloqueado un intento fallido de inicio de sesión. Alguien ingresó credenciales incorrectas."
         
         cuerpo = f"""
         <html>
         <body style='font-family: sans-serif; padding: 20px; background-color: #f4f7f6;'>
-            <div style='background-color: white; padding: 25px; border-radius: 10px; border-top: 5px solid #d32f2f; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-                <h2 style='color: #d32f2f; margin-top: 0;'>🚜 Alerta de Seguridad Perimetral</h2>
-                <p>Se ha registrado un inicio de sesión en la plataforma de un usuario distinto al administrador principal.</p>
+            <div style='background-color: white; padding: 25px; border-radius: 10px; border-top: 5px solid {color_borde}; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                <h2 style='color: {color_borde}; margin-top: 0;'>🚜 Alerta de Seguridad Perimetral</h2>
+                <p>{detalle_msg}</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <p><b>👤 Usuario Conectado:</b> <span style='color: #0d47a1; font-weight: bold;'>{usuario_intruso}</span></p>
+                <p><b>⚠️ Tipo de Evento:</b> {tipo_alerta}</p>
+                <p><b>👤 Correo Ingresado:</b> <span style='color: {color_borde}; font-weight: bold;'>{usuario_intruso}</span></p>
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.4.3.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.4.5.</small>
             </div>
         </body>
         </html>
@@ -176,7 +187,6 @@ def enviar_correo_alerta(usuario_intruso):
         server.sendmail(emisor, receptor, msg.as_string())
         server.quit()
     except Exception as e:
-        # Aislamiento total: si el SMTP falla, el ERP sigue arriba y guarda el log en bitácora
         try:
             conn = conectar_db()
             f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
@@ -188,13 +198,13 @@ def enviar_correo_alerta(usuario_intruso):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1143_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1145_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.3)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.4.5)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -210,16 +220,39 @@ def inicializar_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS bitacora (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha_hora DATETIME)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS ajustes_costos (id INTEGER PRIMARY KEY AUTOINCREMENT, centro_costo TEXT, monto REAL, fecha DATE, motivo TEXT)""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS gastos_espino (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, documento TEXT, item TEXT, monto REAL)""")
-    cursor.execute("""CREATE TABLE IF NOT EXISTS libro_campo (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, n_orden TEXT, sector TEXT, est_fenologico TEXT, especie TEXT, motivo TEXT, producto TEXT, n_aplicacion INTEGER, ingrediente TEXT, dosis REAL, unidad_dosis TEXT, vol_total REAL, gasto_total REAL, unidad_gasto TEXT, tractor TEXT, maquina TEXT, aplicadores TEXT, car_etiqueta INTEGER, car_agenda INTEGER, car_mayor INTEGER, fecha_viable DATE)""")
+    
+    # Tabla libro_campo reestructurada y adaptada v11.4.5
+    cursor.execute("""CREATE TABLE IF NOT EXISTS libro_campo (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        fecha DATE, 
+        n_aplicacion INTEGER, 
+        sector TEXT, 
+        especie TEXT, 
+        producto TEXT, 
+        ingrediente TEXT, 
+        dosis REAL, 
+        unidad_dosis TEXT, 
+        gasto_total REAL, 
+        vol_total REAL, 
+        tractor TEXT, 
+        maquina TEXT, 
+        aplicadores TEXT,
+        fecha_viable DATE,
+        n_orden TEXT DEFAULT '',
+        est_fenologico TEXT DEFAULT '',
+        motivo TEXT DEFAULT '',
+        car_etiqueta INTEGER DEFAULT 0,
+        car_agenda INTEGER DEFAULT 0,
+        car_mayor INTEGER DEFAULT 0,
+        unidad_gasto TEXT DEFAULT ''
+    )""")
     
     cursor.execute("CREATE TABLE IF NOT EXISTS personal (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, rut TEXT UNIQUE, cargo TEXT, fecha_contrato DATE, estado TEXT DEFAULT 'Activo')")
     cursor.execute("PRAGMA table_info(personal)")
     columnas = [col[1] for col in cursor.fetchall()]
     if 'fecha_contrato' not in columnas:
-        try:
-            cursor.execute("ALTER TABLE personal ADD COLUMN fecha_contrato DATE")
-        except Exception:
-            pass
+        try: cursor.execute("ALTER TABLE personal ADD COLUMN fecha_contrato DATE")
+        except: pass
         
     cursor.execute("""CREATE TABLE IF NOT EXISTS remuneraciones_fichas (trabajador_id INTEGER PRIMARY KEY, sueldo_pactado REAL, monto_prestamo REAL DEFAULT 0, cuotas_prestamo INTEGER DEFAULT 0, suple_fijo REAL DEFAULT 0, FOREIGN KEY(trabajador_id) REFERENCES personal(id))""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS pagos_rrhh (id INTEGER PRIMARY KEY AUTOINCREMENT, trabajador_id INTEGER, mes TEXT, anio INTEGER, liquido REAL, leyes_sociales REAL, costo_empresa REAL, tipo TEXT, fecha_registro DATE)""")
@@ -230,7 +263,7 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS ULTRA LIMPIO v11.4.5
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -240,41 +273,47 @@ def obtener_indicadores():
         return {'uf': f"${r['uf']['valor']:,.2f}", 'utm': f"${r['utm']['valor']:,.0f}", 'dolar': f"${r['dolar']['valor']:,.2f}", 'euro': f"${r['euro']['valor']:,.2f}"}
     except: return {'uf': '$37.942,12', 'utm': '$66.628', 'dolar': '$945,50', 'euro': '$1.024,30'}
 
-def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_petroleo=False, orden_asc=True, saldo_petroleo=None):
+def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_petroleo=False, orden_asc=True, saldo_petroleo=None, campo_suma_forzado=None):
     try:
         pdf = FPDF(); pdf.add_page(); pdf.set_font("Helvetica", "B", 16)
         if modo_petroleo and saldo_petroleo is not None:
             pdf.cell(100, 10, "AGRICOLA LA CONCEPCIÓN", ln=0); pdf.set_font("Helvetica", "B", 10); pdf.cell(90, 10, f"SALDO ESTANQUE: {f_decimal(saldo_petroleo)} L", ln=1, align="R")
         else: pdf.cell(0, 10, "AGRICOLA LA CONCEPCIÓN", ln=1, align="C")
-        pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 10, titulo, ln=True, align="C"); pdf.ln(5); pdf.set_font("Helvetica", "B", 8)
+        pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 10, titulo, ln=True, align="C"); pdf.ln(5); pdf.set_font("Helvetica", "B", 7)
         df_p = df.copy()
         if orden_asc and 'fecha' in [c.lower() for c in df_p.columns]:
             cf = [c for c in df_p.columns if c.lower() == 'fecha'][0]; df_p[cf] = pd.to_datetime(df_p[cf]); df_p = df_p.sort_values(by=cf, ascending=True); df_p[cf] = df_p[cf].dt.date
+        
         t_sum = total_manual if total_manual else 0
         if total_manual is None:
-            cols_m = ["monto", "total", "monto_total", "valor_imputado", "gasto_total", "monto_imputado", "costo_empresa", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota", "ajustes"]
-            for c in df_p.columns:
-                if any(x in c.lower() for x in cols_m):
-                    try: t_sum += df_p[c].sum()
-                    except: pass
+            if campo_suma_forzado and campo_suma_forzado in df_p.columns:
+                t_sum = df_p[campo_suma_forzado].sum()
+            else:
+                cols_m = ["monto", "total", "monto_total", "valor_imputado", "gasto_total", "monto_imputado", "costo_empresa", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota", "ajustes", "total_pagado"]
+                for c in df_p.columns:
+                    if any(x in c.lower() for x in cols_m):
+                        try: t_sum += df_p[c].sum()
+                        except: pass
+                        
         if modo_petroleo: df_p = df_p.drop(columns=[c for c in df_p.columns if any(x in c.lower() for x in ["imputado", "valor", "monto", "precio"])]); incluir_precios = False
         cols = df_p.columns; w = 190 / len(cols)
         for col in cols: pdf.cell(w, 8, str(col).upper(), border=1, align="C")
-        pdf.ln(); pdf.set_font("Helvetica", "", 7)
+        pdf.ln(); pdf.set_font("Helvetica", "", 6)
         for _, row in df_p.iterrows():
             for i, item in enumerate(row):
                 val = str(item)
                 col_n = df_p.columns[i].lower()
-                if any(x in col_n for x in ["monto", "total", "valor", "costo", "liquido", "leyes", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota", "ajustes"]): val = f_puntos(item)
-                elif any(x in col_n for x in ["litros", "cantidad", "stock", "volumen", "dosis"]): val = f_decimal(item)
+                if any(x in col_n for x in ["monto", "total", "valor", "costo", "liquido", "leyes", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota", "ajustes", "total_pagado"]): val = f_puntos(item)
+                elif any(x in col_n for x in ["litros", "cantidad", "stock", "volumen", "dosis", "total_producto", "total_agua"]): val = f_decimal(item)
                 pdf.cell(w, 7, val[:25], border=1)
             pdf.ln()
         if incluir_precios and t_sum > 0:
-            pdf.set_font("Helvetica", "B", 9); pdf.cell(w*(len(cols)-1), 8, "TOTAL:", border=1, align="R"); pdf.cell(w, 8, f"${f_puntos(t_sum)}", border=1, align="L")
+            pdf.set_font("Helvetica", "B", 8); pdf.cell(w*(len(cols)-1), 8, "TOTAL CORRESPONDIENTE:", border=1, align="R"); pdf.cell(w, 8, f"${f_puntos(t_sum)}", border=1, align="L")
         return pdf.output(dest="S").encode("latin-1")
     except: return None
 
 def inyectar_css():
+    # Ocultador maestro de cabeceras, pies, streamlits y github perimetral v11.4.5
     st.markdown(f"""<style>
         .main {{ background-color: #f4f7f6; }}
         .stMetric {{ background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 6px solid #2E7D32; }}
@@ -283,6 +322,13 @@ def inyectar_css():
         .banner-econ {{ background: #0D47A1; color: white; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 20px; font-size: 0.9rem; }}
         .saldo-banner {{ background: #E8F5E9; color: #1B5E20; padding: 15px; border-radius: 10px; border: 2px solid #2E7D32; text-align: center; margin-bottom: 20px; font-size: 1.4rem; font-weight: 800; }}
         .alert-roja {{ background: #FFEBEE; color: #B71C1C; padding: 10px; border-radius: 8px; border: 2px solid #E57373; margin-bottom: 10px; font-weight: bold; text-align: center; }}
+        
+        /* CSS perimetral para ocultar barras de desarrollo, github y links superiores */
+        #MainMenu {{visibility: hidden;}}
+        header {{visibility: hidden;}}
+        footer {{visibility: hidden;}}
+        [data-testid="stToolbar"] {{visibility: hidden !important; display: none !important;}}
+        [data-testid="stDecoration"] {{visibility: hidden !important; display: none !important;}}
         </style>""", unsafe_allow_html=True)
 
 # =============================================================================
@@ -290,6 +336,7 @@ def inyectar_css():
 # =============================================================================
 
 def modulo_dashboard():
+    st.markdown("<h1 style='text-align: center; color: #1B5E20;'>🚜 ERP AGRICOLA LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
     ind = obtener_indicadores(); conn = conectar_db()
     mes_act = hora_chile().strftime('%m'); anio_act = hora_chile().year
     t_activos = pd.read_sql_query("SELECT id FROM personal WHERE estado='Activo'", conn)
@@ -299,7 +346,6 @@ def modulo_dashboard():
         st.markdown(f'<div class="alert-roja">⚠️ RECORDATORIO: Faltan {faltan} trabajadores por imputar sueldos este mes.</div>', unsafe_allow_html=True)
 
     st.markdown(f'<div class="banner-econ">📈 INDICADORES: UF: {ind["uf"]} | UTM: {ind["utm"]} | DÓLAR: {ind["dolar"]} | EURO: {ind["euro"]}</div>', unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; color: #1B5E20;'>🚜 ERP AGRICOLA LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
     
     df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
@@ -375,23 +421,59 @@ def modulo_compras():
     tabs_c = ["➕ INSUMOS", "💸 GASTOS VARIOS", "🔍 HISTORIAL", "🛠️ MODIFICAR / ELIMINAR"]
     t_sel = st.tabs(tabs_c)
     with t_sel[0]:
-        c1, c2 = st.columns(2); nro, prov, fe, fv = c1.text_input("N° Factura", key="comp_1"), c1.text_input("Proveedor", key="comp_2"), c2.date_input("Emisión", key="comp_3"), c2.date_input("Vence", key="comp_4")
+        # RETENCIÓN DE CABECERA EN SESSION_STATE PARA EVITAR BUG DE CAMPOS VACÍOS v11.4.5
+        if 'comp_nro' not in st.session_state: st.session_state['comp_nro'] = ""
+        if 'comp_prov' not in st.session_state: st.session_state['comp_prov'] = ""
+        if 'comp_fe' not in st.session_state: st.session_state['comp_fe'] = hoy
+        if 'comp_fv' not in st.session_state: st.session_state['comp_fv'] = hoy
+
+        c1, c2 = st.columns(2)
+        nro = c1.text_input("N° Factura", value=st.session_state['comp_nro'], key="comp_nro_inp")
+        prov = c1.text_input("Proveedor", value=st.session_state['comp_prov'], key="comp_prov_inp")
+        fe = c2.date_input("Emisión", value=st.session_state['comp_fe'], key="comp_fe_inp")
+        fv = c2.date_input("Vence", value=st.session_state['comp_fv'], key="comp_fv_inp")
+        
+        # Sincronizamos con el state inmediatamente antes del rerun
+        st.session_state['comp_nro'] = nro
+        st.session_state['comp_prov'] = prov
+        st.session_state['comp_fe'] = fe
+        st.session_state['comp_fv'] = fv
+
+        st.divider()
         dfi = pd.read_sql_query("SELECT id, producto FROM inventario", conn)
-        ps = st.selectbox("Insumo", dfi['id'].astype(str) + " - " + dfi['producto'], key="comp_5") if not dfi.empty else None
-        ct, pr = st.number_input("Cantidad", 0.0, key="comp_6"), st.number_input("Neto Unit.", 0.0, key="comp_7")
-        if st.button("➕ AGREGAR", key="comp_8"):
+        ps = st.selectbox("Insumo", dfi['id'].astype(str) + " - " + dfi['producto'], key="comp_insumo_sel") if not dfi.empty else None
+        ct, pr = st.number_input("Cantidad", 0.0, key="comp_cant"), st.number_input("Neto Unit.", 0.0, key="comp_neto")
+        
+        if st.button("➕ AGREGAR AL CARRO", key="comp_btn_add"):
             if 'car' not in st.session_state: st.session_state['car'] = []
-            st.session_state['car'].append({'id': int(ps.split(" - ")[0]), 'n': ps.split(" - ")[1], 'c': ct, 'p': pr, 't': ct*pr}); st.rerun()
+            if ps:
+                st.session_state['car'].append({'id': int(ps.split(" - ")[0]), 'n': ps.split(" - ")[1], 'c': ct, 'p': pr, 't': ct*pr})
+                st.rerun()
+                
         if st.session_state.get('car'):
+            st.markdown("#### 🛒 Productos en el Carro Actual:")
             st.table(pd.DataFrame(st.session_state['car']))
-            if st.button("💾 GUARDAR FACTURA", key="comp_9"):
-                total_bruto = pd.DataFrame(st.session_state['car'])['t'].sum() * 1.19
-                conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total) VALUES (?,?,?,?,?)", (nro, prov, fe, fv, total_bruto))
-                for i in st.session_state['car']:
-                    cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i['id'],)).fetchone()
-                    npmp = ((cur[0]*cur[1]) + (i['c']*i['p'])) / (cur[0]+i['c']) if (cur[0]+i['c']) > 0 else i['p']
-                    conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (i['c'], npmp, i['id']))
-                conn.commit(); st.session_state['car'] = []; registrar_accion("COMPRA", nro); guardar_en_drive(); st.rerun()
+            if st.button("💾 GUARDAR FACTURA COMPLETA", key="comp_btn_save"):
+                if nro.strip() == "" or prov.strip() == "":
+                    st.error("❌ No puedes guardar una factura con el Proveedor o Número en blanco.")
+                else:
+                    total_bruto = pd.DataFrame(st.session_state['car'])['t'].sum() * 1.19
+                    conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total) VALUES (?,?,?,?,?)", 
+                                 (nro, prov, str(fe), str(fv), total_bruto))
+                    for i in st.session_state['car']:
+                        cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i['id'],)).fetchone()
+                        npmp = ((cur[0]*cur[1]) + (i['c']*i['p'])) / (cur[0]+i['c']) if (cur[0]+i['c']) > 0 else i['p']
+                        conn.execute("UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?", (i['c'], npmp, i['id']))
+                    conn.commit()
+                    st.session_state['car'] = []
+                    st.session_state['comp_nro'] = ""
+                    st.session_state['comp_prov'] = ""
+                    st.session_state['comp_fe'] = hoy
+                    st.session_state['comp_fv'] = hoy
+                    registrar_accion("COMPRA", nro)
+                    guardar_en_drive()
+                    st.success("✅ Factura de compra ingresada con éxito.")
+                    st.rerun()
     with t_sel[1]:
         pg, ng, fg1, fg2 = st.text_input("Proveedor Gasto", key="gv_1"), st.text_input("N° Doc", key="gv_2"), st.date_input("Fecha Gasto", hoy, key="gv_3"), st.date_input("Vence Gasto", hoy, key="gv_4")
         selcc = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"gv_cc_{cc}")]
@@ -451,7 +533,7 @@ def modulo_tesoreria():
 
 def modulo_bodega():
     st.header("🏠 BODEGA"); conn = conectar_db()
-    t_b = st.tabs(["📊 STOCK ACTUAL", "🔄 SALIDA", "➕ REGISTRO INSUMO", "🔍 CONSULTA CC"])
+    t_b = st.tabs(["📊 STOCK ACTUAL", "🔄 SALIDA", "➕ REGISTRO INSUMO", "🔍 CONSULTA CUARTEL"])
     with t_b[0]:
         dfs = pd.read_sql_query("SELECT id, producto, familia, stock, precio_medio FROM inventario", conn)
         st.dataframe(dfs.style.format({"stock": "{:,.2f}", "precio_medio": "${:,.0f}"}), use_container_width=True)
@@ -479,9 +561,23 @@ def modulo_bodega():
                 conn.execute("INSERT INTO inventario (producto, familia, stock, precio_medio) VALUES (?,?,?,?)", (np, nf, ns, npr))
                 conn.commit(); registrar_accion("BODEGA", f"Nuevo insumo {np}"); guardar_en_drive(); st.rerun()
     with t_b[3]:
+        # INTEGRACIÓN DE RANGO DE FECHAS Y REPORTE PDF SEGURO v11.4.5
         ccq = st.selectbox("Consultar Cuartel", CENTROS_COSTO, key="b_q1")
-        dfcc = pd.read_sql_query(f"SELECT m.fecha, i.producto, m.cantidad, m.valor_imputado FROM movimientos m JOIN inventario i ON m.producto_id = i.id WHERE m.centro_costo = '{ccq.upper()}' ORDER BY m.fecha DESC", conn)
-        st.dataframe(dfcc.style.format({"cantidad": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
+        col_f1, col_f2 = st.columns(2)
+        f_desde_b = col_f1.date_input("Desde", hoy - timedelta(days=90), key="b_fe_d")
+        f_hasta_b = col_f2.date_input("Hasta", hoy, key="b_fe_h")
+        
+        dfcc = pd.read_sql_query(f"""SELECT m.fecha as FECHA, i.producto as PRODUCTO, m.cantidad as CANTIDAD, m.valor_imputado as VALOR_IMPUTADO 
+                                    FROM movimientos m JOIN inventario i ON m.producto_id = i.id 
+                                    WHERE m.centro_costo = '{ccq.upper()}' AND m.fecha BETWEEN '{f_desde_b}' AND '{f_hasta_b}'
+                                    ORDER BY m.fecha ASC""", conn)
+        
+        st.dataframe(dfcc.style.format({"CANTIDAD": "{:,.2f}", "VALOR_IMPUTADO": "${:,.0f}"}), use_container_width=True)
+        
+        if not dfcc.empty:
+            st.download_button("📥 PDF CONSULTA CUARTEL", 
+                               generar_pdf_blob(dfcc, f"MOVIMIENTOS BODEGA - CUARTEL {ccq.upper()} ({f_desde_b} a {f_hasta_b})"), 
+                               f"bodega_cuartel_{ccq.lower()}.pdf", key="b_pdf_cc_btn")
     conn.close()
 
 def modulo_espino():
@@ -518,27 +614,82 @@ def modulo_espino():
     conn.close()
 
 def modulo_libro_campo():
-    st.header("📒 LIBRO DE CAMPO"); conn = conectar_db()
-    t_l = st.tabs(["📥 INGRESO", "📜 HISTORIAL"])
+    st.header("📒 LIBRO DE CAMPO AGRICOLA"); conn = conectar_db()
+    t_l = st.tabs(["📥 INGRESO APLICACIÓN", "📜 HISTORIAL AUDITABLE"])
     with t_l[0]:
-        with st.form("lc"):
+        # AUTO-CÁLCULO DEL NÚMERO CORRELATIVO DE APLICACIÓN v11.4.5
+        res_corr = conn.execute("SELECT MAX(n_aplicacion) FROM libro_campo").fetchone()[0]
+        siguiente_correlativo = int(res_corr) + 1 if res_corr else 1
+        
+        st.markdown(f"### 📋 Nueva Orden N° `{siguiente_correlativo:05d}`")
+        with st.form("lc_reestructurado"):
             c1, c2, c3 = st.columns(3)
-            f, ordn, cc = c1.date_input("Fecha", hoy, key="l_1"), c1.text_input("Orden", key="l_2"), c1.selectbox("Cuartel", CENTROS_COSTO, key="l_3")
-            esp, prod, nap = c2.text_input("Especie", key="l_4"), c2.text_input("Producto", key="l_5"), c2.number_input("N° App", 1, key="l_6")
-            ing, dos, vol = c3.text_input("Ingrediente", key="l_7"), c3.number_input("Dosis", 0.0, key="l_8"), c3.number_input("Volumen", 0.0, key="l_9")
-            cet, cag = st.number_input("Carencia Etiq", 0, key="l_10"), st.number_input("Carencia Agenda", 0, key="l_11")
-            if st.form_submit_button("GUARDAR"):
-                cmay = max(cet, cag); fv = f + timedelta(days=cmay)
-                conn.execute("INSERT INTO libro_campo (fecha, n_orden, sector, especie, producto, n_aplicacion, ingrediente, dosis, vol_total, car_etiqueta, car_agenda, car_mayor, fecha_viable) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (f, ordn, cc, esp, prod, nap, ing, dos, vol, cet, cag, cmay, fv))
-                conn.commit(); registrar_accion("LIBRO", prod); guardar_en_drive(); st.rerun()
+            fe_app = c1.date_input("Fecha de Aplicación", hoy)
+            huerto = c1.selectbox("Huerto / Cuartel Destino", CENTROS_COSTO)
+            especie = c1.text_input("Especie", value="Cerezos")
+            
+            prod_nom = c2.text_input("Nombre Comercial Producto")
+            ingre_act = c2.text_input("Ingrediente Activo")
+            dos_base = c2.number_input("Dosis Base (Por cada 100 LT de Agua)", min_value=0.0, format="%.2f")
+            uni_dos = c2.selectbox("Unidad de Medida Dosis", ["Gramos (g)", "Centímetros Cúbicos (cc)"])
+            
+            total_agua = c3.number_input("Total Agua Aplicada (Volumen Litros)", min_value=0.0, format="%.1f")
+            total_prod = c3.number_input("Total Producto Aplicado (Gramos o CC totales)", min_value=0.0, format="%.2f")
+            
+            st.divider()
+            c4, c5, c6 = st.columns(3)
+            aplicador = c4.text_input("Nombre de Aplicador(es)")
+            maquinaria = c5.text_input("Maquinaria / Nebulizador")
+            tractor = c6.text_input("Tractor Utilizado")
+            
+            dias_car = st.number_input("Período de Carencia (Días)", min_value=0, value=0)
+            
+            if st.form_submit_button("💾 VALIDAR Y GUARDAR EN LIBRO"):
+                if prod_nom.strip() == "" or aplicador.strip() == "":
+                    st.error("❌ Por favor completa los campos principales (Producto y Aplicador) antes de archivar.")
+                else:
+                    fv_viable = fe_app + timedelta(days=dias_car)
+                    conn.execute("""INSERT INTO libro_campo 
+                        (fecha, n_aplicacion, sector, especie, producto, ingrediente, dosis, unidad_dosis, gasto_total, vol_total, tractor, maquina, aplicadores, fecha_viable) 
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (str(fe_app), siguiente_correlativo, huerto.upper(), especie.strip(), prod_nom.strip(), ingre_act.strip(), dos_base, uni_dos, total_prod, total_agua, tractor.strip(), maquinaria.strip(), aplicador.strip(), str(fv_viable)))
+                    conn.commit()
+                    registrar_accion("LIBRO CAMPO", f"App N°{siguiente_correlativo} - {prod_nom}")
+                    guardar_en_drive()
+                    st.success(f"✅ Aplicación N° {siguiente_correlativo} registrada de forma conforme en la base de datos.")
+                    st.rerun()
+                    
     with t_l[1]:
-        dflc = pd.read_sql_query("SELECT * FROM libro_campo ORDER BY fecha DESC", conn)
-        st.dataframe(dflc, use_container_width=True)
+        st.markdown("#### 🔍 Motores de Búsqueda Avanzada:")
+        cc1, cc2, cc3 = st.columns(3)
+        fi_lc = cc1.date_input("Desde", hoy - timedelta(days=180), key="lc_fi")
+        ff_lc = cc2.date_input("Hasta", hoy, key="lc_ff")
+        q_cuartel = cc3.selectbox("Filtrar por Cuartel", ["TODOS"] + CENTROS_COSTO)
+        
+        c_p1, c_p2 = st.columns([2, 1])
+        q_prod = c_p1.text_input("Buscar por Nombre de Producto / Comercial")
+        
+        query_base = f"SELECT n_aplicacion as [N° APP], fecha as FECHA, sector as CUARTEL, especie as ESPECIE, producto as PRODUCTO, ingrediente as [ING ACTIVO], dosis as [DOSIS 100L], unidad_dosis as UNIDAD, vol_total as [VOL AGUA LT], gasto_total as [TOTAL PROD], aplicadores as APLICADOR, maquina as MAQUINARIA, tractor as TRACTOR, fecha_viable as [FECHA VIABLE] FROM libro_campo WHERE fecha BETWEEN '{fi_lc}' AND '{ff_lc}'"
+        
+        if q_cuartel != "TODOS":
+            query_base += f" AND sector = '{q_cuartel.upper()}'"
+        if q_prod.strip() != "":
+            query_base += f" AND producto LIKE '%{q_prod.strip()}%'"
+            
+        query_base += " ORDER BY n_aplicacion DESC"
+        
+        dflc_f = pd.read_sql_query(query_base, conn)
+        st.dataframe(dflc_f, use_container_width=True)
+        
+        if not dflc_f.empty:
+            st.download_button("📥 PDF INFORME LIBRO DE CAMPO", 
+                               generar_pdf_blob(dflc_f, f"REGISTRO FITOSANITARIO Y APLICACIONES AGRICOLAS", incluir_precios=False), 
+                               "libro_campo.pdf", key="lc_pdf_btn")
     conn.close()
 
 def modulo_rrhh():
     st.header("👥 RECURSOS HUMANOS"); conn = conectar_db()
-    t_r = st.tabs(["📋 PERSONAL", "💼 REMUNERACIONES", "💸 MOVIMIENTO MENSUAL", "📜 HISTORIAL"])
+    t_r = st.tabs(["📋 PERSONAL", "💼 REMUNERACIONES", "💸 LIQUIDACIÓN MENSUAL", "📜 HISTORIAL PAGOS"])
     with t_r[0]:
         with st.form("rh_p"):
             c1, c2, c3 = st.columns(3); n, r, c = c1.text_input("Nombre"), c2.text_input("RUT"), c3.text_input("Cargo")
@@ -575,17 +726,25 @@ def modulo_rrhh():
                     conn.commit(); registrar_accion("RRHH FICHA", ts); guardar_en_drive(); st.rerun()
             
             st.divider(); st.subheader("💰 Provisión de Fondos (Fin de Mes)")
-            q_prov = """SELECT p.nombre, f.sueldo_pactado as Pactado, 
-                        COALESCE(f.monto_prestamo/NULLIF(f.cuotas_prestamo,0), 0) as Cuota, 
-                        f.suple_fijo as Suple, 
-                        (f.sueldo_pactado - COALESCE(f.monto_prestamo/NULLIF(f.cuotas_prestamo,0), 0) - f.suple_fijo) as Saldo_Pago
+            q_prov = """SELECT p.nombre as TRABAJADOR, f.sueldo_pactado as PACTADO, 
+                        COALESCE(f.monto_prestamo/NULLIF(f.cuotas_prestamo,0), 0) as CUOTA_PRESTAMO, 
+                        f.suple_fijo as SUPLE, 
+                        (f.sueldo_pactado - COALESCE(f.monto_prestamo/NULLIF(f.cuotas_prestamo,0), 0) - f.suple_fijo) as SALDO_PAGO
                         FROM personal p 
                         JOIN remuneraciones_fichas f ON p.id = f.trabajador_id 
                         WHERE p.estado='Activo'"""
             df_prov = pd.read_sql_query(q_prov, conn).fillna(0)
             if not df_prov.empty:
-                st.dataframe(df_prov.style.format({c: "${:,.0f}" for c in df_prov.columns if c != 'nombre'}), use_container_width=True)
-                st.download_button("📥 PDF PROVISIÓN LÍQUIDOS", generar_pdf_blob(df_prov, f"PROVISIÓN LÍQUIDOS {hora_chile().strftime('%B %Y')}"), "provision.pdf", key="rh_pdf_prov")
+                # CORRECCIÓN DE LA SUMA TOTAL DE LA PROVISIÓN Y MOSTRAR EN PANTALLA v11.4.5
+                total_provision_real = df_prov['SALDO_PAGO'].sum()
+                st.markdown(f"<div style='background-color:#E3F2FD; border-left:6px solid #0D47A1; padding:15px; border-radius:8px; font-size:1.3rem; font-weight:bold; color:#0D47A1; margin-bottom:15px;'>💵 MONTO NETO TOTAL A PROVISIONAR ESTE MES: ${f_puntos(total_provision_real)}</div>", unsafe_allow_html=True)
+                
+                st.dataframe(df_prov.style.format({c: "${:,.0f}" for c in df_prov.columns if c != 'TRABAJADOR'}), use_container_width=True)
+                
+                # Forzamos la columna de suma exacta en el PDF para evitar inflados
+                st.download_button("📥 PDF PROVISIÓN LÍQUIDOS CORREGIDO", 
+                                   generar_pdf_blob(df_prov, f"PROVISIÓN LÍQUIDOS CONSOLIDADA - MES VIGENTE", campo_suma_forzado="SALDO_PAGO"), 
+                                   "provision_liquidos.pdf", key="rh_pdf_prov_f")
     
     with t_r[2]:
         if not df_act.empty:
@@ -618,9 +777,28 @@ def modulo_rrhh():
                         conn.commit(); registrar_accion("RRHH PAGO", tnom_m); guardar_en_drive(); st.rerun()
                         
     with t_r[3]:
-        df_h = pd.read_sql_query("SELECT p.nombre, h.mes, h.anio, h.costo_empresa FROM pagos_rrhh h JOIN personal p ON h.trabajador_id = p.id ORDER BY h.anio DESC, h.mes DESC", conn)
-        st.dataframe(df_h.style.format({"costo_empresa": "${:,.0f}"}), use_container_width=True)
-        st.download_button("📥 PDF HISTORIAL", generar_pdf_blob(df_h, "HISTORIAL REMUNERACIONES"), "historial_rrhh.pdf", key="rh_pdf_final")
+        # INTEGRACIÓN DE FILTRO DE FECHAS, TOTAL COMPUESTO Y PDF EN HISTORIAL v11.4.5
+        col_rh1, col_rh2 = st.columns(2)
+        f_desde_rh = col_rh1.date_input("Desde (Fecha Registro)", hoy - timedelta(days=120), key="rh_his_d")
+        f_hasta_rh = col_rh2.date_input("Hasta (Fecha Registro)", hoy, key="rh_his_h")
+        
+        df_h = pd.read_sql_query(f"""SELECT p.nombre as TRABAJADOR, h.mes as MES, h.anio as AÑO, 
+                                    h.liquido as LIQUIDO_PAGADO, h.leyes_sociales as PREVIRED,
+                                    (h.liquido + h.leyes_sociales) as TOTAL_PAGADO,
+                                    h.fecha_registro as FECHA_REGISTRO
+                                    FROM pagos_rrhh h JOIN personal p ON h.trabajador_id = p.id 
+                                    WHERE h.fecha_registro BETWEEN '{f_desde_rh}' AND '{f_hasta_rh}'
+                                    ORDER BY h.fecha_registro DESC""", conn)
+        
+        total_historico_periodo = df_h['TOTAL_PAGADO'].sum()
+        st.markdown(f"<div style='background-color:#E8F5E9; border-left:6px solid #2E7D32; padding:15px; border-radius:8px; font-size:1.2rem; font-weight:bold; color:#1B5E20; margin-bottom:15px;'>📊 EGRESO LIQUIDADO TOTAL EN EL PERÍODO (LÍQUIDO + PREVIRED): ${f_puntos(total_historico_periodo)}</div>", unsafe_allow_html=True)
+        
+        st.dataframe(df_h.style.format({"LIQUIDO_PAGADO": "${:,.0f}", "PREVIRED": "${:,.0f}", "TOTAL_PAGADO": "${:,.0f}"}), use_container_width=True)
+        
+        if not df_h.empty:
+            st.download_button("📥 PDF HISTORIAL LIQUIDACIONES", 
+                               generar_pdf_blob(df_h, f"HISTORIAL GENERAL DE REMUNERACIONES Y PREVIRED ({f_desde_rh} a {f_hasta_rh})", campo_suma_forzado="TOTAL_PAGADO"), 
+                               "historial_pagos_rrhh.pdf", key="rh_pdf_final_f")
     conn.close()
 
 def modulo_costos():
@@ -659,7 +837,7 @@ def modulo_costos():
         }])
         dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
         
-        # SEGREGACIÓN DE VISUALIZACIÓN EN PANTALLA WEB v11.4.3 (SOLO OSVALDO VE LA COLUMNA DE AJUSTES)
+        # SEGREGACIÓN DE VISUALIZACIÓN EN PANTALLA WEB v11.4.5 (SOLO OSVALDO VE LA COLUMNA DE AJUSTES)
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
             st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
         else:
@@ -709,18 +887,21 @@ def login_page():
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
         with st.form("login"):
-            e, p = st.text_input("Usuario"), st.text_input("Clave", type="password")
+            e = st.text_input("Usuario")
+            p = st.text_input("Clave", type="password")
             if st.form_submit_button("ACCEDER"):
-                conn = conectar_db(); cursor = conn.cursor(); cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
+                conn = conectar_db(); cursor = conn.cursor()
+                cursor.execute("SELECT email FROM usuarios WHERE email=? AND password=?", (e, hash_password(p)))
                 if cursor.fetchone(): 
-                    # EVALUACIÓN DE INTRUSOS EN TIEMPO REAL v11.4.3
                     if e != "osvaldolira@laconcepcion.cl":
-                        enviar_correo_alerta(e)
+                        enviar_correo_alerta(e, exitoso=True)
                     st.session_state['logged_in'], st.session_state['email'] = True, e
                     st.rerun()
-                else: st.error("Acceso Denegado")
+                else: 
+                    enviar_correo_alerta(e, exitoso=False)
+                    st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.4.3", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.4.5", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
