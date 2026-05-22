@@ -30,6 +30,8 @@ hoy = hora_chile().date()
 
 FAMILIAS_PRODUCTOS = ["FERTILIZANTE", "FERTILIZANTE FOLIAR", "HERBICIDA", "INSECTICIDA", "FUNGICIDA", "BIO ESTIMULANTE", "ACARICIDA", "REGULADOR DE CRECIMIENTO", "ADHERENTE / MOJANTE", "OTROS"]
 CENTROS_COSTO = ["CEREZOS CORTE1", "CEREZOS CORTE2", "CIRUELOS", "NOGALES APARICION", "NOGALES CRUZ DEL SUR", "EL ESPINO", "OTROS"]
+TIPOS_EVENTO_MAQ = ["Cambio de Aceite", "Reparación Mecánica", "Ajuste Eléctrico", "Neumáticos", "Mantención Preventiva", "Otro"]
+ETIQUETAS_MAQ = ["Conforme", "Pendiente", "En Observación", "Crítico"]
 
 PRORRATEO_RRHH = {
     "CEREZOS CORTE1": 0.0794,
@@ -135,7 +137,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
-    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.2"""
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.3"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -174,7 +176,7 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.2.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.3.</small>
             </div>
         </body>
         </html>
@@ -198,13 +200,13 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1152_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1153_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.2)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.3)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -246,6 +248,19 @@ def inicializar_db():
         unidad_gasto TEXT DEFAULT ''
     )""")
     
+    # 🔥 INYECCIÓN MAESTRA MAQUINARIA: TABLA TOTALMENTE INFORMATIVA INDEPENDIENTE v11.5.3
+    cursor.execute("""CREATE TABLE IF NOT EXISTS bitacora_maquinaria (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cod_registro TEXT UNIQUE,
+        id_maquinaria TEXT,
+        tipo_evento TEXT,
+        detalle_mantenimiento TEXT,
+        encargado_taller TEXT,
+        responsable_interno TEXT,
+        fecha_evento DATE,
+        etiqueta_ingreso TEXT
+    )""")
+    
     cursor.execute("CREATE TABLE IF NOT EXISTS personal (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, rut TEXT UNIQUE, cargo TEXT, fecha_contrato DATE, estado TEXT DEFAULT 'Activo')")
     cursor.execute("PRAGMA table_info(personal)")
     columnas = [col[1] for col in cursor.fetchall()]
@@ -258,11 +273,11 @@ def inicializar_db():
     usuarios = [('osvaldolira@laconcepcion.cl', hash_password('9083')), ('secretaria@laconcepcion.cl', hash_password('9111'))]
     for u, p in usuarios: cursor.execute("INSERT OR IGNORE INTO usuarios (email, password) VALUES (?,?)", (u, p))
     if conn.execute("SELECT COUNT(*) FROM gastos_espino").fetchone()[0] == 0:
-        cursor.exec打many = cursor.executemany("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", DATA_ESP_HISTORICA)
+        cursor.execute("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", DATA_ESP_HISTORICA)
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.2
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.3
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -520,7 +535,6 @@ def modulo_compras():
             fg1 = st.date_input("Fecha Gasto", hoy, key="gv_3")
             fg2 = st.date_input("Vence Gasto", hoy, key="gv_4")
             
-            # 🔥 INYECCIÓN v11.5.2: CELDA DE DESCRIPCIÓN EXPLICITA EN EL FORMULARIO
             concepto_det = st.text_input("Detalle / Concepto del Gasto (Ej: Insumos de oficina, colaciones, repuesto tractor)", key="gv_concepto_det")
             
             selcc = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"gv_cc_{cc}")]
@@ -548,7 +562,6 @@ def modulo_compras():
                     st.error("❌ Error: Debes seleccionar obligatoriamente al menos un Cuartel / Centro de Costo de destino.")
                 else:
                     imp = mt if iva == "SI" else mt/1.19
-                    # Almacenamiento directo del detalle del gasto en la columna 'concepto'
                     conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, concepto) VALUES (?,?,?,?,?,?,?)", (ng_final, pg, str(fg1), str(fg2), mt, 'Gasto Vario', concepto_det.strip()))
                     for c in selcc: 
                         conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado, concepto) VALUES (?,?,?,?,?,?,?,?,?)", (ng_final+"_P", pg, str(fg1), str(fg2), 0, 'Gasto Vario', c.upper(), imp/len(selcc), concepto_det.strip()))
@@ -560,7 +573,6 @@ def modulo_compras():
                     
     with t_sel[2]:
         c1, c2 = st.columns(2); fi = c1.date_input("Desde", hoy-timedelta(days=365), key="ch_1"); ff = c2.date_input("Hasta", hoy, key="ch_2")
-        # 🔥 INYECCIÓN v11.5.2: INCORPORACIÓN DE COLUMNA CONCEPTO/DETALLE EN LA CONSULTA DEL HISTORIAL
         dfh = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, concepto as DETALLE, monto_total FROM facturas WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P' AND fecha_compra BETWEEN '{fi}' AND '{ff}' ORDER BY id DESC", conn)
         st.dataframe(dfh.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
         st.download_button("📥 PDF HISTORIAL COMPRAS", generar_pdf_blob(dfh, f"COMPRAS ({fi} a {ff})"), "compras.pdf", key="ch_pdf")
@@ -1071,6 +1083,76 @@ def modulo_costos():
                     
     conn.close()
 
+# 🔥 INYECCIÓN MAESTRA v11.5.3: MÓDULO TOTALMENTE INFORMATIVO DE MAQUINARIA (TRACTORES, EQUIPOS, VALES TALLER)
+def modulo_maquinaria():
+    st.header("🚜 BITÁCORA DE MAQUINARIA (MANTENCIONES)"); conn = conectar_db()
+    
+    t_maq = st.tabs(["➕ REGISTRAR EVENTO / MANTENCIÓN", "📜 HISTORIAL DE MAQUINARIA"])
+    
+    with t_maq[0]:
+        st.subheader("📝 Formulario de Ficha Mecánica de Control")
+        with st.form("form_registro_maquinaria", clear_on_submit=True):
+            col_m1, col_m2 = st.columns(2)
+            id_maquina = col_m1.text_input("Identificación / Patente de la Maquinaria (Ej: Tractor John Deere 5075, Nebulizador 2000L)", key="maq_reg_id")
+            tipo_ev = col_m1.selectbox("Tipo de Evento / Trabajo", TIPOS_EVENTO_MAQ, key="maq_reg_tipo")
+            f_evento = col_m1.date_input("Fecha de la Operación", hoy, key="maq_reg_fecha")
+            
+            encargado = col_m2.text_input("Encargado de Taller / Proveedor Externo Mecánico", key="maq_reg_enc")
+            responsable = col_m2.text_input("Responsable Interno del Holding (Quién entrega/autoriza)", key="maq_reg_resp")
+            etiqueta = col_m2.selectbox("Etiqueta / Estado de Ingreso", ETIQUETAS_MAQ, key="maq_reg_etiq")
+            
+            detalle = st.text_area("Descripción Detallada de la Reparación / Cambio de Aceite / Repuestos Utilizados", key="maq_reg_det")
+            
+            if st.form_submit_button("💾 VALIDAR Y ARCHIVAR EN BITÁCORA"):
+                if id_maquina.strip() == "" or detalle.strip() == "" or responsable.strip() == "":
+                    st.error("❌ Error: Los campos 'Identificación', 'Responsable' y 'Descripción Detallada' son estrictamente obligatorios.")
+                else:
+                    # Algoritmo del Número Único secuencial v11.5.3
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT MAX(id) FROM bitacora_maquinaria")
+                    res_max = cursor.fetchone()[0]
+                    prox_id = (int(res_max) + 1) if res_max else 1
+                    cod_unico = f"MANT-{prox_id:05d}"
+                    
+                    conn.execute("""INSERT INTO bitacora_maquinaria 
+                        (cod_registro, id_maquinaria, tipo_evento, detalle_mantenimiento, encargado_taller, responsable_interno, fecha_evento, etiqueta_ingreso) 
+                        VALUES (?,?,?,?,?,?,?,?)""",
+                        (cod_unico, id_maquina.strip().upper(), tipo_ev, detalle.strip(), encargado.strip(), responsable.strip(), str(f_evento), etiqueta))
+                    conn.commit()
+                    registrar_accion("MAQUINARIA", f"Registro {cod_unico} - {id_maquina}")
+                    guardar_en_drive()
+                    st.success(f"✅ Evento guardado con éxito bajo el NÚMERO ÚNICO: {cod_unico}. Formulario limpio.")
+                    st.rerun()
+                    
+    with t_maq[1]:
+        st.subheader("🔍 Motores de Consulta e Historial Clínico de Equipos")
+        
+        # Consultamos las máquinas existentes para poblar selectores seguros
+        df_listado_maq = pd.read_sql_query("SELECT DISTINCT id_maquinaria FROM bitacora_maquinaria ORDER BY id_maquinaria ASC", conn)
+        opts_maquinas = ["TODAS"] + df_listado_maq['id_maquinaria'].tolist() if not df_listado_maq.empty else ["TODAS"]
+        
+        cc_m1, cc_m2, cc_m3 = st.columns(3)
+        filtro_maq = cc_m1.selectbox("Filtrar por Maquinaria Específica", opts_maquinas, key="maq_fil_maq")
+        fi_maq = cc_m2.date_input("Desde", hoy - timedelta(days=180), key="maq_fil_fi")
+        ff_maq = cc_m3.date_input("Hasta", hoy, key="maq_fil_ff")
+        
+        query_maq = f"SELECT cod_registro as [N° ÚNICO], fecha_evento as FECHA, id_maquinaria as MAQUINARIA, tipo_evento as [TIPO EVENTO], detalle_mantenimiento as DESCRIPCIÓN, encargado_taller as [ENCARGADO TALLER], responsable_interno as RESPONSABLE, etiqueta_ingreso as ETIQUETA FROM bitacora_maquinaria WHERE fecha_evento BETWEEN '{fi_maq}' AND '{ff_maq}'"
+        
+        if filtro_maq != "TODAS":
+            query_maq += f" AND id_maquinaria = '{filtro_maq}'"
+            
+        query_maq += " ORDER BY id DESC"
+        
+        df_maq_f = pd.read_sql_query(query_maq, conn)
+        st.dataframe(df_maq_f, use_container_width=True)
+        
+        if not df_maq_f.empty:
+            st.download_button("📥 PDF INFORME BITÁCORA MAQUINARIA", 
+                               generar_pdf_blob(df_maq_f, f"REPORTE HISTORIAL DE MANTENCIONES Y REPARACIONES ({fi_maq} a {ff_maq})", incluir_precios=False), 
+                               "bitacora_maquinaria.pdf", key="maq_pdf_btn")
+            
+    conn.close()
+
 def modulo_seguridad():
     st.header("🕵️ SEGURIDAD"); conn = conectar_db()
     c1, c2 = st.columns(2); fi, ff = c1.date_input("D", hoy-timedelta(days=7), key="s_d"), c2.date_input("H", hoy, key="s_h")
@@ -1099,7 +1181,7 @@ def login_page():
                     enviar_correo_alerta(e, exitoso=False)
                     st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.5.2", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.5.3", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
@@ -1111,7 +1193,7 @@ else:
         st.markdown("## 🚜 ERP LA CONCEPCIÓN")
         st.markdown(f"👤 <span class='sidebar-user'>{st.session_state['email']}</span>", unsafe_allow_html=True)
         st.markdown("<span style='color:green;'>🟢 SISTEMA CONECTADO</span>", unsafe_allow_html=True); st.divider()
-        m_opts = { "🏠 DASHBOARD": "DASHBOARD", "⛽ PETRÓLEO": "Petróleo", "📦 COMPRAS": "Compras", "💸 TESORERÍA": "Tesoreria", "👥 RRHH": "RRHH", "🏠 BODEGA": "Bodega", "🏡 EL ESPINO": "Espino", "📒 LIBRO DE CAMPO": "Libro de Campo", "💰 COSTOS": "Costos" }
+        m_opts = { "🏠 DASHBOARD": "DASHBOARD", "⛽ PETRÓLEO": "Petróleo", "📦 COMPRAS": "Compras", "💸 TESORERÍA": "Tesoreria", "👥 RRHH": "RRHH", "🏠 BODEGA": "Bodega", "🏡 EL ESPINO": "Espino", "📒 LIBRO DE CAMPO": "Libro de Campo", "🚜 MAQUINARIA": "Maquinaria", "💰 COSTOS": "Costos" }
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl': m_opts["🕵️ SEGURIDAD"] = "Seguridad"
         menu_choice = st.radio("MENÚ", list(m_opts.keys()))
         menu = m_opts[menu_choice]; st.divider()
@@ -1126,5 +1208,6 @@ else:
     elif menu == "Bodega": modulo_bodega()
     elif menu == "Espino": modulo_espino()
     elif menu == "Libro de Campo": modulo_libro_campo()
+    elif menu == "Maquinaria": modulo_maquinaria()
     elif menu == "Costos": modulo_costos()
     elif menu == "Seguridad": modulo_seguridad()
