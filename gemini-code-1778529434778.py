@@ -56,7 +56,7 @@ DATA_ESP_HISTORICA = [
     ('2026-01-30', 'S/N', 'Carlos Zavala', 620000), ('2026-01-30', 'S/N', 'Duilio Pruzzo', 0),
     ('2026-02-05', 'S/N', 'Danixa Amaza', 50000), ('2026-02-10', 'S/N', 'Carlos Zavala Imposiciones', 143483),
     ('2026-02-11', 'GD', 'Coagra Acaban 1lt', 89969), ('2026-02-12', 'S/N', 'Caceres M SPA', 1532084),
-    ('2026-02-19', '13785', 'FerreMais Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
+    ('2026-02-19', '13785', 'FerreMás Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
     ('2026-03-10', '23648', 'Soc. Los Olivos Pernos Hex', 16950), ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960),
     ('2026-03-09', '7826141', 'Ferreteria codo hidráulico', 5750), ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942),
     ('2026-03-03', '2237580', 'Coagra Urea granulada', 198417), ('2026-03-06', '6966966', 'Electrocom Contractor', 220326),
@@ -135,7 +135,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
-    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.0"""
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.1"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -174,7 +174,7 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.0.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.1.</small>
             </div>
         </body>
         </html>
@@ -198,13 +198,13 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1150_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1151_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.0)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.1)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -262,7 +262,7 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.0
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.1
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -407,7 +407,7 @@ def modulo_petroleo():
                     neto = (mt / 1.19) - (l * IMPUESTO_ESPECIFICO_LITRO)
                     conn.execute("INSERT INTO petroleo (tipo, litros, monto_total_compra, fecha) VALUES (?,?,?,?)", ("Carga", l, neto, str(f)))
                     conn.commit(); registrar_accion("PETROLEO", f"Carga {l}L"); guardar_en_drive()
-                    st.success("✅ Carga de estanque guardada con éxito y formulario vaciado.")
+                    st.success("✅ Carga de estanque guardada con éxito y campos vaciados.")
                     st.rerun()
     with t_p[1]:
         with st.form("p_s", clear_on_submit=True):
@@ -504,25 +504,59 @@ def modulo_compras():
                     
                     registrar_accion("COMPRA", nro)
                     guardar_en_drive()
-                    st.success("✅ Factura de compra ingresada con éxito. Formulario limpio.")
+                    st.success("¼ Factura de compra ingresada con éxito. Formulario limpio.")
                     st.rerun()
     with t_sel[1]:
+        # 🔥 MOTOR v11.5.1: CONTROL DE FOLIO AUTOMÁTICO EN GASTOS VARIOS
+        sin_doc = st.checkbox("¿Sin Documento Oficial? (Generar Folio Interno)", key="gv_sin_doc")
+        
         with st.form("gv_form", clear_on_submit=True):
             pg = st.text_input("Proveedor Gasto", key="gv_1")
-            ng = st.text_input("N° Doc", key="gv_2")
+            
+            # Si marca "sin_doc", el campo se bloquea gráficamente
+            if sin_doc:
+                ng = st.text_input("N° Doc (Folio Interno Automático Activo)", value="AUTOGENERADO", disabled=True, key="gv_2")
+            else:
+                ng = st.text_input("N° Doc / Folio Factura o Boleta", key="gv_2")
+                
             fg1 = st.date_input("Fecha Gasto", hoy, key="gv_3")
             fg2 = st.date_input("Vence Gasto", hoy, key="gv_4")
             selcc = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"gv_cc_{cc}")]
             mt = st.number_input("Bruto ($)", 0.0, key="gv_5")
             iva = st.radio("Imputar Bruto?", ["SI", "NO (NETO)"], key="gv_6")
+            
             if st.form_submit_button("💾 GUARDAR GASTO VARIO"):
-                if pg.strip() != "" and ng.strip() != "" and mt > 0:
+                # Si es autogenerado, calculamos secuencial del día para INT-YYYYMMDD-XX
+                if sin_doc:
+                    prefijo_dia = f"INT-{str(fg1).replace('-', '')}-"
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT nro_documento FROM facturas WHERE nro_documento LIKE ? AND nro_documento NOT LIKE '%_P'", (prefijo_dia + "%",))
+                    existentes = cursor.fetchall()
+                    idx = len(existentes) + 1
+                    ng_final = f"{prefijo_dia}{idx:02d}"
+                else:
+                    ng_final = ng.strip()
+                
+                # Validación de seguridad blindada contra vacíos
+                if pg.strip() == "":
+                    st.error("❌ Error: El campo Proveedor Gasto es obligatorio.")
+                elif not sin_doc and ng_final == "":
+                    st.error("❌ Error: El campo Número de Documento es obligatorio para resguardar la trazabilidad.")
+                elif mt <= 0:
+                    st.error("❌ Error: El monto total bruto debe ser superior a $0.")
+                elif not selcc:
+                    st.error("❌ Error: Debes seleccionar obligatoriamente al menos un Cuartel / Centro de Costo de destino.")
+                else:
                     imp = mt if iva == "SI" else mt/1.19
-                    conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo) VALUES (?,?,?,?,?,?)", (ng, pg, str(fg1), str(fg2), mt, 'Gasto Vario'))
-                    for c in selcc: conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado) VALUES (?,?,?,?,?,?,?,?)", (ng+"_P", pg, str(fg1), str(fg2), 0, 'Gasto Vario', c.upper(), imp/len(selcc)))
-                    conn.commit(); registrar_accion("GASTO", ng); guardar_en_drive()
-                    st.success("✅ Gasto vario guardado y campos vaciados.")
+                    conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo) VALUES (?,?,?,?,?,?)", (ng_final, pg, str(fg1), str(fg2), mt, 'Gasto Vario'))
+                    for c in selcc: 
+                        conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo, centro_costo, monto_imputado) VALUES (?,?,?,?,?,?,?,?)", (ng_final+"_P", pg, str(fg1), str(fg2), 0, 'Gasto Vario', c.upper(), imp/len(selcc)))
+                    conn.commit()
+                    registrar_accion("GASTO", ng_final)
+                    guardar_en_drive()
+                    st.success(f"✅ Gasto registrado con éxito bajo el folio: {ng_final}")
                     st.rerun()
+                    
     with t_sel[2]:
         c1, c2 = st.columns(2); fi = c1.date_input("Desde", hoy-timedelta(days=365), key="ch_1"); ff = c2.date_input("Hasta", hoy, key="ch_2")
         dfh = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, monto_total FROM facturas WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P' AND fecha_compra BETWEEN '{fi}' AND '{ff}' ORDER BY id DESC", conn)
@@ -722,7 +756,7 @@ def modulo_libro_campo():
                     st.rerun()
                     
     with t_l[1]:
-        st.markdown("#### 🔍 Motores de Búsqueda Avanzada:")
+        st.markdown("#### 🔍 Motores de Búszada Avanzada:")
         cc1, cc2, cc3 = st.columns(3)
         fi_lc = cc1.date_input("Desde", hoy - timedelta(days=180), key="lc_fi")
         ff_lc = cc2.date_input("Hasta", hoy, key="lc_ff")
@@ -847,7 +881,6 @@ def modulo_rrhh():
             isel = df_p[df_p['id']==id_p].iloc[0]
             un, ur, uc = st.text_input("Modificar Nombre", isel['nombre']), st.text_input("Modificar RUT", isel['rut']), st.text_input("Modificar Cargo", isel['cargo'])
             
-            # 🔥 INYECCIÓN MAESTRA ANTINULOS v11.5.0: EVITA EL TRACEBACK STRPTIME SI LA COLUMNA ES NULA O NONE
             f_cont_ant = isel['fecha_contrato']
             if not f_cont_ant or str(f_cont_ant).strip() == "" or str(f_cont_ant).lower() == "none":
                 fecha_objeto_segura = hoy
@@ -885,7 +918,7 @@ def modulo_rrhh():
                 if st.form_submit_button("GUARDAR FICHA ECONÓMICA"):
                     conn.execute("INSERT OR REPLACE INTO remuneraciones_fichas (trabajador_id, sueldo_pactado, monto_prestamo, cuotas_prestamo, suple_fijo) VALUES (?,?,?,?,?)", (tid, p_sueldo, p_prest, p_cuotas, p_suple))
                     conn.commit(); registrar_accion("RRHH FICHA", ts); guardar_en_drive()
-                    st.success("¼ Ficha económica de remuneraciones fijas guardada.")
+                    st.success("✅ Ficha económica de remuneraciones fijas guardada.")
                     st.rerun()
             
             st.divider(); st.subheader("💰 Provisión de Fondos (Fin de Mes)")
@@ -1064,7 +1097,7 @@ def login_page():
                     enviar_correo_alerta(e, exitoso=False)
                     st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.5.0", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.5.1", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
