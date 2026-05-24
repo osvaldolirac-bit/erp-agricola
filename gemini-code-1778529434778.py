@@ -58,7 +58,7 @@ DATA_ESP_HISTORICA = [
     ('2026-01-30', 'S/N', 'Carlos Zavala', 620000), ('2026-01-30', 'S/N', 'Duilio Pruzzo', 0),
     ('2026-02-05', 'S/N', 'Danixa Amaza', 50000), ('2026-02-10', 'S/N', 'Carlos Zavala Imposiciones', 143483),
     ('2026-02-11', 'GD', 'Coagra Acaban 1lt', 89969), ('2026-02-12', 'S/N', 'Caceres M SPA', 1532084),
-    ('2026-02-19', '13785', 'FerreMais Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
+    ('2026-02-19', '13785', 'FerreMás Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
     ('2026-03-10', '23648', 'Soc. Los Olivos Pernos Hex', 16950), ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960),
     ('2026-03-09', '7826141', 'Ferreteria codo hidráulico', 5750), ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942),
     ('2026-03-03', '2237580', 'Coagra Urea granulada', 198417), ('2026-03-06', '6966966', 'Electrocom Contractor', 220326),
@@ -137,7 +137,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
-    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.3"""
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.4"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -176,7 +176,7 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.3.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.4.</small>
             </div>
         </body>
         </html>
@@ -200,13 +200,13 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1153_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1154_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.3)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.4)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -248,7 +248,6 @@ def inicializar_db():
         unidad_gasto TEXT DEFAULT ''
     )""")
     
-    # 🔥 INYECCIÓN MAESTRA MAQUINARIA: TABLA TOTALMENTE INFORMATIVA INDEPENDIENTE v11.5.3
     cursor.execute("""CREATE TABLE IF NOT EXISTS bitacora_maquinaria (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cod_registro TEXT UNIQUE,
@@ -277,7 +276,7 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.3
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.4
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -402,7 +401,7 @@ def modulo_dashboard():
         for i in range(4):
             fp = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
             totalm = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == fp.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == fp.year)]['monto_total'].sum() if not df_f.empty else 0
-            st.markdown(f"<div style='background:white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color:white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
     conn.close()
 
 def modulo_petroleo():
@@ -502,9 +501,15 @@ def modulo_compras():
                 if nro.strip() == "" or prov.strip() == "":
                     st.error("❌ No puedes guardar una factura con el Proveedor o Número en blanco.")
                 else:
+                    # 🔥 INYECCIÓN v11.5.4: COMPILACIÓN AGREGADA DE INSUMOS COMO TEXTO PARA LA COLUMNA CONCEPTO
+                    desglose_lista = [f"{i['c']}x {i['n']}" for i in st.session_state['car']]
+                    string_insumos = "[" + ", ".join(desglose_lista) + "]"
+                    
                     total_bruto = pd.DataFrame(st.session_state['car'])['t'].sum() * 1.19
-                    conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total) VALUES (?,?,?,?,?)", 
-                                 (nro, prov, str(fe), str(fv), total_bruto))
+                    # Guardamos la cabecera inyectando la etiqueta/lista de insumos en 'concepto'
+                    conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, concepto) VALUES (?,?,?,?,?,?)", 
+                                 (nro, prov, str(fe), str(fv), total_bruto, string_insumos))
+                    
                     for i in st.session_state['car']:
                         cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i['id'],)).fetchone()
                         npmp = ((cur[0]*cur[1]) + (i['c']*i['p'])) / (cur[0]+i['c']) if (cur[0]+i['c']) > 0 else i['p']
@@ -519,8 +524,9 @@ def modulo_compras():
                     
                     registrar_accion("COMPRA", nro)
                     guardar_en_drive()
-                    st.success("✅ Factura de compra ingresada con éxito. Formulario limpio.")
+                    st.success("✅ Factura de compra e insumos archivados con éxito en el historial.")
                     st.rerun()
+                    
     with t_sel[1]:
         sin_doc = st.checkbox("¿Sin Documento Oficial? (Generar Folio Interno)", key="gv_sin_doc")
         
@@ -572,17 +578,42 @@ def modulo_compras():
                     st.rerun()
                     
     with t_sel[2]:
-        c1, c2 = st.columns(2); fi = c1.date_input("Desde", hoy-timedelta(days=365), key="ch_1"); ff = c2.date_input("Hasta", hoy, key="ch_2")
-        dfh = pd.read_sql_query(f"SELECT id, nro_documento, proveedor, fecha_compra, concepto as DETALLE, monto_total FROM facturas WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P' AND fecha_compra BETWEEN '{fi}' AND '{ff}' ORDER BY id DESC", conn)
-        st.dataframe(dfh.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
-        st.download_button("📥 PDF HISTORIAL COMPRAS", generar_pdf_blob(dfh, f"COMPRAS ({fi} a {ff})"), "compras.pdf", key="ch_pdf")
+        st.subheader("🔍 Panel de Filtros y Motores de Búsqueda Avanzada")
+        
+        # 🔥 INYECCIÓN MAESTRA v11.5.4: COMPONENTE INTERACTIVO DE BÚSQUEDA DINÁMICA
+        c_f1, c_f2, c_f3 = st.columns([1.5, 1, 1])
+        q_global = c_f1.text_input("Buscador Dinámico (Escribe Insumo, Producto, Proveedor o N° Documento)", key="hist_q_global")
+        fi_hist = c_f2.date_input("Fecha Desde", hoy - timedelta(days=365), key="hist_fi")
+        ff_hist = c_f3.date_input("Fecha Hasta", hoy, key="hist_ff")
+        
+        # Consulta base reuniendo cabeceras reales
+        query_hist = f"""SELECT id as ID, nro_documento as [N° DOCUMENTO], proveedor as PROVEEDOR, 
+                                fecha_compra as [FECHA COMPRA], concepto as [DETALLE / INSUMOS], 
+                                monto_total as [MONTO BRUTO] 
+                        FROM facturas 
+                        WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P' 
+                          AND fecha_compra BETWEEN '{fi_hist}' AND '{ff_hist}'"""
+                          
+        if q_global.strip() != "":
+            # Filtro inteligente en caliente cruzando texto ingresado por el usuario
+            query_hist += f" AND (nro_documento LIKE '%{q_global}%' OR proveedor LIKE '%{q_global}%' OR concepto LIKE '%{q_global}%')"
+            
+        query_hist += " ORDER BY id DESC"
+        
+        dfh_filtrado = pd.read_sql_query(query_hist, conn)
+        st.dataframe(dfh_filtrado.style.format({"MONTO BRUTO": "${:,.0f}"}), use_container_width=True)
+        
+        if not dfh_filtrado.empty:
+            st.download_button("📥 PDF HISTORIAL COMPRAS", generar_pdf_blob(dfh_filtrado, f"HISTORIAL CONSOLIDADO DE COMPRAS Y EGRESO DE INSUMOS"), "historial_compras.pdf", key="ch_pdf_dinamico")
+            
     if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
         with t_sel[3]:
-            idm = st.selectbox("ID Factura", dfh['id'], key="mod_comp_1") if not dfh.empty else None
+            df_mod_base = pd.read_sql_query("SELECT id, nro_documento, proveedor FROM facturas WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P' ORDER BY id DESC", conn)
+            idm = st.selectbox("ID Factura", df_mod_base['id'], key="mod_comp_1") if not df_mod_base.empty else None
             clvm = st.text_input("Clave Master", type="password", key="mod_comp_2")
             if st.button("🗑️ ELIMINAR TOTAL", key="mod_comp_3"):
                 if clvm == CLAVE_MAESTRA:
-                    sel = dfh[dfh['id']==idm].iloc[0]
+                    sel = df_mod_base[df_mod_base['id']==idm].iloc[0]
                     conn.execute("DELETE FROM facturas WHERE id=?", (idm,))
                     conn.execute("DELETE FROM facturas WHERE nro_documento=? AND proveedor=?", (sel['nro_documento']+"_P", sel['proveedor']))
                     conn.commit(); registrar_accion("BORRADO", sel['nro_documento']); guardar_en_drive(); st.rerun()
@@ -1083,7 +1114,6 @@ def modulo_costos():
                     
     conn.close()
 
-# 🔥 INYECCIÓN MAESTRA v11.5.3: MÓDULO TOTALMENTE INFORMATIVO DE MAQUINARIA (TRACTORES, EQUIPOS, VALES TALLER)
 def modulo_maquinaria():
     st.header("🚜 BITÁCORA DE MAQUINARIA (MANTENCIONES)"); conn = conectar_db()
     
@@ -1107,7 +1137,6 @@ def modulo_maquinaria():
                 if id_maquina.strip() == "" or detalle.strip() == "" or responsable.strip() == "":
                     st.error("❌ Error: Los campos 'Identificación', 'Responsable' y 'Descripción Detallada' son estrictamente obligatorios.")
                 else:
-                    # Algoritmo del Número Único secuencial v11.5.3
                     cursor = conn.cursor()
                     cursor.execute("SELECT MAX(id) FROM bitacora_maquinaria")
                     res_max = cursor.fetchone()[0]
@@ -1127,7 +1156,6 @@ def modulo_maquinaria():
     with t_maq[1]:
         st.subheader("🔍 Motores de Consulta e Historial Clínico de Equipos")
         
-        # Consultamos las máquinas existentes para poblar selectores seguros
         df_listado_maq = pd.read_sql_query("SELECT DISTINCT id_maquinaria FROM bitacora_maquinaria ORDER BY id_maquinaria ASC", conn)
         opts_maquinas = ["TODAS"] + df_listado_maq['id_maquinaria'].tolist() if not df_listado_maq.empty else ["TODAS"]
         
@@ -1181,7 +1209,7 @@ def login_page():
                     enviar_correo_alerta(e, exitoso=False)
                     st.error("Acceso Denegado")
 
-st.set_page_config(page_title="ERP AGRICOLA v11.5.3", layout="wide")
+st.set_page_config(page_title="ERP AGRICOLA v11.5.4", layout="wide")
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if not st.session_state['logged_in']: descargar_de_drive(); login_page()
