@@ -111,7 +111,7 @@ def f_decimal(v):
 
 def obtener_drive():
     try:
-        if "gcp_service_account" not in st.secrets: return None
+        # ⚙️ INYECCIÓN DIRECTA v11.5.6: SE CARGA DIRECTAMENTE DESDE LOS SECRETS DEL ENTORNO DE MANERA TRANSPARENTE
         info = dict(st.secrets["gcp_service_account"])
         if "private_key" in info: info["private_key"] = info["private_key"].replace("\\n", "\n")
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ['https://www.googleapis.com/auth/drive'])
@@ -286,7 +286,6 @@ def inicializar_db():
     usuarios = [('osvaldolira@laconcepcion.cl', hash_password('9083')), ('secretaria@laconcepcion.cl', hash_password('9111'))]
     for u, p in usuarios: cursor.execute("INSERT OR IGNORE INTO usuarios (email, password) VALUES (?,?)", (u, p))
     
-    # 🔥 CORRECCIÓN DEL PARCHE v11.5.6: Eliminación del typo asiático en executemany
     if conn.execute("SELECT COUNT(*) FROM gastos_espino").fetchone()[0] == 0:
         cursor.executemany("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", DATA_ESP_HISTORICA)
         
@@ -718,7 +717,7 @@ def modulo_bodega():
         if not dfcc.empty:
             st.download_button("📥 PDF CONSULTA CUARTEL", 
                                generar_pdf_blob(dfcc, f"MOVIMIENTOS BODEGA - CUARTEL {ccq.upper()} ({f_desde_b} a {f_hasta_b})"), 
-                               f"bodega_cuartel_{ccq.lower()}.pdf", key="b_pdf_cc_btn")
+                               "bodega_cuartel_{ccq.lower()}.pdf", key="b_pdf_cc_btn")
     conn.close()
 
 def modulo_espino():
