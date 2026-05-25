@@ -1,4 +1,17 @@
 import streamlit as st
+
+# =============================================================================
+# CONFIGURACIÓN DE PÁGINA (ESTO VA PRIMERO QUE TODO PARA BLINDAR EL ICONO DE LA PESTAÑA)
+# =============================================================================
+st.set_page_config(
+    page_title="ERP Agrícola v11.5.6",
+    page_icon="🚜",
+    layout="wide"
+)
+
+# =============================================================================
+# IMPORTACIÓN DE LIBRERÍAS MAESTRAS DEL HOLDING
+# =============================================================================
 import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
@@ -15,16 +28,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # =============================================================================
-# CONFIGURACIÓN DE PÁGINA (ESTO METE EL TRACTOR EN LA PESTAÑA DEL NAVEGADOR)
-# =============================================================================
-st.set_page_config(
-    page_title="ERP Agrícola v11.5.5",
-    page_icon="🚜",
-    layout="wide"
-)
-
-# =============================================================================
-# 1. CONFIGURACIÓN, CONSTANTES Y MOTOR HORARIO (CHILE UTC-4)
+# CONSTANTES, RUTAS Y MOTOR HORARIO (CHILE UTC-4)
 # =============================================================================
 ID_CARPETA_DRIVE = "12tjxWa_RVRP5YuYd2sypjBO8bPuyMqo6" 
 NOMBRE_DB = 'erp_concepcion_v6.db'
@@ -67,7 +71,7 @@ DATA_ESP_HISTORICA = [
     ('2026-01-30', 'S/N', 'Carlos Zavala', 620000), ('2026-01-30', 'S/N', 'Duilio Pruzzo', 0),
     ('2026-02-05', 'S/N', 'Danixa Amaza', 50000), ('2026-02-10', 'S/N', 'Carlos Zavala Imposiciones', 143483),
     ('2026-02-11', 'GD', 'Coagra Acaban 1lt', 89969), ('2026-02-12', 'S/N', 'Caceres M SPA', 1532084),
-    ('2026-02-19', '13785', 'FerreMás Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
+    ('2026-02-19', '13785', 'FerreMais Pala', 10690), ('2026-03-02', '14895', 'Marcelo Caro Pernos varios', 11500),
     ('2026-03-10', '23648', 'Soc. Los Olivos Pernos Hex', 16950), ('2026-03-12', '21049', 'FP.cl Cinta aislante', 7960),
     ('2026-03-09', '7826141', 'Ferreteria codo hidráulico', 5750), ('2026-03-03', 'DAB', 'Cinta plana amarratec', 11942),
     ('2026-03-03', '2237580', 'Coagra Urea granulada', 198417), ('2026-03-06', '6966966', 'Electrocom Contractor', 220326),
@@ -146,7 +150,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
-    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.5"""
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.6"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -185,7 +189,7 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.5.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.6.</small>
             </div>
         </body>
         </html>
@@ -209,13 +213,13 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1155_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1156_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.5)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.6)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -278,15 +282,65 @@ def inicializar_db():
         
     cursor.execute("""CREATE TABLE IF NOT EXISTS remuneraciones_fichas (trabajador_id INTEGER PRIMARY KEY, sueldo_pactado REAL, monto_prestamo REAL DEFAULT 0, cuotas_prestamo INTEGER DEFAULT 0, suple_fijo REAL DEFAULT 0, FOREIGN KEY(trabajador_id) REFERENCES personal(id))""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS pagos_rrhh (id INTEGER PRIMARY KEY AUTOINCREMENT, trabajador_id INTEGER, mes TEXT, anio INTEGER, liquido REAL, leyes_sociales REAL, costo_empresa REAL, tipo TEXT, fecha_registro DATE)""")
+    
     usuarios = [('osvaldolira@laconcepcion.cl', hash_password('9083')), ('secretaria@laconcepcion.cl', hash_password('9111'))]
     for u, p in usuarios: cursor.execute("INSERT OR IGNORE INTO usuarios (email, password) VALUES (?,?)", (u, p))
+    
+    # 🔥 CORRECCIÓN DEL PARCHE v11.5.6: Eliminación del typo asiático en executemany
     if conn.execute("SELECT COUNT(*) FROM gastos_espino").fetchone()[0] == 0:
-        cursor.execute("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", DATA_ESP_HISTORICA)
+        cursor.executemany("INSERT INTO gastos_espino (fecha, documento, item, monto) VALUES (?,?,?,?)", DATA_ESP_HISTORICA)
+        
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.5
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.6
 # =============================================================================
+
+@st.cache_data(ttl=3600)
+def obtener_indicadores():
+    try:
+        r = requests.get("https://mindicador.cl/api", timeout=5).json()
+        return {'uf': f"${r['uf']['valor']:,.2f}", 'utm': f"${r['utm']['valor']:,.0f}", 'dolar': f"${r['dolar']['valor']:,.2f}", 'euro': f"${r['euro']['valor']:,.2f}"}
+    except: return {'uf': '$37.942,12', 'utm': '$66.628', 'dolar': '$945,50', 'euro': '$1.024,30'}
+
+def generar_pdf_blob(df, titulo, incluir_precios=True, total_manual=None, modo_petroleo=False, orden_asc=True, saldo_petroleo=None, campo_suma_forzado=None):
+    try:
+        pdf = FPDF(); pdf.add_page(); pdf.set_font("Helvetica", "B", 16)
+        if modo_petroleo and saldo_petroleo is not None:
+            pdf.cell(100, 10, "AGRICOLA LA CONCEPCIÓN", ln=0); pdf.set_font("Helvetica", "B", 10); pdf.cell(90, 10, f"SALDO ESTANQUE: {f_decimal(saldo_petroleo)} L", ln=1, align="R")
+        else: pdf.cell(0, 10, "AGRICOLA LA CONCEPCIÓN", ln=1, align="C")
+        pdf.set_font("Helvetica", "B", 12); pdf.cell(0, 10, titulo, ln=True, align="C"); pdf.ln(5); pdf.set_font("Helvetica", "B", 7)
+        df_p = df.copy()
+        if orden_asc and 'fecha' in [c.lower() for c in df_p.columns]:
+            cf = [c for c in df_p.columns if c.lower() == 'fecha'][0]; df_p[cf] = pd.to_datetime(df_p[cf]); df_p = df_p.sort_values(by=cf, ascending=True); df_p[cf] = df_p[cf].dt.date
+        
+        t_sum = total_manual if total_manual else 0
+        if total_manual is None:
+            if campo_suma_forzado and campo_suma_forzado in df_p.columns:
+                t_sum = df_p[campo_suma_forzado].sum()
+            else:
+                cols_m = ["monto", "total", "monto_total", "valor_imputado", "gasto_total", "monto_imputado", "costo_empresa", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota", "ajustes", "total_pagado"]
+                for c in df_p.columns:
+                    if any(x in c.lower() for x in cols_m):
+                        try: t_sum += df_p[c].sum()
+                        except: pass
+                        
+        if modo_petroleo: df_p = df_p.drop(columns=[c for c in df_p.columns if any(x in c.lower() for x in ["imputado", "valor", "monto", "precio"])]); incluir_precios = False
+        cols = df_p.columns; w = 190 / len(cols)
+        for col in cols: pdf.cell(w, 8, str(col).upper(), border=1, align="C")
+        pdf.ln(); pdf.set_font("Helvetica", "", 6)
+        for _, row in df_p.iterrows():
+            for i, item in enumerate(row):
+                val = str(item)
+                col_n = df_p.columns[i].lower()
+                if any(x in col_n for x in ["monto", "total", "valor", "costo", "liquido", "leyes", "insumos", "gastos", "petroleo", "rrhh", "pactado", "suple", "saldo", "pago", "cuota", "ajustes", "total_pagado"]): val = f_puntos(item)
+                elif any(x in col_n for x in ["litros", "cantidad", "stock", "volumen", "dosis", "total_producto", "total_agua"]): val = f_decimal(item)
+                pdf.cell(w, 7, val[:25], border=1)
+            pdf.ln()
+        if incluir_precios and t_sum > 0:
+            pdf.set_font("Helvetica", "B", 8); pdf.cell(w*(len(cols)-1), 8, "TOTAL CORRESPONDIENTE:", border=1, align="R"); pdf.cell(w, 8, f"${f_puntos(t_sum)}", border=1, align="L")
+        return pdf.output(dest="S").encode("latin-1")
+    except: return None
 
 def inyectar_css():
     user_activo = st.session_state.get('email', '')
@@ -664,7 +718,7 @@ def modulo_bodega():
         if not dfcc.empty:
             st.download_button("📥 PDF CONSULTA CUARTEL", 
                                generar_pdf_blob(dfcc, f"MOVIMIENTOS BODEGA - CUARTEL {ccq.upper()} ({f_desde_b} a {f_hasta_b})"), 
-                               "bodega_cuartel_{ccq.lower()}.pdf", key="b_pdf_cc_btn")
+                               f"bodega_cuartel_{ccq.lower()}.pdf", key="b_pdf_cc_btn")
     conn.close()
 
 def modulo_espino():
@@ -1168,7 +1222,7 @@ def login_page():
                     st.error("Acceso Denegado")
 
 # =============================================================================
-# 5. ORQUESTADOR CENTRAL DE FLUJO Y SESIÓN
+# 5. ORQUESTADOR CENTRAL DE FLUJO Y SESIÓN (PRODUCCIÓN FINAL)
 # =============================================================================
 inicializar_db()
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
