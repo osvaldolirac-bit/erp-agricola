@@ -4,7 +4,7 @@ import streamlit as st
 # CONFIGURACIÓN DE PÁGINA (ESTO VA PRIMERO QUE TODO PARA BLINDAR EL ICONO DE LA PESTAÑA)
 # =============================================================================
 st.set_page_config(
-    page_title="ERP Agrícola v11.5.6",
+    page_title="ERP Agrícola v11.5.7",
     page_icon="🚜",
     layout="wide"
 )
@@ -111,7 +111,7 @@ def f_decimal(v):
 
 def obtener_drive():
     try:
-        # ⚙️ INYECCIÓN DIRECTA v11.5.6: SE CARGA DIRECTAMENTE DESDE LOS SECRETS DEL ENTORNO DE MANERA TRANSPARENTE
+        if "gcp_service_account" not in st.secrets: return None
         info = dict(st.secrets["gcp_service_account"])
         if "private_key" in info: info["private_key"] = info["private_key"].replace("\\n", "\n")
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info, ['https://www.googleapis.com/auth/drive'])
@@ -150,7 +150,7 @@ def registrar_accion(accion, detalle):
     except: pass
 
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
-    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.6"""
+    """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.7"""
     try:
         if "gmail_smtp" not in st.secrets:
             return
@@ -189,7 +189,7 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
                 <p><b>📅 Fecha y Hora Oficial:</b> {f_h} (Chile UTC-4)</p>
                 <p><b>🌐 Entorno de Ejecución:</b> Streamlit Cloud Production</p>
                 <hr style='border: 0; border-top: 1px solid #eee;'>
-                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.6.</small>
+                <small style='color: #777;'>Este correo fue generado automáticamente por el motor de seguridad de Agrícola La Concepción v11.5.7.</small>
             </div>
         </body>
         </html>
@@ -213,13 +213,13 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
 
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in'):
-        tag = f"acceso_v1156_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
+        tag = f"acceso_v1157_{st.session_state['email']}_{hora_chile().strftime('%Y%m%d')}"
         if tag not in st.session_state:
             try:
                 conn = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
-                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.6)", f_h))
+                             (st.session_state['email'], "ACCESO", "Sesión Detectada (v11.5.7)", f_h))
                 conn.commit(); conn.close()
                 st.session_state[tag] = True
                 guardar_en_drive()
@@ -292,7 +292,7 @@ def inicializar_db():
     conn.commit(); conn.close()
 
 # =============================================================================
-# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.6
+# 3. UTILIDADES PDF E INDICADORES + INYECTOR CSS SEGREGADO QUIRÚRGICO v11.5.7
 # =============================================================================
 
 @st.cache_data(ttl=3600)
@@ -379,6 +379,22 @@ def inyectar_css():
 
 def modulo_dashboard():
     st.markdown("<h1 style='text-align: center; color: #1B5E20;'>🚜 ERP AGRICOLA LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
+    
+    # 🔥 INYECCIÓN DE AUXILIO v11.5.7: Si las tablas están vacías, muestra un cargador directo para subir el archivo de 100 KB
+    conn_chk = conectar_db()
+    c_fac = conn_chk.execute("SELECT COUNT(*) FROM facturas WHERE nro_documento NOT LIKE '%_P'").fetchone()[0]
+    conn_chk.close()
+    
+    if c_fac == 0:
+        st.markdown("<div style='background-color:#FFF3E0; border-left:6px solid #EF6C00; padding:20px; border-radius:8px; margin-bottom:20px;'><h3>🚨 MODO DE RESCATE ACTIVADO</h3><p>El ERP no se pudo conectar automáticamente a tu Google Drive debido al bloqueo de la caja de Secrets. Sube tu archivo maestro de 100 KB (<b>erp_concepcion_v6.db</b>) para inyectar los datos históricas al servidor de producción de inmediato.</p></div>", unsafe_allow_html=True)
+        arch_rescate = st.file_uploader("Selecciona el archivo erp_concepcion_v6.db de 100 KB", type=["db"], key="rescate_db_uploader")
+        if arch_rescate is not None:
+            with open(NOMBRE_DB, "wb") as f:
+                f.write(arch_rescate.getbuffer())
+            st.success("✅ ¡Base de datos histórica de 100 KB inyectada correctamente en el servidor! El sistema se está refrescando...")
+            st.cache_data.clear()
+            st.rerun()
+            
     ind = obtener_indicadores(); conn = conectar_db()
     mes_act = hora_chile().strftime('%m'); anio_act = hora_chile().year
     t_activos = pd.read_sql_query("SELECT id FROM personal WHERE estado='Activo'", conn)
