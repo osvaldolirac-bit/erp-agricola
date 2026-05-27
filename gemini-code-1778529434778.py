@@ -1,4 +1,9 @@
 import streamlit as st
+st.set_page_config(
+    page_title="ERP La Concepcion",
+    page_icon="🚜",
+    initial_sidebar_state="expanded"
+)
 import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
