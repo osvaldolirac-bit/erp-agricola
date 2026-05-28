@@ -392,27 +392,30 @@ def inyectar_css():
         
     if user_activo != 'osvaldolira@laconcepcion.cl':
             css_comun += """<style>
+                /* Oculta los menús de desarrollo pero DEJA el header vivo para la flecha */
                 #MainMenu {visibility: hidden !important; display: none !important;}
-                header {visibility: hidden !important; display: none !important;}
                 footer {visibility: hidden !important; display: none !important;}
                 [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
                 [data-testid="stDecoration"] {visibility: hidden !important; display: none !important;}
                 button[title="Manage app"] {display: none !important; visibility: hidden !important;}
                 .stAppDeployButton {display: none !important; visibility: hidden !important;}
                 
-                /* PARCHE RESCATE: Fuerza a que la flecha aparezca flotando al cerrar la barra */
-                .stSidebarCollapsedControl button {
+                /* FUERZA BRUTA DEFINTIVA: Rescata la flecha flotante y la pinta de verde corporativo */
+                [data-testid="stSidebarCollapsedControl"] {
                     display: flex !important;
                     visibility: visible !important;
+                    left: 10px !important;
                     background-color: #2e7d32 !important;
-                    color: white !important;
                     border-radius: 4px !important;
+                    padding: 4px !important;
                 }
-                .stSidebarCollapsedControl svg {
-                    fill: white !important;
+                [data-testid="stSidebarCollapsedControl"] button {
                     color: white !important;
                 }
-                </style>"""
+                [data-testid="stSidebarCollapsedControl"] svg {
+                    fill: white !important;
+                }
+            </style>"""
         
     st.markdown(css_comun, unsafe_allow_html=True)
 
