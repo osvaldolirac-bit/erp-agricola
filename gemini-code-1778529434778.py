@@ -1046,11 +1046,7 @@ def modulo_rrhh():
                 liq = rhm_col.number_input("Líquido Mes Real a Pago ($)", 0.0, key="rhm_liq")
                 ley = rhm_col.number_input("Leyes Sociales / Previred ($)", 0.0, key="rhm_prev")
                 
-                if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
-                    if tm:
-                        tot = liq + ley if not lic else 0
-                        conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
-                        if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
+               if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
                     if tm:
                         tot = liq + ley if not lic else 0
                         conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
