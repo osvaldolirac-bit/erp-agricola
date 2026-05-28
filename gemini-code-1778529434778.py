@@ -1,6 +1,6 @@
 import streamlit as st
 
-# 1. CONFIGURACIÓN DE PÁGINA NATIVA
+# 1. CONFIGURACIÓN DE PÁGINA NATIVA (FUERZA EXPANDIDO)
 st.set_page_config(
     page_title="ERP La Concepcion",
     page_icon="🚜",
@@ -8,7 +8,32 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. PARCHE DE TRACCIÓN PARA LA FLECHA DE NAVEGACIÓN (SIEMPRE VISIBLE)
+# 2. ANULADOR DE BLOQUEOS (OBLIGA A MOSTRAR LA FLECHA Y EL HEADER)
+st.markdown(
+    """
+    <style>
+        /* Desbloquea el header y lo obliga a ser visible */
+        header {
+            visibility: visible !important;
+            display: block !important;
+            height: auto !important;
+        }
+        /* Desbloquea la flecha superior izquierda y la obliga a aparecer */
+        .stSidebarCollapsedControl {
+            display: flex !important;
+            visibility: visible !important;
+            background-color: #2e7d32 !important;
+            border-radius: 4px !important;
+        }
+        .stSidebarCollapsedControl svg {
+            fill: white !important;
+            color: white !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+    
+)# 2. PARCHE DE TRACCIÓN PARA LA FLECHA DE NAVEGACIÓN (SIEMPRE VISIBLE)
 st.markdown(
     """
     <style>
