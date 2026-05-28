@@ -1046,28 +1046,29 @@ def modulo_rrhh():
                 liq = rhm_col.number_input("Líquido Mes Real a Pago ($)", 0.0, key="rhm_liq")
                 ley = rhm_col.number_input("Leyes Sociales / Previred ($)", 0.0, key="rhm_prev")
 
-            if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
-                            if tm:
-                                tot = liq + ley if not lic else 0
-                                conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
-                                
-                                # ─── REPARACIÓN DE TUBERÍA CONEXIÓN COSTOS (BLINDADA) ───
-                                for cc, p in PRORRATEO_RRHH.items(): 
-                                    conn.execute('''
-                                        INSERT INTO facturas (
-                                            nro_documento, proveedor, fecha_compra, 
-                                            monto_total, tipo, centro_costo, 
-                                            monto_imputado, estado
-                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                    ''', (
-                                        f"RRHH_{tid_m}_{m}{a}_{cc[:3]}", tnom_m, str(hoy), 
-                                        int(tot * p), 'RRHH', cc, 
-                                        int(tot * p), 'Pagado'
-                                    ))
+    # ─── CONEXIÓN EXPLÍCITA AL FORMULARIO (EVITA ERRORES DE ESPACIOS) ───
+                if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
+                    if tm:
+                        tot = liq + ley if not lic else 0
+                        conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
+                        
+                        # ─── REPARACIÓN DE TUBERÍA CONEXIÓN COSTOS ───
+                        for cc, p in PRORRATEO_RRHH.items(): 
+                            conn.execute('''
+                                INSERT INTO facturas (
+                                    nro_documento, proveedor, fecha_compra, 
+                                    monto_total, tipo, centro_costo, 
+                                    monto_imputado, estado
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (
+                                f"RRHH_{tid_m}_{m}{a}_{cc[:3]}", tnom_m, str(hoy), 
+                                int(tot * p), 'RRHH', cc, 
+                                int(tot * p), 'Pagado'
+                            ))
 
-                                conn.commit(); registrar_accion("RRHH PAGO", tnom_m); guardar_en_drive()
-                                st.success("✅ Liquidación guardada, prorrateada en costos y campos vaciados.")
-                                st.rerun()
+                        conn.commit(); registrar_accion("RRHH PAGO", tnom_m); guardar_en_drive()
+                        st.success("✅ Liquidación guardada, prorrateada en costos y campos vaciados.")
+                        st.rerun()
                         
     with t_r[3]:
         col_rh1, col_rh2 = st.columns(2)
