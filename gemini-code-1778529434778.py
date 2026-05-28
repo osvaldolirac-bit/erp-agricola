@@ -1,8 +1,30 @@
 import streamlit as st
+
+# 1. CONFIGURACIÓN DE PÁGINA NATIVA
 st.set_page_config(
     page_title="ERP La Concepcion",
     page_icon="🚜",
+    layout="wide",
     initial_sidebar_state="expanded"
+)
+
+# 2. PARCHE DE TRACCIÓN PARA LA FLECHA DE NAVEGACIÓN (SIEMPRE VISIBLE)
+st.markdown(
+    """
+    <style>
+        /* Fuerza a que el botón nativo de apertura de la sidebar sea visible y tenga color verde */
+        .stSidebarCollapsedControl button {
+            background-color: #2e7d32 !important;
+            color: white !important;
+            border-radius: 4px !important;
+            display: flex !important;
+        }
+        .stSidebarCollapsedControl svg {
+            fill: white !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 import sqlite3
 import pandas as pd
