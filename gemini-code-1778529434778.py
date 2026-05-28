@@ -1050,8 +1050,17 @@ def modulo_rrhh():
                     if tm:
                         tot = liq + ley if not lic else 0
                         conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
+                        # ─── REPARACIÓN DE TUBERÍA: ENVÍA EL GASTO REAL AL MÓDULO DE COSTOS ───
                         for cc, p in PRORRATEO_RRHH.items(): 
-                            conn.execute("INSERT INTO facturas (nro_documento, proveedor, fecha_compra, monto_total, tipo, centro_costo, monto_imputado, estado) VALUES (?,?,?,?,?,?,?,?)", (f"RRHH_{tid_m}_{m}{a}", tnom_m, f"{a}-{m}-01", 0, 'RRHH', cc, tot*p, 'Pagado'))
+                            conn.execute('''
+                                INSERT INTO movimientos_bodega (
+                                    producto_id, tipo_movimiento, cantidad, 
+                                    centro_costo, fecha_movimiento, detalle_adicional
+                                ) VALUES (?, ?, ?, ?, ?, ?)
+                            ''', (
+                                0, 'Salida', tot * p, 
+                                cc, str(hoy), f"Mano de Obra Prorrateada - {tnom_m}"
+                            ))
                         conn.commit(); registrar_accion("RRHH PAGO", tnom_m); guardar_en_drive()
                         st.success("✅ Liquidación guardada, prorrateada en costos y campos vaciados.")
                         st.rerun()
