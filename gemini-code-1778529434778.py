@@ -391,31 +391,7 @@ def inyectar_css():
         </style>"""
         
     if user_activo != 'osvaldolira@laconcepcion.cl':
-            css_comun += """<style>
-                /* Oculta los menús de desarrollo pero DEJA el header vivo para la flecha */
-                #MainMenu {visibility: hidden !important; display: none !important;}
-                footer {visibility: hidden !important; display: none !important;}
-                [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
-                [data-testid="stDecoration"] {visibility: hidden !important; display: none !important;}
-                button[title="Manage app"] {display: none !important; visibility: hidden !important;}
-                .stAppDeployButton {display: none !important; visibility: hidden !important;}
-                
-                /* FUERZA BRUTA DEFINTIVA: Rescata la flecha flotante y la pinta de verde corporativo */
-                [data-testid="stSidebarCollapsedControl"] {
-                    display: flex !important;
-                    visibility: visible !important;
-                    left: 10px !important;
-                    background-color: #2e7d32 !important;
-                    border-radius: 4px !important;
-                    padding: 4px !important;
-                }
-                [data-testid="stSidebarCollapsedControl"] button {
-                    color: white !important;
-                }
-                [data-testid="stSidebarCollapsedControl"] svg {
-                    fill: white !important;
-                }
-            </style>"""
+            pass  # Se elimina la ocultación para evitar errores visuales con la sidebar
         
     st.markdown(css_comun, unsafe_allow_html=True)
 
