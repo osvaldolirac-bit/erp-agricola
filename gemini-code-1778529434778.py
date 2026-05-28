@@ -366,22 +366,28 @@ def inyectar_css():
         </style>"""
         
     if user_activo != 'osvaldolira@laconcepcion.cl':
-        css_comun += """<style>
-            #MainMenu {visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}
-            header {visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}
-            footer {visibility: hidden !important; display: none !important; width: 0px !important; height: 0px !important;}
-            [data-testid="stToolbar"] {visibility: hidden !important; display: none !important; opacity: 0 !important;}
-            [data-testid="stDecoration"] {visibility: hidden !important; display: none !important; opacity: 0 !important;}
-            button[title="Manage app"] {display: none !important; visibility: hidden !important; opacity: 0 !important; width: 0px !important; height: 0px !important;}
-            .stAppDeployButton {display: none !important; visibility: hidden !important; opacity: 0 !important;}
-            div[data-testid="stStatusWidget"] {display: none !important; visibility: hidden !important;}
-            iframe[title="Manage app"] {display: none !important; visibility: hidden !important; width: 0px !important; height: 0px !important;}
-            div[class*="viewerBadge"] {display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0px !important;}
-            div[class*="deploy"] {display: none !important; visibility: hidden !important; opacity: 0 !important;}
-            button[class*="deploy"] {display: none !important; visibility: hidden !important; opacity: 0 !important;}
-            .viewerBadge {display: none !important; visibility: hidden !important; opacity: 0 !important;}
-            </style>"""
-            
+            css_comun += """<style>
+                /* Oculta herramientas de desarrollo pero DEJA el header vivo para la flecha */
+                #MainMenu {visibility: hidden !important; display: none !important;}
+                footer {visibility: hidden !important; display: none !important;}
+                [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
+                [data-testid="stDecoration"] {visibility: hidden !important; display: none !important;}
+                button[title="Manage app"] {display: none !important; visibility: hidden !important;}
+                .stAppDeployButton {display: none !important; visibility: hidden !important;}
+                
+                /* PARCHE DE FUERZA BRUTA: Rescata la flecha y la destaca para las secretarias */
+                .stSidebarCollapsedControl button {
+                    background-color: #2e7d32 !important;
+                    color: white !important;
+                    border-radius: 4px !important;
+                    display: flex !important;
+                    visibility: visible !important;
+                }
+                .stSidebarCollapsedControl svg {
+                    fill: white !important;
+                }
+                </style>"""
+        
     st.markdown(css_comun, unsafe_allow_html=True)
 
 # =============================================================================
