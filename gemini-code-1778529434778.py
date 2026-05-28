@@ -1052,8 +1052,19 @@ def modulo_rrhh():
                         tot = liq + ley if not lic else 0
                         conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
                         
-                        # ─── REPARACIÓN DE TUBERÍA CONEXIÓN COSTOS ───
-                        for cc, p in PRORRATEO_RRHH.items(): 
+                        # ─── TRADUCTOR CALIBRADO CON LOS NOMBRES EXACTOS DE TU TABLA ───
+                        TRADUCTOR_CUARTELES = {
+                            "CEREZOS CORTE1": "CEREZOS CORTE 1",
+                            "CEREZOS CORTE2": "CEREZOS CORTE 2",
+                            "CIRUELOS": "CIRUELOS",
+                            "NOGALES APARICION": "NOGALES APARICION",
+                            "NOGALES CRUZ DEL SUR": "NOGALES CRUZ DEL SUR"
+                        }
+                        
+                        for cc_interno, p in PRORRATEO_RRHH.items(): 
+                            # Mapea el nombre para que calce idéntico con la base de datos de costos
+                            cc_real = TRADUCTOR_CUARTELES.get(cc_interno, cc_interno)
+                            
                             conn.execute('''
                                 INSERT INTO facturas (
                                     nro_documento, proveedor, fecha_compra, 
@@ -1061,8 +1072,8 @@ def modulo_rrhh():
                                     monto_imputado, estado
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             ''', (
-                                f"RRHH_{tid_m}_{m}{a}_{cc[:3]}", tnom_m, str(hoy), 
-                                int(tot * p), 'RRHH', cc, 
+                                f"RRHH_{tid_m}_{m}{a}_{cc_interno[:3]}", tnom_m, str(hoy), 
+                                int(tot * p), 'RRHH', cc_real, 
                                 int(tot * p), 'Pagado'
                             ))
 
