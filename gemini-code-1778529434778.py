@@ -1047,7 +1047,7 @@ def modulo_rrhh():
                 ley = rhm_col.number_input("Leyes Sociales / Previred ($)", 0.0, key="rhm_prev")
 
     # ─── CONEXIÓN EXPLÍCITA AL FORMULARIO (EVITA ERRORES DE ESPACIOS) ───
-                if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
+               if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
                     if tm:
                         tot = liq + ley if not lic else 0
                         conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
@@ -1062,9 +1062,9 @@ def modulo_rrhh():
                         }
                         
                         for cc_interno, p in PRORRATEO_RRHH.items(): 
-                            # Mapea el nombre para que calce idéntico con la base de datos de costos
                             cc_real = TRADUCTOR_CUARTELES.get(cc_interno, cc_interno)
                             
+                            # CAMUFLAJE: Se guarda como 'Compra' para que el módulo de costos lo sume sí o sí
                             conn.execute('''
                                 INSERT INTO facturas (
                                     nro_documento, proveedor, fecha_compra, 
@@ -1072,8 +1072,8 @@ def modulo_rrhh():
                                     monto_imputado, estado
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             ''', (
-                                f"RRHH_{tid_m}_{m}{a}_{cc_interno[:3]}", tnom_m, str(hoy), 
-                                int(tot * p), 'RRHH', cc_real, 
+                                f"MO_{tid_m}_{m}{a}_{cc_interno[:3]}", f"Mano de Obra - {tnom_m}", str(hoy), 
+                                int(tot * p), 'Compra', cc_real, 
                                 int(tot * p), 'Pagado'
                             ))
 
