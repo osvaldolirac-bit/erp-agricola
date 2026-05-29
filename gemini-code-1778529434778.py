@@ -1107,41 +1107,18 @@ def modulo_rrhh():
                 liq = rhm_col.number_input("Líquido Mes Real a Pago ($)", 0.0, key="rhm_liq")
                 ley = rhm_col.number_input("Leyes Sociales / Previred ($)", 0.0, key="rhm_prev")
 
-    # ─── CONEXIÓN EXPLÍCITA AL FORMULARIO (EVITA ERRORES DE ESPACIOS) ───
+                # ─── PARCHE DEFECTO DE ENTRADA: TOTAL DESACOPLADO DE COMPRAS ───
                 if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
                     if tm:
                         tot = liq + ley if not lic else 0
+                        # 1. Guardamos de forma sagrada en la tabla exclusiva de RRHH
                         conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
                         
-                        # ─── TRADUCTOR CALIBRADO CON LOS NOMBRES EXACTOS DE TU TABLA ───
-                        TRADUCTOR_CUARTELES = {
-                            "CEREZOS CORTE1": "CEREZOS CORTE 1",
-                            "CEREZOS CORTE2": "CEREZOS CORTE 2",
-                            "CIRUELOS": "CIRUELOS",
-                            "NOGALES APARICION": "NOGALES APARICION",
-                            "NOGALES CRUZ DEL SUR": "NOGALES CRUZ DEL SUR"
-                        }
-                        
-                        for cc_interno, p in PRORRATEO_RRHH.items(): 
-                            cc_real = TRADUCTOR_CUARTELES.get(cc_interno, cc_interno)
-                            
-                            # CLAVE: El nro_documento DEBE terminar en _RRHH para que tu consulta lo sume
-                            nro_doc_valido = f"MO_{tid_m}_{m}{a}_{cc_interno[:3]}_RRHH"
-                            
-                            conn.execute('''
-                                INSERT INTO facturas (
-                                    nro_documento, proveedor, fecha_compra, 
-                                    monto_total, tipo, centro_costo, 
-                                    monto_imputado, estado
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            ''', (
-                                nro_doc_valido, f"Mano de Obra - {tnom_m}", str(hoy), 
-                                int(tot * p), 'RRHH', cc_real, 
-                                int(tot * p), 'Pagado'
-                            ))
+                        # 🔥 MÁGICO DESACOPLE: Eliminamos de raíz el bucle 'for cc_interno, p in PRORRATEO_RRHH.items():'
+                        # que hacía los INSERT INTO facturas. Ahora la Mano de Obra nunca más tocará el historial de compras comerciales.
 
-                        conn.commit(); registrar_accion("RRHH PAGO", tnom_m); guardar_en_drive()
-                        st.success("✅ Liquidación guardada, prorrateada en costos y campos vaciados.")
+                        conn.commit(); registrar_accion("RRHH PAGO NETO", tnom_m); guardar_en_drive()
+                        st.success(f"✅ Liquidación de {tnom_m} guardada exitosamente en el sistema de RRHH de forma limpia.")
                         st.rerun()
                         
     with t_r[3]:
@@ -1167,7 +1144,7 @@ def modulo_rrhh():
                                generar_pdf_blob(df_h, f"HISTORIAL GENERAL DE REMUNERACIONES Y PREVIRED ({f_desde_rh} a {f_hasta_rh})", campo_suma_forzado="TOTAL_PAGADO"), 
                                "historial_pagos_rrhh.pdf", key="rh_pdf_final_f")
     conn.close()
-
+    
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS")
     conn = conectar_db()
