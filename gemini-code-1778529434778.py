@@ -710,20 +710,110 @@ def modulo_compras():
                     conn.commit(); registrar_accion("BORRADO", sel['nro_documento']); guardar_en_drive(); st.rerun()
     conn.close()
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def enviar_correo_pago_interno(proveedor, nro_documento, monto, metodo):
+    """Motor interno del Parche SMTP: Envía la alerta en cadena al equipo"""
+    SMTP_SERVER = "smtp.gmail.com"  # Servidor base de Google
+    SMTP_PORT = 587
+    EMISOR_EMAIL = "tu_correo_emisor@gmail.com" # El correo que despacha
+    
+    # 🚨 AQUÍ INVOCAMOS TU LLAVE SECRETA DE 16 DÍGITOS DESDE LOS SECRETS DEL ERP 🚨
+    EMISOR_PASSWORD = st.secrets["SMTP_PASSWORD"] 
+    
+    # 👥 AQUÍ ESTÁN LAS 3 CASILLAS DE RESPALDO INTERNO (Edita los textos con los correos reales)
+    DESTINATARIOS = [
+        "osvaldolira@laconcepcion.cl", 
+        "usuario2@laconcepcion.cl",     
+        "usuario3@laconcepcion.cl"      
+    ]
+    
+    msg = MIMEMultipart()
+    msg['From'] = EMISOR_EMAIL
+    msg['To'] = ", ".join(DESTINATARIOS)
+    msg['Subject'] = f"🚨 [RESPALDO TESORERÍA] Pago Procesado: {proveedor}"
+    
+    cuerpo_html = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; padding: 10px;">
+            <div style="background-color: #1B5E20; padding: 15px; text-align: center; color: white; border-radius: 6px 6px 0 0;">
+                <h3 style="margin: 0;">🚜 ALERTA DE EGRESO INTERNO - LA CONCEPCIÓN</h3>
+            </div>
+            <div style="padding: 20px; border: 1px solid #1B5E20; border-top: none; background-color: white; border-radius: 0 0 6px 6px;">
+                <p>Se ha registrado un movimiento de pago exitoso en el módulo de <b>Tesorería</b>:</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                    <tr style="background-color: #f2f2f2;"><td style="padding: 10px; font-weight: bold; width: 40%;">Proveedor:</td><td style="padding: 10px;">{proveedor}</td></tr>
+                    <tr><td style="padding: 10px; font-weight: bold;">N° Documento:</td><td style="padding: 10px;">{nro_documento}</td></tr>
+                    <tr style="background-color: #f2f2f2;"><td style="padding: 10px; font-weight: bold;">Monto Imputado:</td><td style="padding: 10px; color: #1B5E20; font-weight: bold;">${int(monto):,}</td></tr>
+                    <tr><td style="padding: 10px; font-weight: bold;">Método de Pago:</td><td style="padding: 10px;">{metodo}</td></tr>
+                </table>
+                <p style="font-size: 0.8rem; color: #777; text-align: center; margin-top: 20px;">Respaldo exclusivo de auditoría interna - ERP La Concepción</p>
+            </div>
+        </body>
+    </html>
+    """
+    msg.attach(MIMEText(cuerpo_html, 'html'))
+    
+    try:
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(EMISOR_EMAIL, EMISOR_PASSWORD)
+        server.sendmail(EMISOR_EMAIL, DESTINATARIOS, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Error SMTP: {e}")
+        return False
+
+
 def modulo_tesoreria():
     st.header("💸 TESORERÍA"); conn = conectar_db()
     t_t = st.tabs(["🔴 PENDIENTES", "🏢 DEUDA POR PROVEEDOR", "📜 HISTORIAL AUDITABLE"])
+    
     with t_t[0]:
         dfp = pd.read_sql_query("SELECT id, nro_documento, proveedor, fecha_vencimiento, monto_total FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0 ORDER BY fecha_vencimiento ASC", conn)
         st.warning(f"### DEUDA PENDIENTE: ${f_puntos(dfp['monto_total'].sum())}")
+        
         def highlight_v(row):
             return ['background-color: #FFCDD2; color: #B71C1C; font-weight: bold' if pd.to_datetime(row['fecha_vencimiento']).date() < hoy else '' for _ in row]
+            
         st.dataframe(dfp.style.apply(highlight_v, axis=1).format({"monto_total": "${:,.0f}"}), use_container_width=True)
         st.download_button("📥 PDF PENDIENTES", generar_pdf_blob(dfp, "DEUDAS PENDIENTES"), "pendientes.pdf", key="t_pdf_1")
-        idp = st.selectbox("Pagar ID", dfp['id'], key="t_p1"); metp = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"], key="t_p2")
-        if st.button("💰 MARCAR PAGADO", key="t_p3"):
-            conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, str(hoy), idp))
-            conn.commit(); registrar_accion("PAGO", str(idp)); guardar_en_drive(); st.rerun()
+        
+        if not dfp.empty:
+            idp = st.selectbox("Pagar ID", dfp['id'], key="t_p1")
+            metp = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"], key="t_p2")
+            
+            if st.button("💰 MARCAR PAGADO", key="t_p3"):
+                try:
+                    # 🔍 Captura de datos en tiempo de ejecución para el correo
+                    factura_info = dfp[dfp['id'] == idp].iloc[0]
+                    prov_nombre = factura_info['proveedor']
+                    doc_nro = factura_info['nro_documento']
+                    monto_doc = factura_info['monto_total']
+                    
+                    # 1. Ejecutamos la actualización del pago en la DB
+                    conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, str(hoy), idp))
+                    conn.commit()
+                    
+                    # 2. 🚀 DISPARO EN CADENA DE CORREOS INTERNOS 🚀
+                    with st.spinner("Despachando notificación de respaldo por correo..."):
+                        enviar_correo_pago_interno(
+                            proveedor=prov_nombre, 
+                            nro_documento=doc_nro, 
+                            monto=monto_doc, 
+                            metodo=metp
+                        )
+                except Exception as e:
+                    pass
+                
+                # 3. Bitácora de control y refresco de pantalla
+                registrar_accion("PAGO", str(idp))
+                guardar_en_drive()
+                st.rerun()
+                
     with t_t[1]:
         prvs = pd.read_sql_query("SELECT DISTINCT proveedor FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0", conn)
         if not prvs.empty:
@@ -732,13 +822,21 @@ def modulo_tesoreria():
             st.info(f"Deuda con {psel}: ${f_puntos(dfpr['monto_total'].sum())}")
             st.dataframe(dfpr.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
             st.download_button(f"📥 PDF DEUDA {psel}", generar_pdf_blob(dfpr, f"DEUDA {psel}"), f"deuda_{psel}.pdf", key="t_pdf_2")
+            
     with t_t[2]:
-        c1, c2, c3 = st.columns([2, 1, 1.5]); bsq = c1.text_input("Buscar", key="t_h1"); met = c2.selectbox("💳", ["TODOS", "Transferencia", "Efectivo", "Cheque"], key="t_h2"); fi, ff = c3.date_input("D", hoy-timedelta(days=30), key="t_h3"), c3.date_input("H", hoy, key="t_h4")
+        c1, c2, c3 = st.columns([2, 1, 1.5])
+        bsq = c1.text_input("Buscar", key="t_h1")
+        met = c2.selectbox("💳", ["TODOS", "Transferencia", "Efectivo", "Cheque"], key="t_h2")
+        fi, ff = c3.date_input("D", hoy-timedelta(days=30), key="t_h3"), c3.date_input("H", hoy, key="t_h4")
+        
         qh = f"SELECT nro_documento, proveedor, monto_total, metodo_pago, fecha_pago FROM facturas WHERE estado='Pagado' AND nro_documento NOT LIKE '%_P' AND fecha_pago BETWEEN '{fi}' AND '{ff}'"
         if bsq: qh += f" AND (nro_documento LIKE '%{bsq}%' OR proveedor LIKE '%{bsq}%')"
         if met != "TODOS": qh += f" AND metodo_pago='{met}'"
-        dfh = pd.read_sql_query(qh, conn); st.dataframe(dfh.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
+        
+        dfh = pd.read_sql_query(qh, conn)
+        st.dataframe(dfh.style.format({"monto_total": "${:,.0f}"}), use_container_width=True)
         st.download_button("📥 PDF RESULTADOS", generar_pdf_blob(dfh, "REPORTE PAGOS"), "pagos.pdf", key="t_pdf_3")
+        
     conn.close()
 
 def modulo_bodega():
