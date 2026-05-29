@@ -1108,21 +1108,17 @@ def modulo_rrhh():
     conn.close()
 
 def modulo_costos():
-    st.header("💰 COSTOS CONSOLIDADOS"); conn = conectar_db()
-    # ─── SCRIPT DE RESCATE AUTOMÁTICO (BORRAR DESPUÉS DE USAR) ───
-    if st.button("🔄 REPARAR Y CARGAR LIQUIDACIONES DE LA MAÑANA"):
-        # 1. Corregimos los nombres antiguos sin espacio y les ponemos el _RRHH obligatorio
-        conn.execute("UPDATE facturas SET centro_costo = 'CEREZOS CORTE 1', nro_documento = nro_documento || '_RRHH' WHERE centro_costo = 'CEREZOS CORTE1' AND tipo = 'RRHH'")
-        conn.execute("UPDATE facturas SET centro_costo = 'CEREZOS CORTE 2', nro_documento = nro_documento || '_RRHH' WHERE centro_costo = 'CEREZOS CORTE2' AND tipo = 'RRHH'")
-        
-        # 2. A los que ya tenían el nombre bien pero les faltaba el sufijo, se lo agregamos
-        conn.execute("UPDATE facturas SET nro_documento = nro_documento || '_RRHH' WHERE nro_documento NOT LIKE '%_RRHH' AND tipo = 'RRHH'")
-        
-        conn.commit()
-        st.success("✅ ¡Tracción total! Todos los registros de la mañana fueron reparados e inyectados a costos.")
-        st.rerun()
-    st.divider()
+    st.header("💰 COSTOS CONSOLIDADOS")
+    conn = conectar_db()
     
+    # ─── PURGA AUTOMÁTICA DE REGISTROS DUPLICADOS O MAL FORMATEADOS ───
+    try:
+        # Limpiamos los documentos duplicados o mal concatenados que inflaron los montos
+        conn.execute("DELETE FROM facturas WHERE tipo='RRHH' AND (nro_documento LIKE '%_RRHH_RRHH' OR nro_documento LIKE '%_CER_RRHH%')")
+        conn.commit()
+    except Exception as e:
+        pass
+
     q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                   SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
                   SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -1137,7 +1133,7 @@ def modulo_costos():
                UNION ALL 
                SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' 
                UNION ALL 
-               SELECT centro_costo as cc, monto_imputado as val, 'RRHH' as fuente FROM facturas WHERE nro_documento LIKE '%_RRHH'
+               SELECT centro_costo as cc, monto_imputado as val, 'RRHH' as fuente FROM facturas WHERE nro_documento LIKE '%_RRHH' AND centro_costo IN ('CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR')
                UNION ALL
                SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos
            ) WHERE cc != '' GROUP BY cc"""
