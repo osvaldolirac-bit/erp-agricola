@@ -1109,6 +1109,19 @@ def modulo_rrhh():
 
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS"); conn = conectar_db()
+    # ─── SCRIPT DE RESCATE AUTOMÁTICO (BORRAR DESPUÉS DE USAR) ───
+    if st.button("🔄 REPARAR Y CARGAR LIQUIDACIONES DE LA MAÑANA"):
+        # 1. Corregimos los nombres antiguos sin espacio y les ponemos el _RRHH obligatorio
+        conn.execute("UPDATE facturas SET centro_costo = 'CEREZOS CORTE 1', nro_documento = nro_documento || '_RRHH' WHERE centro_costo = 'CEREZOS CORTE1' AND tipo = 'RRHH'")
+        conn.execute("UPDATE facturas SET centro_costo = 'CEREZOS CORTE 2', nro_documento = nro_documento || '_RRHH' WHERE centro_costo = 'CEREZOS CORTE2' AND tipo = 'RRHH'")
+        
+        # 2. A los que ya tenían el nombre bien pero les faltaba el sufijo, se lo agregamos
+        conn.execute("UPDATE facturas SET nro_documento = nro_documento || '_RRHH' WHERE nro_documento NOT LIKE '%_RRHH' AND tipo = 'RRHH'")
+        
+        conn.commit()
+        st.success("✅ ¡Tracción total! Todos los registros de la mañana fueron reparados e inyectados a costos.")
+        st.rerun()
+    st.divider()
     
     q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                   SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
