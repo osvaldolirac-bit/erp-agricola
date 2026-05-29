@@ -1064,7 +1064,9 @@ def modulo_rrhh():
                         for cc_interno, p in PRORRATEO_RRHH.items(): 
                             cc_real = TRADUCTOR_CUARTELES.get(cc_interno, cc_interno)
                             
-                            # CAMUFLAJE: Se guarda como 'Compra' para que el módulo de costos lo sume sí o sí
+                            # CLAVE: El nro_documento DEBE terminar en _RRHH para que tu consulta lo sume
+                            nro_doc_valido = f"MO_{tid_m}_{m}{a}_{cc_interno[:3]}_RRHH"
+                            
                             conn.execute('''
                                 INSERT INTO facturas (
                                     nro_documento, proveedor, fecha_compra, 
@@ -1072,8 +1074,8 @@ def modulo_rrhh():
                                     monto_imputado, estado
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             ''', (
-                                f"MO_{tid_m}_{m}{a}_{cc_interno[:3]}", f"Mano de Obra - {tnom_m}", str(hoy), 
-                                int(tot * p), 'Compra', cc_real, 
+                                nro_doc_valido, f"Mano de Obra - {tnom_m}", str(hoy), 
+                                int(tot * p), 'RRHH', cc_real, 
                                 int(tot * p), 'Pagado'
                             ))
 
