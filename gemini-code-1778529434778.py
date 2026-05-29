@@ -404,15 +404,10 @@ def modulo_dashboard():
     ind = obtener_indicadores(); conn = conectar_db()
     mes_act = hora_chile().strftime('%m'); anio_act = hora_chile().year
     
-    # ─── PURGA INTEGRADA DE BBDD (IGUALA LOS CC Y ELIMINA DUPLICADOS) ───
+    # ─── PURGA DE REGISTROS HISTÓRICOS DUPLICADOS DE RRHH EN COMPRAS ───
     try:
-        conn.execute("UPDATE movimientos SET centro_costo = 'CEREZOS CORTE 1' WHERE UPPER(TRIM(centro_costo)) = 'CEREZOS CORTE1'")
-        conn.execute("UPDATE movimientos SET centro_costo = 'CEREZOS CORTE 2' WHERE UPPER(TRIM(centro_costo)) = 'CEREZOS CORTE2'")
-        conn.execute("UPDATE facturas SET centro_costo = 'CEREZOS CORTE 1' WHERE UPPER(TRIM(centro_costo)) = 'CEREZOS CORTE1'")
-        conn.execute("UPDATE facturas SET centro_costo = 'CEREZOS CORTE 2' WHERE UPPER(TRIM(centro_costo)) = 'CEREZOS CORTE2'")
-        conn.execute("UPDATE petroleo SET centro_costo = 'CEREZOS CORTE 1' WHERE UPPER(TRIM(centro_costo)) = 'CEREZOS CORTE1'")
-        conn.execute("UPDATE petroleo SET centro_costo = 'CEREZOS CORTE 2' WHERE UPPER(TRIM(centro_costo)) = 'CEREZOS CORTE2'")
-        conn.execute("DELETE FROM facturas WHERE tipo='RRHH' AND nro_documento LIKE '%_RRHH_RRHH'")
+        conn.execute("DELETE FROM facturas WHERE proveedor LIKE 'Mano de Obra%'")
+        conn.execute("DELETE FROM facturas WHERE tipo='RRHH'")
         conn.commit()
     except:
         pass
@@ -443,51 +438,51 @@ def modulo_dashboard():
     with c_izq:
         st.markdown("### 📊 GASTOS POR CUARTEL")
         
-        # Filtro milimétrico que solo deja pasar los nombres unificados y oficiales
+        # Consulta base comercial del Dashboard (Suma Insumos, Gastos Comerciales y Petróleo)
         q = """SELECT UPPER(TRIM(cc)) as cc, SUM(val) as total 
                FROM (
                    SELECT centro_costo as cc, valor_imputado as val FROM movimientos WHERE tipo LIKE 'Salida%' 
                    UNION ALL 
-                   SELECT centro_costo as cc, monto_imputado as val FROM facturas WHERE nro_documento LIKE '%_P' 
+                   SELECT centro_costo as cc, monto_imputado as val FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
                    UNION ALL 
                    SELECT centro_costo as cc, valor_imputado as val FROM petroleo WHERE tipo = 'Salida' 
                    UNION ALL 
-                   SELECT centro_costo as cc, monto as val FROM ajustes_costos 
-                   UNION ALL 
-                   SELECT centro_costo as cc, monto_imputado as val FROM facturas WHERE nro_documento LIKE '%_RRHH'
-               ) WHERE cc IN ('CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS') 
-               GROUP BY cc"""
+                   SELECT centro_costo as cc, monto as val FROM ajustes_costos
+               ) WHERE cc != '' AND cc != 'BODEGA' GROUP BY cc"""
                
         dfc = pd.read_sql_query(q, conn)
         
-        # AJUSTE PROPORCIONAL DE RESPALDO: Evita que los clics duplicados anteriores inflen los totales de la gráfica
-        query_verificar_rrhh = "SELECT SUM(monto_imputado) FROM facturas WHERE nro_documento LIKE '%_RRHH'"
-        total_db_rrhh = conn.execute(query_verificar_rrhh).fetchone()[0] or 0
+        # ─── EXTRAEMOS EL EGRESO REAL DE SUELDOS DESDE PYTHON ───
+        try:
+            df_suma_rrhh = pd.read_sql_query("SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh", conn)
+            monto_total_rrhh = df_suma_rrhh['total_neto'].fillna(0).iloc[0]
+        except:
+            monto_total_rrhh = 0
+
+        # Aseguramos la existencia de los cuarteles oficiales en la tabla visual
+        cuarteles_oficiales = ['CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS']
+        for c in cuarteles_oficiales:
+            if dfc.empty or c not in dfc['cc'].values:
+                nuevo_df = pd.DataFrame([{'cc': c, 'total': 0}])
+                dfc = pd.concat([dfc, nuevo_df], ignore_index=True)
+
+        porcentajes_reales = {
+            "CEREZOS CORTE 1": 0.0794,
+            "CEREZOS CORTE 2": 0.0794,
+            "CIRUELOS": 0.3271,
+            "NOGALES APARICION": 0.3271,
+            "NOGALES CRUZ DEL SUR": 0.1870
+        }
         
-        if total_db_rrhh > 7124625 and not dfc.empty:
-            porcentajes_reales = {
-                "CEREZOS CORTE 1": 0.0794,
-                "CEREZOS CORTE 2": 0.0794,
-                "CIRUELOS": 0.3271,
-                "NOGALES APARICION": 0.3271,
-                "NOGALES CRUZ DEL SUR": 0.1870
-            }
-            total_mo_real = 7124625
-            
-            for idx, row in dfc.iterrows():
-                cuartel_name = row['cc']
-                q_no_rrhh = f"""SELECT SUM(val) FROM (
-                    SELECT centro_costo as cc, valor_imputado as val FROM movimientos WHERE tipo LIKE 'Salida%' AND UPPER(TRIM(centro_costo))='{cuartel_name}'
-                    UNION ALL 
-                    SELECT centro_costo as cc, monto_imputado as val FROM facturas WHERE nro_documento LIKE '%_P' AND UPPER(TRIM(centro_costo))='{cuartel_name}'
-                    UNION ALL 
-                    SELECT centro_costo as cc, valor_imputado as val FROM petroleo WHERE tipo = 'Salida' AND UPPER(TRIM(centro_costo))='{cuartel_name}'
-                    UNION ALL 
-                    SELECT centro_costo as cc, monto as val FROM ajustes_costos WHERE UPPER(TRIM(centro_costo))='{cuartel_name}'
-                )"""
-                base_otros_gastos = conn.execute(q_no_rrhh).fetchone()[0] or 0
-                pct = porcentajes_reales.get(cuartel_name, 0)
-                dfc.at[idx, 'total'] = base_otros_gastos + int(total_mo_real * pct)
+        # Inyectamos de forma limpia el dinero de mano de obra calculado en Python
+        for idx, row in dfc.iterrows():
+            cuartel_name = row['cc']
+            pct = porcentajes_reales.get(cuartel_name, 0)
+            # Sumamos el prorrateo exacto del sueldo al total del cuartel en la gráfica/tabla
+            dfc.at[idx, 'total'] = int(dfc.at[idx, 'total']) + int(monto_total_rrhh * pct)
+
+        # Filtramos para que solo muestre la estructura de La Concepción limpia
+        dfc = dfc[dfc['cc'].isin(cuarteles_oficiales)].reset_index(drop=True)
 
         if not dfc.empty:
             fila_t = pd.DataFrame([{'cc': 'TOTAL GENERAL', 'total': dfc['total'].sum()}])
@@ -502,7 +497,7 @@ def modulo_dashboard():
             st.markdown(f"<div style='background-color:white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
             
     conn.close()
-
+    
 def modulo_petroleo():
     st.header("⛽ GESTIÓN DE PETRÓLEO"); conn = conectar_db()
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
@@ -1151,19 +1146,18 @@ def modulo_costos():
     
     # ─── PURGA DE REGISTROS HISTÓRICOS DUPLICADOS DE RRHH EN COMPRAS ───
     try:
-        # Borramos de la tabla facturas de una vez por todas los registros duplicados de mano de obra
         conn.execute("DELETE FROM facturas WHERE proveedor LIKE 'Mano de Obra%'")
         conn.execute("DELETE FROM facturas WHERE tipo='RRHH'")
         conn.commit()
     except Exception as e:
         pass
 
-    # Consulta Ultra-Calibrada: Suma liquido + leyes_sociales de pagos_rrhh y prorratea nativo sin fallas
+    # Consulta base limpia (Extrae insumos, gastos comerciales y petróleo de forma sagrada)
     q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                   SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
                   SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
                   SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, 
-                  SUM(CASE WHEN fuente = 'RRHH' THEN val ELSE 0 END) as RRHH, 
+                  0 as RRHH, -- Lo calculamos por fuera en Python para evitar duplicación
                   SUM(CASE WHEN fuente = 'AJUSTE' THEN val ELSE 0 END) as Ajustes,
                   SUM(val) as Total 
            FROM (
@@ -1172,31 +1166,52 @@ def modulo_costos():
                SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
                UNION ALL 
                SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' 
-               
-               -- ─── PRORRATEO MATEMÁTICO DIRECTO USANDO COLUMNAS BASE ───
-               UNION ALL
-               SELECT 'CEREZOS CORTE 1' as cc, SUM(liquido + leyes_sociales) * 0.0794 as val, 'RRHH' as fuente FROM pagos_rrhh
-               UNION ALL
-               SELECT 'CEREZOS CORTE 2' as cc, SUM(liquido + leyes_sociales) * 0.0794 as val, 'RRHH' as fuente FROM pagos_rrhh
-               UNION ALL
-               SELECT 'CIRUELOS' as cc, SUM(liquido + leyes_sociales) * 0.3271 as val, 'RRHH' as fuente FROM pagos_rrhh
-               UNION ALL
-               SELECT 'NOGALES APARICION' as cc, SUM(liquido + leyes_sociales) * 0.3271 as val, 'RRHH' as fuente FROM pagos_rrhh
-               UNION ALL
-               SELECT 'NOGALES CRUZ DEL SUR' as cc, SUM(liquido + leyes_sociales) * 0.1870 as val, 'RRHH' as fuente FROM pagos_rrhh
-               
                UNION ALL
                SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos
            ) WHERE cc != '' GROUP BY cc"""
     
     dfr = pd.read_sql_query(q, conn)
 
-    if not dfr.empty:
-        # Aseguramos que los valores calculados de RRHH queden como números enteros limpios en el DataFrame
-        if 'RRHH' in dfr.columns:
-            dfr['RRHH'] = dfr['RRHH'].fillna(0).astype(int)
-        dfr['Total'] = dfr['Insumos'] + dfr['Gastos'] + dfr['Petroleo'] + dfr['RRHH'] + dfr['Ajustes']
+    # ─── CÁLCULO E INYECCIÓN MATEMÁTICA DE RRHH DESDE PYTHON ───
+    try:
+        # Traemos la suma neta real de la tabla pagos_rrhh directamente
+        df_suma_rrhh = pd.read_sql_query("SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh", conn)
+        monto_total_rrhh = df_suma_rrhh['total_neto'].fillna(0).iloc[0]
+    except:
+        monto_total_rrhh = 0
 
+    # Aseguramos que el DataFrame contenga tus 5 cuarteles oficiales
+    cuarteles_oficiales = ['CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS']
+    
+    # Si la consulta SQL no trajo algún cuartel, lo creamos vacío para que no falte ninguno
+    for c in cuarteles_oficiales:
+        if dfr.empty or c not in dfr['Cuartel'].values:
+            nuevo_df = pd.DataFrame([{'Cuartel': c, 'Insumos': 0, 'Gastos': 0, 'Petroleo': 0, 'RRHH': 0, 'Ajustes': 0, 'Total': 0}])
+            dfr = pd.concat([dfr, nuevo_df], ignore_index=True)
+
+    # Diccionario de prorrateo oficial del campo chileno
+    porcentajes_reales = {
+        "CEREZOS CORTE 1": 0.0794,
+        "CEREZOS CORTE 2": 0.0794,
+        "CIRUELOS": 0.3271,
+        "NOGALES APARICION": 0.3271,
+        "NOGALES CRUZ DEL SUR": 0.1870
+    }
+
+    # Inyectamos el valor exacto del sueldo mes a mes sin riesgo de duplicidad por SQL
+    for idx, row in dfr.iterrows():
+        c_name = row['Cuartel']
+        pct = porcentajes_reales.get(c_name, 0)
+        # Seteamos el valor entero exacto del prorrateo
+        dfr.at[idx, 'RRHH'] = int(monto_total_rrhh * pct)
+
+    # Recalculamos la columna de Totales por fila de forma transparente
+    dfr['Total'] = dfr['Insumos'] + dfr['Gastos'] + dfr['Petroleo'] + dfr['RRHH'] + dfr['Ajustes']
+
+    # Filtramos para mostrar únicamente las filas oficiales de La Concepción
+    dfr = dfr[dfr['Cuartel'].isin(cuarteles_oficiales)].reset_index(drop=True)
+
+    if not dfr.empty:
         fila_t = pd.DataFrame([{
             'Cuartel': 'TOTAL GENERAL', 
             'Insumos': dfr['Insumos'].sum(), 
