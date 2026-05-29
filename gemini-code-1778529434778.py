@@ -710,66 +710,63 @@ def modulo_compras():
                     conn.commit(); registrar_accion("BORRADO", sel['nro_documento']); guardar_en_drive(); st.rerun()
     conn.close()
 
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-def enviar_correo_pago_interno(proveedor, nro_documento, monto, metodo):
-    """Motor interno del Parche SMTP: Envía la alerta en cadena al equipo"""
-    SMTP_SERVER = "smtp.gmail.com"  # Servidor base de Google
-    SMTP_PORT = 587
-    EMISOR_EMAIL = "tu_correo_emisor@gmail.com" # El correo que despacha
-    
-    # 🚨 AQUÍ INVOCAMOS TU LLAVE SECRETA DE 16 DÍGITOS DESDE LOS SECRETS DEL ERP 🚨
-    EMISOR_PASSWORD = st.secrets["SMTP_PASSWORD"] 
-    
-    # 👥 AQUÍ ESTÁN LAS 3 CASILLAS DE RESPALDO INTERNO (Edita los textos con los correos reales)
-    DESTINATARIOS = [
-        "osvaldolira@laconcepcion.cl", 
-        "usuario2@laconcepcion.cl",     
-        "usuario3@laconcepcion.cl"      
-    ]
-    
-    msg = MIMEMultipart()
-    msg['From'] = EMISOR_EMAIL
-    msg['To'] = ", ".join(DESTINATARIOS)
-    msg['Subject'] = f"🚨 [RESPALDO TESORERÍA] Pago Procesado: {proveedor}"
-    
-    cuerpo_html = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; padding: 10px;">
-            <div style="background-color: #1B5E20; padding: 15px; text-align: center; color: white; border-radius: 6px 6px 0 0;">
-                <h3 style="margin: 0;">🚜 ALERTA DE EGRESO INTERNO - LA CONCEPCIÓN</h3>
-            </div>
-            <div style="padding: 20px; border: 1px solid #1B5E20; border-top: none; background-color: white; border-radius: 0 0 6px 6px;">
-                <p>Se ha registrado un movimiento de pago exitoso en el módulo de <b>Tesorería</b>:</p>
-                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
-                    <tr style="background-color: #f2f2f2;"><td style="padding: 10px; font-weight: bold; width: 40%;">Proveedor:</td><td style="padding: 10px;">{proveedor}</td></tr>
-                    <tr><td style="padding: 10px; font-weight: bold;">N° Documento:</td><td style="padding: 10px;">{nro_documento}</td></tr>
-                    <tr style="background-color: #f2f2f2;"><td style="padding: 10px; font-weight: bold;">Monto Imputado:</td><td style="padding: 10px; color: #1B5E20; font-weight: bold;">${int(monto):,}</td></tr>
-                    <tr><td style="padding: 10px; font-weight: bold;">Método de Pago:</td><td style="padding: 10px;">{metodo}</td></tr>
-                </table>
-                <p style="font-size: 0.8rem; color: #777; text-align: center; margin-top: 20px;">Respaldo exclusivo de auditoría interna - ERP La Concepción</p>
-            </div>
-        </body>
-    </html>
-    """
-    msg.attach(MIMEText(cuerpo_html, 'html'))
-    
-    try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(EMISOR_EMAIL, EMISOR_PASSWORD)
-        server.sendmail(EMISOR_EMAIL, DESTINATARIOS, msg.as_string())
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Error SMTP: {e}")
-        return False
-
-
 def modulo_tesoreria():
     st.header("💸 TESORERÍA"); conn = conectar_db()
+    
+    # ─── 📧 FUNCIÓN INTERNA DE ALERTA DE CORREO SMTP ───
+    def enviar_correo_pago_interno(proveedor, nro_documento, monto, metodo):
+        SMTP_SERVER = "smtp.gmail.com"
+        SMTP_PORT = 587
+        EMISOR_EMAIL = "tu_correo_emisor@gmail.com" # El correo de Gmail que despacha las alertas
+        
+        # Invocamos la contraseña de aplicación de 16 caracteres guardada en tus Secrets seguros
+        EMISOR_PASSWORD = st.secrets["SMTP_PASSWORD"] 
+        
+        # 👥 Las 3 casillas de control interno que reciben la notificación al unísono
+        DESTINATARIOS = [
+            "osvaldolirac@gmail.com", 
+            "usuario2@laconcepcion.cl",     
+            "usuario3@laconcepcion.cl"      
+        ]
+        
+        msg = MIMEMultipart()
+        msg['From'] = EMISOR_EMAIL
+        msg['To'] = ", ".join(DESTINATARIOS)
+        msg['Subject'] = f"🚨 [RESPALDO TESORERÍA] Pago Procesado: {proveedor}"
+        
+        cuerpo_html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; padding: 10px;">
+                <div style="background-color: #1B5E20; padding: 15px; text-align: center; color: white; border-radius: 6px 6px 0 0;">
+                    <h3 style="margin: 0;">🚜 ALERTA DE EGRESO INTERNO - LA CONCEPCIÓN</h3>
+                </div>
+                <div style="padding: 20px; border: 1px solid #1B5E20; border-top: none; background-color: white; border-radius: 0 0 6px 6px;">
+                    <p>Se ha registrado un movimiento de pago exitoso en el módulo de <b>Tesorería</b>:</p>
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background-color: #f2f2f2;"><td style="padding: 10px; font-weight: bold; width: 40%;">Proveedor:</td><td style="padding: 10px;">{proveedor}</td></tr>
+                        <tr><td style="padding: 10px; font-weight: bold;">N° Documento:</td><td style="padding: 10px;">{nro_documento}</td></tr>
+                        <tr style="background-color: #f2f2f2;"><td style="padding: 10px; font-weight: bold;">Monto Imputado:</td><td style="padding: 10px; color: #1B5E20; font-weight: bold;">${int(monto):,}</td></tr>
+                        <tr><td style="padding: 10px; font-weight: bold;">Método de Pago:</td><td style="padding: 10px;">{metodo}</td></tr>
+                    </table>
+                    <p style="font-size: 0.8rem; color: #777; text-align: center; margin-top: 20px;">Respaldo exclusivo de auditoría interna - ERP La Concepción</p>
+                </div>
+            </body>
+        </html>
+        """
+        msg.attach(MIMEText(cuerpo_html, 'html'))
+        
+        try:
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+            server.starttls()
+            server.login(EMISOR_EMAIL, EMISOR_PASSWORD)
+            server.sendmail(EMISOR_EMAIL, DESTINATARIOS, msg.as_string())
+            server.quit()
+            return True
+        except Exception as e:
+            print(f"Error SMTP: {e}")
+            return False
+
+    # ─── 📋 INTERFAZ GENERAL DE TABS ORIGINAL ───
     t_t = st.tabs(["🔴 PENDIENTES", "🏢 DEUDA POR PROVEEDOR", "📜 HISTORIAL AUDITABLE"])
     
     with t_t[0]:
@@ -788,18 +785,18 @@ def modulo_tesoreria():
             
             if st.button("💰 MARCAR PAGADO", key="t_p3"):
                 try:
-                    # 🔍 Captura de datos en tiempo de ejecución para el correo
+                    # 🔍 Captura de datos en tiempo de ejecución antes de procesar el pago
                     factura_info = dfp[dfp['id'] == idp].iloc[0]
                     prov_nombre = factura_info['proveedor']
                     doc_nro = factura_info['nro_documento']
                     monto_doc = factura_info['monto_total']
                     
-                    # 1. Ejecutamos la actualización del pago en la DB
+                    # 1. Se ejecuta la orden de pago en la base de datos de forma normal
                     conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, str(hoy), idp))
                     conn.commit()
                     
-                    # 2. 🚀 DISPARO EN CADENA DE CORREOS INTERNOS 🚀
-                    with st.spinner("Despachando notificación de respaldo por correo..."):
+                    # 2. 🚀 ALERTA AUTOMÁTICA EN CADENA POR CORREO 🚀
+                    with st.spinner("Despachando correo de respaldo al equipo..."):
                         enviar_correo_pago_interno(
                             proveedor=prov_nombre, 
                             nro_documento=doc_nro, 
@@ -809,7 +806,7 @@ def modulo_tesoreria():
                 except Exception as e:
                     pass
                 
-                # 3. Bitácora de control y refresco de pantalla
+                # 3. Bitácora de auditoría, sincronización en Drive y reinicio
                 registrar_accion("PAGO", str(idp))
                 guardar_en_drive()
                 st.rerun()
