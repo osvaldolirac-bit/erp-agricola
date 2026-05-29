@@ -1153,13 +1153,12 @@ def modulo_costos():
     try:
         # Borramos de la tabla facturas de una vez por todas los registros duplicados de mano de obra
         conn.execute("DELETE FROM facturas WHERE proveedor LIKE 'Mano de Obra%'")
-        # Limpiamos residuos corruptos adicionales que se colaron con los scripts de rescate
         conn.execute("DELETE FROM facturas WHERE tipo='RRHH'")
         conn.commit()
     except Exception as e:
         pass
 
-    # Consulta ultra limpia: los gastos comerciales y RRHH van por canales separados
+    # Consulta Ultra-Calibrada: Suma liquido + leyes_sociales de pagos_rrhh y prorratea nativo sin fallas
     q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                   SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
                   SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -1173,16 +1172,31 @@ def modulo_costos():
                SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
                UNION ALL 
                SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' 
-               UNION ALL 
-               SELECT centro_costo as cc, costo_empresa as val, 'RRHH' as fuente FROM pagos_rrhh
+               
+               -- ─── PRORRATEO MATEMÁTICO DIRECTO USANDO COLUMNAS BASE ───
+               UNION ALL
+               SELECT 'CEREZOS CORTE 1' as cc, SUM(liquido + leyes_sociales) * 0.0794 as val, 'RRHH' as fuente FROM pagos_rrhh
+               UNION ALL
+               SELECT 'CEREZOS CORTE 2' as cc, SUM(liquido + leyes_sociales) * 0.0794 as val, 'RRHH' as fuente FROM pagos_rrhh
+               UNION ALL
+               SELECT 'CIRUELOS' as cc, SUM(liquido + leyes_sociales) * 0.3271 as val, 'RRHH' as fuente FROM pagos_rrhh
+               UNION ALL
+               SELECT 'NOGALES APARICION' as cc, SUM(liquido + leyes_sociales) * 0.3271 as val, 'RRHH' as fuente FROM pagos_rrhh
+               UNION ALL
+               SELECT 'NOGALES CRUZ DEL SUR' as cc, SUM(liquido + leyes_sociales) * 0.1870 as val, 'RRHH' as fuente FROM pagos_rrhh
+               
                UNION ALL
                SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos
-           ) WHERE cc IN ('CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS') 
-           GROUP BY cc"""
+           ) WHERE cc != '' GROUP BY cc"""
     
     dfr = pd.read_sql_query(q, conn)
 
     if not dfr.empty:
+        # Aseguramos que los valores calculados de RRHH queden como números enteros limpios en el DataFrame
+        if 'RRHH' in dfr.columns:
+            dfr['RRHH'] = dfr['RRHH'].fillna(0).astype(int)
+        dfr['Total'] = dfr['Insumos'] + dfr['Gastos'] + dfr['Petroleo'] + dfr['RRHH'] + dfr['Ajustes']
+
         fila_t = pd.DataFrame([{
             'Cuartel': 'TOTAL GENERAL', 
             'Insumos': dfr['Insumos'].sum(), 
@@ -1229,7 +1243,7 @@ def modulo_costos():
                     st.error("❌ Clave Maestra de Autorización Incorrecta. Operación cancelada.")
                     
     conn.close()
-
+    
 def modulo_maquinaria():
     st.header("🚜 BITÁCORA DE MAQUINARIA (MANTENCIONES)"); conn = conectar_db()
     
