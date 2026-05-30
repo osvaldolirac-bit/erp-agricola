@@ -720,7 +720,7 @@ def modulo_tesoreria():
         EMISOR_EMAIL = "osvaldolirac@gmail.com" # El correo de Gmail que despacha las alertas
         
         # Invocamos la contraseña de aplicación de 16 caracteres guardada en tus Secrets seguros
-        EMISOR_PASSWORD = st.secrets["SMTP_PASSWORD"] 
+        EMISOR_PASSWORD = st.secrets["gmail_smtp"] 
         
         # 👥 Las 3 casillas de control interno que reciben la notificación al unísono
         DESTINATARIOS = [
