@@ -713,57 +713,65 @@ def modulo_compras():
 def modulo_tesoreria():
     st.header("💸 TESORERÍA"); conn = conectar_db()
     
-    # ─── 📧 FUNCIÓN INTERNA DE ALERTA DE CORREO SMTP ───
+    # ─── 📧 FUNCIÓN INTERNA DE ALERTA DE CORREO SMTP (HEREDADA DEL MÁSTER) ───
     def enviar_correo_pago_interno(proveedor, nro_documento, monto, metodo):
-        SMTP_SERVER = "smtp.gmail.com"
-        SMTP_PORT = 587
-        EMISOR_EMAIL = "osvaldolirac@gmail.com" # El correo de Gmail que despacha las alertas
-        
-        # Invocamos la contraseña de aplicación de 16 caracteres guardada en tus Secrets seguros
-        EMISOR_PASSWORD = st.secrets["gmail_smtp"] 
-        
-        # 👥 Las 3 casillas de control interno que reciben la notificación al unísono
-        DESTINATARIOS = [
-            "osvaldolirac@gmail.com", 
-            "secretaria@laconcepcion.cl",     
-            "secretarialaconcepcion2@gmail.com"      
-        ]
-        
-        msg = MIMEMultipart()
-        msg['From'] = EMISOR_EMAIL
-        msg['To'] = ", ".join(DESTINATARIOS)
-        msg['Subject'] = f"🚨 [RESPALDO TESORERÍA] Pago Procesado: {proveedor}"
-        
-        cuerpo_html = f"""
-        <html>
-            <body style="font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; padding: 10px;">
-                <div style="background-color: #1B5E20; padding: 15px; text-align: center; color: white; border-radius: 6px 6px 0 0;">
-                    <h3 style="margin: 0;">🚜 ALERTA DE EGRESO INTERNO - LA CONCEPCIÓN</h3>
-                </div>
-                <div style="padding: 20px; border: 1px solid #1B5E20; border-top: none; background-color: white; border-radius: 0 0 6px 6px;">
-                    <p>Se ha registrado un movimiento de pago exitoso en el módulo de <b>Tesorería</b>:</p>
-                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
-                        <tr style="background-color: #f2f2f2;"><td style="padding: 10px; font-weight: bold; width: 40%;">Proveedor:</td><td style="padding: 10px;">{proveedor}</td></tr>
-                        <tr><td style="padding: 10px; font-weight: bold;">N° Documento:</td><td style="padding: 10px;">{nro_documento}</td></tr>
-                        <tr style="background-color: #f2f2f2;"><td style="padding: 10px; font-weight: bold;">Monto Imputado:</td><td style="padding: 10px; color: #1B5E20; font-weight: bold;">${int(monto):,}</td></tr>
-                        <tr><td style="padding: 10px; font-weight: bold;">Método de Pago:</td><td style="padding: 10px;">{metodo}</td></tr>
-                    </table>
-                    <p style="font-size: 0.8rem; color: #777; text-align: center; margin-top: 20px;">Respaldo exclusivo de auditoría interna - ERP La Concepción</p>
-                </div>
-            </body>
-        </html>
-        """
-        msg.attach(MIMEText(cuerpo_html, 'html'))
-        
         try:
-            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+            # Si por alguna razón no están los secrets, salimos de inmediato
+            if "gmail_smtp" not in st.secrets:
+                return False
+                
+            conf = st.secrets["gmail_smtp"]
+            emisor = conf["correo_emisor"]
+            clave = conf["clave_application"] if "clave_application" in conf else conf["clave_aplicacion"]
+            
+            # 👥 Las 3 casillas de control interno reales del fundo
+            DESTINATARIOS = [
+                "osvaldolirac@gmail.com", 
+                "secretaria@laconcepcion.cl",     
+                "secretarialaconcepcion2@gmail.com"      
+            ]
+            
+            msg = MIMEMultipart()
+            msg['From'] = emisor
+            msg['To'] = ", ".join(DESTINATARIOS)
+            msg['Subject'] = f"🚨 [RESPALDO TESORERÍA] Pago Procesado: {proveedor}"
+            
+            cuerpo_html = f"""
+            <html>
+                <body style='font-family: sans-serif; padding: 20px; background-color: #f4f7f6;'>
+                    <div style='background-color: white; padding: 25px; border-radius: 10px; border-top: 5px solid #1B5E20; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                        <h2 style='color: #1B5E20; margin-top: 0;'>🚜 Egreso Interno Registrado</h2>
+                        <p>Se ha procesado un movimiento conforme en el módulo de <b>Tesorería</b>:</p>
+                        <hr style='border: 0; border-top: 1px solid #eee;'>
+                        <p><b>🏢 Proveedor:</b> {proveedor}</p>
+                        <p><b>📄 N° Documento:</b> {nro_documento}</p>
+                        <p><b>💰 Monto Pagado:</b> <span style='color: #1B5E20; font-weight: bold;'>${int(monto):,}</span></p>
+                        <p><b>💳 Método Utilizado:</b> {metodo}</p>
+                        <p><b>📅 Fecha:</b> {str(hoy)}</p>
+                        <hr style='border: 0; border-top: 1px solid #eee;'>
+                        <small style='color: #777;'>Respaldo automático de auditoría - ERP La Concepción.</small>
+                    </div>
+                </body>
+            </html>
+            """
+            msg.attach(MIMEText(cuerpo_html, 'html'))
+            
+            server = smtplib.SMTP('smtp.gmail.com', 587)
             server.starttls()
-            server.login(EMISOR_EMAIL, EMISOR_PASSWORD)
-            server.sendmail(EMISOR_EMAIL, DESTINATARIOS, msg.as_string())
+            server.login(emisor, clave)
+            server.sendmail(emisor, DESTINATARIOS, msg.as_string())
             server.quit()
             return True
         except Exception as e:
-            print(f"Error SMTP: {e}")
+            # Si el correo falla, lo dejamos anotado en tu bitácora tal como lo hace el máster
+            try:
+                conn_err = conectar_db()
+                f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
+                conn_err.execute("INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)", 
+                                 (st.session_state.get('email', 'SISTEMA'), "FALLO_SMTP_TESO", str(e)[:150], f_h))
+                conn_err.commit(); conn_err.close()
+            except:
+                pass
             return False
 
     # ─── 📋 INTERFAZ GENERAL DE TABS ORIGINAL ───
@@ -784,29 +792,26 @@ def modulo_tesoreria():
             metp = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"], key="t_p2")
             
             if st.button("💰 MARCAR PAGADO", key="t_p3"):
-                try:
-                    # 🔍 Captura de datos en tiempo de ejecución antes de procesar el pago
-                    factura_info = dfp[dfp['id'] == idp].iloc[0]
-                    prov_nombre = factura_info['proveedor']
-                    doc_nro = factura_info['nro_documento']
-                    monto_doc = factura_info['monto_total']
-                    
-                    # 1. Se ejecuta la orden de pago en la base de datos de forma normal
-                    conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, str(hoy), idp))
-                    conn.commit()
-                    
-                    # 2. 🚀 ALERTA AUTOMÁTICA EN CADENA POR CORREO 🚀
-                    with st.spinner("Despachando correo de respaldo al equipo..."):
-                        enviar_correo_pago_interno(
-                            proveedor=prov_nombre, 
-                            nro_documento=doc_nro, 
-                            monto=monto_doc, 
-                            metodo=metp
-                        )
-                except Exception as e:
-                    pass
+                # 🔍 Captura de datos previa
+                factura_info = dfp[dfp['id'] == idp].iloc[0]
+                prov_nombre = factura_info['proveedor']
+                doc_nro = factura_info['nro_documento']
+                monto_doc = factura_info['monto_total']
                 
-                # 3. Bitácora de auditoría, sincronización en Drive y reinicio
+                # 1. Se ejecuta el cambio físico en SQLite
+                conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, str(hoy), idp))
+                conn.commit()
+                
+                # 2. 🚀 DISPARO EN CADENA CON TU MOTOR CONFIGURADO MÁSTER 🚀
+                with st.spinner("Despachando correo de respaldo al equipo..."):
+                    enviar_correo_pago_interno(
+                        proveedor=prov_nombre, 
+                        nro_documento=doc_nro, 
+                        monto=monto_doc, 
+                        metodo=metp
+                    )
+                
+                # 3. Bitácora de control, respaldo y reinicio
                 registrar_accion("PAGO", str(idp))
                 guardar_en_drive()
                 st.rerun()
