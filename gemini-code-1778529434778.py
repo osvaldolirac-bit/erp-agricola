@@ -717,16 +717,16 @@ def modulo_tesoreria():
     def enviar_correo_pago_interno(proveedor, nro_documento, monto, metodo):
         SMTP_SERVER = "smtp.gmail.com"
         SMTP_PORT = 587
-        EMISOR_EMAIL = "tu_correo_emisor@gmail.com" # El correo de Gmail que despacha las alertas
+        EMISOR_EMAIL = "osvaldolirac@gmail.com" # El correo de Gmail que despacha las alertas
         
         # Invocamos la contraseña de aplicación de 16 caracteres guardada en tus Secrets seguros
-        EMISOR_PASSWORD = st.secrets["SMTP_PASSWORD"] 
+        EMISOR_PASSWORD = st.secrets["igokblrgyjgyevun"] 
         
         # 👥 Las 3 casillas de control interno que reciben la notificación al unísono
         DESTINATARIOS = [
             "osvaldolirac@gmail.com", 
-            "usuario2@laconcepcion.cl",     
-            "usuario3@laconcepcion.cl"      
+            "secretaria@laconcepcion.cl",     
+            "secretarialaconcepcion2@gmail.com"      
         ]
         
         msg = MIMEMultipart()
