@@ -713,10 +713,9 @@ def modulo_compras():
 def modulo_tesoreria():
     st.header("💸 TESORERÍA"); conn = conectar_db()
     
-    # ─── 📧 FUNCIÓN INTERNA DE ALERTA DE CORREO SMTP (HEREDADA DEL MÁSTER) ───
-    def enviar_correo_pago_interno(proveedor, nro_documento, monto, metodo):
+    # ─── 📧 FUNCIÓN INTERNA DE ALERTA DE CORREO SMTP CON RASTRO DE USUARIO ───
+    def enviar_correo_pago_interno(proveedor, nro_documento, monto, metodo, usuario_operador):
         try:
-            # Si por alguna razón no están los secrets, salimos de inmediato
             if "gmail_smtp" not in st.secrets:
                 return False
                 
@@ -745,8 +744,9 @@ def modulo_tesoreria():
                         <hr style='border: 0; border-top: 1px solid #eee;'>
                         <p><b>🏢 Proveedor:</b> {proveedor}</p>
                         <p><b>📄 N° Documento:</b> {nro_documento}</p>
-                        <p><b>💰 Monto Pagado:</b> <span style='color: #1B5E20; font-weight: bold;'>${int(monto):,}</span></p>
+                        <p><b>💰 Monto Pagado:</b> <span style='color: #1B5E20; font-weight: bold;'>${int(monto):?}</span></p>
                         <p><b>💳 Método Utilizado:</b> {metodo}</p>
+                        <p><b>👤 Usuario Operador:</b> <span style='color: #0d47a1; font-weight: bold;'>{usuario_operador}</span></p>
                         <p><b>📅 Fecha:</b> {str(hoy)}</p>
                         <hr style='border: 0; border-top: 1px solid #eee;'>
                         <small style='color: #777;'>Respaldo automático de auditoría - ERP La Concepción.</small>
@@ -763,7 +763,6 @@ def modulo_tesoreria():
             server.quit()
             return True
         except Exception as e:
-            # Si el correo falla, lo dejamos anotado en tu bitácora tal como lo hace el máster
             try:
                 conn_err = conectar_db()
                 f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
@@ -792,23 +791,25 @@ def modulo_tesoreria():
             metp = st.selectbox("Método", ["Transferencia", "Efectivo", "Cheque"], key="t_p2")
             
             if st.button("💰 MARCAR PAGADO", key="t_p3"):
-                # 🔍 Captura de datos previa
+                # 🔍 Captura de datos previa incluyendo el usuario desde el st.session_state
                 factura_info = dfp[dfp['id'] == idp].iloc[0]
                 prov_nombre = factura_info['proveedor']
                 doc_nro = factura_info['nro_documento']
                 monto_doc = factura_info['monto_total']
+                user_actual = st.session_state.get('email', 'Usuario No Identificado')
                 
                 # 1. Se ejecuta el cambio físico en SQLite
                 conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, str(hoy), idp))
                 conn.commit()
                 
-                # 2. 🚀 DISPARO EN CADENA CON TU MOTOR CONFIGURADO MÁSTER 🚀
+                # 2. 🚀 DISPARO EN CADENA ENVIANDO EL USUARIO ACTUAL RECOGIDO DEL LOGIN 🚀
                 with st.spinner("Despachando correo de respaldo al equipo..."):
                     enviar_correo_pago_interno(
                         proveedor=prov_nombre, 
                         nro_documento=doc_nro, 
                         monto=monto_doc, 
-                        metodo=metp
+                        metodo=metp,
+                        usuario_operador=user_actual
                     )
                 
                 # 3. Bitácora de control, respaldo y reinicio
