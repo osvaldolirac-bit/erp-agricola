@@ -744,7 +744,7 @@ def modulo_tesoreria():
                         <hr style='border: 0; border-top: 1px solid #eee;'>
                         <p><b>🏢 Proveedor:</b> {proveedor}</p>
                         <p><b>📄 N° Documento:</b> {nro_documento}</p>
-                        <p><b>💰 Monto Pagado:</b> <span style='color: #1B5E20; font-weight: bold;'>${int(monto):?}</span></p>
+                        <p><b>💰 Monto Pagado:</b> <span style='color: #1B5E20; font-weight: bold;'>${int(monto):,}</span></p>
                         <p><b>💳 Método Utilizado:</b> {metodo}</p>
                         <p><b>👤 Usuario Operador:</b> <span style='color: #0d47a1; font-weight: bold;'>{usuario_operador}</span></p>
                         <p><b>📅 Fecha:</b> {str(hoy)}</p>
@@ -802,7 +802,7 @@ def modulo_tesoreria():
                 conn.execute("UPDATE facturas SET estado='Pagado', metodo_pago=?, fecha_pago=? WHERE id=?", (metp, str(hoy), idp))
                 conn.commit()
                 
-                # 2. 🚀 DISPARO EN CADENA ENVIANDO EL USUARIO ACTUAL RECOGIDO DEL LOGIN 🚀
+                # 2. 🚀 DISPARO EN CADENA ENVIANDO EL USUARIO ACTUAL 🚀
                 with st.spinner("Despachando correo de respaldo al equipo..."):
                     enviar_correo_pago_interno(
                         proveedor=prov_nombre, 
