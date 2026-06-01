@@ -421,7 +421,6 @@ def modulo_dashboard():
         q_sueldos = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}"
         monto_rrhh = pd.read_sql_query(q_sueldos, conn)['total_neto'].fillna(0).iloc[0]
         
-        # Si el mes actual (Junio) viene en cero, saltamos automáticamente al mes anterior (Mayo)
         if monto_rrhh == 0:
             mes_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).strftime('%m')
             anio_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).year
@@ -430,7 +429,6 @@ def modulo_dashboard():
     except:
         monto_rrhh = 0
 
-    # Alertas de personal pendientes por imputar
     try:
         t_activos = pd.read_sql_query("SELECT id FROM personal WHERE estado='Activo'", conn)
         imputados = pd.read_sql_query(f"SELECT trabajador_id FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}", conn)
@@ -446,7 +444,6 @@ def modulo_dashboard():
     st.header("📊 DASHBOARD PRINCIPAL")
     st.markdown(f'<div class="banner-econ">📈 INDICADORES: UF: {ind["uf"]} | UTM: {ind["utm"]} | DÓLAR: {ind["dolar"]} | EURO: {ind["euro"]}</div>', unsafe_allow_html=True)
     
-    # KPIs y Métricas superiores nativas
     df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
     df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida' OR (tipo='Ajuste Manual' AND litros < 0)", conn)
@@ -468,7 +465,6 @@ def modulo_dashboard():
     with c_izq:
         st.markdown("### 📊 GASTOS POR CUARTEL")
         
-        # Consulta comercial desglosada nativa original de la versión 0010005
         q_base = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                           SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
                           SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -530,6 +526,79 @@ def modulo_dashboard():
             totalm = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == fp.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == fp.year)]['monto_total'].sum() if not df_f.empty else 0
             st.markdown(f"<div style='background-color:white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
             
+    conn.close()
+
+
+# ─── ⛽ AQUÍ QUEDA INCRUSTADO EL MÓDULO PETRÓLEO EN ORDEN PERFECTO ───
+def modulo_petroleo():
+    st.header("⛽ GESTIÓN DE PETRÓLEO")
+    conn = conectar_db()
+    try:
+        df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
+        df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida' OR (tipo='Ajuste Manual' AND litros < 0)", conn)
+        saldo_actual = (df_p_c['l'].fillna(0).iloc[0]) - abs(df_p_s['l'].fillna(0).iloc[0])
+        st.markdown(f'<div class="saldo-banner">🛢️ SALDO ACTUAL EN TANQUE: {f_decimal(saldo_actual)} LITROS</div>', unsafe_allow_html=True)
+    except:
+        st.markdown('<div class="saldo-banner">🛢️ SALDO ACTUAL EN TANQUE: 0 LITROS</div>', unsafe_allow_html=True)
+        saldo_actual = 0
+
+    t_p = st.tabs(["📥 CARGA", "🚜 SALIDA", "📊 HISTORIAL"])
+    
+    with t_p[0]:
+        with st.form("p_c", clear_on_submit=True):
+            l = st.number_input("Litros Carga", 0.0, key="pet_c_l")
+            mt = st.number_input("Total Bruto ($)", 0.0, key="pet_c_m")
+            f = st.date_input("Fecha", hoy, key="pet_c_f")
+            if st.form_submit_button("REGISTRAR CARGA"):
+                if l > 0 and mt > 0:
+                    neto = (mt / 1.19) - (l * IMPUESTO_ESPECIFICO_LITRO)
+                    conn.execute("INSERT INTO petroleo (tipo, litros, monto_total_compra, fecha) VALUES (?,?,?,?)", ("Carga", l, neto, str(f)))
+                    conn.commit()
+                    registrar_accion("PETROLEO", f"Carga {l}L")
+                    guardar_en_drive()
+                    st.success("✅ Carga de estanque guardada con éxito.")
+                    st.rerun()
+                    
+    with t_p[1]:
+        with st.form("p_s", clear_on_submit=True):
+            ls = st.number_input("Litros Salida", 0.0, key="pet_s_l")
+            fs = st.date_input("Fecha", hoy, key="pet_s_f")
+            v = st.text_input("Vehículo / Destinatario", key="pet_s_v")
+            r = st.text_input("Responsable Operación", key="pet_s_r")
+            ccs = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"p_s_cc_{cc}")]
+            if st.form_submit_button("DESPACHAR PETRÓLEO"):
+                try:
+                    df_calc = pd.read_sql_query("SELECT SUM(litros) as l, SUM(monto_total_compra) as m FROM petroleo WHERE tipo='Carga'", conn)
+                    pmp = (df_calc['m'].iloc[0] / df_calc['l'].iloc[0]) if df_calc['l'].iloc[0] > 0 else 0
+                except:
+                    pmp = 0
+                if ccs and ls > 0:
+                    for c in ccs: 
+                        conn.execute("INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?,?)", ("Salida", ls/len(ccs), v, r, c.upper(), str(fs), (ls/len(ccs)*pmp)))
+                    conn.commit()
+                    registrar_accion("PETROLEO", f"Salida {ls}L")
+                    guardar_en_drive()
+                    st.success("✅ Despacho prorrateado exitosamente.")
+                    st.rerun()
+                    
+    with t_p[2]:
+        try:
+            f_min_q = conn.execute("SELECT MIN(fecha) FROM petroleo").fetchone()[0]
+            f_min_p = pd.to_datetime(f_min_q).date() if f_min_q else hoy - timedelta(days=365)
+        except:
+            f_min_p = hoy - timedelta(days=365)
+        
+        c1, c2 = st.columns(2)
+        fi_p = c1.date_input("Desde", f_min_p, key="p_f_1")
+        ff_p = c2.date_input("Hasta", hoy, key="p_f_2")
+        
+        try:
+            dfp = pd.read_sql_query(f"SELECT id, fecha, tipo, litros, vehiculo, responsable, centro_costo, valor_imputado FROM petroleo WHERE fecha BETWEEN '{fi_p}' AND '{ff_p}' ORDER BY fecha ASC", conn)
+            st.dataframe(dfp.style.format({"litros": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
+            st.download_button("📥 PDF HISTORIAL", generar_pdf_blob(dfp, "HISTORIAL PETROLEO", modo_petroleo=True, saldo_petroleo=saldo_actual), "petroleo.pdf", key="p_pdf")
+        except Exception as e:
+            st.error(f"Error al cargar historial de petróleo: {e}")
+        
     conn.close()
 
 def modulo_compras():
