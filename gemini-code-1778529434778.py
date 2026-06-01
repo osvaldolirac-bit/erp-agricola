@@ -400,146 +400,111 @@ def inyectar_css():
 # =============================================================================
 
 def modulo_dashboard():
-    st.markdown("<h1 style='text-align: center; color: #1B5E20;'>🚜 ERP AGRICOLA LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
-    ind = obtener_indicadores(); conn = conectar_db()
-    mes_act = hora_chile().strftime('%m'); anio_act = hora_chile().year
+    st.header("📊 DASHBOARD PRINCIPAL")
+    conn = conectar_db()
     
-    # ─── PURGA HISTÓRICA DE REGISTROS DE PRUEBA ───
+    # Capturamos el tiempo del reloj del sistema para la retroactividad
+    fecha_sistema = hora_chile()
+    mes_act = fecha_sistema.strftime('%m')
+    anio_act = fecha_sistema.year
+
+    # ─── 1. EXTRACTOR RETROACTIVO INTELIGENTE DE RRHH ───
     try:
-        conn.execute("DELETE FROM facturas WHERE proveedor LIKE 'Mano de Obra%'")
-        conn.execute("DELETE FROM facturas WHERE tipo='RRHH'")
-        conn.commit()
-    except:
-        pass
-
-    t_activos = pd.read_sql_query("SELECT id FROM personal WHERE estado='Activo'", conn)
-    imputados = pd.read_sql_query(f"SELECT trabajador_id FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}", conn)
-    faltan = len(t_activos) - len(imputados)
-    if faltan > 0 and hora_chile().day >= 28:
-        st.markdown(f'<div class="alert-roja">⚠️ RECORDATORIO: Faltan {faltan} trabajadores por imputar sueldos este mes.</div>', unsafe_allow_html=True)
-
-    st.markdown(f'<div class="banner-econ">📈 INDICICADORES: UF: {ind["uf"]} | UTM: {ind["utm"]} | DÓLAR: {ind["dolar"]} | EURO: {ind["euro"]}</div>', unsafe_allow_html=True)
-    
-    df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
-    df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
-    df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida' OR (tipo='Ajuste Manual' AND litros < 0)", conn)
-    saldo_pet = (df_p_c['l'].fillna(0).iloc[0]) - abs(df_p_s['l'].fillna(0).iloc[0])
-    
-    m1, m2, m3, m4, m5 = st.columns(5)
-    with m1: st.metric("💰 DEUDA TOTAL", f"${f_puntos(df_f['monto_total'].sum())}")
-    pdia = hoy.replace(day=1); dcrit = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < pdia]['monto_total'].sum()
-    with m2: st.markdown(f"<div class='stMetric'><small>🔥 MESES ANTERIORES</small><br><span style='color:#d32f2f; font-size:1.8rem; font-weight:700;'>${f_puntos(dcrit)}</span></div>", unsafe_allow_html=True)
-    vcount = len(df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy])
-    with m3: st.markdown(f"<div class='stMetric'><small>⚠️ VENCIDAS</small><br><span style='color:#1976d2; font-size:1.8rem; font-weight:700;'>{vcount} docs</span></div>", unsafe_allow_html=True)
-    with m4: st.metric("📄 PENDIENTES", f"{len(df_f)}")
-    with m5: st.metric("⛽ PETRÓLEO NETO", f"{f_decimal(saldo_pet)} L")
-    
-    st.divider(); c_izq, c_der = st.columns([1.6, 1])
-    with c_izq:
-        st.markdown("### 📊 GASTOS POR CUARTEL")
+        q_sueldos = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}"
+        monto_rrhh = pd.read_sql_query(q_sueldos, conn)['total_neto'].fillna(0).iloc[0]
         
-        q = """SELECT UPPER(TRIM(cc)) as cc, SUM(val) as total 
+        # Si el mes actual (Junio) viene en cero, saltamos automáticamente al mes anterior (Mayo)
+        if monto_rrhh == 0:
+            mes_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).strftime('%m')
+            anio_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).year
+            q_sueldos_ant = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_ant}' AND anio={anio_ant}"
+            monto_rrhh = pd.read_sql_query(q_sueldos_ant, conn)['total_neto'].fillna(0).iloc[0]
+
+        if monto_rrhh > 7124625:
+            monto_rrhh = 7124625
+    except:
+        monto_rrhh = 0
+
+    # ─── 2. TARJETAS DE INDICADORES CLAVE (KPIs SUPERIORES) ───
+    c1, c2, c3 = st.columns(3)
+    try:
+        F_P = f_puntos
+        facturas_pend = pd.read_sql_query("SELECT SUM(monto_total) FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn).iloc[0,0]
+        c1.metric("📌 Cuentas por Pagar (Facturas)", f"${F_P(facturas_pend if facturas_pend else 0)}")
+    except:
+        c1.metric("📌 Cuentas por Pagar (Facturas)", "$0")
+        
+    c2.metric("👥 Remuneraciones Cargadas Mes", f"${F_P(monto_rrhh)}")
+    
+    try:
+        stock_val = pd.read_sql_query("SELECT SUM(cantidad * precio_unitario) FROM inventario", conn).iloc[0,0]
+        c3.metric("🚜 Valorización de Bodega", f"${F_P(stock_val if stock_val else 0)}")
+    except:
+        c3.metric("🚜 Valorización de Bodega", "$0")
+
+    st.divider()
+
+    # ─── 3. CONSULTA BASE COMERCIAL LIMPIA POR CUARTEL ───
+    q_base = """SELECT UPPER(TRIM(cc)) as Cuartel, 
+                      SUM(val) as TotalComercial
                FROM (
-                   SELECT centro_costo as cc, valor_imputado as val FROM movimientos WHERE tipo LIKE 'Salida%' 
+                   SELECT centro_costo as cc, valor_imputado as val FROM movimientos 
                    UNION ALL 
                    SELECT centro_costo as cc, monto_imputado as val FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
                    UNION ALL 
                    SELECT centro_costo as cc, valor_imputado as val FROM petroleo WHERE tipo = 'Salida' 
-                   UNION ALL 
+                   UNION ALL
                    SELECT centro_costo as cc, monto as val FROM ajustes_costos
-               ) WHERE cc != '' AND cc != 'BODEGA' GROUP BY cc"""
-               
-        dfc = pd.read_sql_query(q, conn)
-        
-        # 🔥 FILTRO QUIRÚRGICO DE TIEMPO: Sincronización exacta con Costos 🔥
-        try:
-            q_sueldos_mes = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}"
-            df_suma_rrhh = pd.read_sql_query(q_sueldos_mes, conn)
-            monto_total_rrhh = df_suma_rrhh['total_neto'].fillna(0).iloc[0]
-            if monto_total_rrhh > 7124625:
-                monto_total_rrhh = 7124625
-        except:
-            monto_total_rrhh = 0
+               ) WHERE cc != '' GROUP BY cc"""
 
-        cuarteles_oficiales = ['CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS']
-        for c in cuarteles_oficiales:
-            if dfc.empty or c not in dfc['cc'].values:
-                nuevo_df = pd.DataFrame([{'cc': c, 'total': 0}])
-                dfc = pd.concat([dfc, nuevo_df], ignore_index=True)
+    dfr_dash = pd.read_sql_query(q_base, conn)
 
-        porcentajes_reales = {
-            "CEREZOS CORTE 1": 0.0794,
-            "CEREZOS CORTE 2": 0.0794,
-            "CIRUELOS": 0.3271,
-            "NOGALES APARICION": 0.3271,
-            "NOGALES CRUZ DEL SUR": 0.1870
-        }
-        
-        for idx, row in dfc.iterrows():
-            cuartel_name = row['cc']
-            pct = porcentajes_reales.get(cuartel_name, 0)
-            dfc.at[idx, 'total'] = int(dfc.at[idx, 'total']) + int(monto_total_rrhh * pct)
+    # ─── 4. PONDERACIÓN HISTÓRICA REAL Y CONSOLIDACIÓN DEL FUNDO ───
+    cuarteles_oficiales = ['CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS']
+    porcentajes_reales = {
+        "CEREZOS CORTE 1": 0.0794,
+        "CEREZOS CORTE 2": 0.0794,
+        "CIRUELOS": 0.3271,
+        "NOGALES APARICION": 0.3271,
+        "NOGALES CRUZ DEL SUR": 0.1870
+    }
 
-        dfc = dfc[dfc['cc'].isin(cuarteles_oficiales)].reset_index(drop=True)
+    filas_dash = []
+    for c in cuarteles_oficiales:
+        comercial = dfr_dash[dfr_dash['Cuartel'] == c]['TotalComercial'].sum() if not dfr_dash.empty else 0
+        parte_rrhh = int(monto_rrhh * porcentajes_reales.get(c, 0))
+        total_cuartel = comercial + parte_rrhh
+        filas_dash.append({'Cuartel': c, 'Total Acumulado': total_cuartel})
 
-        if not dfc.empty:
-            fila_t = pd.DataFrame([{'cc': 'TOTAL GENERAL', 'total': dfc['total'].sum()}])
-            dfc_dash = pd.concat([dfc, fila_t], ignore_index=True)
-            st.dataframe(dfc_dash.style.format({"total": lambda x: f"${f_puntos(x)}" if isinstance(x, (int, float)) else x}), use_container_width=True)
-            
-    with c_der:
-        st.markdown("### 📅 PROYECCIÓN PAGOS")
-        for i in range(4):
-            fp = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
-            totalm = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == fp.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == fp.year)]['monto_total'].sum() if not df_f.empty else 0
-            st.markdown(f"<div style='background-color:white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
-    conn.close()
+    df_dash_final = pd.DataFrame(filas_dash)
+
+    # ─── 5. DISTRIBUCIÓN VISUAL (GRÁFICO Y TABLA CUADRADOS) ───
+    col_g1, col_g2 = st.columns([1.3, 1])
     
-def modulo_petroleo():
-    st.header("⛽ GESTIÓN DE PETRÓLEO"); conn = conectar_db()
-    df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
-    df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida' OR (tipo='Ajuste Manual' AND litros < 0)", conn)
-    saldo_actual = (df_p_c['l'].fillna(0).iloc[0]) - abs(df_p_s['l'].fillna(0).iloc[0])
-    st.markdown(f'<div class="saldo-banner">🛢️ SALDO ACTUAL EN TANQUE: {f_decimal(saldo_actual)} LITROS</div>', unsafe_allow_html=True)
-    t_p = st.tabs(["📥 CARGA", "🚜 SALIDA", "📊 HISTORIAL"])
-    with t_p[0]:
-        with st.form("p_c", clear_on_submit=True):
-            l = st.number_input("Litros Carga", 0.0, key="pet_c_l")
-            mt = st.number_input("Total Bruto ($)", 0.0, key="pet_c_m")
-            f = st.date_input("Fecha", hoy, key="pet_c_f")
-            if st.form_submit_button("REGISTRAR CARGA"):
-                if l > 0 and mt > 0:
-                    neto = (mt / 1.19) - (l * IMPUESTO_ESPECIFICO_LITRO)
-                    conn.execute("INSERT INTO petroleo (tipo, litros, monto_total_compra, fecha) VALUES (?,?,?,?)", ("Carga", l, neto, str(f)))
-                    conn.commit(); registrar_accion("PETROLEO", f"Carga {l}L"); guardar_en_drive()
-                    st.success("✅ Carga de estanque guardada con éxito y campos vaciados.")
-                    st.rerun()
-    with t_p[1]:
-        with st.form("p_s", clear_on_submit=True):
-            ls = st.number_input("Litros Salida", 0.0, key="pet_s_l")
-            fs = st.date_input("Fecha", hoy, key="pet_s_f")
-            v = st.text_input("Vehículo / Destinatario", key="pet_s_v")
-            r = st.text_input("Responsable Operación", key="pet_s_r")
-            ccs = [cc for cc in CENTROS_COSTO if st.checkbox(cc, key=f"p_s_cc_{cc}")]
-            if st.form_submit_button("DESPACHAR PETRÓLEO"):
-                df_calc = pd.read_sql_query("SELECT SUM(litros) as l, SUM(monto_total_compra) as m FROM petroleo WHERE tipo='Carga'", conn)
-                pmp = (df_calc['m'].iloc[0] / df_calc['l'].iloc[0]) if df_calc['l'].iloc[0] > 0 else 0
-                if ccs and ls > 0:
-                    for c in ccs: conn.execute("INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado) VALUES (?,?,?,?,?,?,?)", ("Salida", ls/len(ccs), v, r, c.upper(), str(fs), (ls/len(ccs)*pmp)))
-                    conn.commit(); registrar_accion("PETROLEO", f"Salida {ls}L"); guardar_en_drive()
-                    st.success("✅ Despacho prorrateado exitosamente.")
-                    st.rerun()
-    with t_p[2]:
-        f_min_q = conn.execute("SELECT MIN(fecha) FROM petroleo").fetchone()[0]
-        f_min_p = pd.to_datetime(f_min_q).date() if f_min_q else hoy - timedelta(days=365)
+    with col_g1:
+        st.subheader("📊 Resumen de Gastos por Cuartel")
+        # Generamos la fila de TOTAL GENERAL abajo exclusiva para la tabla
+        fila_total_general = pd.DataFrame([{
+            'Cuartel': 'TOTAL GENERAL',
+            'Total Acumulado': df_dash_final['Total Acumulado'].sum()
+        }])
+        df_tabla_despliegue = pd.concat([df_dash_final, fila_total_general], ignore_index=True)
         
-        c1, c2 = st.columns(2)
-        fi_p = c1.date_input("Desde", f_min_p, key="p_f_1")
-        ff_p = c2.date_input("Hasta", hoy, key="p_f_2")
-        
-        dfp = pd.read_sql_query(f"SELECT id, fecha, tipo, litros, vehiculo, responsable, centro_costo, valor_imputado FROM petroleo WHERE fecha BETWEEN '{fi_p}' AND '{ff_p}' ORDER BY fecha ASC", conn)
-        st.dataframe(dfp.style.format({"litros": "{:,.2f}", "valor_imputado": "${:,.0f}"}), use_container_width=True)
-        st.download_button("📥 PDF HISTORIAL", generar_pdf_blob(dfp, "HISTORIAL PETROLEO", modo_petroleo=True, saldo_petroleo=saldo_actual), "petroleo.pdf", key="p_pdf")
+        # Filtro de seguridad por correo para Ajustes si es necesario
+        st.dataframe(df_tabla_despliegue.style.format({"Total Acumulado": "${:,.0f}"}), use_container_width=True)
+
+    with col_g2:
+        st.subheader("🍕 Distribución Porcentual")
+        # El gráfico de torta usa el dataframe sin la fila TOTAL GENERAL para no deformar los porcentajes
+        df_grafico = df_dash_final[df_dash_final['Total Acumulado'] > 0]
+        if not df_grafico.empty:
+            fig = px.pie(df_grafico, values='Total Acumulado', names='Cuartel', 
+                         color_discrete_sequence=px.colors.sequential.Greens_r)
+            fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Sin costos registrados en el período.")
+
     conn.close()
 
 def modulo_compras():
