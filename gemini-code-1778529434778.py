@@ -403,20 +403,32 @@ def modulo_dashboard():
     st.header("📊 DASHBOARD PRINCIPAL")
     conn = conectar_db()
     
-    # Capturamos el tiempo del reloj del sistema para la retroactividad
-    fecha_sistema = hora_chile()
-    mes_act = fecha_sistema.strftime('%m')
-    anio_act = fecha_sistema.year
+    # ─── ⏰ CAPTURA DE TIEMPO ESTÁNDAR (CON LAS RAÍCES DE TU ERP) ───
+    # Usamos datetime nativo sin funciones externas para no romper el menú ni otros módulos
+    try:
+        mes_act = datetime.now().strftime('%m')
+        anio_act = datetime.now().year
+    except:
+        mes_act = "06"
+        anio_act = 2026
 
-    # ─── 1. EXTRACTOR RETROACTIVO INTELIGENTE DE RRHH ───
+    # Extractor retroactivo de remuneraciones para el cálculo en vivo
     try:
         q_sueldos = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}"
         monto_rrhh = pd.read_sql_query(q_sueldos, conn)['total_neto'].fillna(0).iloc[0]
         
         # Si el mes actual (Junio) viene en cero, saltamos automáticamente al mes anterior (Mayo)
         if monto_rrhh == 0:
-            mes_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).strftime('%m')
-            anio_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).year
+            # Cálculo seguro de mes anterior usando la variable 'hoy' global de tu sistema
+            try:
+                primer_dia = hoy.replace(day=1)
+                mes_anterior_obj = primer_dia - timedelta(days=1)
+                mes_ant = mes_anterior_obj.strftime('%m')
+                anio_ant = mes_anterior_obj.year
+            except:
+                mes_ant = "05"
+                anio_ant = 2026
+                
             q_sueldos_ant = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_ant}' AND anio={anio_ant}"
             monto_rrhh = pd.read_sql_query(q_sueldos_ant, conn)['total_neto'].fillna(0).iloc[0]
 
@@ -425,26 +437,27 @@ def modulo_dashboard():
     except:
         monto_rrhh = 0
 
-    # ─── 2. TARJETAS DE INDICADORES CLAVE (KPIs SUPERIORES) ───
+    # ─── 📌 TARJETAS MÉTRICAS ORIGINALES ───
     c1, c2, c3 = st.columns(3)
     try:
-        F_P = f_puntos
         facturas_pend = pd.read_sql_query("SELECT SUM(monto_total) FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn).iloc[0,0]
-        c1.metric("📌 Cuentas por Pagar (Facturas)", f"${F_P(facturas_pend if facturas_pend else 0)}")
+        c1.metric("📌 Cuentas por Pagar (Facturas)", f"${f_puntos(facturas_pend if facturas_pend else 0)}")
     except:
         c1.metric("📌 Cuentas por Pagar (Facturas)", "$0")
         
-    c2.metric("👥 Remuneraciones Cargadas Mes", f"${F_P(monto_rrhh)}")
+    c2.metric("👥 Remuneraciones Cargadas", f"${f_puntos(monto_rrhh)}")
     
     try:
         stock_val = pd.read_sql_query("SELECT SUM(cantidad * precio_unitario) FROM inventario", conn).iloc[0,0]
-        c3.metric("🚜 Valorización de Bodega", f"${F_P(stock_val if stock_val else 0)}")
+        c3.metric("🚜 Valorización de Bodega", f"${f_puntos(stock_val if stock_val else 0)}")
     except:
         c3.metric("🚜 Valorización de Bodega", "$0")
 
     st.divider()
 
-    # ─── 3. CONSULTA BASE COMERCIAL LIMPIA POR CUARTEL ───
+    # ─── 📊 TABLA DE GASTOS CONSOLIDADA POR CUARTEL ───
+    st.subheader("📋 GASTOS TOTALES POR CUARTEL")
+    
     q_base = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                       SUM(val) as TotalComercial
                FROM (
@@ -459,7 +472,6 @@ def modulo_dashboard():
 
     dfr_dash = pd.read_sql_query(q_base, conn)
 
-    # ─── 4. PONDERACIÓN HISTÓRICA REAL Y CONSOLIDACIÓN DEL FUNDO ───
     cuarteles_oficiales = ['CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS']
     porcentajes_reales = {
         "CEREZOS CORTE 1": 0.0794,
@@ -478,32 +490,15 @@ def modulo_dashboard():
 
     df_dash_final = pd.DataFrame(filas_dash)
 
-    # ─── 5. DISTRIBUCIÓN VISUAL (GRÁFICO Y TABLA CUADRADOS) ───
-    col_g1, col_g2 = st.columns([1.3, 1])
+    # Agregamos la fila de TOTAL GENERAL abajo
+    fila_total_general = pd.DataFrame([{
+        'Cuartel': 'TOTAL GENERAL',
+        'Total Acumulado': df_dash_final['Total Acumulado'].sum()
+    }])
+    df_tabla_despliegue = pd.concat([df_dash_final, fila_total_general], ignore_index=True)
     
-    with col_g1:
-        st.subheader("📊 Resumen de Gastos por Cuartel")
-        # Generamos la fila de TOTAL GENERAL abajo exclusiva para la tabla
-        fila_total_general = pd.DataFrame([{
-            'Cuartel': 'TOTAL GENERAL',
-            'Total Acumulado': df_dash_final['Total Acumulado'].sum()
-        }])
-        df_tabla_despliegue = pd.concat([df_dash_final, fila_total_general], ignore_index=True)
-        
-        # Filtro de seguridad por correo para Ajustes si es necesario
-        st.dataframe(df_tabla_despliegue.style.format({"Total Acumulado": "${:,.0f}"}), use_container_width=True)
-
-    with col_g2:
-        st.subheader("🍕 Distribución Porcentual")
-        # El gráfico de torta usa el dataframe sin la fila TOTAL GENERAL para no deformar los porcentajes
-        df_grafico = df_dash_final[df_dash_final['Total Acumulado'] > 0]
-        if not df_grafico.empty:
-            fig = px.pie(df_grafico, values='Total Acumulado', names='Cuartel', 
-                         color_discrete_sequence=px.colors.sequential.Greens_r)
-            fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Sin costos registrados en el período.")
+    # Despliegue limpio en ancho completo para evitar descuadres visuales
+    st.dataframe(df_tabla_despliegue.style.format({"Total Acumulado": "${:,.0f}"}), use_container_width=True)
 
     conn.close()
 
