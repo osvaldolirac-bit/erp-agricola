@@ -400,124 +400,136 @@ def inyectar_css():
 # =============================================================================
 
 def modulo_dashboard():
-    st.header("📊 DASHBOARD PRINCIPAL")
+    st.markdown("<h1 style='text-align: center; color: #1B5E20;'>🚜 ERP AGRICOLA LA CONCEPCIÓN</h1>", unsafe_allow_html=True)
+    ind = obtener_indicadores()
     conn = conectar_db()
     
-    # ─── ⏰ CAPTURA DE TIEMPO ESTÁNDAR NATIVA DE TU ERP ───
-    try:
-        mes_act = hoy.strftime('%m')
-        anio_act = hoy.year
-    except:
-        mes_act = "06"
-        anio_act = 2026
+    # ─── ⏰ CAPTURA DE TIEMPO ESTÁNDAR NATIVA ───
+    fecha_sistema = hora_chile()
+    mes_act = fecha_sistema.strftime('%m')
+    anio_act = fecha_sistema.year
 
-    # Extractor retroactivo inteligente de RRHH (El mismo motor de Costos)
+    # ─── 1. EXTRACTOR RETROACTIVO INTELIGENTE DE RRHH ───
+    try:
+        conn.execute("DELETE FROM facturas WHERE proveedor LIKE 'Mano de Obra%'")
+        conn.execute("DELETE FROM facturas WHERE tipo='RRHH'")
+        conn.commit()
+    except:
+        pass
+
     try:
         q_sueldos = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}"
         monto_rrhh = pd.read_sql_query(q_sueldos, conn)['total_neto'].fillna(0).iloc[0]
         
         # Si el mes actual (Junio) viene en cero, saltamos automáticamente al mes anterior (Mayo)
         if monto_rrhh == 0:
-            primer_dia = hoy.replace(day=1)
-            mes_anterior_obj = primer_dia - timedelta(days=1)
-            mes_ant = mes_anterior_obj.strftime('%m')
-            anio_ant = mes_anterior_obj.year
-            
+            mes_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).strftime('%m')
+            anio_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).year
             q_sueldos_ant = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_ant}' AND anio={anio_ant}"
             monto_rrhh = pd.read_sql_query(q_sueldos_ant, conn)['total_neto'].fillna(0).iloc[0]
-
-        if monto_rrhh > 7124625:
-            monto_rrhh = 7124625
     except:
         monto_rrhh = 0
 
-    # ─── 📌 TARJETAS MÉTRICAS NATIVAS DE TU INTERFAZ ───
-    c1, c2, c3 = st.columns(3)
+    # Alertas de personal pendientes por imputar
     try:
-        facturas_pend = pd.read_sql_query("SELECT SUM(monto_total) FROM facturas WHERE estado='Pending' OR estado='Pendiente'", conn).iloc[0,0]
-        c1.metric("📌 Cuentas por Pagar (Facturas)", f"${f_puntos(facturas_pend if facturas_pend else 0)}")
-    except:
-        c1.metric("📌 Cuentas por Pagar (Facturas)", "$0")
+        t_activos = pd.read_sql_query("SELECT id FROM personal WHERE estado='Activo'", conn)
+        imputados = pd.read_sql_query(f"SELECT trabajador_id FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}", conn)
+        faltan = len(t_activos) - len(imputados)
+        if faltan > 0 and hora_chile().day >= 28:
+            st.markdown(f'<div class="alert-roja">⚠️ RECORDATORIO: Faltan {faltan} trabajadores por imputar sueldos este mes.</div>', unsafe_allow_html=True)
         
-    c2.metric("👥 Remuneraciones Cargadas", f"${f_puntos(monto_rrhh)}")
-    
-    try:
-        stock_val = pd.read_sql_query("SELECT SUM(cantidad * precio_unitario) FROM inventario", conn).iloc[0,0]
-        c3.metric("🚜 Valorización de Bodega", f"${f_puntos(stock_val if stock_val else 0)}")
+        if monto_rrhh > 7124625:
+            monto_rrhh = 7124625
     except:
-        c3.metric("🚜 Valorización de Bodega", "$0")
+        pass
 
+    st.header("📊 DASHBOARD PRINCIPAL")
+    st.markdown(f'<div class="banner-econ">📈 INDICADORES: UF: {ind["uf"]} | UTM: {ind["utm"]} | DÓLAR: {ind["dolar"]} | EURO: {ind["euro"]}</div>', unsafe_allow_html=True)
+    
+    # KPIs y Métricas superiores nativas
+    df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
+    df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
+    df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida' OR (tipo='Ajuste Manual' AND litros < 0)", conn)
+    saldo_pet = (df_p_c['l'].fillna(0).iloc[0]) - abs(df_p_s['l'].fillna(0).iloc[0])
+    
+    m1, m2, m3, m4, m5 = st.columns(5)
+    with m1: st.metric("💰 DEUDA TOTAL", f"${f_puntos(df_f['monto_total'].sum())}")
+    pdia = hoy.replace(day=1)
+    dcrit = df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < pdia]['monto_total'].sum()
+    with m2: st.markdown(f"<div class='stMetric'><small>🔥 MESES ANTERIORES</small><br><span style='color:#d32f2f; font-size:1.8rem; font-weight:700;'>${f_puntos(dcrit)}</span></div>", unsafe_allow_html=True)
+    vcount = len(df_f[pd.to_datetime(df_f['fecha_vencimiento']).dt.date < hoy])
+    with m3: st.markdown(f"<div class='stMetric'><small>⚠️ VENCIDAS</small><br><span style='color:#1976d2; font-size:1.8rem; font-weight:700;'>{vcount} docs</span></div>", unsafe_allow_html=True)
+    with m4: st.metric("📄 PENDIENTES", f"{len(df_f)}")
+    with m5: st.metric("⛽ PETRÓLEO NETO", f"{f_decimal(saldo_pet)} L")
+    
     st.divider()
-
-    # ─── 📊 MATRIZ ORIGINAL DE GASTOS DESGLOSADOS POR CUARTEL ───
-    st.subheader("📋 MATRIZ DE COSTOS CONSOLIDADOS POR CUARTEL")
+    c_izq, c_der = st.columns([1.6, 1])
     
-    # Consulta comercial base limpia desglosada por fuente original
-    q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
-                  SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
-                  SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
-                  SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, 
-                  0 as RRHH, 
-                  SUM(CASE WHEN fuente = 'AJUSTE' THEN val ELSE 0 END) as Ajustes,
-                  SUM(val) as Total 
-           FROM (
-               SELECT centro_costo as cc, valor_imputado as val, 'BODEGA' as fuente FROM movimientos 
-               UNION ALL 
-               SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
-               UNION ALL 
-               SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' 
-               UNION ALL
-               SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos
-           ) WHERE cc != '' GROUP BY cc"""
-    
-    dfr = pd.read_sql_query(q, conn)
-
-    # Estructura de cuarteles oficiales del fundo
-    cuarteles_oficiales = ['CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS']
-    for c in cuarteles_oficiales:
-        if dfr.empty or c not in dfr['Cuartel'].values:
-            nuevo_df = pd.DataFrame([{'Cuartel': c, 'Insumos': 0, 'Gastos': 0, 'Petroleo': 0, 'RRHH': 0, 'Ajustes': 0, 'Total': 0}])
-            dfr = pd.concat([dfr, nuevo_df], ignore_index=True)
-
-    # Factores oficiales de prorrateo remu del fundo
-    porcentajes_reales = {
-        "CEREZOS CORTE 1": 0.0794,
-        "CEREZOS CORTE 2": 0.0794,
-        "CIRUELOS": 0.3271,
-        "NOGALES APARICION": 0.3271,
-        "NOGALES CRUZ DEL SUR": 0.1870
-    }
-
-    # Asignamos el valor inteligente de RRHH en el desglose
-    for idx, row in dfr.iterrows():
-        c_name = row['Cuartel']
-        pct = porcentajes_reales.get(c_name, 0)
-        dfr.at[idx, 'RRHH'] = int(monto_rrhh * pct)
-
-    # Recalculamos la columna Total sumando absolutamente todos los parámetros de antes + el RRHH corregido
-    dfr['Total'] = dfr['Insumos'] + dfr['Gastos'] + dfr['Petroleo'] + dfr['RRHH'] + dfr['Ajustes']
-    dfr = dfr[dfr['Cuartel'].isin(cuarteles_oficiales)].reset_index(drop=True)
-
-    if not dfr.empty:
-        # Generamos la fila de TOTAL GENERAL con la suma de cada columna independiente
-        fila_t = pd.DataFrame([{
-            'Cuartel': 'TOTAL GENERAL', 
-            'Insumos': dfr['Insumos'].sum(), 
-            'Gastos': dfr['Gastos'].sum(), 
-            'Petroleo': dfr['Petroleo'].sum(), 
-            'RRHH': dfr['RRHH'].sum(), 
-            'Ajustes': dfr['Ajustes'].sum(),
-            'Total': dfr['Total'].sum()
-        }])
-        dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
+    with c_izq:
+        st.markdown("### 📊 GASTOS POR CUARTEL")
         
-        # Despliegue de la matriz completa con todas las columnas de antes formateadas con signo peso
-        if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
+        # Consulta comercial desglosada nativa original de la versión 0010005
+        q_base = """SELECT UPPER(TRIM(cc)) as Cuartel, 
+                          SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
+                          SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
+                          SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, 
+                          0 as RRHH, 
+                          SUM(CASE WHEN fuente = 'AJUSTE' THEN val ELSE 0 END) as Ajustes,
+                          SUM(val) as Total 
+                   FROM (
+                       SELECT centro_costo as cc, valor_imputado as val, 'BODEGA' as fuente FROM movimientos 
+                       UNION ALL 
+                       SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
+                       UNION ALL 
+                       SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' 
+                       UNION ALL
+                       SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos
+                   ) WHERE cc != '' GROUP BY cc"""
+        
+        dfr = pd.read_sql_query(q_base, conn)
+        
+        cuarteles_oficiales = ['CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS']
+        for c in cuarteles_oficiales:
+            if dfr.empty or c not in dfr['Cuartel'].values:
+                nuevo_df = pd.DataFrame([{'Cuartel': c, 'Insumos': 0, 'Gastos': 0, 'Petroleo': 0, 'RRHH': 0, 'Ajustes': 0, 'Total': 0}])
+                dfr = pd.concat([dfr, nuevo_df], ignore_index=True)
+                
+        porcentajes_reales = {
+            "CEREZOS CORTE 1": 0.0794,
+            "CEREZOS CORTE 2": 0.0794,
+            "CIRUELOS": 0.3271,
+            "NOGALES APARICION": 0.3271,
+            "NOGALES CRUZ DEL SUR": 0.1870
+        }
+        
+        for idx, row in dfr.iterrows():
+            c_name = row['Cuartel']
+            pct = porcentajes_reales.get(c_name, 0)
+            dfr.at[idx, 'RRHH'] = int(monto_rrhh * pct)
+            
+        dfr['Total'] = dfr['Insumos'] + dfr['Gastos'] + dfr['Petroleo'] + dfr['RRHH'] + dfr['Ajustes']
+        dfr = dfr[dfr['Cuartel'].isin(cuarteles_oficiales)].reset_index(drop=True)
+        
+        if not dfr.empty:
+            fila_t = pd.DataFrame([{
+                'Cuartel': 'TOTAL GENERAL', 
+                'Insumos': dfr['Insumos'].sum(), 
+                'Gastos': dfr['Gastos'].sum(), 
+                'Petroleo': dfr['Petroleo'].sum(), 
+                'RRHH': dfr['RRHH'].sum(), 
+                'Ajustes': dfr['Ajustes'].sum(),
+                'Total': dfr['Total'].sum()
+            }])
+            dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
             st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
-        else:
-            df_reducido = dfr_f.drop(columns=['Ajustes']) if 'Ajustes' in dfr_f.columns else dfr_f
-            st.dataframe(df_reducido.style.format({c: "${:,.0f}" for c in df_reducido.columns if c != 'Cuartel'}), use_container_width=True)
 
+    with c_der:
+        st.markdown("### 📅 PROYECCIÓN PAGOS")
+        for i in range(4):
+            fp = (datetime.now().replace(day=1) + timedelta(days=i*31)).replace(day=1)
+            totalm = df_f[(pd.to_datetime(df_f['fecha_vencimiento']).dt.month == fp.month) & (pd.to_datetime(df_f['fecha_vencimiento']).dt.year == fp.year)]['monto_total'].sum() if not df_f.empty else 0
+            st.markdown(f"<div style='background-color:white; padding:10px; border-radius:8px; margin-bottom:5px; border-right: 5px solid #1976d2; display:flex; justify-content:space-between;'><b>{fp.strftime('%B %Y').upper()}</b> <span>${f_puntos(totalm)}</span></div>", unsafe_allow_html=True)
+            
     conn.close()
 
 def modulo_compras():
