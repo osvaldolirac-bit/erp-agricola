@@ -421,6 +421,7 @@ def modulo_dashboard():
         q_sueldos = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}"
         monto_rrhh = pd.read_sql_query(q_sueldos, conn)['total_neto'].fillna(0).iloc[0]
         
+        # Si el mes actual (Junio) viene en cero, saltamos automáticamente al mes anterior (Mayo)
         if monto_rrhh == 0:
             mes_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).strftime('%m')
             anio_ant = (fecha_sistema.replace(day=1) - timedelta(days=1)).year
@@ -444,6 +445,7 @@ def modulo_dashboard():
     st.header("📊 DASHBOARD PRINCIPAL")
     st.markdown(f'<div class="banner-econ">📈 INDICADORES: UF: {ind["uf"]} | UTM: {ind["utm"]} | DÓLAR: {ind["dolar"]} | EURO: {ind["euro"]}</div>', unsafe_allow_html=True)
     
+    # KPIs y Métricas superiores nativas
     df_f = pd.read_sql_query("SELECT * FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn)
     df_p_c = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)", conn)
     df_p_s = pd.read_sql_query("SELECT SUM(litros) as l FROM petroleo WHERE tipo='Salida' OR (tipo='Ajuste Manual' AND litros < 0)", conn)
@@ -465,6 +467,7 @@ def modulo_dashboard():
     with c_izq:
         st.markdown("### 📊 GASTOS POR CUARTEL")
         
+        # Consulta comercial desglosada nativa original de la versión 0010005
         q_base = """SELECT UPPER(TRIM(cc)) as Cuartel, 
                           SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
                           SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
@@ -507,17 +510,19 @@ def modulo_dashboard():
         dfr = dfr[dfr['Cuartel'].isin(cuarteles_oficiales)].reset_index(drop=True)
         
         if not dfr.empty:
+            # 💡 FILTRADO QUIRÚRGICO DE COLUMNAS: Dejamos pasar solo Cuartel y Total para mantener el diseño original limpio 💡
+            df_resumido = dfr[['Cuartel', 'Total']].copy()
+            df_resumido.rename(columns={'Total': 'Total Acumulado'}, inplace=True)
+            
+            # Generamos la fila de TOTAL GENERAL abajo exclusiva para las dos columnas resumidas
             fila_t = pd.DataFrame([{
                 'Cuartel': 'TOTAL GENERAL', 
-                'Insumos': dfr['Insumos'].sum(), 
-                'Gastos': dfr['Gastos'].sum(), 
-                'Petroleo': dfr['Petroleo'].sum(), 
-                'RRHH': dfr['RRHH'].sum(), 
-                'Ajustes': dfr['Ajustes'].sum(),
-                'Total': dfr['Total'].sum()
+                'Total Acumulado': df_resumido['Total Acumulado'].sum()
             }])
-            dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
-            st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
+            dfr_f = pd.concat([df_resumido, fila_t], ignore_index=True)
+            
+            # Despliegue limpio de solo dos columnas en ancho completo
+            st.dataframe(dfr_f.style.format({'Total Acumulado': "${:,.0f}"}), use_container_width=True)
 
     with c_der:
         st.markdown("### 📅 PROYECCIÓN PAGOS")
