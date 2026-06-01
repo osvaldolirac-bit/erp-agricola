@@ -1099,6 +1099,7 @@ def modulo_libro_campo():
 def modulo_rrhh():
     st.header("👥 RECURSOS HUMANOS"); conn = conectar_db()
     t_r = st.tabs(["📋 PERSONAL", "💼 REMUNERACIONES", "💸 LIQUIDACIÓN MENSUAL", "📜 HISTORIAL PAGOS"])
+    
     with t_r[0]:
         with st.form("rh_p", clear_on_submit=True):
             n = st.text_input("Nombre Completo Trabajador", key="rhp_n")
@@ -1170,9 +1171,7 @@ def modulo_rrhh():
             if not df_prov.empty:
                 total_provision_real = df_prov['SALDO_PAGO'].sum()
                 st.markdown(f"<div style='background-color:#E3F2FD; border-left:6px solid #0D47A1; padding:15px; border-radius:8px; font-size:1.3rem; font-weight:bold; color:#0D47A1; margin-bottom:15px;'>💵 MONTO NETO TOTAL A PROVISIONAR ESTE MES: ${f_puntos(total_provision_real)}</div>", unsafe_allow_html=True)
-                
                 st.dataframe(df_prov.style.format({c: "${:,.0f}" for c in df_prov.columns if c != 'TRABAJADOR'}), use_container_width=True)
-                
                 st.download_button("📥 PDF PROVISIÓN LÍQUIDOS CORREGIDO", 
                                    generar_pdf_blob(df_prov, f"PROVISIÓN LÍQUIDOS CONSOLIDADA - MES VIGENTE", campo_suma_forzado="SALDO_PAGO"), 
                                    "provision_liquidos.pdf", key="rh_pdf_prov_f")
@@ -1200,18 +1199,37 @@ def modulo_rrhh():
                 liq = rhm_col.number_input("Líquido Mes Real a Pago ($)", 0.0, key="rhm_liq")
                 ley = rhm_col.number_input("Leyes Sociales / Previred ($)", 0.0, key="rhm_prev")
 
-                # ─── PARCHE DEFECTO DE ENTRADA: TOTAL DESACOPLADO DE COMPRAS ───
                 if st.form_submit_button("REGISTRAR LIQUIDACIÓN Y PRORRATEAR"):
                     if tm:
                         tot = liq + ley if not lic else 0
-                        # 1. Guardamos de forma sagrada en la tabla exclusiva de RRHH
+                        
+                        # 1. Guardamos de forma limpia en el historial interno de RRHH
                         conn.execute("INSERT INTO pagos_rrhh (trabajador_id, mes, anio, liquido, leyes_sociales, costo_empresa, tipo, fecha_registro) VALUES (?,?,?,?,?,?,?,?)", (tid_m, m, a, liq if not lic else 0, ley if not lic else 0, tot, 'Sueldo', str(hoy)))
                         
-                        # 🔥 MÁGICO DESACOPLE: Eliminamos de raíz el bucle 'for cc_interno, p in PRORRATEO_RRHH.items():'
-                        # que hacía los INSERT INTO facturas. Ahora la Mano de Obra nunca más tocará el historial de compras comerciales.
-
+                        # 2. 🔗 PUENTE AUTOMÁTICO DIRECTO HACIA EL MÓDULO DE COSTOS CON EL PRORRATEO REAL 🔗
+                        if tot > 0:
+                            # Diccionario oficial de prorrateo remu del fundo para distribuir el costo empresa total
+                            PRORRATEO_FUNDO = {
+                                "CEREZOS CORTE 1": 0.20,
+                                "CEREZOS CORTE 2": 0.20,
+                                "CIRUELOS": 0.40,
+                                "NOGALES APARICION": 0.10,
+                                "NOGALES CRUZ DEL SUR": 0.10
+                            }
+                            
+                            # Primero limpiamos cualquier prorrateo previo de este trabajador para el mismo mes/año para evitar duplicar si corrigen
+                            conn.execute("DELETE FROM costos_mano_obra WHERE trabajador_id=? AND mes=? AND anio=?", (tid_m, m, a))
+                            
+                            # Insertamos los pedacitos calculados directamente en la tabla puente de costos
+                            for cc_interno, porcentaje in PRORRATEO_FUNDO.items():
+                                parte_costo = tot * porcentaje
+                                if parte_costo > 0:
+                                    conn.execute("""INSERT INTO costos_mano_obra (trabajador_id, centro_costo, monto, mes, anio, fecha_registro) 
+                                                    VALUES (?,?,?,?,?,?)""", 
+                                                 (tid_m, cc_interno, parte_costo, m, a, str(hoy)))
+                        
                         conn.commit(); registrar_accion("RRHH PAGO NETO", tnom_m); guardar_en_drive()
-                        st.success(f"✅ Liquidación de {tnom_m} guardada exitosamente en el sistema de RRHH de forma limpia.")
+                        st.success(f"✅ Liquidación de {tnom_m} guardada en RRHH y distribuida en Costos correctamente.")
                         st.rerun()
                         
     with t_r[3]:
@@ -1229,7 +1247,6 @@ def modulo_rrhh():
         
         total_historico_periodo = df_h['TOTAL_PAGADO'].sum()
         st.markdown(f"<div style='background-color:#E8F5E9; border-left:6px solid #2E7D32; padding:15px; border-radius:8px; font-size:1.2rem; font-weight:bold; color:#1B5E20; margin-bottom:15px;'>📊 EGRESO LIQUIDADO TOTAL EN EL PERÍODO (LÍQUIDO + PREVIRED): ${f_puntos(total_historico_periodo)}</div>", unsafe_allow_html=True)
-        
         st.dataframe(df_h.style.format({"LIQUIDO_PAGADO": "${:,.0f}", "PREVIRED": "${:,.0f}", "TOTAL_PAGADO": "${:,.0f}"}), use_container_width=True)
         
         if not df_h.empty:
