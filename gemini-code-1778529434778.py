@@ -403,32 +403,26 @@ def modulo_dashboard():
     st.header("📊 DASHBOARD PRINCIPAL")
     conn = conectar_db()
     
-    # ─── ⏰ CAPTURA DE TIEMPO ESTÁNDAR (CON LAS RAÍCES DE TU ERP) ───
-    # Usamos datetime nativo sin funciones externas para no romper el menú ni otros módulos
+    # ─── ⏰ CAPTURA DE TIEMPO ESTÁNDAR NATIVA DE TU ERP ───
     try:
-        mes_act = datetime.now().strftime('%m')
-        anio_act = datetime.now().year
+        mes_act = hoy.strftime('%m')
+        anio_act = hoy.year
     except:
         mes_act = "06"
         anio_act = 2026
 
-    # Extractor retroactivo de remuneraciones para el cálculo en vivo
+    # Extractor retroactivo inteligente de RRHH (El mismo motor de Costos)
     try:
         q_sueldos = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}"
         monto_rrhh = pd.read_sql_query(q_sueldos, conn)['total_neto'].fillna(0).iloc[0]
         
         # Si el mes actual (Junio) viene en cero, saltamos automáticamente al mes anterior (Mayo)
         if monto_rrhh == 0:
-            # Cálculo seguro de mes anterior usando la variable 'hoy' global de tu sistema
-            try:
-                primer_dia = hoy.replace(day=1)
-                mes_anterior_obj = primer_dia - timedelta(days=1)
-                mes_ant = mes_anterior_obj.strftime('%m')
-                anio_ant = mes_anterior_obj.year
-            except:
-                mes_ant = "05"
-                anio_ant = 2026
-                
+            primer_dia = hoy.replace(day=1)
+            mes_anterior_obj = primer_dia - timedelta(days=1)
+            mes_ant = mes_anterior_obj.strftime('%m')
+            anio_ant = mes_anterior_obj.year
+            
             q_sueldos_ant = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_ant}' AND anio={anio_ant}"
             monto_rrhh = pd.read_sql_query(q_sueldos_ant, conn)['total_neto'].fillna(0).iloc[0]
 
@@ -437,10 +431,10 @@ def modulo_dashboard():
     except:
         monto_rrhh = 0
 
-    # ─── 📌 TARJETAS MÉTRICAS ORIGINALES ───
+    # ─── 📌 TARJETAS MÉTRICAS NATIVAS DE TU INTERFAZ ───
     c1, c2, c3 = st.columns(3)
     try:
-        facturas_pend = pd.read_sql_query("SELECT SUM(monto_total) FROM facturas WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P'", conn).iloc[0,0]
+        facturas_pend = pd.read_sql_query("SELECT SUM(monto_total) FROM facturas WHERE estado='Pending' OR estado='Pendiente'", conn).iloc[0,0]
         c1.metric("📌 Cuentas por Pagar (Facturas)", f"${f_puntos(facturas_pend if facturas_pend else 0)}")
     except:
         c1.metric("📌 Cuentas por Pagar (Facturas)", "$0")
@@ -455,24 +449,37 @@ def modulo_dashboard():
 
     st.divider()
 
-    # ─── 📊 TABLA DE GASTOS CONSOLIDADA POR CUARTEL ───
-    st.subheader("📋 GASTOS TOTALES POR CUARTEL")
+    # ─── 📊 MATRIZ ORIGINAL DE GASTOS DESGLOSADOS POR CUARTEL ───
+    st.subheader("📋 MATRIZ DE COSTOS CONSOLIDADOS POR CUARTEL")
     
-    q_base = """SELECT UPPER(TRIM(cc)) as Cuartel, 
-                      SUM(val) as TotalComercial
-               FROM (
-                   SELECT centro_costo as cc, valor_imputado as val FROM movimientos 
-                   UNION ALL 
-                   SELECT centro_costo as cc, monto_imputado as val FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
-                   UNION ALL 
-                   SELECT centro_costo as cc, valor_imputado as val FROM petroleo WHERE tipo = 'Salida' 
-                   UNION ALL
-                   SELECT centro_costo as cc, monto as val FROM ajustes_costos
-               ) WHERE cc != '' GROUP BY cc"""
+    # Consulta comercial base limpia desglosada por fuente original
+    q = """SELECT UPPER(TRIM(cc)) as Cuartel, 
+                  SUM(CASE WHEN fuente = 'BODEGA' THEN val ELSE 0 END) as Insumos, 
+                  SUM(CASE WHEN fuente = 'FACTURA' THEN val ELSE 0 END) as Gastos, 
+                  SUM(CASE WHEN fuente = 'PETROLEO' THEN val ELSE 0 END) as Petroleo, 
+                  0 as RRHH, 
+                  SUM(CASE WHEN fuente = 'AJUSTE' THEN val ELSE 0 END) as Ajustes,
+                  SUM(val) as Total 
+           FROM (
+               SELECT centro_costo as cc, valor_imputado as val, 'BODEGA' as fuente FROM movimientos 
+               UNION ALL 
+               SELECT centro_costo as cc, monto_imputado as val, 'FACTURA' as fuente FROM facturas WHERE nro_documento NOT LIKE '%_RRHH' AND nro_documento LIKE '%_P' 
+               UNION ALL 
+               SELECT centro_costo as cc, valor_imputado as val, 'PETROLEO' as fuente FROM petroleo WHERE tipo = 'Salida' 
+               UNION ALL
+               SELECT centro_costo as cc, monto as val, 'AJUSTE' as fuente FROM ajustes_costos
+           ) WHERE cc != '' GROUP BY cc"""
+    
+    dfr = pd.read_sql_query(q, conn)
 
-    dfr_dash = pd.read_sql_query(q_base, conn)
-
+    # Estructura de cuarteles oficiales del fundo
     cuarteles_oficiales = ['CEREZOS CORTE 1', 'CEREZOS CORTE 2', 'CIRUELOS', 'EL ESPINO', 'NOGALES APARICION', 'NOGALES CRUZ DEL SUR', 'OTROS']
+    for c in cuarteles_oficiales:
+        if dfr.empty or c not in dfr['Cuartel'].values:
+            nuevo_df = pd.DataFrame([{'Cuartel': c, 'Insumos': 0, 'Gastos': 0, 'Petroleo': 0, 'RRHH': 0, 'Ajustes': 0, 'Total': 0}])
+            dfr = pd.concat([dfr, nuevo_df], ignore_index=True)
+
+    # Factores oficiales de prorrateo remu del fundo
     porcentajes_reales = {
         "CEREZOS CORTE 1": 0.0794,
         "CEREZOS CORTE 2": 0.0794,
@@ -481,24 +488,35 @@ def modulo_dashboard():
         "NOGALES CRUZ DEL SUR": 0.1870
     }
 
-    filas_dash = []
-    for c in cuarteles_oficiales:
-        comercial = dfr_dash[dfr_dash['Cuartel'] == c]['TotalComercial'].sum() if not dfr_dash.empty else 0
-        parte_rrhh = int(monto_rrhh * porcentajes_reales.get(c, 0))
-        total_cuartel = comercial + parte_rrhh
-        filas_dash.append({'Cuartel': c, 'Total Acumulado': total_cuartel})
+    # Asignamos el valor inteligente de RRHH en el desglose
+    for idx, row in dfr.iterrows():
+        c_name = row['Cuartel']
+        pct = porcentajes_reales.get(c_name, 0)
+        dfr.at[idx, 'RRHH'] = int(monto_rrhh * pct)
 
-    df_dash_final = pd.DataFrame(filas_dash)
+    # Recalculamos la columna Total sumando absolutamente todos los parámetros de antes + el RRHH corregido
+    dfr['Total'] = dfr['Insumos'] + dfr['Gastos'] + dfr['Petroleo'] + dfr['RRHH'] + dfr['Ajustes']
+    dfr = dfr[dfr['Cuartel'].isin(cuarteles_oficiales)].reset_index(drop=True)
 
-    # Agregamos la fila de TOTAL GENERAL abajo
-    fila_total_general = pd.DataFrame([{
-        'Cuartel': 'TOTAL GENERAL',
-        'Total Acumulado': df_dash_final['Total Acumulado'].sum()
-    }])
-    df_tabla_despliegue = pd.concat([df_dash_final, fila_total_general], ignore_index=True)
-    
-    # Despliegue limpio en ancho completo para evitar descuadres visuales
-    st.dataframe(df_tabla_despliegue.style.format({"Total Acumulado": "${:,.0f}"}), use_container_width=True)
+    if not dfr.empty:
+        # Generamos la fila de TOTAL GENERAL con la suma de cada columna independiente
+        fila_t = pd.DataFrame([{
+            'Cuartel': 'TOTAL GENERAL', 
+            'Insumos': dfr['Insumos'].sum(), 
+            'Gastos': dfr['Gastos'].sum(), 
+            'Petroleo': dfr['Petroleo'].sum(), 
+            'RRHH': dfr['RRHH'].sum(), 
+            'Ajustes': dfr['Ajustes'].sum(),
+            'Total': dfr['Total'].sum()
+        }])
+        dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
+        
+        # Despliegue de la matriz completa con todas las columnas de antes formateadas con signo peso
+        if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
+            st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
+        else:
+            df_reducido = dfr_f.drop(columns=['Ajustes']) if 'Ajustes' in dfr_f.columns else dfr_f
+            st.dataframe(df_reducido.style.format({c: "${:,.0f}" for c in df_reducido.columns if c != 'Cuartel'}), use_container_width=True)
 
     conn.close()
 
