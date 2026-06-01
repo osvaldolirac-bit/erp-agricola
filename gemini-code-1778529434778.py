@@ -1258,8 +1258,11 @@ def modulo_rrhh():
 def modulo_costos():
     st.header("💰 COSTOS CONSOLIDADOS")
     conn = conectar_db()
-    mes_act = hora_chile().strftime('%m')
-    anio_act = hora_chile().year
+    
+    # Capturamos el mes y año del reloj del sistema
+    fecha_sistema = hora_chile()
+    mes_act = fecha_sistema.strftime('%m')
+    anio_act = fecha_sistema.year
     
     # ─── PURGA HISTÓRICA DE REGISTROS DE PRUEBA ───
     try:
@@ -1289,13 +1292,25 @@ def modulo_costos():
     
     dfr = pd.read_sql_query(q, conn)
 
-    # 🔥 FILTRO QUIRÚRGICO DE TIEMPO: Trae solo los sueldos del mes y año actuales de forma estricta 🔥
+    # 🔥 RESOLUCIÓN INTELIGENTE DE REMUNERACIONES (CERO BLINDAJE DE MES) 🔥
     try:
+        # 1. Buscamos primero si hay datos guardados para el mes en curso (ej: Junio '06')
         q_sueldos_mes = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_act}' AND anio={anio_act}"
         df_suma_rrhh = pd.read_sql_query(q_sueldos_mes, conn)
         monto_total_rrhh = df_suma_rrhh['total_neto'].fillna(0).iloc[0]
         
-        # Balance de control de daños: Si por pruebas el mes sigue inflado en la DB, forzamos el valor real real de la mañana
+        # 2. Si viene en $0 (porque están en los primeros días del mes pagando el anterior), buscamos el mes de Mayo ('05')
+        if monto_total_rrhh == 0:
+            primer_dia_mes = fecha_sistema.replace(day=1)
+            mes_anterior_obj = primer_dia_mes - timedelta(days=1)
+            mes_ant = mes_anterior_obj.strftime('%m')
+            anio_ant = mes_anterior_obj.year
+            
+            q_sueldos_ant = f"SELECT SUM(liquido + leyes_sociales) as total_neto FROM pagos_rrhh WHERE mes='{mes_ant}' AND anio={anio_ant}"
+            df_suma_ant = pd.read_sql_query(q_sueldos_ant, conn)
+            monto_total_rrhh = df_suma_ant['total_neto'].fillna(0).iloc[0]
+
+        # Balance de control de daños histórico heredado
         if monto_total_rrhh > 7124625:
             monto_total_rrhh = 7124625
     except:
@@ -1307,6 +1322,7 @@ def modulo_costos():
             nuevo_df = pd.DataFrame([{'Cuartel': c, 'Insumos': 0, 'Gastos': 0, 'Petroleo': 0, 'RRHH': 0, 'Ajustes': 0, 'Total': 0}])
             dfr = pd.concat([dfr, nuevo_df], ignore_index=True)
 
+    # Distribución en el aire conforme a tus prorrateos reales predefinidos del fundo
     porcentajes_reales = {
         "CEREZOS CORTE 1": 0.0794,
         "CEREZOS CORTE 2": 0.0794,
@@ -1335,6 +1351,7 @@ def modulo_costos():
         }])
         dfr_f = pd.concat([dfr, fila_t], ignore_index=True)
         
+        # Mostrar según perfil
         if st.session_state['email'] == 'osvaldolira@laconcepcion.cl':
             st.dataframe(dfr_f.style.format({c: "${:,.0f}" for c in dfr_f.columns if c != 'Cuartel'}), use_container_width=True)
         else:
