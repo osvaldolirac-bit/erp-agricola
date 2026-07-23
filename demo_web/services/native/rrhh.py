@@ -46,13 +46,21 @@ def _redirect_rrhh(sec: str, **extra) -> redirect_module:
 
 
 def migrar_personal_salida_petroleo(conn) -> None:
-    """Columna de autorización para el formulario QR de salida de petróleo."""
+    """Columna + extras (dueños) para el formulario QR de salida de petróleo."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(personal)").fetchall()}
     if "autorizado_salida_petroleo" not in cols:
         conn.execute(
             "ALTER TABLE personal ADD COLUMN autorizado_salida_petroleo INTEGER DEFAULT 0"
         )
-        conn.commit()
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS autorizados_salida_petroleo_extra (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               nombre TEXT NOT NULL UNIQUE,
+               activo INTEGER DEFAULT 1,
+               fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+           )"""
+    )
+    conn.commit()
 
 
 def _personal(demo, conn) -> dict:
@@ -76,6 +84,20 @@ def _personal(demo, conn) -> dict:
                 "autorizado_salida_petroleo": bool(int(r["autorizado_salida_petroleo"] or 0)),
             }
         )
+    extras = pd.read_sql_query(
+        """SELECT id, nombre, COALESCE(activo, 1) AS activo
+           FROM autorizados_salida_petroleo_extra
+           ORDER BY nombre""",
+        conn,
+    )
+    extra_rows = [
+        {
+            "id": int(r["id"]),
+            "nombre": r["nombre"],
+            "activo": bool(int(r["activo"] or 0)),
+        }
+        for _, r in extras.iterrows()
+    ]
     edit_id = request.args.get("edit_id")
     edit_item = next((x for x in rows if str(x["id"]) == edit_id), rows[0] if rows else None)
     activos = sum(1 for x in rows if str(x["estado"]).lower() == "activo")
@@ -84,6 +106,7 @@ def _personal(demo, conn) -> dict:
         "n_personal": len(rows),
         "n_activos": activos,
         "personal_edit": edit_item,
+        "auth_extra_rows": extra_rows,
         "hoy": demo.hoy.isoformat(),
     }
 
@@ -573,6 +596,48 @@ def _post_eliminar_personal(demo, conn) -> dict:
     return {"ok": True, "msg": "Trabajador eliminado."}
 
 
+def _post_crear_auth_extra(demo, conn) -> dict:
+    migrar_personal_salida_petroleo(conn)
+    nom = (request.form.get("nombre") or "").strip()
+    if not nom:
+        return {"ok": False, "msg": "Ingrese el nombre del autorizado."}
+    existe = conn.execute(
+        "SELECT id FROM autorizados_salida_petroleo_extra WHERE lower(nombre)=lower(?)",
+        (nom,),
+    ).fetchone()
+    if existe:
+        conn.execute(
+            "UPDATE autorizados_salida_petroleo_extra SET activo=1, nombre=? WHERE id=?",
+            (nom, int(existe[0])),
+        )
+        conn.commit()
+        demo.registrar_accion("AUTH PETROLEO EXTRA", f"reactivado {nom}")
+        return {"ok": True, "msg": f"{nom} ya existía; quedó activo para el QR."}
+    conn.execute(
+        "INSERT INTO autorizados_salida_petroleo_extra (nombre, activo) VALUES (?, 1)",
+        (nom,),
+    )
+    conn.commit()
+    demo.registrar_accion("AUTH PETROLEO EXTRA", nom)
+    return {"ok": True, "msg": f"{nom} autorizado para salida petróleo (sin ficha de trabajador)."}
+
+
+def _post_eliminar_auth_extra(demo, conn) -> dict:
+    migrar_personal_salida_petroleo(conn)
+    if not _check_master(demo, request.form.get("clave_maestra")):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+    eid = int(request.form.get("extra_id") or 0)
+    row = conn.execute(
+        "SELECT nombre FROM autorizados_salida_petroleo_extra WHERE id=?", (eid,)
+    ).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Autorizado no encontrado."}
+    conn.execute("DELETE FROM autorizados_salida_petroleo_extra WHERE id=?", (eid,))
+    conn.commit()
+    demo.registrar_accion("DELETE AUTH PETROLEO EXTRA", row[0])
+    return {"ok": True, "msg": f"{row[0]} quitado del formulario QR."}
+
+
 def _post_crear_contratista(demo, conn) -> dict:
     from erp_contratistas import excluir_contratista_de_maestra_proveedores
     from erp_rut import validar_rut_campo
@@ -809,6 +874,8 @@ def view(user_email: str, user_rol: str):
                 "crear_personal": _post_crear_personal,
                 "editar_personal": _post_editar_personal,
                 "eliminar_personal": _post_eliminar_personal,
+                "crear_auth_extra": _post_crear_auth_extra,
+                "eliminar_auth_extra": _post_eliminar_auth_extra,
                 "crear_contratista": _post_crear_contratista,
                 "editar_contratista": _post_editar_contratista,
                 "registrar_servicio": _post_registrar_servicio,

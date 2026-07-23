@@ -107,21 +107,40 @@ def _migrar_personal_autorizado(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE personal ADD COLUMN autorizado_salida_petroleo INTEGER DEFAULT 0"
         )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS autorizados_salida_petroleo_extra (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               nombre TEXT NOT NULL UNIQUE,
+               activo INTEGER DEFAULT 1,
+               fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+           )"""
+    )
 
 
 def responsables_autorizados_para_formulario() -> list[dict[str, str]]:
-    """Trabajadores activos marcados en RRHH → Personal para el QR de salida."""
+    """Trabajadores autorizados + dueños/extras activos para el QR de salida."""
     conn = _conn()
     try:
         _migrar_personal_autorizado(conn)
         conn.commit()
+        out: list[dict[str, str]] = []
         rows = conn.execute(
             """SELECT id, nombre FROM personal
                WHERE COALESCE(estado, 'Activo') = 'Activo'
                  AND COALESCE(autorizado_salida_petroleo, 0) = 1
                ORDER BY nombre"""
         ).fetchall()
-        return [{"id": str(r[0]), "nombre": str(r[1])} for r in rows]
+        for rid, nombre in rows:
+            out.append({"id": f"p-{rid}", "nombre": str(nombre)})
+        extras = conn.execute(
+            """SELECT id, nombre FROM autorizados_salida_petroleo_extra
+               WHERE COALESCE(activo, 1) = 1
+               ORDER BY nombre"""
+        ).fetchall()
+        for eid, nombre in extras:
+            out.append({"id": f"e-{eid}", "nombre": str(nombre)})
+        out.sort(key=lambda x: x["nombre"].casefold())
+        return out
     finally:
         conn.close()
 

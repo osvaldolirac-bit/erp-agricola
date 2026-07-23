@@ -100,6 +100,43 @@
     {% if not personal_rows %}<p class="text-muted p-3 mb-0">Sin personal registrado.</p>{% endif %}
   </div>
 
+  <div class="panel-card mt-3">
+    <h2 class="h6 mb-1">Autorizados adicionales (dueños / sin ficha)</h2>
+    <p class="small text-muted mb-3">Personas que pueden cargar petróleo en el QR del estanque sin ser trabajadores de RRHH.</p>
+    <form method="post" class="row g-2 mb-3">
+      <input type="hidden" name="action" value="crear_auth_extra">
+      <input type="hidden" name="sec" value="personal">
+      <div class="col-md-6"><input type="text" name="nombre" class="form-control form-control-sm" placeholder="Nombre (ej. dueño)" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Agregar al QR</button></div>
+    </form>
+    {% if auth_extra_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100 mb-0">
+        <thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          {% for row in auth_extra_rows %}
+          <tr>
+            <td>{{ row.nombre }}</td>
+            <td>{% if row.activo %}<span class="badge bg-success">En QR</span>{% else %}<span class="text-muted">Inactivo</span>{% endif %}</td>
+            <td class="text-end">
+              <form method="post" class="d-inline-flex gap-2 align-items-center justify-content-end">
+                <input type="hidden" name="action" value="eliminar_auth_extra">
+                <input type="hidden" name="sec" value="personal">
+                <input type="hidden" name="extra_id" value="{{ row.id }}">
+                <input type="password" name="clave_maestra" class="form-control form-control-sm" style="max-width:10rem" placeholder="Clave maestra" required>
+                <button type="submit" class="btn btn-outline-danger btn-sm">Quitar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Aún no hay autorizados adicionales.</p>
+    {% endif %}
+  </div>
+
   {% elif sec_activa == 'contratistas' %}
   <ul class="nav nav-pills flex-wrap gap-1 mb-3">
     {% for key, label in contratistas_sec %}

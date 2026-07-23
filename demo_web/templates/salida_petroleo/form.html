@@ -97,7 +97,7 @@
       {% endif %}
 
       <label class="form-label d-block mt-3">Responsable</label>
-      <p class="small text-muted mb-2">Solo trabajadores autorizados en RRHH → Personal.</p>
+      <p class="small text-muted mb-2">Trabajadores autorizados y dueños cargados en RRHH → Personal.</p>
       {% if responsables %}
       <div class="salida-petroleo-cuarteles mb-1" id="salidaPetroleoResponsable">
         {% for r in responsables %}
@@ -110,7 +110,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <p class="small text-danger">No hay trabajadores autorizados. Márquelos en RRHH → Personal (checkbox salida petróleo QR).</p>
+      <p class="small text-danger">No hay responsables autorizados. En RRHH → Personal marque trabajadores o agregue dueños (sin ficha).</p>
       {% endif %}
 
       <button type="submit" id="btnRegistrarSalida" class="btn btn-success btn-lg w-100 salida-petroleo-submit" disabled>

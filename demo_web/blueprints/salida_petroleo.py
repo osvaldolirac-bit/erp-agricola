@@ -71,7 +71,7 @@ def formulario():
             elif not maquinaria:
                 error = "Seleccione un equipo de la lista."
             elif not responsables_opts:
-                error = "No hay trabajadores autorizados. Márquelos en RRHH → Personal."
+                error = "No hay responsables autorizados. En RRHH → Personal marque trabajadores o agregue dueños."
             elif not responsable:
                 error = "Seleccione un responsable autorizado."
             else:
