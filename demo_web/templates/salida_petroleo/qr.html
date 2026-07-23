@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}QR bitácora petróleo — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 salida-petroleo-qr-page">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-0">QR — Bitácora salida petróleo</h1>
+      <p class="text-muted mb-0">Imprima y pegue junto al estanque. Acceso sin login ERP.</p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ petroleo_url }}">← Petróleo ERP</a>
+  </div>
+
+  <div class="row g-3 justify-content-center">
+    <div class="col-md-5">
+      <div class="panel-card text-center">
+        <img src="{{ qr_src }}" alt="Código QR bitácora petróleo" class="salida-petroleo-qr-img mb-3" width="320" height="320">
+        <p class="small text-muted mb-2">Escaneo abre formulario móvil (litros, maquinaria, responsable).</p>
+        <label class="form-label small fw-bold">Enlace directo</label>
+        <input type="text" class="form-control form-control-sm font-monospace" value="{{ enlace }}" readonly onclick="this.select()">
+      </div>
+    </div>
+    <div class="col-md-5">
+      <div class="alert alert-info small">
+        <ul class="mb-0 ps-3">
+          <li>No descuenta stock del estanque.</li>
+          <li>Cada registro envía correo al administrador.</li>
+          <li>Impute después en <strong>Petróleo → Salida</strong>.</li>
+          <li>Sin historial visible en campo (solo registro + correo).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
