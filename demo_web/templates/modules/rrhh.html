@@ -395,7 +395,7 @@
           <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
           <div class="col-md-6">
             <label class="form-label small">Monto préstamo ($)</label>
-            <input type="number" name="monto_prestamo" class="form-control form-control-sm" min="1" step="1000" required>
+            <input type="number" name="monto_prestamo" class="form-control form-control-sm" min="1" step="1" required>
           </div>
           <div class="col-md-6">
             <label class="form-label small">Cuotas pactadas</label>
@@ -423,7 +423,7 @@
           <div class="col-md-6">
             <label class="form-label small">Monto préstamo total ($)</label>
             <input type="number" name="monto_prestamo" class="form-control form-control-sm"
-                   value="{{ ficha_monto_prestamo|int }}" min="0" step="1000">
+                   value="{{ ficha_monto_prestamo|int }}" min="0" step="1">
           </div>
           <div class="col-md-6">
             <label class="form-label small">Cuotas pactadas</label>

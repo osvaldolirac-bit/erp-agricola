@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 
 import pandas as pd
@@ -819,11 +820,24 @@ def _post_guardar_ficha(demo, conn) -> dict:
     return {"ok": True, "msg": f"Sueldo/suple guardados en planilla {mes}/{anio}."}
 
 
+def _parse_monto_form(raw: str | None) -> float:
+    """Acepta enteros, decimales con coma, o miles con punto (100.000)."""
+    s = (raw or "").strip().replace(" ", "").replace("$", "")
+    if not s:
+        return 0.0
+    # Miles chilenos: 100.000 o 1.250.000
+    if re.fullmatch(r"\d{1,3}(\.\d{3})+", s):
+        s = s.replace(".", "")
+    else:
+        s = s.replace(",", ".")
+    return float(s)
+
+
 def _post_registrar_prestamo(demo, conn) -> dict:
     tid = int(request.form.get("trabajador_id") or 0)
     try:
-        monto = float(request.form.get("monto_prestamo") or 0)
-        cuotas = int(request.form.get("cuotas") or 0)
+        monto = _parse_monto_form(request.form.get("monto_prestamo"))
+        cuotas = int(float(str(request.form.get("cuotas") or "0").replace(",", ".")))
     except ValueError:
         return {"ok": False, "msg": "Valores inválidos."}
     if monto <= 0 or cuotas <= 0:
@@ -859,8 +873,8 @@ def _post_editar_prestamo(demo, conn) -> dict:
     if tid <= 0:
         return {"ok": False, "msg": "Trabajador inválido."}
     try:
-        monto = float(request.form.get("monto_prestamo") or 0)
-        cuotas = int(request.form.get("cuotas") or 0)
+        monto = _parse_monto_form(request.form.get("monto_prestamo"))
+        cuotas = int(float(str(request.form.get("cuotas") or "0").replace(",", ".")))
     except ValueError:
         return {"ok": False, "msg": "Valores inválidos."}
     if monto < 0 or cuotas < 0:
