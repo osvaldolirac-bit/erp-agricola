@@ -334,6 +334,16 @@ def _autorizar_bitacora(demo, user_email: str) -> dict:
     return result
 
 
+def _rechazar_bitacora(demo, user_email: str) -> dict:
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Solo un administrador puede rechazar salidas de bitácora."}
+    from demo_web.services.salida_petroleo import rechazar_salida
+
+    codigo = (request.form.get("codigo") or "").strip()
+    motivo = (request.form.get("motivo") or "").strip()
+    return rechazar_salida(codigo, user_email, motivo=motivo)
+
+
 def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
@@ -352,6 +362,10 @@ def view(user_email: str, user_rol: str):
                 return redirect_module("petroleo", sec="salida")
             if action == "autorizar_bitacora":
                 result = _autorizar_bitacora(demo, user_email)
+                flash(result["msg"], "success" if result["ok"] else "danger")
+                return redirect_module("petroleo", sec="bitacora")
+            if action == "rechazar_bitacora":
+                result = _rechazar_bitacora(demo, user_email)
                 flash(result["msg"], "success" if result["ok"] else "danger")
                 return redirect_module("petroleo", sec="bitacora")
             if action == "planilla_pdf":

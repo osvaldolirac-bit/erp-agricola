@@ -27,6 +27,9 @@ from demo_web.services.salida_petroleo import (
 
 bp = Blueprint("salida_petroleo", __name__)
 
+# Nombre que Safari/autofill no suelen completar (evitar falso "Registrado").
+_HONEYPOT_FIELD = "sp_hp_x9f2"
+
 
 def _token_request() -> str | None:
     return (request.args.get("t") or request.form.get("t") or "").strip() or None
@@ -73,41 +76,45 @@ def formulario():
     cookie_op_id: str | None = None
 
     if request.method == "POST":
-        if (request.form.get("website") or "").strip():
-            ok = True
+        hp = (request.form.get(_HONEYPOT_FIELD) or "").strip()
+        try:
+            litros = float((request.form.get("litros") or "0").replace(",", "."))
+        except ValueError:
+            litros = 0.0
+        maquinaria_cod = (request.form.get("maquinaria") or "").strip()
+        maquinaria = maquinaria_map.get(maquinaria_cod, "")
+        responsable_id = (request.form.get("responsable") or "").strip()
+        op_form = resolver_responsable_por_id(responsable_id, responsables_opts)
+        operador_post = operador or op_form
+        responsable = (operador_post or {}).get("nombre", "")
+        sel = [c for c in request.form.getlist("cuarteles") if c in cuarteles_opts]
+        confirmar = request.form.get("confirmar_duplicado") == "1"
+        form_litros = request.form.get("litros") or ""
+        form_maquinaria = maquinaria_cod
+        form_responsable = (operador_post or {}).get("id", responsable_id)
+        form_cuarteles_sel = sel
+
+        # Honeypot: solo bloquear bots claros. Si hay payload válido, ignorar
+        # (Safari a veces autocompleta campos ocultos y antes daba "Registrado" falso).
+        bot_claro = bool(hp) and litros <= 0 and not sel and not maquinaria
+        if bot_claro:
+            ok = False
+            error = None
+        elif litros <= 0:
+            error = "Indique litros mayores a cero."
+        elif not sel:
+            error = "Seleccione al menos un cuartel."
+        elif not maquinaria:
+            error = "Seleccione un equipo de la lista."
+        elif not responsables_opts:
+            error = (
+                "No hay responsables autorizados. En RRHH → Personal "
+                "marque trabajadores o agregue dueños."
+            )
+        elif not responsable:
+            error = "Indique quién está operando (primera vez en este teléfono)."
         else:
             try:
-                litros = float((request.form.get("litros") or "0").replace(",", "."))
-            except ValueError:
-                litros = 0.0
-            maquinaria_cod = (request.form.get("maquinaria") or "").strip()
-            maquinaria = maquinaria_map.get(maquinaria_cod, "")
-            responsable_id = (request.form.get("responsable") or "").strip()
-            # Preferir operador ya detectado (cookie/QR); el form solo si aún no hay.
-            op_form = resolver_responsable_por_id(responsable_id, responsables_opts)
-            operador_post = operador or op_form
-            responsable = (operador_post or {}).get("nombre", "")
-            sel = [c for c in request.form.getlist("cuarteles") if c in cuarteles_opts]
-            confirmar = request.form.get("confirmar_duplicado") == "1"
-            form_litros = request.form.get("litros") or ""
-            form_maquinaria = maquinaria_cod
-            form_responsable = (operador_post or {}).get("id", responsable_id)
-            form_cuarteles_sel = sel
-
-            if litros <= 0:
-                error = "Indique litros mayores a cero."
-            elif not sel:
-                error = "Seleccione al menos un cuartel."
-            elif not maquinaria:
-                error = "Seleccione un equipo de la lista."
-            elif not responsables_opts:
-                error = (
-                    "No hay responsables autorizados. En RRHH → Personal "
-                    "marque trabajadores o agregue dueños."
-                )
-            elif not responsable:
-                error = "Indique quién está operando (primera vez en este teléfono)."
-            else:
                 res = registrar_salida(
                     litros,
                     sel,
@@ -116,19 +123,25 @@ def formulario():
                     maquinaria_codigo=maquinaria_cod,
                     confirmar_duplicado=confirmar,
                 )
-                if res.get("duplicado"):
-                    aviso_duplicado = res.get("msg")
-                    codigo_duplicado = res.get("codigo_duplicado")
-                elif res.get("ok"):
-                    ok = True
-                    mail_ok = res.get("mail_ok")
-                    codigo = res.get("codigo")
-                    cookie_op_id = (operador_post or {}).get("id")
-                    operador = operador_post
+            except Exception as exc:
+                error = f"No se pudo guardar la bitácora: {exc}"
+                res = {"ok": False}
+            if res.get("duplicado"):
+                aviso_duplicado = res.get("msg")
+                codigo_duplicado = res.get("codigo_duplicado")
+            elif res.get("ok"):
+                ok = True
+                mail_ok = res.get("mail_ok")
+                codigo = res.get("codigo")
+                cookie_op_id = (operador_post or {}).get("id")
+                operador = operador_post
+            elif not error:
+                error = res.get("msg") or "No se pudo registrar la salida. Intente de nuevo."
 
     html = render_template(
         "salida_petroleo/form.html",
         token=tok,
+        honeypot_field=_HONEYPOT_FIELD,
         cuarteles=cuarteles_opts,
         maquinaria=maquinaria_opts,
         responsables=responsables_opts,
@@ -149,7 +162,6 @@ def formulario():
     if cookie_op_id:
         aplicar_cookie_operador(resp, cookie_op_id)
     elif op_query:
-        # QR personal: fijar cookie al abrir el enlace.
         aplicar_cookie_operador(resp, op_query["id"])
     return resp
 

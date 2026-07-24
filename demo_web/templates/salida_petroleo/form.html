@@ -58,7 +58,10 @@
     <form method="post" class="salida-petroleo-form" autocomplete="off" id="formSalidaPetroleo">
       <input type="hidden" name="t" value="{{ token }}">
       <div class="salida-petroleo-honeypot" aria-hidden="true">
-        <input type="text" name="website" tabindex="-1" autocomplete="off">
+        {# Nombre no autofillable: el viejo "website" en Safari daba falso "Registrado" sin guardar #}
+        <label for="{{ honeypot_field }}">No completar</label>
+        <input id="{{ honeypot_field }}" type="text" name="{{ honeypot_field }}"
+               value="" tabindex="-1" autocomplete="off" inputmode="none">
       </div>
 
       <label class="form-label" for="litros">Litros</label>

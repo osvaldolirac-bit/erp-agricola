@@ -256,6 +256,18 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
             conn.execute(
                 "ALTER TABLE petroleo_bitacora ADD COLUMN autorizado_en TEXT DEFAULT ''"
             )
+        if "rechazado_por" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN rechazado_por TEXT DEFAULT ''"
+            )
+        if "rechazado_en" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN rechazado_en TEXT DEFAULT ''"
+            )
+        if "rechazo_motivo" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN rechazo_motivo TEXT DEFAULT ''"
+            )
         # Enlace bitácora → filas reales de petroleo (historial / costos)
         pcols = {r[1] for r in conn.execute("PRAGMA table_info(petroleo)").fetchall()}
         if "bitacora_codigo" not in pcols:
@@ -362,6 +374,7 @@ def buscar_duplicado_reciente(
              AND UPPER(TRIM(maquinaria)) = ?
              AND UPPER(TRIM(responsable)) = ?
              AND codigo IS NOT NULL AND TRIM(codigo) != ''
+             AND LOWER(COALESCE(estado, 'pendiente')) != 'rechazado'
            ORDER BY id DESC LIMIT 1""",
         (
             desde,
@@ -585,8 +598,13 @@ def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
             responsable,
             estado,
         ) = row
-        if str(estado).lower() == "autorizado":
+        est = str(estado or "pendiente").lower()
+        if est == "autorizado":
             return {"ok": False, "msg": f"{codigo} ya está autorizado."}
+        if est == "rechazado":
+            return {"ok": False, "msg": f"{codigo} está rechazado; no se puede autorizar."}
+        if est != "pendiente":
+            return {"ok": False, "msg": f"{codigo} no está pendiente (estado: {estado})."}
 
         litros = float(litros or 0)
         if litros <= 0:
@@ -692,6 +710,72 @@ def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
     }
 
 
+def rechazar_salida(codigo: str, usuario: str, motivo: str = "") -> dict[str, Any]:
+    """Marca bitácora pendiente como rechazada; conserva el código correlativo."""
+    demo = get_demo_module()
+    codigo = (codigo or "").strip()
+    usuario = (usuario or "").strip() or "admin"
+    motivo = (motivo or "").strip()[:200]
+    if not codigo:
+        return {"ok": False, "msg": "Código inválido."}
+
+    conn = _conn()
+    try:
+        migrar_tabla(conn)
+        # Columnas de rechazo (idempotente)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(petroleo_bitacora)").fetchall()}
+        if "rechazado_por" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN rechazado_por TEXT DEFAULT ''"
+            )
+        if "rechazado_en" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN rechazado_en TEXT DEFAULT ''"
+            )
+        if "rechazo_motivo" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN rechazo_motivo TEXT DEFAULT ''"
+            )
+
+        row = conn.execute(
+            """SELECT COALESCE(estado, 'pendiente') FROM petroleo_bitacora WHERE codigo=?""",
+            (codigo,),
+        ).fetchone()
+        if not row:
+            return {"ok": False, "msg": f"No se encontró {codigo}."}
+        est = str(row[0] or "pendiente").lower()
+        if est == "autorizado":
+            return {"ok": False, "msg": f"{codigo} ya está autorizado; no se puede rechazar."}
+        if est == "rechazado":
+            return {"ok": False, "msg": f"{codigo} ya está rechazado."}
+        if est != "pendiente":
+            return {"ok": False, "msg": f"{codigo} no está pendiente (estado: {row[0]})."}
+
+        fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            """UPDATE petroleo_bitacora
+               SET estado='rechazado', rechazado_por=?, rechazado_en=?, rechazo_motivo=?
+               WHERE codigo=?""",
+            (usuario, fh, motivo, codigo),
+        )
+        det = f"{codigo} rechazado"
+        if motivo:
+            det += f" | {motivo}"
+        conn.execute(
+            "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
+            (usuario, "PETROLEO RECHAZAR", det, fh),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "msg": f"{codigo} rechazado. El código se conserva en la bitácora (sin imputar al estanque).",
+        "codigo": codigo,
+    }
+
+
 def _imputacion_por_codigo(conn, codigo: str) -> list[dict[str, Any]]:
     """Filas reales de petroleo generadas al autorizar (CC / litros / monto)."""
     demo = get_demo_module()
@@ -721,17 +805,44 @@ def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
     """Últimos registros de bitácora campo (ERP)."""
     demo = get_demo_module()
     migrar_tabla(conn)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(petroleo_bitacora)").fetchall()}
+    extra_sel = ""
+    if "rechazado_por" in cols:
+        extra_sel += ", COALESCE(rechazado_por, '')"
+    else:
+        extra_sel += ", ''"
+    if "rechazado_en" in cols:
+        extra_sel += ", COALESCE(rechazado_en, '')"
+    else:
+        extra_sel += ", ''"
+    if "rechazo_motivo" in cols:
+        extra_sel += ", COALESCE(rechazo_motivo, '')"
+    else:
+        extra_sel += ", ''"
     rows = conn.execute(
-        """SELECT codigo, fecha_hora, litros, huerto, maquinaria, responsable,
+        f"""SELECT codigo, fecha_hora, litros, huerto, maquinaria, responsable,
                   COALESCE(estado, 'pendiente'), COALESCE(autorizado_por, ''),
-                  COALESCE(autorizado_en, '')
+                  COALESCE(autorizado_en, ''){extra_sel}
            FROM petroleo_bitacora
            ORDER BY id DESC
            LIMIT ?""",
         (limite,),
     ).fetchall()
     out = []
-    for codigo, fh, litros, huerto, maquinaria, responsable, estado, auth_por, auth_en in rows:
+    for (
+        codigo,
+        fh,
+        litros,
+        huerto,
+        maquinaria,
+        responsable,
+        estado,
+        auth_por,
+        auth_en,
+        rej_por,
+        rej_en,
+        rej_mot,
+    ) in rows:
         est = (estado or "pendiente").lower()
         imputaciones = [] if est != "autorizado" else _imputacion_por_codigo(conn, codigo or "")
         cc_imputados = ", ".join(
@@ -746,9 +857,14 @@ def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
                 "maquinaria": maquinaria,
                 "responsable": responsable,
                 "estado": est,
-                "pendiente": est != "autorizado",
+                "pendiente": est == "pendiente",
+                "rechazado": est == "rechazado",
+                "autorizado": est == "autorizado",
                 "autorizado_por": auth_por,
                 "autorizado_en": auth_en,
+                "rechazado_por": rej_por,
+                "rechazado_en": rej_en,
+                "rechazo_motivo": rej_mot,
                 "imputaciones": imputaciones,
                 "cc_imputados": cc_imputados,
                 "costos_cc": (imputaciones[0]["cc"] if len(imputaciones) == 1 else ""),
@@ -761,7 +877,7 @@ def contar_pendientes(conn) -> int:
     migrar_tabla(conn)
     row = conn.execute(
         """SELECT COUNT(*) FROM petroleo_bitacora
-           WHERE COALESCE(estado, 'pendiente') != 'autorizado'"""
+           WHERE LOWER(COALESCE(estado, 'pendiente')) = 'pendiente'"""
     ).fetchone()
     return int(row[0] or 0) if row else 0
 

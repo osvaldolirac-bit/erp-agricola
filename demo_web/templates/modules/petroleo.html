@@ -150,7 +150,7 @@
         </thead>
         <tbody>
           {% for r in bitacora_registros %}
-          <tr class="{% if r.pendiente %}table-warning{% endif %}">
+          <tr class="{% if r.pendiente %}table-warning{% elif r.rechazado %}table-secondary{% endif %}">
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha_hora }}</td>
             <td>{{ r.litros }}</td>
@@ -160,6 +160,10 @@
             <td>
               {% if r.pendiente %}
               <span class="badge bg-warning text-dark">Pendiente</span>
+              {% elif r.rechazado %}
+              <span class="badge bg-secondary">Rechazado</span>
+              {% if r.rechazado_en %}<div class="small text-muted">{{ r.rechazado_en }}</div>{% endif %}
+              {% if r.rechazo_motivo %}<div class="small">{{ r.rechazo_motivo }}</div>{% endif %}
               {% else %}
               <span class="badge bg-success">Autorizado</span>
               {% if r.autorizado_en %}<div class="small text-muted">{{ r.autorizado_en }}</div>{% endif %}
@@ -176,8 +180,16 @@
                 <input type="hidden" name="codigo" value="{{ r.codigo }}">
                 <button type="submit" class="btn btn-sm btn-success">AUTORIZAR</button>
               </form>
+              <form method="post" class="d-inline ms-1" onsubmit="return confirm('¿Rechazar {{ r.codigo }}? Quedará en bitácora como rechazado (se conserva el código).');">
+                <input type="hidden" name="action" value="rechazar_bitacora">
+                <input type="hidden" name="sec" value="bitacora">
+                <input type="hidden" name="codigo" value="{{ r.codigo }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">RECHAZAR</button>
+              </form>
               {% elif r.pendiente %}
               <span class="small text-muted">Solo admin</span>
+              {% elif r.rechazado %}
+              <span class="small text-muted">Sin imputación</span>
               {% elif r.costos_cc %}
               <a class="btn btn-sm btn-outline-primary" href="{{ url_for('modules.costos', vista=r.costos_cc) }}">Ver en Costos</a>
               {% else %}
