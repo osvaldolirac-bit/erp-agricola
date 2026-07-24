@@ -106,13 +106,8 @@
       {% if operador %}
       <input type="hidden" name="responsable" id="responsableFijo" value="{{ operador.id }}">
       <div class="alert alert-success py-2 mb-2" role="status">
-        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-          <div>
-            <strong>Operando:</strong> {{ operador.nombre }}
-            <div class="small mb-0">Detectado en este teléfono. No hace falta volver a elegirlo.</div>
-          </div>
-          <a class="btn btn-sm btn-outline-secondary" href="{{ url_cambiar_operador }}">Cambiar</a>
-        </div>
+        <strong>Operando:</strong> {{ operador.nombre }}
+        <div class="small mb-0">Operador fijo en este enlace / teléfono.</div>
       </div>
       {% elif responsables %}
       <p class="small text-muted mb-2">

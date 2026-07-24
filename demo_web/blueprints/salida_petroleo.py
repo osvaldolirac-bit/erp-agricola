@@ -14,7 +14,6 @@ from demo_web.auth.decorators import login_required
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.salida_petroleo import (
     aplicar_cookie_operador,
-    borrar_cookie_operador,
     cuarteles_para_formulario,
     habilitado,
     leer_operador_cookie,
@@ -52,13 +51,8 @@ def formulario():
     maquinaria_map = {m["codigo"]: m["etiqueta"] for m in maquinaria_opts}
     responsables_opts = responsables_autorizados_para_formulario()
 
-    # Cambiar operador: limpia cookie y vuelve al formulario.
-    if request.method == "GET" and request.args.get("cambiar") == "1":
-        resp = make_response(redirect(_url_formulario(tok)))
-        borrar_cookie_operador(resp)
-        return resp
-
-    # Identidad: ?op=p-N (QR personal) > cookie del teléfono > selección manual.
+    # Identidad: ?op=p-N (link personal) > cookie del teléfono > selección manual.
+    # Sin opción "Cambiar": el operador queda fijo (enlace personal o cookie).
     op_query = resolver_responsable_por_id(request.args.get("op"), responsables_opts)
     op_cookie = leer_operador_cookie(responsables_opts)
     operador = op_query or op_cookie
@@ -146,7 +140,6 @@ def formulario():
         maquinaria=maquinaria_opts,
         responsables=responsables_opts,
         operador=operador,
-        url_cambiar_operador=_url_formulario(tok, cambiar=1),
         ok=ok,
         codigo=codigo,
         mail_ok=mail_ok,
