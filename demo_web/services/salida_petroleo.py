@@ -330,7 +330,7 @@ def enviar_alerta(registro: dict[str, Any]) -> bool:
         "vencimiento",
         f"⛽ {codigo} — Salida petróleo bitácora",
         interior,
-        nombre_erp="ERP La Concepción",
+        nombre_erp=_nombre_erp(),
         pie="Registro informativo vía QR. No descuenta stock del estanque.",
     )
     asunto = (
@@ -473,7 +473,7 @@ def enviar_alerta_autorizacion(registro: dict[str, Any], usuario: str) -> bool:
         "vencimiento",
         f"✅ {codigo} — Autorización salida petróleo",
         interior,
-        nombre_erp="ERP La Concepción",
+        nombre_erp=_nombre_erp(),
         pie="Salida autorizada e imputada al estanque / historial de Petróleo.",
     )
     asunto = (
@@ -524,9 +524,14 @@ def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
         if not cuarteles:
             return {"ok": False, "msg": "No se pudieron resolver los cuarteles de la bitácora."}
 
-        reparto, err_cc = demo._reparto_por_cc(conn, litros, cuarteles)
-        if err_cc:
-            return {"ok": False, "msg": err_cc}
+        # La Concepción: prorrateo Administración. DEMO: partes iguales (como Salida manual).
+        if hasattr(demo, "_reparto_por_cc"):
+            reparto, err_cc = demo._reparto_por_cc(conn, litros, cuarteles)
+            if err_cc:
+                return {"ok": False, "msg": err_cc}
+        else:
+            parte = litros / len(cuarteles)
+            reparto = [(c, parte) for c in cuarteles]
 
         try:
             pmp = float(demo._petroleo_pmp_neto(conn) or 0)
@@ -656,4 +661,10 @@ def datos_compartir() -> dict[str, str]:
 
 
 def habilitado() -> bool:
-    return get_erp_app() == "concepcion"
+    """Bitácora QR + autorización: La Concepción y DEMO."""
+    return get_erp_app() in ("concepcion", "demo")
+
+
+def _nombre_erp() -> str:
+    demo = get_demo_module()
+    return str(getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola")

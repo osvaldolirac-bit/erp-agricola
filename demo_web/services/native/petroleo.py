@@ -206,7 +206,9 @@ def _planilla(demo, conn) -> dict:
 
 
 def _bitacora_campo_ctx(demo, conn) -> dict:
-    if get_erp_app() != "concepcion":
+    from demo_web.services.salida_petroleo import habilitado as bitacora_habilitada
+
+    if not bitacora_habilitada():
         return {}
     from urllib.parse import quote
 
@@ -247,9 +249,11 @@ def _bitacora_campo_ctx(demo, conn) -> dict:
 def gather_petroleo(user_email: str, user_rol: str) -> dict:
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
+    from demo_web.services.salida_petroleo import habilitado as bitacora_habilitada
+
     sec = request.values.get("sec") or request.args.get("sec", "salida")
     secciones = list(SECCIONES)
-    if get_erp_app() != "concepcion":
+    if not bitacora_habilitada():
         secciones = [s for s in secciones if s[0] != "bitacora"]
     if sec not in {k for k, _ in secciones}:
         sec = "salida"
@@ -289,7 +293,7 @@ def gather_petroleo(user_email: str, user_rol: str) -> dict:
         }
         ctx.update(_bitacora_campo_ctx(demo, conn))
         # Alerta de desfase también visible fuera de Bitácora
-        if get_erp_app() == "concepcion" and "bitacora_desfase" not in ctx:
+        if bitacora_habilitada() and "bitacora_desfase" not in ctx:
             from demo_web.services.salida_petroleo import contar_pendientes
 
             n_pend = contar_pendientes(conn)
