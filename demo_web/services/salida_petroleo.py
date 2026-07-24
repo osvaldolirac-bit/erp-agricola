@@ -328,7 +328,10 @@ def token_valido(recibido: str | None) -> bool:
         conn.close()
 
 
-def url_publica(token: str | None = None) -> str:
+def url_publica(token: str | None = None, op: str | None = None) -> str:
+    """URL del formulario QR. Si `op` es p-N / e-N, fija el operador (link personal)."""
+    from urllib.parse import quote
+
     tok = token or obtener_token()
     base = (
         os.environ.get("ERP_PUBLIC_BASE_URL")
@@ -336,7 +339,11 @@ def url_publica(token: str | None = None) -> str:
         or "https://erpmaster.cl"
     ).rstrip("/")
     prefix = (current_app.config.get("APPLICATION_ROOT") or "/laconcepcion").rstrip("/")
-    return f"{base}{prefix}/salida-petroleo?t={tok}"
+    url = f"{base}{prefix}/salida-petroleo?t={tok}"
+    op_id = (op or "").strip()
+    if op_id:
+        url += f"&op={quote(op_id, safe='')}"
+    return url
 
 
 def _destinatario_alerta() -> list[str]:
@@ -883,10 +890,35 @@ def contar_pendientes(conn) -> int:
 
 
 def datos_compartir() -> dict[str, str]:
-    """URL pública + metadatos para QR / compartir (requiere app context)."""
+    """URL pública genérica (QR estanque) + metadatos (requiere app context)."""
     migrar_tabla()
     tok = obtener_token()
     return {"url": url_publica(tok), "token": tok}
+
+
+def links_personales_operadores() -> list[dict[str, str]]:
+    """Un enlace fijo por responsable autorizado (para WhatsApp / favoritos)."""
+    from urllib.parse import quote
+
+    migrar_tabla()
+    tok = obtener_token()
+    out: list[dict[str, str]] = []
+    for r in responsables_autorizados_para_formulario():
+        op_id = str(r.get("id") or "").strip()
+        nombre = str(r.get("nombre") or "").strip()
+        if not op_id or not nombre:
+            continue
+        url = url_publica(tok, op=op_id)
+        out.append(
+            {
+                "id": op_id,
+                "nombre": nombre,
+                "url": url,
+                "wa_url": "https://wa.me/?text="
+                + quote(f"Salida QR petróleo — {nombre}:\n{url}", safe=""),
+            }
+        )
+    return out
 
 
 def habilitado() -> bool:

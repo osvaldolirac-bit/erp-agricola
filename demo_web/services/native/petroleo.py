@@ -225,6 +225,7 @@ def _bitacora_campo_ctx(demo, conn) -> dict:
     from demo_web.services.salida_petroleo import (
         contar_pendientes,
         datos_compartir,
+        links_personales_operadores,
         listar_registros,
     )
 
@@ -238,6 +239,7 @@ def _bitacora_campo_ctx(demo, conn) -> dict:
         "bitacora_total": len(registros),
         "bitacora_pendientes": n_pend,
         "bitacora_desfase": n_pend > 0,
+        "bitacora_links_personales": [],
     }
     if ctx["bitacora_admin_qr"]:
         url = datos_compartir()["url"]
@@ -249,8 +251,9 @@ def _bitacora_campo_ctx(demo, conn) -> dict:
                     + quote(url, safe="")
                 ),
                 "bitacora_wa_url": "https://wa.me/?text=" + quote(
-                    "Registro salida petróleo (Salida QR):\n" + url, safe=""
+                    "Registro salida petróleo (QR estanque):\n" + url, safe=""
                 ),
+                "bitacora_links_personales": links_personales_operadores(),
             }
         )
     return ctx

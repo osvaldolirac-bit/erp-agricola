@@ -138,10 +138,10 @@
     <div class="row g-3 align-items-start">
       <div class="col-md-4 text-center">
         <img src="{{ bitacora_qr_src }}" alt="QR salida petróleo" class="salida-petroleo-qr-img mb-2" width="280" height="280">
-        <p class="small text-muted mb-0">Imprima y pegue junto al estanque.</p>
+        <p class="small text-muted mb-0">QR del estanque (genérico). Imprima y pegue junto al estanque.</p>
       </div>
       <div class="col-md-8">
-        <label class="form-label small fw-bold">Enlace para compartir</label>
+        <label class="form-label small fw-bold">Enlace genérico del estanque</label>
         <div class="input-group input-group-sm mb-2">
           <input type="text" class="form-control font-monospace" id="bitacoraUrl" value="{{ bitacora_url }}" readonly>
           <button type="button" class="btn btn-outline-primary" id="btnCopiarBitacora">Copiar</button>
@@ -151,9 +151,50 @@
           <a class="btn btn-sm btn-outline-success" href="{{ bitacora_wa_url }}" target="_blank" rel="noopener">Compartir WhatsApp</a>
         </div>
         <p class="small text-muted mb-0">
-          Quien abre el enlace anota litros, cuarteles, maquinaria y responsable. Sin login ERP.
+          Sin operador fijo: la primera vez eligen su nombre en el teléfono. Sin login ERP.
         </p>
       </div>
+    </div>
+
+    <div class="mt-4 mb-3">
+      <h3 class="h6 mb-1">Enlaces personales (un link por operador)</h3>
+      <p class="small text-muted mb-2">
+        Envíe a cada persona su link: al abrirlo queda fijo como operador en ese celular.
+        El QR pegado en el estanque sigue siendo el genérico de arriba.
+      </p>
+      {% if bitacora_links_personales %}
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Operador</th>
+              <th>Enlace personal</th>
+              <th class="text-nowrap">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for op in bitacora_links_personales %}
+            <tr>
+              <td class="text-nowrap"><strong>{{ op.nombre }}</strong></td>
+              <td>
+                <input type="text" class="form-control form-control-sm font-monospace js-link-personal"
+                       id="linkOp-{{ loop.index }}" value="{{ op.url }}" readonly>
+              </td>
+              <td class="text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-primary js-copiar-link"
+                        data-target="linkOp-{{ loop.index }}">Copiar</button>
+                <a class="btn btn-sm btn-outline-success" href="{{ op.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="alert alert-warning mb-0 py-2 small">
+        No hay operadores autorizados. En RRHH → Personal marque trabajadores o agregue dueños/extras.
+      </div>
+      {% endif %}
     </div>
     <hr class="my-3">
     {% endif %}
@@ -328,20 +369,40 @@
 {% if sec_activa == 'bitacora' and bitacora_admin_qr %}
 <script>
 (function () {
+  function copiarTexto(btn, valor) {
+    var ok = false;
+    function done() {
+      var prev = btn.getAttribute('data-label') || 'Copiar';
+      btn.textContent = ok ? 'Copiado ✓' : prev;
+      setTimeout(function () { btn.textContent = prev; }, 2000);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(valor).then(function () { ok = true; done(); }).catch(done);
+      return;
+    }
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = valor;
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    } catch (e) {}
+    done();
+  }
+
   var btn = document.getElementById('btnCopiarBitacora');
   var inp = document.getElementById('bitacoraUrl');
-  if (!btn || !inp) return;
-  btn.addEventListener('click', function () {
-    inp.select();
-    inp.setSelectionRange(0, 99999);
-    var ok = false;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(inp.value).then(function () { ok = true; });
-    } else {
-      try { ok = document.execCommand('copy'); } catch (e) {}
-    }
-    btn.textContent = ok ? 'Copiado ✓' : 'Copiar';
-    setTimeout(function () { btn.textContent = 'Copiar'; }, 2000);
+  if (btn && inp) {
+    btn.setAttribute('data-label', 'Copiar');
+    btn.addEventListener('click', function () { copiarTexto(btn, inp.value); });
+  }
+  document.querySelectorAll('.js-copiar-link').forEach(function (b) {
+    b.setAttribute('data-label', 'Copiar');
+    b.addEventListener('click', function () {
+      var el = document.getElementById(b.getAttribute('data-target') || '');
+      if (el) copiarTexto(b, el.value || '');
+    });
   });
 })();
 </script>
