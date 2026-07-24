@@ -314,13 +314,44 @@ def _remuneraciones(demo, conn) -> dict:
     df_act = pd.read_sql_query("SELECT id, nombre FROM personal WHERE estado='Activo'", conn)
     trabajadores = [{"id": int(r["id"]), "nombre": r["nombre"]} for _, r in df_act.iterrows()]
     tid_sel = int(request.args.get("trabajador_id") or (trabajadores[0]["id"] if trabajadores else 0))
+    if tid_sel and hasattr(demo, "_actualizar_cuotas_pagadas_desde_descuentos"):
+        try:
+            demo._actualizar_cuotas_pagadas_desde_descuentos(conn, tid_sel)
+            conn.commit()
+        except Exception:
+            pass
     ficha = conn.execute(
         """SELECT sueldo_pactado, monto_prestamo, cuotas_prestamo, cuotas_pagadas, suple_fijo,
                   primera_cuota_mes, primera_cuota_anio
            FROM remuneraciones_fichas WHERE trabajador_id=?""",
         (tid_sel,),
     ).fetchone()
-    info_prest = demo._info_prestamo_worker(conn, tid_sel) if tid_sel else {}
+    info_prest_raw = demo._info_prestamo_worker(conn, tid_sel) if tid_sel else {}
+    info_prest = {
+        "monto": float(info_prest_raw.get("monto") or 0),
+        "cuotas": int(info_prest_raw.get("cuotas") or 0),
+        "cuota_ref": float(info_prest_raw.get("cuota_ref") or 0),
+        "descontado": float(info_prest_raw.get("descontado") or 0),
+        "saldo": float(info_prest_raw.get("saldo") or 0),
+        "primera_cuota_mes": info_prest_raw.get("primera_cuota_mes"),
+        "primera_cuota_anio": info_prest_raw.get("primera_cuota_anio"),
+        "monto_fmt": demo.f_peso(info_prest_raw.get("monto") or 0),
+        "descontado_fmt": demo.f_peso(info_prest_raw.get("descontado") or 0),
+        "saldo_fmt": demo.f_peso(info_prest_raw.get("saldo") or 0),
+        "cuota_ref_fmt": demo.f_peso(info_prest_raw.get("cuota_ref") or 0),
+        "saldado": float(info_prest_raw.get("saldo") or 0) <= 0.01
+        and float(info_prest_raw.get("monto") or 0) > 0,
+    }
+    cuotas_pagadas = int(ficha[3] or 0) if ficha else 0
+    cuotas_pactadas = int(ficha[2] or 0) if ficha else int(info_prest.get("cuotas") or 0)
+    info_prest["cuotas_pagadas"] = cuotas_pagadas
+    info_prest["cuotas_restantes"] = max(0, cuotas_pactadas - cuotas_pagadas)
+    if info_prest.get("primera_cuota_mes") and info_prest.get("primera_cuota_anio"):
+        info_prest["primera_cuota_fmt"] = (
+            f"{info_prest['primera_cuota_mes']}/{info_prest['primera_cuota_anio']}"
+        )
+    else:
+        info_prest["primera_cuota_fmt"] = "Inmediato"
 
     q_prest = """SELECT p.nombre AS trabajador,
                         f.monto_prestamo AS prestamo_total,
@@ -397,7 +428,10 @@ def _remuneraciones(demo, conn) -> dict:
         "trabajador_sel": tid_sel,
         "ficha_sueldo": float(ficha[0] or 0) if ficha else 0,
         "ficha_suple": float(ficha[4] or 0) if ficha else 0,
+        "ficha_monto_prestamo": float(ficha[1] or 0) if ficha else 0,
+        "ficha_cuotas_prestamo": int(ficha[2] or 0) if ficha else 0,
         "info_prestamo": info_prest,
+        "puede_registrar_prestamo": float(info_prest.get("monto") or 0) <= 0,
         "primera_cuota_def": primera_def,
         "prestamos_rows": prestamos,
         "planilla_rows": planilla,
@@ -794,6 +828,12 @@ def _post_registrar_prestamo(demo, conn) -> dict:
         return {"ok": False, "msg": "Valores inválidos."}
     if monto <= 0 or cuotas <= 0:
         return {"ok": False, "msg": "Monto y cuotas deben ser mayores a cero."}
+    info = demo._info_prestamo_worker(conn, tid) if hasattr(demo, "_info_prestamo_worker") else {}
+    if float(info.get("monto") or 0) > 0:
+        return {
+            "ok": False,
+            "msg": "Ya hay un préstamo vigente. Use «Modificar términos del crédito» o póngalo en $0 primero.",
+        }
     primera = request.form.get("primera_cuota") or str(demo.hoy)
     pc_m, pc_a = demo._mes_anio_desde_fecha(parse_date(primera, demo.hoy))
     ficha = conn.execute(
@@ -811,6 +851,47 @@ def _post_registrar_prestamo(demo, conn) -> dict:
     conn.commit()
     demo.registrar_accion("RRHH PRESTAMO NUEVO", str(tid))
     return {"ok": True, "msg": "Préstamo registrado."}
+
+
+def _post_editar_prestamo(demo, conn) -> dict:
+    """Actualiza términos del crédito (monto, cuotas, primera cuota), como en Streamlit."""
+    tid = int(request.form.get("trabajador_id") or 0)
+    if tid <= 0:
+        return {"ok": False, "msg": "Trabajador inválido."}
+    try:
+        monto = float(request.form.get("monto_prestamo") or 0)
+        cuotas = int(request.form.get("cuotas") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Valores inválidos."}
+    if monto < 0 or cuotas < 0:
+        return {"ok": False, "msg": "Monto y cuotas no pueden ser negativos."}
+    primera = request.form.get("primera_cuota") or str(demo.hoy)
+    pc_m, pc_a = demo._mes_anio_desde_fecha(parse_date(primera, demo.hoy))
+    ficha = conn.execute(
+        """SELECT sueldo_pactado, cuotas_pagadas, suple_fijo
+           FROM remuneraciones_fichas WHERE trabajador_id=?""",
+        (tid,),
+    ).fetchone()
+    sueldo = float(ficha[0] or 0) if ficha else 0.0
+    c_pag = int(ficha[1] or 0) if ficha else 0
+    suple = float(ficha[2] or 0) if ficha else 0.0
+    if cuotas < c_pag:
+        c_pag = cuotas
+    if monto <= 0:
+        cuotas = 0
+        c_pag = 0
+    conn.execute(
+        """INSERT OR REPLACE INTO remuneraciones_fichas
+           (trabajador_id, sueldo_pactado, monto_prestamo, cuotas_prestamo, cuotas_pagadas,
+            suple_fijo, primera_cuota_mes, primera_cuota_anio)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (tid, sueldo, monto, int(cuotas), c_pag, suple, pc_m, pc_a),
+    )
+    if hasattr(demo, "_actualizar_cuotas_pagadas_desde_descuentos"):
+        demo._actualizar_cuotas_pagadas_desde_descuentos(conn, tid)
+    conn.commit()
+    demo.registrar_accion("RRHH PRESTAMO EDIT", str(tid))
+    return {"ok": True, "msg": "Crédito actualizado."}
 
 
 def _post_guardar_planilla(demo, conn) -> dict:
@@ -881,6 +962,7 @@ def view(user_email: str, user_rol: str):
                 "registrar_servicio": _post_registrar_servicio,
                 "guardar_ficha": _post_guardar_ficha,
                 "registrar_prestamo": _post_registrar_prestamo,
+                "editar_prestamo": _post_editar_prestamo,
                 "guardar_planilla": _post_guardar_planilla,
                 "liquidacion": _post_liquidacion,
             }
@@ -897,7 +979,13 @@ def view(user_email: str, user_rol: str):
                     extra["edit_id"] = request.form.get("contratista_id", "")
                 if action == "registrar_servicio":
                     extra["contratista_id"] = request.form.get("contratista_id", "")
-                if action in ("guardar_ficha", "registrar_prestamo", "guardar_planilla", "liquidacion"):
+                if action in (
+                    "guardar_ficha",
+                    "registrar_prestamo",
+                    "editar_prestamo",
+                    "guardar_planilla",
+                    "liquidacion",
+                ):
                     extra["mes"] = request.form.get("mes", "")
                     extra["anio"] = request.form.get("anio", "")
                     extra["trabajador_id"] = request.form.get("trabajador_id", "")

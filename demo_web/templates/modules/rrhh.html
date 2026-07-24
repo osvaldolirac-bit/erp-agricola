@@ -368,33 +368,93 @@
           <div class="col-md-6"><label class="form-label small">Suple fijo ($)</label><input type="number" name="suple" class="form-control form-control-sm" value="{{ ficha_suple|int }}" min="0" step="1000"></div>
           <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar sueldo y suple</button></div>
         </form>
-        {% if info_prestamo and info_prestamo.monto|default(0) <= 0 %}
+
+        {% if info_prestamo and info_prestamo.monto|default(0) > 0 %}
         <hr>
-        <h2 class="h6">Nuevo préstamo</h2>
+        <h2 class="h6">Estado del crédito</h2>
+        <div class="row g-2 small mb-2">
+          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Préstamo original</div><strong>{{ info_prestamo.monto_fmt }}</strong></div></div>
+          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Total descontado</div><strong>{{ info_prestamo.descontado_fmt }}</strong></div></div>
+          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Saldo pendiente</div><strong>{{ info_prestamo.saldo_fmt }}</strong></div></div>
+          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Cuota referencia</div><strong>{{ info_prestamo.cuota_ref_fmt }}</strong></div></div>
+        </div>
+        <p class="small text-muted mb-1">Primera cuota: <strong>{{ info_prestamo.primera_cuota_fmt }}</strong>
+          · Cuotas: {{ info_prestamo.cuotas_pagadas }}/{{ info_prestamo.cuotas }} (restan {{ info_prestamo.cuotas_restantes }})</p>
+        {% if info_prestamo.saldado %}
+        <div class="alert alert-success py-2 small mb-2">Préstamo saldado. Puede poner monto en $0 abajo o registrar uno nuevo tras limpiar el crédito.</div>
+        {% endif %}
+        {% elif puede_registrar_prestamo %}
+        <hr>
+        <h2 class="h6">Registrar nuevo préstamo</h2>
+        <p class="small text-muted mb-2">Monto total, cuotas pactadas y mes de la primera cuota (descuento en planilla).</p>
         <form method="post" class="row g-2">
           <input type="hidden" name="action" value="registrar_prestamo">
           <input type="hidden" name="sec" value="remuneraciones">
+          <input type="hidden" name="mes" value="{{ mes_sel }}">
+          <input type="hidden" name="anio" value="{{ anio_sel }}">
           <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
-          <div class="col-md-6"><input type="number" name="monto_prestamo" class="form-control form-control-sm" placeholder="Monto préstamo" min="0" step="10000" required></div>
-          <div class="col-md-6"><input type="number" name="cuotas" class="form-control form-control-sm" placeholder="Cuotas" min="1" step="1" required></div>
-          <div class="col-md-6"><input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ primera_cuota_def }}"></div>
-          <div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-outline-secondary btn-sm">Registrar préstamo</button></div>
+          <div class="col-md-6">
+            <label class="form-label small">Monto préstamo ($)</label>
+            <input type="number" name="monto_prestamo" class="form-control form-control-sm" min="1" step="1000" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Cuotas pactadas</label>
+            <input type="number" name="cuotas" class="form-control form-control-sm" min="1" step="1" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Primera cuota (mes)</label>
+            <input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ primera_cuota_def }}">
+          </div>
+          <div class="col-md-6 d-flex align-items-end">
+            <button type="submit" class="btn btn-success btn-sm w-100">Registrar préstamo</button>
+          </div>
         </form>
         {% endif %}
+
+        <hr>
+        <h2 class="h6">Modificar términos del crédito</h2>
+        <p class="small text-muted mb-2">Ajuste monto, cuotas o primera cuota del contrato. Ponga monto $0 para limpiar y poder registrar uno nuevo.</p>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="editar_prestamo">
+          <input type="hidden" name="sec" value="remuneraciones">
+          <input type="hidden" name="mes" value="{{ mes_sel }}">
+          <input type="hidden" name="anio" value="{{ anio_sel }}">
+          <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+          <div class="col-md-6">
+            <label class="form-label small">Monto préstamo total ($)</label>
+            <input type="number" name="monto_prestamo" class="form-control form-control-sm"
+                   value="{{ ficha_monto_prestamo|int }}" min="0" step="1000">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Cuotas pactadas</label>
+            <input type="number" name="cuotas" class="form-control form-control-sm"
+                   value="{{ ficha_cuotas_prestamo }}" min="0" step="1">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Primera cuota (mes)</label>
+            <input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ primera_cuota_def }}">
+          </div>
+          <div class="col-md-6 d-flex align-items-end">
+            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Actualizar crédito</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
   {% endif %}
 
-  {% if prestamos_rows %}
   <div class="panel-card mb-3">
-    <h2 class="h6">Préstamos vigentes</h2>
+    <h2 class="h6">Registro de préstamos y cuotas</h2>
+    {% if prestamos_rows %}
+    <p class="small text-muted">Saldo según descuentos de la planilla de Remuneraciones de cada mes.</p>
     <div class="table-responsive"><table class="table table-sm table-striped w-100">
       <thead><tr><th>Trabajador</th><th>Préstamo</th><th>Cuotas</th><th>Descontado</th><th>Saldo</th><th>1ª cuota</th></tr></thead>
       <tbody>{% for row in prestamos_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.prestamo_total }}</td><td>{{ row.cuotas_pagadas }}/{{ row.cuotas_pactadas }}</td><td>{{ row.total_descontado }}</td><td>{{ row.saldo_pendiente }}</td><td>{{ row.primera_cuota }}</td></tr>{% endfor %}</tbody>
     </table></div>
+    {% else %}
+    <p class="text-muted mb-0">No hay préstamos registrados.</p>
+    {% endif %}
   </div>
-  {% endif %}
 
   <div class="alert alert-info fw-semibold mb-3">TOTAL LÍQUIDO A PROVISIONAR ({{ mes_sel }}/{{ anio_sel }}): {{ total_provision }}</div>
   <div class="panel-card">
