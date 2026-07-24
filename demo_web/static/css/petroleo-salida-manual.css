@@ -1,0 +1,29 @@
+/* Petróleo — salida manual (formulario ordenado) */
+.petroleo-salida-manual .panel-title { margin-bottom: 0; }
+.petroleo-salida-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.petroleo-salida-manual .form-label {
+  font-weight: 600;
+  color: #37474F;
+  margin-bottom: 0.35rem;
+}
+.petroleo-salida-manual .form-control-lg,
+.petroleo-salida-manual .form-select-lg {
+  font-size: 1rem;
+  min-height: 2.75rem;
+}
+.petroleo-pmp-pill {
+  background: #E3F2FD;
+  color: #0D47A1;
+  border: 1px solid #90CAF9;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  white-space: nowrap;
+}
+.petroleo-salida-manual .salida-petroleo-cuarteles {
+  margin-top: 0.25rem;
+}
