@@ -130,37 +130,16 @@
   <div class="panel-card salida-petroleo-qr-page">
     <h2 class="h6 panel-title">📱 Salida QR</h2>
     <p class="small text-muted mb-3">
-      Registro desde celular (QR). Mientras no se autorice, es solo informativo (no descuenta estanque).
+      Registro desde celular con <strong>enlace personal</strong>. Mientras no se autorice, es solo informativo (no descuenta estanque).
       Un <strong>administrador</strong> autoriza aquí para imputar a CC con prorrateo de Administración y PMP neto.
     </p>
     {% if bitacora_habilitada %}
     {% if bitacora_admin_qr %}
-    <div class="row g-3 align-items-start">
-      <div class="col-md-4 text-center">
-        <img src="{{ bitacora_qr_src }}" alt="QR salida petróleo" class="salida-petroleo-qr-img mb-2" width="280" height="280">
-        <p class="small text-muted mb-0">QR del estanque (genérico). Imprima y pegue junto al estanque.</p>
-      </div>
-      <div class="col-md-8">
-        <label class="form-label small fw-bold">Enlace genérico del estanque</label>
-        <div class="input-group input-group-sm mb-2">
-          <input type="text" class="form-control font-monospace" id="bitacoraUrl" value="{{ bitacora_url }}" readonly>
-          <button type="button" class="btn btn-outline-primary" id="btnCopiarBitacora">Copiar</button>
-        </div>
-        <div class="d-flex flex-wrap gap-2 mb-3">
-          <a class="btn btn-sm btn-success" href="{{ bitacora_url }}" target="_blank" rel="noopener">Abrir formulario</a>
-          <a class="btn btn-sm btn-outline-success" href="{{ bitacora_wa_url }}" target="_blank" rel="noopener">Compartir WhatsApp</a>
-        </div>
-        <p class="small text-muted mb-0">
-          Sin operador fijo: la primera vez eligen su nombre en el teléfono. Sin login ERP.
-        </p>
-      </div>
-    </div>
-
-    <div class="mt-4 mb-3">
-      <h3 class="h6 mb-1">Enlaces personales (un link por operador)</h3>
+    <div class="mb-3">
+      <h3 class="h6 mb-1">Enlaces personales (único acceso de campo)</h3>
       <p class="small text-muted mb-2">
-        Envíe a cada persona su link: al abrirlo queda fijo como operador en ese celular.
-        El QR pegado en el estanque sigue siendo el genérico de arriba.
+        No hay QR público en el estanque. Cada operador usa <strong>solo su link</strong>
+        (WhatsApp / favoritos). Así se evita que cualquiera registre una salida.
       </p>
       {% if bitacora_links_personales %}
       <div class="table-responsive">
@@ -391,12 +370,6 @@
     done();
   }
 
-  var btn = document.getElementById('btnCopiarBitacora');
-  var inp = document.getElementById('bitacoraUrl');
-  if (btn && inp) {
-    btn.setAttribute('data-label', 'Copiar');
-    btn.addEventListener('click', function () { copiarTexto(btn, inp.value); });
-  }
   document.querySelectorAll('.js-copiar-link').forEach(function (b) {
     b.setAttribute('data-label', 'Copiar');
     b.addEventListener('click', function () {

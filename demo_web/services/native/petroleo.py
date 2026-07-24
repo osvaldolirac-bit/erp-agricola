@@ -220,11 +220,8 @@ def _bitacora_campo_ctx(demo, conn) -> dict:
 
     if not bitacora_habilitada():
         return {}
-    from urllib.parse import quote
-
     from demo_web.services.salida_petroleo import (
         contar_pendientes,
-        datos_compartir,
         links_personales_operadores,
         listar_registros,
     )
@@ -242,20 +239,8 @@ def _bitacora_campo_ctx(demo, conn) -> dict:
         "bitacora_links_personales": [],
     }
     if ctx["bitacora_admin_qr"]:
-        url = datos_compartir()["url"]
-        ctx.update(
-            {
-                "bitacora_url": url,
-                "bitacora_qr_src": (
-                    "https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data="
-                    + quote(url, safe="")
-                ),
-                "bitacora_wa_url": "https://wa.me/?text=" + quote(
-                    "Registro salida petróleo (QR estanque):\n" + url, safe=""
-                ),
-                "bitacora_links_personales": links_personales_operadores(),
-            }
-        )
+        # Solo links personales: sin QR/enlace genérico del estanque.
+        ctx["bitacora_links_personales"] = links_personales_operadores()
     return ctx
 
 

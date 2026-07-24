@@ -8,7 +8,7 @@
   <link href="{{ url_for('static', filename='css/erp.css') }}?v={{ static_version }}" rel="stylesheet">
 </head>
 <body class="salida-petroleo-body{% if ok %} salida-petroleo-exito{% endif %}"
-      {% if ok %}data-recarga-token="{{ token }}"{% endif %}>
+      {% if ok %}data-recarga-token="{{ token }}"{% if operador %} data-recarga-op="{{ operador.id }}"{% endif %}{% endif %}>
   <main class="salida-petroleo-page">
     <header class="salida-petroleo-header">
       <div class="salida-petroleo-icon" aria-hidden="true">⛽</div>
@@ -54,14 +54,27 @@
     </div>
     {% endif %}
 
-    {% if not ok %}
+    {% if not ok and not acceso_personal %}
+    <div class="alert alert-warning">
+      <strong>Acceso solo con enlace personal.</strong>
+      <div class="small mb-0 mt-1">
+        Pida a administración su link de Salida QR. El formulario público del estanque ya no está habilitado.
+      </div>
+    </div>
+    {% elif not ok %}
     <form method="post" class="salida-petroleo-form" autocomplete="off" id="formSalidaPetroleo">
       <input type="hidden" name="t" value="{{ token }}">
+      <input type="hidden" name="responsable" id="responsableFijo" value="{{ operador.id }}">
       <div class="salida-petroleo-honeypot" aria-hidden="true">
         {# Nombre no autofillable: el viejo "website" en Safari daba falso "Registrado" sin guardar #}
         <label for="{{ honeypot_field }}">No completar</label>
         <input id="{{ honeypot_field }}" type="text" name="{{ honeypot_field }}"
                value="" tabindex="-1" autocomplete="off" inputmode="none">
+      </div>
+
+      <div class="alert alert-success py-2 mb-3" role="status">
+        <strong>Operando:</strong> {{ operador.nombre }}
+        <div class="small mb-0">Operador fijo de su enlace personal.</div>
       </div>
 
       <label class="form-label" for="litros">Litros</label>
@@ -102,31 +115,6 @@
       <p class="small text-danger">No hay equipos activos en la maestra (tractores, camiones o vehículos).</p>
       {% endif %}
 
-      <label class="form-label d-block mt-3">Operador</label>
-      {% if operador %}
-      <input type="hidden" name="responsable" id="responsableFijo" value="{{ operador.id }}">
-      <div class="alert alert-success py-2 mb-2" role="status">
-        <strong>Operando:</strong> {{ operador.nombre }}
-        <div class="small mb-0">Operador fijo en este enlace / teléfono.</div>
-      </div>
-      {% elif responsables %}
-      <p class="small text-muted mb-2">
-        Primera vez en este teléfono: elija su nombre. Quedará guardado para las próximas salidas.
-      </p>
-      <div class="salida-petroleo-cuarteles mb-1" id="salidaPetroleoResponsable">
-        {% for r in responsables %}
-        <label class="salida-petroleo-cc-chip" for="sp_resp_{{ loop.index }}">
-          <input class="form-check-input salida-petroleo-resp-input" type="checkbox" name="responsable"
-                 value="{{ r.id }}" id="sp_resp_{{ loop.index }}"
-                 {% if form_responsable == r.id %}checked{% endif %}>
-          <span class="salida-petroleo-cc-label">{{ r.nombre }}</span>
-        </label>
-        {% endfor %}
-      </div>
-      {% else %}
-      <p class="small text-danger">No hay responsables autorizados. En RRHH → Personal marque trabajadores o agregue dueños (sin ficha).</p>
-      {% endif %}
-
       <button type="submit" id="btnRegistrarSalida" class="btn btn-success btn-lg w-100 salida-petroleo-submit" disabled>
         Registrar salida
       </button>
@@ -145,7 +133,10 @@
     var tokenRecarga = body.getAttribute('data-recarga-token');
     if (tokenRecarga) {
       setTimeout(function () {
-        window.location.href = window.location.pathname + '?t=' + encodeURIComponent(tokenRecarga);
+        var q = '?t=' + encodeURIComponent(tokenRecarga);
+        var opRecarga = body.getAttribute('data-recarga-op');
+        if (opRecarga) q += '&op=' + encodeURIComponent(opRecarga);
+        window.location.href = window.location.pathname + q;
       }, 3000);
       return;
     }
@@ -154,16 +145,11 @@
     var btn = document.getElementById('btnRegistrarSalida');
     if (!form || !btn) return;
 
-    var operadorFijo = !!document.getElementById('responsableFijo');
-
     function formularioCompleto() {
       var litros = parseFloat(document.getElementById('litros').value);
       var ccs = form.querySelectorAll('input[name="cuarteles"]:checked').length;
       var maq = form.querySelectorAll('input[name="maquinaria"]:checked').length;
-      var resp = operadorFijo
-        ? 1
-        : form.querySelectorAll('input[name="responsable"]:checked').length;
-      return litros > 0 && ccs > 0 && maq === 1 && resp === 1;
+      return litros > 0 && ccs > 0 && maq === 1;
     }
 
     function exclusivos(selector) {
@@ -181,9 +167,6 @@
     }
 
     exclusivos('input.salida-petroleo-maq-input');
-    if (!operadorFijo) {
-      exclusivos('input.salida-petroleo-resp-input');
-    }
 
     function actualizarBoton() {
       btn.disabled = !formularioCompleto();

@@ -51,11 +51,11 @@ def formulario():
     maquinaria_map = {m["codigo"]: m["etiqueta"] for m in maquinaria_opts}
     responsables_opts = responsables_autorizados_para_formulario()
 
-    # Identidad: ?op=p-N (link personal) > cookie del teléfono > selección manual.
-    # Sin opción "Cambiar": el operador queda fijo (enlace personal o cookie).
+    # Solo link personal (?op=) o cookie dejada por ese link. Sin selector público.
     op_query = resolver_responsable_por_id(request.args.get("op"), responsables_opts)
     op_cookie = leer_operador_cookie(responsables_opts)
     operador = op_query or op_cookie
+    acceso_personal = bool(operador)
 
     ok = False
     mail_ok = None
@@ -77,15 +77,14 @@ def formulario():
             litros = 0.0
         maquinaria_cod = (request.form.get("maquinaria") or "").strip()
         maquinaria = maquinaria_map.get(maquinaria_cod, "")
-        responsable_id = (request.form.get("responsable") or "").strip()
-        op_form = resolver_responsable_por_id(responsable_id, responsables_opts)
-        operador_post = operador or op_form
+        # Ignorar responsable del form: solo vale el operador del link/cookie.
+        operador_post = operador
         responsable = (operador_post or {}).get("nombre", "")
         sel = [c for c in request.form.getlist("cuarteles") if c in cuarteles_opts]
         confirmar = request.form.get("confirmar_duplicado") == "1"
         form_litros = request.form.get("litros") or ""
         form_maquinaria = maquinaria_cod
-        form_responsable = (operador_post or {}).get("id", responsable_id)
+        form_responsable = (operador_post or {}).get("id", "")
         form_cuarteles_sel = sel
 
         # Honeypot: solo bloquear bots claros. Si hay payload válido, ignorar
@@ -94,6 +93,8 @@ def formulario():
         if bot_claro:
             ok = False
             error = None
+        elif not acceso_personal:
+            error = "Use su enlace personal para registrar una salida."
         elif litros <= 0:
             error = "Indique litros mayores a cero."
         elif not sel:
@@ -106,7 +107,7 @@ def formulario():
                 "marque trabajadores o agregue dueños."
             )
         elif not responsable:
-            error = "Indique quién está operando (primera vez en este teléfono)."
+            error = "Use su enlace personal para registrar una salida."
         else:
             try:
                 res = registrar_salida(
@@ -140,6 +141,7 @@ def formulario():
         maquinaria=maquinaria_opts,
         responsables=responsables_opts,
         operador=operador,
+        acceso_personal=acceso_personal,
         ok=ok,
         codigo=codigo,
         mail_ok=mail_ok,
