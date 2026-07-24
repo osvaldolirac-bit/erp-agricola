@@ -137,15 +137,15 @@
     <h3 class="h6 mb-2">Registros bitácora campo</h3>
     <p class="small text-muted">
       Pendientes: {{ bitacora_pendientes|default(0) }} ·
-      Al autorizar se crea la salida real en Historial (sin redigitar).
+      Al autorizar se crea la salida real en Historial e imputa el monto al CC del QR (Costos).
     </p>
     {% if bitacora_registros %}
     <div class="table-responsive">
       <table class="table table-sm table-bordered w-100 mb-0 align-middle">
         <thead>
           <tr>
-            <th>Código</th><th>Fecha/hora</th><th>Litros</th><th>Cuarteles</th>
-            <th>Maquinaria</th><th>Responsable</th><th>Estado</th><th></th>
+            <th>Código</th><th>Fecha/hora</th><th>Litros</th><th>Cuarteles QR</th>
+            <th>Maquinaria</th><th>Responsable</th><th>Estado / imputación CC</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -163,11 +163,14 @@
               {% else %}
               <span class="badge bg-success">Autorizado</span>
               {% if r.autorizado_en %}<div class="small text-muted">{{ r.autorizado_en }}</div>{% endif %}
+              {% if r.cc_imputados %}
+              <div class="small mt-1"><strong>Imputado a:</strong> {{ r.cc_imputados }}</div>
+              {% endif %}
               {% endif %}
             </td>
             <td class="text-nowrap">
               {% if r.pendiente and bitacora_puede_autorizar %}
-              <form method="post" class="d-inline" onsubmit="return confirm('¿Autorizar {{ r.codigo }} e imputar al estanque con los mismos datos del QR?');">
+              <form method="post" class="d-inline" onsubmit="return confirm('¿Autorizar {{ r.codigo }} e imputar al estanque y al CC {{ r.huerto }}?');">
                 <input type="hidden" name="action" value="autorizar_bitacora">
                 <input type="hidden" name="sec" value="bitacora">
                 <input type="hidden" name="codigo" value="{{ r.codigo }}">
@@ -175,8 +178,10 @@
               </form>
               {% elif r.pendiente %}
               <span class="small text-muted">Solo admin</span>
+              {% elif r.costos_cc %}
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('modules.costos', vista=r.costos_cc) }}">Ver en Costos</a>
               {% else %}
-              <span class="text-muted">—</span>
+              <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('modules.petroleo', sec='historial') }}">Historial</a>
               {% endif %}
             </td>
           </tr>

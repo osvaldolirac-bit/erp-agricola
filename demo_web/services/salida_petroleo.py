@@ -626,6 +626,31 @@ def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
     }
 
 
+def _imputacion_por_codigo(conn, codigo: str) -> list[dict[str, Any]]:
+    """Filas reales de petroleo generadas al autorizar (CC / litros / monto)."""
+    demo = get_demo_module()
+    codigo = (codigo or "").strip()
+    if not codigo:
+        return []
+    rows = conn.execute(
+        """SELECT UPPER(TRIM(centro_costo)), litros, valor_imputado
+           FROM petroleo
+           WHERE bitacora_codigo = ? AND tipo = 'Salida'
+           ORDER BY id""",
+        (codigo,),
+    ).fetchall()
+    out = []
+    for cc, litros_cc, valor in rows:
+        out.append(
+            {
+                "cc": cc or "—",
+                "litros": demo.f_decimal(litros_cc),
+                "monto": demo.f_peso(valor or 0),
+            }
+        )
+    return out
+
+
 def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
     """Últimos registros de bitácora campo (ERP)."""
     demo = get_demo_module()
@@ -642,6 +667,10 @@ def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
     out = []
     for codigo, fh, litros, huerto, maquinaria, responsable, estado, auth_por, auth_en in rows:
         est = (estado or "pendiente").lower()
+        imputaciones = [] if est != "autorizado" else _imputacion_por_codigo(conn, codigo or "")
+        cc_imputados = ", ".join(
+            f"{i['cc']} ({i['litros']} L · {i['monto']})" for i in imputaciones
+        )
         out.append(
             {
                 "codigo": codigo or "—",
@@ -654,6 +683,9 @@ def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
                 "pendiente": est != "autorizado",
                 "autorizado_por": auth_por,
                 "autorizado_en": auth_en,
+                "imputaciones": imputaciones,
+                "cc_imputados": cc_imputados,
+                "costos_cc": (imputaciones[0]["cc"] if len(imputaciones) == 1 else ""),
             }
         )
     return out
