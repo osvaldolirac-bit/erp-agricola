@@ -15,6 +15,7 @@ SECCIONES = [
 ]
 
 METODOS_PAGO = ["Transferencia", "Efectivo", "Cheque", "Tarjeta bancaria"]
+METODOS_CON_BANCO = {"Transferencia", "Tarjeta bancaria"}
 
 BANCOS_PAGO = [
     "—",
@@ -33,13 +34,22 @@ BANCOS_PAGO = [
 ]
 
 
-def _banco_form() -> str:
+def _banco_form(metodo: str = "") -> str:
+    """Banco solo aplica para Transferencia y Tarjeta bancaria."""
+    if metodo not in METODOS_CON_BANCO:
+        return ""
     banco = (request.form.get("banco") or "").strip()
     if banco in ("", "—", "-"):
         return ""
     if banco not in BANCOS_PAGO:
         return banco[:80]
     return banco
+
+
+def _validar_banco_pago(metodo: str, banco: str) -> str | None:
+    if metodo in METODOS_CON_BANCO and not banco:
+        return "Seleccione el banco para Transferencia o Tarjeta bancaria."
+    return None
 
 
 def _demo():
@@ -403,7 +413,10 @@ def _post_pagar_documentos(demo, conn, user_email: str) -> dict:
     metodo = request.form.get("metodo_pago") or METODOS_PAGO[0]
     if metodo not in METODOS_PAGO:
         metodo = METODOS_PAGO[0]
-    banco = _banco_form()
+    banco = _banco_form(metodo)
+    err_banco = _validar_banco_pago(metodo, banco)
+    if err_banco:
+        return {"ok": False, "msg": err_banco, "extra": {"sec": "deuda", "proveedor": proveedor}}
     fpago = _parse_date(request.form.get("fecha_pago"), demo.hoy)
     enviar_mail = request.form.get("enviar_mail") == "1"
     dfpr = _docs_pendientes_proveedor(demo, conn, proveedor)
@@ -458,7 +471,10 @@ def _post_abono_parcial(demo, conn, user_email: str) -> dict:
     metodo = request.form.get("metodo_pago") or METODOS_PAGO[0]
     if metodo not in METODOS_PAGO:
         metodo = METODOS_PAGO[0]
-    banco = _banco_form()
+    banco = _banco_form(metodo)
+    err_banco = _validar_banco_pago(metodo, banco)
+    if err_banco:
+        return {"ok": False, "msg": err_banco, "extra": {"sec": "deuda", "proveedor": proveedor}}
     fpago = _parse_date(request.form.get("fecha_pago"), demo.hoy)
     enviar_mail = request.form.get("enviar_mail") == "1"
     dfpr = _docs_pendientes_proveedor(demo, conn, proveedor)

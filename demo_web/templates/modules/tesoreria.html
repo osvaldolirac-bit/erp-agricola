@@ -130,15 +130,15 @@
       <div class="row g-2 align-items-end">
         <div class="col-md-2">
           <label class="form-label">Forma de pago</label>
-          <select name="metodo_pago" class="form-select">
+          <select name="metodo_pago" class="form-select js-metodo-pago" data-banco-target="banco-pago">
             {% for m in metodos_pago %}
             <option value="{{ m }}">{{ m }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-2">
+        <div class="col-md-2" id="wrap-banco-pago">
           <label class="form-label">Banco</label>
-          <select name="banco" class="form-select">
+          <select name="banco" id="banco-pago" class="form-select js-banco-pago">
             {% for b in bancos %}
             <option value="{{ b }}">{{ b }}</option>
             {% endfor %}
@@ -190,15 +190,15 @@
         </div>
         <div class="col-md-2">
           <label class="form-label">Forma de pago</label>
-          <select name="metodo_pago" class="form-select">
+          <select name="metodo_pago" class="form-select js-metodo-pago" data-banco-target="banco-abono">
             {% for m in metodos_pago %}
             <option value="{{ m }}">{{ m }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-2">
+        <div class="col-md-2" id="wrap-banco-abono">
           <label class="form-label">Banco</label>
-          <select name="banco" class="form-select">
+          <select name="banco" id="banco-abono" class="form-select js-banco-pago">
             {% for b in bancos %}
             <option value="{{ b }}">{{ b }}</option>
             {% endfor %}
@@ -329,6 +329,23 @@
     }
     $('#abono-doc').on('change', syncAbonoMax);
     syncAbonoMax();
+
+    var metodosConBanco = { 'Transferencia': true, 'Tarjeta bancaria': true };
+    function syncBancoPorMetodo(metodoSelect) {
+      var bancoId = metodoSelect.getAttribute('data-banco-target');
+      var banco = document.getElementById(bancoId);
+      var wrap = document.getElementById('wrap-' + bancoId);
+      if (!banco || !wrap) return;
+      var aplica = !!metodosConBanco[metodoSelect.value];
+      wrap.style.display = aplica ? '' : 'none';
+      banco.disabled = !aplica;
+      banco.required = aplica;
+      if (!aplica) banco.value = '—';
+    }
+    document.querySelectorAll('.js-metodo-pago').forEach(function (sel) {
+      syncBancoPorMetodo(sel);
+      sel.addEventListener('change', function () { syncBancoPorMetodo(sel); });
+    });
   });
 </script>
 {% endblock %}
