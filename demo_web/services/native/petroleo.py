@@ -76,6 +76,12 @@ def _eventos_historial(demo, conn, dfp) -> list[dict]:
                         "neto": demo.f_peso(row.get("valor_imputado", 0) or 0),
                     }
                 )
+            cod_bit = ""
+            if "bitacora_codigo" in grp.columns:
+                for v in grp["bitacora_codigo"].fillna("").astype(str):
+                    if v.strip():
+                        cod_bit = v.strip()
+                        break
             out.append(
                 {
                     "num": num,
@@ -86,6 +92,7 @@ def _eventos_historial(demo, conn, dfp) -> list[dict]:
                     "litros": demo.f_decimal(float(grp["litros"].sum())),
                     "neto": demo.f_peso(float(grp["valor_imputado"].fillna(0).sum())),
                     "n_cuarteles": len(grp),
+                    "bitacora_codigo": cod_bit,
                     "detalle": detalle,
                 }
             )
@@ -141,9 +148,12 @@ def _historial(demo, conn, saldo_actual: float) -> dict:
     fi = parse_date(request.args.get("desde"), f_min_p)
     ff = parse_date(request.args.get("hasta"), hoy)
 
+    # bitacora_codigo puede no existir en DBs antiguas
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(petroleo)").fetchall()}
+    extra = ", bitacora_codigo" if "bitacora_codigo" in cols else ""
     dfp = pd.read_sql_query(
-        """SELECT id, fecha, tipo, litros, vehiculo, responsable, centro_costo,
-                  monto_total_compra, valor_imputado
+        f"""SELECT id, fecha, tipo, litros, vehiculo, responsable, centro_costo,
+                  monto_total_compra, valor_imputado{extra}
            FROM petroleo WHERE fecha BETWEEN ? AND ?
            ORDER BY fecha ASC, id ASC""",
         conn,

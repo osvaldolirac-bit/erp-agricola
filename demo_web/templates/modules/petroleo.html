@@ -229,7 +229,9 @@
   </div>
   {% else %}
   <div class="lc-evento-banner mb-2" style="background:linear-gradient(135deg,#FFF3E0,#FFF8E1);border-color:#FFB74D;">
-    <strong>Movimiento {{ '%03d'|format(ev.num) }} — SALIDA</strong> &nbsp;|&nbsp;
+    <strong>Movimiento {{ '%03d'|format(ev.num) }} — SALIDA</strong>
+    {% if ev.bitacora_codigo %} &nbsp;|&nbsp; <span class="badge bg-success">{{ ev.bitacora_codigo }}</span>{% endif %}
+    &nbsp;|&nbsp;
     {{ ev.fecha }} &nbsp;|&nbsp; {{ ev.vehiculo }} &nbsp;|&nbsp; {{ ev.responsable }} &nbsp;|&nbsp;
     <strong>Total: {{ ev.litros }} L</strong> &nbsp;|&nbsp;
     <strong>Neto imputado: {{ ev.neto }}</strong> &nbsp;|&nbsp; {{ ev.n_cuarteles }} cuartel(es)

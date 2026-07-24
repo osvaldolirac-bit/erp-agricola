@@ -190,6 +190,12 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
             conn.execute(
                 "ALTER TABLE petroleo_bitacora ADD COLUMN autorizado_en TEXT DEFAULT ''"
             )
+        # Enlace bitácora → filas reales de petroleo (historial / costos)
+        pcols = {r[1] for r in conn.execute("PRAGMA table_info(petroleo)").fetchall()}
+        if "bitacora_codigo" not in pcols:
+            conn.execute(
+                "ALTER TABLE petroleo ADD COLUMN bitacora_codigo TEXT DEFAULT ''"
+            )
         _migrar_personal_autorizado(conn)
         row = conn.execute(
             "SELECT valor FROM schema_meta WHERE clave='salida_petroleo_token_v1'"
@@ -551,8 +557,9 @@ def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
             valor = float(litros_cc) * pmp
             conn.execute(
                 """INSERT INTO petroleo
-                   (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado)
-                   VALUES (?,?,?,?,?,?,?)""",
+                   (tipo, litros, vehiculo, responsable, centro_costo, fecha,
+                    valor_imputado, bitacora_codigo)
+                   VALUES (?,?,?,?,?,?,?,?)""",
                 (
                     "Salida",
                     float(litros_cc),
@@ -561,6 +568,7 @@ def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
                     str(cc).upper(),
                     fecha_salida,
                     valor,
+                    codigo,
                 ),
             )
             lineas.append((cc, float(litros_cc), valor))
@@ -572,12 +580,13 @@ def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
                WHERE codigo=?""",
             (usuario, fh_auth, codigo),
         )
+        det_cc = ", ".join(f"{c}:{demo.f_decimal(l)}L" for c, l, _ in lineas)
         conn.execute(
             "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
             (
                 usuario,
                 "PETROLEO AUTORIZAR",
-                f"{codigo} | {demo.f_decimal(litros)} L | {huerto[:50]} | {vehiculo}",
+                f"{codigo} | {demo.f_decimal(litros)} L | {det_cc[:120]} | {vehiculo}",
                 fh_auth,
             ),
         )
@@ -603,9 +612,15 @@ def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
         "detalle_cc_html": f"<div style='margin-top:10px;'><b>Imputación:</b>{filas_cc}</div>",
     }
     mail_ok = enviar_alerta_autorizacion(registro, usuario)
+    resumen_cc = "; ".join(
+        f"{c} {demo.f_decimal(l)} L (${demo.f_puntos(v)})" for c, l, v in lineas
+    )
     return {
         "ok": True,
-        "msg": f"{codigo} autorizado e imputado al estanque (PMP ${demo.f_puntos(pmp)}/L).",
+        "msg": (
+            f"{codigo} autorizado e imputado: {demo.f_decimal(litros)} L → {resumen_cc}. "
+            f"PMP ${demo.f_puntos(pmp)}/L. Ver Historial (arriba) y Costos."
+        ),
         "mail_ok": mail_ok,
         "codigo": codigo,
     }
