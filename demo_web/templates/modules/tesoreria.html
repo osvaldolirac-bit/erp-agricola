@@ -330,7 +330,7 @@
     $('#abono-doc').on('change', syncAbonoMax);
     syncAbonoMax();
 
-    var metodosConBanco = { 'Transferencia': true, 'Tarjeta bancaria': true };
+    var metodosConBanco = { 'Transferencia': true, 'Cheque': true, 'Tarjeta bancaria': true };
     function syncBancoPorMetodo(metodoSelect) {
       var bancoId = metodoSelect.getAttribute('data-banco-target');
       var banco = document.getElementById(bancoId);

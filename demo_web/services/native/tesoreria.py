@@ -15,7 +15,7 @@ SECCIONES = [
 ]
 
 METODOS_PAGO = ["Transferencia", "Efectivo", "Cheque", "Tarjeta bancaria"]
-METODOS_CON_BANCO = {"Transferencia", "Tarjeta bancaria"}
+METODOS_CON_BANCO = {"Transferencia", "Cheque", "Tarjeta bancaria"}
 
 BANCOS_PAGO = [
     "—",
@@ -35,7 +35,7 @@ BANCOS_PAGO = [
 
 
 def _banco_form(metodo: str = "") -> str:
-    """Banco solo aplica para Transferencia y Tarjeta bancaria."""
+    """Banco aplica para Transferencia, Cheque y Tarjeta bancaria."""
     if metodo not in METODOS_CON_BANCO:
         return ""
     banco = (request.form.get("banco") or "").strip()
@@ -48,7 +48,7 @@ def _banco_form(metodo: str = "") -> str:
 
 def _validar_banco_pago(metodo: str, banco: str) -> str | None:
     if metodo in METODOS_CON_BANCO and not banco:
-        return "Seleccione el banco para Transferencia o Tarjeta bancaria."
+        return "Seleccione el banco para Transferencia, Cheque o Tarjeta bancaria."
     return None
 
 
