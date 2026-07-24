@@ -302,7 +302,7 @@ def gather_petroleo(user_email: str, user_rol: str) -> dict:
             "maquinaria_opts": _opciones_maquinaria(conn),
         }
         ctx.update(_bitacora_campo_ctx(demo, conn))
-        # Alerta de desfase también visible fuera de Bitácora
+        # Alerta de desfase también visible fuera de Salida QR
         if bitacora_habilitada() and "bitacora_desfase" not in ctx:
             from demo_web.services.salida_petroleo import contar_pendientes
 
