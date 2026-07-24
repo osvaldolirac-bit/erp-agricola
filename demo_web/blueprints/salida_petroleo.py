@@ -76,7 +76,12 @@ def formulario():
                 error = "Seleccione un responsable autorizado."
             else:
                 res = registrar_salida(
-                    litros, sel, maquinaria, responsable, confirmar_duplicado=confirmar
+                    litros,
+                    sel,
+                    maquinaria,
+                    responsable,
+                    maquinaria_codigo=maquinaria_cod,
+                    confirmar_duplicado=confirmar,
                 )
                 if res.get("duplicado"):
                     aviso_duplicado = res.get("msg")

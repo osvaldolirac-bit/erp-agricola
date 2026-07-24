@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Petróleo — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Gestión de estanque y despachos por cuartel</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-8">
+      <div class="saldo-banner">🛢️ SALDO ACTUAL EN TANQUE: {{ saldo_actual }} LITROS</div>
+      <p class="small text-muted mb-0">
+        Cargas al estanque: <strong>{{ tot_cargas }} L</strong> ·
+        Despachos acumulados: <strong>{{ tot_salidas }} L</strong> ·
+        La dona muestra solo despachos de la <strong>temporada</strong> ({{ temp_nombre }}).
+      </p>
+    </div>
+    <div class="col-lg-4">
+      {{ widget_html|safe }}
+    </div>
+  </div>
+
+  {{ nav_modulo('modules.petroleo', secciones, sec_activa) }}
+
+  {% if solo_lectura %}
+  <div class="alert alert-warning small mb-3">Modo solo lectura: puede consultar saldo e historial, pero no registrar despachos ni generar planillas.</div>
+  {% endif %}
+
+  {% if bitacora_desfase %}
+  <div class="alert alert-warning mb-3">
+    <strong>Desfase bitácora ↔ salidas reales:</strong>
+    hay <strong>{{ bitacora_pendientes }}</strong> registro(s) de campo pendientes de autorizar.
+    Revise en <a href="{{ url_for('modules.petroleo', sec='bitacora') }}" class="alert-link">Bitácora campo</a>.
+  </div>
+  {% endif %}
+
+  <div class="alert alert-info small">
+    La <strong>carga al estanque</strong> se registra en <strong>Compras → INGRESO</strong>
+    (casilla <em>Compra de petróleo</em> + litros y monto). El camino normal de despacho es
+    <strong>Bitácora campo → Autorizar</strong>; <strong>Salida manual</strong> es solo para excepciones.
+  </div>
+
+  {% if sec_activa == 'salida' %}
+  <div class="alert alert-secondary small mb-3">
+    <b>Salida manual (redundante):</b> use solo si no hubo registro QR.
+    Preferible: Bitácora campo → Autorizar.
+  </div>
+  <div class="alert alert-primary small mb-3">
+    <b>PMP neto estanque:</b> ${{ pmp_neto }}/L &nbsp;|&nbsp;
+    Imputación por cuartel = litros × PMP neto (bruto ÷ 1,19 − ${{ impuesto_litro }}/L imp. específico)
+  </div>
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Despacho manual a cuarteles</h2>
+    {% if not maquinaria_opts %}
+    <div class="alert alert-warning">No hay maquinaria registrada. Cárguela en Administración → Maestra maquinaria.</div>
+    {% endif %}
+    <form method="post" class="row g-3">
+      <fieldset class="border-0 p-0 m-0" {% if solo_lectura %}disabled{% endif %}>
+      <input type="hidden" name="action" value="despachar">
+      <input type="hidden" name="sec" value="salida">
+      <div class="col-md-3">
+        <label class="form-label">Litros salida</label>
+        <input type="number" name="litros" class="form-control" min="0" step="0.1" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha" class="form-control" value="{{ form_fecha }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Equipo / vehículo</label>
+        <select name="vehiculo" class="form-select" required>
+          <option value="">— Seleccione —</option>
+          {% for cod, etiq in maquinaria_opts %}
+          <option value="{{ cod }}">{{ etiq }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Responsable operación</label>
+        <input type="text" name="responsable" class="form-control" required>
+      </div>
+      <div class="col-12">
+        <label class="form-label d-block">Cuarteles (distribución equitativa)</label>
+        <div class="d-flex flex-wrap gap-3">
+          {% for cc in cuarteles %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="cuarteles" value="{{ cc }}" id="pet_cc_{{ loop.index }}">
+            <label class="form-check-label" for="pet_cc_{{ loop.index }}">{{ cc }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary" {% if not maquinaria_opts or solo_lectura %}disabled{% endif %}>Despachar petróleo</button>
+      </div>
+      </fieldset>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'bitacora' %}
+  <div class="panel-card salida-petroleo-qr-page">
+    <h2 class="h6 panel-title">📱 Bitácora de campo — salida petróleo</h2>
+    <p class="small text-muted mb-3">
+      Registro desde celular (QR). Mientras no se autorice, es solo informativo (no descuenta estanque).
+      Un <strong>administrador</strong> autoriza aquí para imputar a CC con prorrateo de Administración y PMP neto.
+    </p>
+    {% if bitacora_habilitada %}
+    {% if bitacora_admin_qr %}
+    <div class="row g-3 align-items-start">
+      <div class="col-md-4 text-center">
+        <img src="{{ bitacora_qr_src }}" alt="QR bitácora petróleo" class="salida-petroleo-qr-img mb-2" width="280" height="280">
+        <p class="small text-muted mb-0">Imprima y pegue junto al estanque.</p>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label small fw-bold">Enlace para compartir</label>
+        <div class="input-group input-group-sm mb-2">
+          <input type="text" class="form-control font-monospace" id="bitacoraUrl" value="{{ bitacora_url }}" readonly>
+          <button type="button" class="btn btn-outline-primary" id="btnCopiarBitacora">Copiar</button>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <a class="btn btn-sm btn-success" href="{{ bitacora_url }}" target="_blank" rel="noopener">Abrir formulario</a>
+          <a class="btn btn-sm btn-outline-success" href="{{ bitacora_wa_url }}" target="_blank" rel="noopener">Compartir WhatsApp</a>
+        </div>
+        <p class="small text-muted mb-0">
+          Quien abre el enlace anota litros, cuarteles, maquinaria y responsable. Sin login ERP.
+        </p>
+      </div>
+    </div>
+    <hr class="my-3">
+    {% endif %}
+    <h3 class="h6 mb-2">Registros bitácora campo</h3>
+    <p class="small text-muted">
+      Pendientes: {{ bitacora_pendientes|default(0) }} ·
+      Al autorizar se crea la salida real en Historial (sin redigitar).
+    </p>
+    {% if bitacora_registros %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered w-100 mb-0 align-middle">
+        <thead>
+          <tr>
+            <th>Código</th><th>Fecha/hora</th><th>Litros</th><th>Cuarteles</th>
+            <th>Maquinaria</th><th>Responsable</th><th>Estado</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in bitacora_registros %}
+          <tr class="{% if r.pendiente %}table-warning{% endif %}">
+            <td><strong>{{ r.codigo }}</strong></td>
+            <td>{{ r.fecha_hora }}</td>
+            <td>{{ r.litros }}</td>
+            <td>{{ r.huerto }}</td>
+            <td>{{ r.maquinaria }}</td>
+            <td>{{ r.responsable }}</td>
+            <td>
+              {% if r.pendiente %}
+              <span class="badge bg-warning text-dark">Pendiente</span>
+              {% else %}
+              <span class="badge bg-success">Autorizado</span>
+              {% if r.autorizado_en %}<div class="small text-muted">{{ r.autorizado_en }}</div>{% endif %}
+              {% endif %}
+            </td>
+            <td class="text-nowrap">
+              {% if r.pendiente and bitacora_puede_autorizar %}
+              <form method="post" class="d-inline" onsubmit="return confirm('¿Autorizar {{ r.codigo }} e imputar al estanque con los mismos datos del QR?');">
+                <input type="hidden" name="action" value="autorizar_bitacora">
+                <input type="hidden" name="sec" value="bitacora">
+                <input type="hidden" name="codigo" value="{{ r.codigo }}">
+                <button type="submit" class="btn btn-sm btn-success">AUTORIZAR</button>
+              </form>
+              {% elif r.pendiente %}
+              <span class="small text-muted">Solo admin</span>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-light border mb-0">Sin registros aún{% if bitacora_admin_qr %}. Comparta el QR para que anoten salidas desde el campo{% endif %}.</div>
+    {% endif %}
+    {% else %}
+    <div class="alert alert-warning mb-0">Bitácora disponible solo en La Concepción.</div>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'historial' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">🔍 Filtros</h2>
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-3">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL PETRÓLEO', 'btn-outline-success w-100') }}
+      </div>
+    </form>
+  </div>
+
+  {% if historial_eventos %}
+  <p class="small text-muted mb-3">
+    <strong>{{ historial_stats.total }}</strong> movimiento(s) ·
+    <strong>{{ historial_stats.entradas }}</strong> entrada(s) ·
+    <strong>{{ historial_stats.salidas }}</strong> salida(s) · más reciente arriba
+  </p>
+  {% for ev in historial_eventos %}
+  {% if ev.kind == 'carga' %}
+  <div class="lc-evento-banner mb-2" style="background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border-color:#2E7D32;">
+    <strong>Movimiento {{ '%03d'|format(ev.num) }} — ENTRADA</strong> &nbsp;|&nbsp;
+    {{ ev.fecha }} &nbsp;|&nbsp; {{ ev.litros }} L &nbsp;|&nbsp;
+    Total bruto compra: {{ ev.bruto }}
+  </div>
+  {% else %}
+  <div class="lc-evento-banner mb-2" style="background:linear-gradient(135deg,#FFF3E0,#FFF8E1);border-color:#FFB74D;">
+    <strong>Movimiento {{ '%03d'|format(ev.num) }} — SALIDA</strong> &nbsp;|&nbsp;
+    {{ ev.fecha }} &nbsp;|&nbsp; {{ ev.vehiculo }} &nbsp;|&nbsp; {{ ev.responsable }} &nbsp;|&nbsp;
+    <strong>Total: {{ ev.litros }} L</strong> &nbsp;|&nbsp;
+    <strong>Neto imputado: {{ ev.neto }}</strong> &nbsp;|&nbsp; {{ ev.n_cuarteles }} cuartel(es)
+  </div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0">
+        <thead><tr><th>Cuartel</th><th>Litros</th><th>Valor neto imp.</th></tr></thead>
+        <tbody>
+          {% for d in ev.detalle %}
+          <tr><td>{{ d.cuartel }}</td><td>{{ d.litros }}</td><td>{{ d.neto }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+  {% else %}
+  <div class="alert alert-info">No hay movimientos en el período seleccionado.</div>
+  {% endif %}
+
+  {% elif sec_activa == 'planilla' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Planilla maestra del estanque</h2>
+    <p class="small text-muted">
+      Imprima y deje en el estanque para <strong>anotar salidas a mano</strong>.
+      Columnas: fecha, litros, huerto, maquinaria y quien retira.
+    </p>
+    <form method="post" class="row g-3">
+      <fieldset class="border-0 p-0 m-0" {% if solo_lectura %}disabled{% endif %}>
+      <input type="hidden" name="action" value="planilla_pdf">
+      <input type="hidden" name="sec" value="planilla">
+      <div class="col-md-4">
+        <label class="form-label">Fecha de carga</label>
+        <input type="date" name="fecha" class="form-control" value="{{ plan_fecha }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Carga (Lts)</label>
+        <input type="number" name="litros" class="form-control" min="0" step="1" value="{{ plan_litros|int }}" required>
+      </div>
+      <div class="col-md-4 d-flex align-items-end gap-2">
+        <button type="submit" class="btn btn-primary" {% if solo_lectura %}disabled{% endif %}>Imprimir planilla maestra</button>
+        {{ pdf_btn(pdf_planilla_url, '📥 DESCARGAR PDF') }}
+      </div>
+      </fieldset>
+    </form>
+    <p class="small text-muted mt-2 mb-0">Formato carta · una página con recuadros para completar en terreno.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if sec_activa == 'bitacora' and bitacora_admin_qr %}
+<script>
+(function () {
+  var btn = document.getElementById('btnCopiarBitacora');
+  var inp = document.getElementById('bitacoraUrl');
+  if (!btn || !inp) return;
+  btn.addEventListener('click', function () {
+    inp.select();
+    inp.setSelectionRange(0, 99999);
+    var ok = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(inp.value).then(function () { ok = true; });
+    } else {
+      try { ok = document.execCommand('copy'); } catch (e) {}
+    }
+    btn.textContent = ok ? 'Copiado ✓' : 'Copiar';
+    setTimeout(function () { btn.textContent = 'Copiar'; }, 2000);
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -171,6 +171,25 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
             conn.execute("ALTER TABLE petroleo_bitacora ADD COLUMN huerto TEXT DEFAULT ''")
         if "codigo" not in cols:
             conn.execute("ALTER TABLE petroleo_bitacora ADD COLUMN codigo TEXT")
+        if "maquinaria_codigo" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN maquinaria_codigo TEXT DEFAULT ''"
+            )
+        if "estado" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN estado TEXT DEFAULT 'pendiente'"
+            )
+            conn.execute(
+                "UPDATE petroleo_bitacora SET estado='pendiente' WHERE estado IS NULL OR TRIM(estado)=''"
+            )
+        if "autorizado_por" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN autorizado_por TEXT DEFAULT ''"
+            )
+        if "autorizado_en" not in cols:
+            conn.execute(
+                "ALTER TABLE petroleo_bitacora ADD COLUMN autorizado_en TEXT DEFAULT ''"
+            )
         _migrar_personal_autorizado(conn)
         row = conn.execute(
             "SELECT valor FROM schema_meta WHERE clave='salida_petroleo_token_v1'"
@@ -296,7 +315,7 @@ def enviar_alerta(registro: dict[str, Any]) -> bool:
     interior = f"""
         <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
           Se registró una salida de petróleo desde la <b>bitácora de campo</b> (informativa).
-          Debe imputarla manualmente en el ERP cuando corresponda.
+          Un administrador debe <b>autorizarla</b> en Petróleo → Bitácora campo para imputarla al estanque.
         </p>
         <div style="background:#FFF3E0;border:1px solid #FFCC80;border-radius:10px;padding:16px 18px;">
           <p style="margin:6px 0;"><b>Código:</b> {html_esc(codigo)}</p>
@@ -327,11 +346,13 @@ def registrar_salida(
     maquinaria: str,
     responsable: str,
     *,
+    maquinaria_codigo: str = "",
     confirmar_duplicado: bool = False,
 ) -> dict[str, Any]:
     demo = get_demo_module()
     huerto = normalizar_cuarteles(cuarteles)
     maquinaria = maquinaria.strip()
+    maquinaria_codigo = (maquinaria_codigo or "").strip()
     responsable = responsable.strip()
     fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
     ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
@@ -351,9 +372,20 @@ def registrar_salida(
         codigo = _siguiente_codigo(conn)
         conn.execute(
             """INSERT INTO petroleo_bitacora
-               (codigo, fecha_hora, litros, huerto, maquinaria, responsable, ip_origen, creado_en)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (codigo, fh, litros, huerto, maquinaria, responsable, ip or None, fh),
+               (codigo, fecha_hora, litros, huerto, maquinaria, maquinaria_codigo,
+                responsable, ip_origen, creado_en, estado)
+               VALUES (?,?,?,?,?,?,?,?,?,'pendiente')""",
+            (
+                codigo,
+                fh,
+                litros,
+                huerto,
+                maquinaria,
+                maquinaria_codigo,
+                responsable,
+                ip or None,
+                fh,
+            ),
         )
         conn.commit()
     finally:
@@ -372,7 +404,7 @@ def registrar_salida(
     try:
         conn = _conn()
         det = (
-            f"Marcha blanca | {codigo} | {registro['litros_fmt']} L | {huerto[:40]} | "
+            f"Campo | {codigo} | {registro['litros_fmt']} L | {huerto[:40]} | "
             f"{maquinaria[:60]} | {responsable[:40]}"
             + (" | mail OK" if mail_ok else " | mail falló")
         )
@@ -387,19 +419,209 @@ def registrar_salida(
     return {"ok": True, "mail_ok": mail_ok, **registro}
 
 
+def _cuarteles_desde_huerto(huerto: str) -> list[str]:
+    demo = get_demo_module()
+    canon = {c.upper(): c for c in getattr(demo, "CENTROS_COSTO", []) or []}
+    out = []
+    for part in str(huerto or "").split(","):
+        key = part.strip().upper()
+        if not key:
+            continue
+        if key in canon:
+            out.append(canon[key])
+    return out
+
+
+def _resolver_codigo_maquinaria(conn, codigo: str, etiqueta: str) -> str:
+    from erp_maquinaria import mapear_legacy_a_codigo
+
+    cod = (codigo or "").strip()
+    if cod:
+        return cod
+    return mapear_legacy_a_codigo(conn, etiqueta) or (etiqueta or "").strip()
+
+
+def enviar_alerta_autorizacion(registro: dict[str, Any], usuario: str) -> bool:
+    demo = get_demo_module()
+    if not hasattr(demo, "_enviar_correo_html"):
+        return False
+    from erp_correo_html import html_esc, plantilla_correo_html
+
+    dest = _destinatario_alerta()
+    if not dest:
+        return False
+    codigo = registro.get("codigo", "")
+    detalle_cc = registro.get("detalle_cc_html", "")
+    interior = f"""
+        <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
+          Se <b>autorizó</b> la salida de bitácora <b>{html_esc(codigo)}</b> y quedó
+          imputada al estanque ERP / centros de costo.
+        </p>
+        <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;padding:16px 18px;">
+          <p style="margin:6px 0;"><b>Código:</b> {html_esc(codigo)}</p>
+          <p style="margin:6px 0;"><b>Autorizado por:</b> {html_esc(usuario)}</p>
+          <p style="margin:6px 0;"><b>Fecha/hora campo:</b> {html_esc(registro.get('fecha_hora', ''))}</p>
+          <p style="margin:6px 0;"><b>Litros:</b> {html_esc(registro.get('litros_fmt', ''))}</p>
+          <p style="margin:6px 0;"><b>Cuarteles:</b> {html_esc(registro.get('huerto', ''))}</p>
+          <p style="margin:6px 0;"><b>Maquinaria:</b> {html_esc(registro.get('maquinaria', ''))}</p>
+          <p style="margin:6px 0;"><b>Responsable:</b> {html_esc(registro.get('responsable', ''))}</p>
+          <p style="margin:6px 0;"><b>PMP neto:</b> ${html_esc(registro.get('pmp_fmt', '0'))}/L</p>
+          {detalle_cc}
+        </div>
+    """
+    cuerpo = plantilla_correo_html(
+        "vencimiento",
+        f"✅ {codigo} — Autorización salida petróleo",
+        interior,
+        nombre_erp="ERP La Concepción",
+        pie="Salida autorizada e imputada al estanque / historial de Petróleo.",
+    )
+    asunto = (
+        f"✅ {codigo} autorizado | {registro.get('litros_fmt', '')} L | "
+        f"{registro.get('maquinaria', '')[:25]}"
+    )
+    return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
+
+
+def autorizar_salida(codigo: str, usuario: str) -> dict[str, Any]:
+    """Imputa bitácora pendiente al estanque (PMP + prorrateo Administración)."""
+    demo = get_demo_module()
+    codigo = (codigo or "").strip()
+    usuario = (usuario or "").strip() or "admin"
+    if not codigo:
+        return {"ok": False, "msg": "Código inválido."}
+
+    conn = _conn()
+    try:
+        migrar_tabla(conn)
+        row = conn.execute(
+            """SELECT id, codigo, fecha_hora, litros, huerto, maquinaria, maquinaria_codigo,
+                      responsable, COALESCE(estado, 'pendiente')
+               FROM petroleo_bitacora WHERE codigo=?""",
+            (codigo,),
+        ).fetchone()
+        if not row:
+            return {"ok": False, "msg": f"No se encontró {codigo}."}
+        (
+            _bid,
+            codigo,
+            fecha_hora,
+            litros,
+            huerto,
+            maquinaria,
+            maquinaria_codigo,
+            responsable,
+            estado,
+        ) = row
+        if str(estado).lower() == "autorizado":
+            return {"ok": False, "msg": f"{codigo} ya está autorizado."}
+
+        litros = float(litros or 0)
+        if litros <= 0:
+            return {"ok": False, "msg": "Litros inválidos en la bitácora."}
+
+        cuarteles = _cuarteles_desde_huerto(huerto)
+        if not cuarteles:
+            return {"ok": False, "msg": "No se pudieron resolver los cuarteles de la bitácora."}
+
+        reparto, err_cc = demo._reparto_por_cc(conn, litros, cuarteles)
+        if err_cc:
+            return {"ok": False, "msg": err_cc}
+
+        try:
+            pmp = float(demo._petroleo_pmp_neto(conn) or 0)
+        except Exception:
+            pmp = 0.0
+
+        vehiculo = _resolver_codigo_maquinaria(conn, maquinaria_codigo or "", maquinaria or "")
+        if not vehiculo:
+            return {"ok": False, "msg": "No se pudo resolver el equipo/maquinaria."}
+
+        fecha_salida = str(fecha_hora or "")[:10]
+        if len(fecha_salida) < 10:
+            fecha_salida = str(demo.hoy)
+
+        lineas = []
+        for cc, litros_cc in reparto:
+            valor = float(litros_cc) * pmp
+            conn.execute(
+                """INSERT INTO petroleo
+                   (tipo, litros, vehiculo, responsable, centro_costo, fecha, valor_imputado)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    "Salida",
+                    float(litros_cc),
+                    vehiculo,
+                    responsable,
+                    str(cc).upper(),
+                    fecha_salida,
+                    valor,
+                ),
+            )
+            lineas.append((cc, float(litros_cc), valor))
+
+        fh_auth = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            """UPDATE petroleo_bitacora
+               SET estado='autorizado', autorizado_por=?, autorizado_en=?
+               WHERE codigo=?""",
+            (usuario, fh_auth, codigo),
+        )
+        conn.execute(
+            "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
+            (
+                usuario,
+                "PETROLEO AUTORIZAR",
+                f"{codigo} | {demo.f_decimal(litros)} L | {huerto[:50]} | {vehiculo}",
+                fh_auth,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    from erp_correo_html import html_esc
+
+    filas_cc = "".join(
+        f"<p style='margin:4px 0;'>{html_esc(cc)}: {html_esc(demo.f_decimal(l))} L · "
+        f"${html_esc(demo.f_puntos(v))}</p>"
+        for cc, l, v in lineas
+    )
+    registro = {
+        "codigo": codigo,
+        "fecha_hora": fecha_hora,
+        "litros_fmt": demo.f_decimal(litros),
+        "huerto": huerto,
+        "maquinaria": maquinaria,
+        "responsable": responsable,
+        "pmp_fmt": demo.f_puntos(pmp),
+        "detalle_cc_html": f"<div style='margin-top:10px;'><b>Imputación:</b>{filas_cc}</div>",
+    }
+    mail_ok = enviar_alerta_autorizacion(registro, usuario)
+    return {
+        "ok": True,
+        "msg": f"{codigo} autorizado e imputado al estanque (PMP ${demo.f_puntos(pmp)}/L).",
+        "mail_ok": mail_ok,
+        "codigo": codigo,
+    }
+
+
 def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
-    """Últimos registros de bitácora campo (solo lectura, ERP)."""
+    """Últimos registros de bitácora campo (ERP)."""
     demo = get_demo_module()
     migrar_tabla(conn)
     rows = conn.execute(
-        """SELECT codigo, fecha_hora, litros, huerto, maquinaria, responsable
+        """SELECT codigo, fecha_hora, litros, huerto, maquinaria, responsable,
+                  COALESCE(estado, 'pendiente'), COALESCE(autorizado_por, ''),
+                  COALESCE(autorizado_en, '')
            FROM petroleo_bitacora
            ORDER BY id DESC
            LIMIT ?""",
         (limite,),
     ).fetchall()
     out = []
-    for codigo, fh, litros, huerto, maquinaria, responsable in rows:
+    for codigo, fh, litros, huerto, maquinaria, responsable, estado, auth_por, auth_en in rows:
+        est = (estado or "pendiente").lower()
         out.append(
             {
                 "codigo": codigo or "—",
@@ -408,9 +630,22 @@ def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
                 "huerto": huerto or "—",
                 "maquinaria": maquinaria,
                 "responsable": responsable,
+                "estado": est,
+                "pendiente": est != "autorizado",
+                "autorizado_por": auth_por,
+                "autorizado_en": auth_en,
             }
         )
     return out
+
+
+def contar_pendientes(conn) -> int:
+    migrar_tabla(conn)
+    row = conn.execute(
+        """SELECT COUNT(*) FROM petroleo_bitacora
+           WHERE COALESCE(estado, 'pendiente') != 'autorizado'"""
+    ).fetchone()
+    return int(row[0] or 0) if row else 0
 
 
 def datos_compartir() -> dict[str, str]:
