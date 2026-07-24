@@ -26,6 +26,9 @@
       {% else %}
       <span>La anotación quedó guardada.</span>
       {% endif %}
+      {% if operador %}
+      <span class="small">Operador: {{ operador.nombre }}</span>
+      {% endif %}
       <span class="salida-petroleo-recarga-hint">Preparando nuevo registro…</span>
     </div>
     {% endif %}
@@ -96,9 +99,22 @@
       <p class="small text-danger">No hay equipos activos en la maestra (tractores, camiones o vehículos).</p>
       {% endif %}
 
-      <label class="form-label d-block mt-3">Responsable</label>
-      <p class="small text-muted mb-2">Trabajadores autorizados y dueños cargados en RRHH → Personal.</p>
-      {% if responsables %}
+      <label class="form-label d-block mt-3">Operador</label>
+      {% if operador %}
+      <input type="hidden" name="responsable" id="responsableFijo" value="{{ operador.id }}">
+      <div class="alert alert-success py-2 mb-2" role="status">
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+          <div>
+            <strong>Operando:</strong> {{ operador.nombre }}
+            <div class="small mb-0">Detectado en este teléfono. No hace falta volver a elegirlo.</div>
+          </div>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_cambiar_operador }}">Cambiar</a>
+        </div>
+      </div>
+      {% elif responsables %}
+      <p class="small text-muted mb-2">
+        Primera vez en este teléfono: elija su nombre. Quedará guardado para las próximas salidas.
+      </p>
       <div class="salida-petroleo-cuarteles mb-1" id="salidaPetroleoResponsable">
         {% for r in responsables %}
         <label class="salida-petroleo-cc-chip" for="sp_resp_{{ loop.index }}">
@@ -140,11 +156,15 @@
     var btn = document.getElementById('btnRegistrarSalida');
     if (!form || !btn) return;
 
+    var operadorFijo = !!document.getElementById('responsableFijo');
+
     function formularioCompleto() {
       var litros = parseFloat(document.getElementById('litros').value);
       var ccs = form.querySelectorAll('input[name="cuarteles"]:checked').length;
       var maq = form.querySelectorAll('input[name="maquinaria"]:checked').length;
-      var resp = form.querySelectorAll('input[name="responsable"]:checked').length;
+      var resp = operadorFijo
+        ? 1
+        : form.querySelectorAll('input[name="responsable"]:checked').length;
       return litros > 0 && ccs > 0 && maq === 1 && resp === 1;
     }
 
@@ -163,7 +183,9 @@
     }
 
     exclusivos('input.salida-petroleo-maq-input');
-    exclusivos('input.salida-petroleo-resp-input');
+    if (!operadorFijo) {
+      exclusivos('input.salida-petroleo-resp-input');
+    }
 
     function actualizarBoton() {
       btn.disabled = !formularioCompleto();

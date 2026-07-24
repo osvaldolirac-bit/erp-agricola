@@ -145,6 +145,72 @@ def responsables_autorizados_para_formulario() -> list[dict[str, str]]:
         conn.close()
 
 
+# Cookie en el teléfono del operador (formulario QR sin login ERP).
+_COOKIE_OP_MAX_AGE = 180 * 24 * 3600  # 180 días
+
+
+def cookie_nombre_operador() -> str:
+    app = get_erp_app() or "erp"
+    return f"erp_sp_op_{app}"
+
+
+def cookie_path_operador() -> str:
+    """Path del cookie. '/' es seguro detrás de nginx (nombres distintos por ERP_APP)."""
+    return "/"
+
+
+def resolver_responsable_por_id(
+    op_id: str | None,
+    responsables: list[dict[str, str]] | None = None,
+) -> dict[str, str] | None:
+    """Valida id p-N / e-N contra la lista autorizada vigente."""
+    key = (op_id or "").strip()
+    if not key:
+        return None
+    opts = responsables if responsables is not None else responsables_autorizados_para_formulario()
+    for r in opts:
+        if r.get("id") == key:
+            return {"id": r["id"], "nombre": r["nombre"]}
+    return None
+
+
+def leer_operador_cookie(
+    responsables: list[dict[str, str]] | None = None,
+) -> dict[str, str] | None:
+    return resolver_responsable_por_id(
+        request.cookies.get(cookie_nombre_operador()),
+        responsables,
+    )
+
+
+def aplicar_cookie_operador(response, op_id: str) -> None:
+    """Persiste el operador en el navegador/teléfono del campo."""
+    if not op_id:
+        return
+    response.set_cookie(
+        cookie_nombre_operador(),
+        op_id,
+        max_age=_COOKIE_OP_MAX_AGE,
+        httponly=True,
+        samesite="Lax",
+        secure=bool(request.is_secure),
+        path=cookie_path_operador(),
+    )
+
+
+def borrar_cookie_operador(response) -> None:
+    response.set_cookie(
+        cookie_nombre_operador(),
+        "",
+        max_age=0,
+        expires=0,
+        httponly=True,
+        samesite="Lax",
+        secure=bool(request.is_secure),
+        path=cookie_path_operador(),
+    )
+
+
 def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
     own = conn is None
     if own:

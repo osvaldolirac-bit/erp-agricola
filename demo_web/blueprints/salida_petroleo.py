@@ -1,14 +1,26 @@
 from __future__ import annotations
 
-from flask import Blueprint, abort, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    abort,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 
 from demo_web.auth.decorators import login_required
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.salida_petroleo import (
+    aplicar_cookie_operador,
+    borrar_cookie_operador,
     cuarteles_para_formulario,
     habilitado,
+    leer_operador_cookie,
     maquinaria_para_formulario,
     registrar_salida,
+    resolver_responsable_por_id,
     responsables_autorizados_para_formulario,
     token_valido,
 )
@@ -18,6 +30,10 @@ bp = Blueprint("salida_petroleo", __name__)
 
 def _token_request() -> str | None:
     return (request.args.get("t") or request.form.get("t") or "").strip() or None
+
+
+def _url_formulario(tok: str, **extra) -> str:
+    return url_for("salida_petroleo.formulario", t=tok, **extra)
 
 
 @bp.route("/salida-petroleo", methods=["GET", "POST"])
@@ -32,7 +48,17 @@ def formulario():
     maquinaria_opts = maquinaria_para_formulario()
     maquinaria_map = {m["codigo"]: m["etiqueta"] for m in maquinaria_opts}
     responsables_opts = responsables_autorizados_para_formulario()
-    responsables_map = {r["id"]: r["nombre"] for r in responsables_opts}
+
+    # Cambiar operador: limpia cookie y vuelve al formulario.
+    if request.method == "GET" and request.args.get("cambiar") == "1":
+        resp = make_response(redirect(_url_formulario(tok)))
+        borrar_cookie_operador(resp)
+        return resp
+
+    # Identidad: ?op=p-N (QR personal) > cookie del teléfono > selección manual.
+    op_query = resolver_responsable_por_id(request.args.get("op"), responsables_opts)
+    op_cookie = leer_operador_cookie(responsables_opts)
+    operador = op_query or op_cookie
 
     ok = False
     mail_ok = None
@@ -42,8 +68,9 @@ def formulario():
     codigo_duplicado = None
     form_litros = ""
     form_maquinaria = ""
-    form_responsable = ""
+    form_responsable = (operador or {}).get("id", "")
     form_cuarteles_sel: list[str] = []
+    cookie_op_id: str | None = None
 
     if request.method == "POST":
         if (request.form.get("website") or "").strip():
@@ -56,12 +83,15 @@ def formulario():
             maquinaria_cod = (request.form.get("maquinaria") or "").strip()
             maquinaria = maquinaria_map.get(maquinaria_cod, "")
             responsable_id = (request.form.get("responsable") or "").strip()
-            responsable = responsables_map.get(responsable_id, "")
+            # Preferir operador ya detectado (cookie/QR); el form solo si aún no hay.
+            op_form = resolver_responsable_por_id(responsable_id, responsables_opts)
+            operador_post = operador or op_form
+            responsable = (operador_post or {}).get("nombre", "")
             sel = [c for c in request.form.getlist("cuarteles") if c in cuarteles_opts]
             confirmar = request.form.get("confirmar_duplicado") == "1"
             form_litros = request.form.get("litros") or ""
             form_maquinaria = maquinaria_cod
-            form_responsable = responsable_id
+            form_responsable = (operador_post or {}).get("id", responsable_id)
             form_cuarteles_sel = sel
 
             if litros <= 0:
@@ -71,9 +101,12 @@ def formulario():
             elif not maquinaria:
                 error = "Seleccione un equipo de la lista."
             elif not responsables_opts:
-                error = "No hay responsables autorizados. En RRHH → Personal marque trabajadores o agregue dueños."
+                error = (
+                    "No hay responsables autorizados. En RRHH → Personal "
+                    "marque trabajadores o agregue dueños."
+                )
             elif not responsable:
-                error = "Seleccione un responsable autorizado."
+                error = "Indique quién está operando (primera vez en este teléfono)."
             else:
                 res = registrar_salida(
                     litros,
@@ -90,13 +123,17 @@ def formulario():
                     ok = True
                     mail_ok = res.get("mail_ok")
                     codigo = res.get("codigo")
+                    cookie_op_id = (operador_post or {}).get("id")
+                    operador = operador_post
 
-    return render_template(
+    html = render_template(
         "salida_petroleo/form.html",
         token=tok,
         cuarteles=cuarteles_opts,
         maquinaria=maquinaria_opts,
         responsables=responsables_opts,
+        operador=operador,
+        url_cambiar_operador=_url_formulario(tok, cambiar=1),
         ok=ok,
         codigo=codigo,
         mail_ok=mail_ok,
@@ -108,6 +145,13 @@ def formulario():
         form_responsable=form_responsable,
         form_cuarteles_sel=form_cuarteles_sel,
     )
+    resp = make_response(html)
+    if cookie_op_id:
+        aplicar_cookie_operador(resp, cookie_op_id)
+    elif op_query:
+        # QR personal: fijar cookie al abrir el enlace.
+        aplicar_cookie_operador(resp, op_query["id"])
+    return resp
 
 
 @bp.route("/salida-petroleo/qr")
