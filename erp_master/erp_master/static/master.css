@@ -40,6 +40,15 @@ button, input { font: inherit; }
   padding: 2rem 1.25rem;
 }
 
+/* Consola / pantallas de gestión: ancho completo, ancladas arriba */
+.shell-wide {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 1.25rem clamp(1rem, 2.2vw, 2rem) 2.5rem;
+  place-items: unset;
+}
+
 /* —— Login —— */
 .login {
   width: min(520px, 100%);
@@ -537,7 +546,11 @@ button, input { font: inherit; }
 }
 .tabs a.tab-secondary:hover { color: var(--accent); }
 
-.shell-wide .console { width: min(1100px, 100%); }
+.shell-wide .console {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
 
 .crumb { margin: 0 0 0.35rem; color: var(--muted); font-size: 0.88rem; }
 .crumb a { color: var(--field); font-weight: 600; }
@@ -623,6 +636,11 @@ button, input { font: inherit; }
   align-items: end;
 }
 .form-grid.narrow { max-width: 420px; }
+@media (min-width: 1200px) {
+  .form-grid:not(.narrow) {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
 .form-grid label,
 .modulos-form label {
   display: flex;
@@ -659,16 +677,22 @@ button, input { font: inherit; }
   font-weight: 550 !important;
 }
 
-.table-wrap { overflow-x: auto; }
+.table-wrap {
+  overflow-x: auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
 table.data {
   width: 100%;
+  min-width: 960px;
   border-collapse: collapse;
   font-size: 0.92rem;
+  table-layout: auto;
 }
 table.data th,
 table.data td {
   text-align: left;
-  padding: 0.7rem 0.55rem;
+  padding: 0.7rem 0.65rem;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
@@ -677,14 +701,24 @@ table.data th {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
+  white-space: nowrap;
 }
-.cell-strong { font-weight: 650; }
+.cell-strong { font-weight: 650; word-break: break-word; }
 .cell-muted { color: var(--muted); font-size: 0.82rem; margin-top: 0.2rem; }
 .actions {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  min-width: 210px;
+  min-width: 220px;
+}
+@media (min-width: 1280px) {
+  .actions {
+    min-width: 280px;
+  }
+  .actions .inline-form input[type="text"],
+  .actions .inline-form input:not([type]) {
+    min-width: 9rem;
+  }
 }
 .inline-form {
   display: flex;
@@ -697,7 +731,7 @@ table.data th {
   grid-template-columns: 1fr;
   gap: 0.4rem;
   min-width: 150px;
-  max-width: 220px;
+  max-width: none;
   justify-items: start;
 }
 .flags-grid label {
@@ -729,11 +763,12 @@ table.data th {
 .btn-danger:hover { background: #ecd2cd; }
 
 .modulos-form {
-  max-width: 920px;
+  max-width: none;
+  width: 100%;
 }
 .modulos-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 0.55rem 1rem;
   margin: 0.85rem 0 1.1rem;
   width: 100%;
@@ -765,11 +800,20 @@ table.data th {
 .modulos-grid .modulos-item span {
   line-height: 1.25;
 }
-@media (max-width: 900px) {
-  .modulos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (max-width: 560px) {
   .modulos-grid { grid-template-columns: 1fr; }
+}
+
+/* Bloques de admin a ancho completo en consola */
+.shell-wide .admin-block {
+  width: 100%;
+}
+.shell-wide .btn-primary {
+  width: auto;
+  min-width: 10rem;
+}
+.shell-wide .form-actions .btn-primary {
+  width: auto;
 }
 
 .status-dl {
