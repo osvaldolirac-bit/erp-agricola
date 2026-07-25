@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — Administrador</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
+</head>
+<body>
+  <div class="shell shell-wide">
+    <main class="console">
+      {% include "_topbar.html" %}
+
+      <div class="section-head">
+        <h2>Facultades de Administrador</h2>
+        <p>Gestionas tu ERP desde la consola. No eres Super Administrador de plataforma.</p>
+      </div>
+
+      {% if tenant %}
+      <section class="faculty faculty-admin">
+        <header>
+          <span class="faculty-tag">ERP asignado</span>
+          <h3>{{ tenant.nombre }}</h3>
+          <p>Usuarios, módulos y respaldos de este cliente.</p>
+        </header>
+        <ul class="faculty-actions">
+          <li><a href="{{ url_for('admin_tenant', slug=tenant.slug, sec='usuarios') }}">Usuarios del ERP</a></li>
+          <li><a href="{{ url_for('admin_tenant', slug=tenant.slug, sec='modulos') }}">Módulos de operador</a></li>
+          <li><a href="{{ url_for('admin_tenant', slug=tenant.slug, sec='respaldo') }}">Respaldo</a></li>
+        </ul>
+        <p class="faculty-secondary">
+          Acceso al sistema del cliente (opcional):
+          <a href="{{ tenant.url }}" target="_blank" rel="noopener">Abrir ERP {{ tenant.nombre }}</a>
+        </p>
+      </section>
+      {% else %}
+      <p class="banner banner-error">No tienes un ERP asignado. Pide al Super Administrador que te asigne uno.</p>
+      {% endif %}
+    </main>
+  </div>
+</body>
+</html>

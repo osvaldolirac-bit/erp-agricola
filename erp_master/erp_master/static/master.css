@@ -320,6 +320,108 @@ button, input { font: inherit; }
 }
 .top-nav a:hover { border-bottom-color: var(--field); }
 
+.role-badge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+}
+.role-super_admin {
+  background: rgba(196, 106, 44, 0.16);
+  color: #8a3f12;
+}
+.role-admin {
+  background: rgba(47, 122, 88, 0.14);
+  color: var(--field-deep);
+}
+
+.faculty-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+.faculty {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 252, 246, 0.7);
+  padding: 1.2rem 1.25rem 1.1rem;
+  box-shadow: var(--shadow);
+  animation: rise 700ms cubic-bezier(.2,.8,.2,1) both;
+}
+.faculty-super { border-top: 3px solid var(--accent); }
+.faculty-admin { border-top: 3px solid var(--field-bright); }
+.faculty-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+.faculty h3 {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 560;
+  color: var(--field-deep);
+}
+.faculty header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.faculty-actions {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.faculty-actions li { border-bottom: 1px solid var(--line); }
+.faculty-actions a {
+  display: block;
+  padding: 0.75rem 0.1rem;
+  font-weight: 650;
+  color: var(--ink);
+  transition: color 150ms ease, padding-left 150ms ease;
+}
+.faculty-actions a:hover {
+  color: var(--field);
+  padding-left: 0.35rem;
+}
+.faculty-secondary {
+  margin: 0.9rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.faculty-secondary a {
+  color: var(--accent);
+  font-weight: 600;
+  margin-left: 0.25rem;
+}
+
+.tenant-main.is-static {
+  cursor: default;
+}
+.tenant-admin.is-secondary {
+  color: var(--muted);
+  font-weight: 550;
+  font-size: 0.8rem;
+}
+.tenant-admin.is-secondary:hover { color: var(--accent); }
+.tabs a.tab-secondary {
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 500;
+  border-bottom-color: transparent;
+}
+.tabs a.tab-secondary:hover { color: var(--accent); }
+
 .shell-wide .console { width: min(1100px, 100%); }
 
 .crumb { margin: 0 0 0.35rem; color: var(--muted); font-size: 0.88rem; }

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — Super Administrador</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
+</head>
+<body>
+  <div class="shell shell-wide">
+    <main class="console">
+      {% include "_topbar.html" %}
+
+      <div class="section-head">
+        <h2>Facultades de Super Administrador</h2>
+        <p>Todo ocurre dentro de la consola. El ERP web es solo un acceso secundario.</p>
+      </div>
+
+      <div class="faculty-grid">
+        <section class="faculty faculty-super">
+          <header>
+            <span class="faculty-tag">Plataforma</span>
+            <h3>Super Administrador</h3>
+            <p>Clientes, asignación de administradores y control de la consola.</p>
+          </header>
+          <ul class="faculty-actions">
+            <li><a href="{{ url_for('admin_index') }}">Administrar ERP clientes</a></li>
+            <li><a href="{{ url_for('consola_usuarios') }}">Usuarios de la consola</a></li>
+          </ul>
+        </section>
+
+        <section class="faculty faculty-admin">
+          <header>
+            <span class="faculty-tag">Por cliente</span>
+            <h3>Administrador de ERP</h3>
+            <p>Usuarios del ERP, módulos de operador y respaldos — sin entrar al ERP.</p>
+          </header>
+          <ul class="faculty-actions">
+            {% for t in admin_tenants %}
+            <li>
+              <a href="{{ url_for('admin_tenant', slug=t.slug) }}">{{ t.nombre }} → panel</a>
+            </li>
+            {% endfor %}
+          </ul>
+        </section>
+      </div>
+
+      <div class="section-head" style="margin-top:1.75rem">
+        <h2>Clientes</h2>
+        <p>Clic = panel en la consola. Abrir el ERP queda aparte.</p>
+      </div>
+
+      <ul class="tenant-list">
+        {% for t in tenants %}
+        <li>
+          <div class="tenant-row">
+            {% if t.can_manage %}
+            <a class="tenant-main" href="{{ url_for('admin_tenant', slug=t.slug) }}">
+              <div>
+                <div class="name">{{ t.nombre }}</div>
+                <div class="desc">{{ t.descripcion }} · panel de administración</div>
+              </div>
+              <div class="meta">
+                <span class="status">consola</span>
+                <span class="go">Administrar →</span>
+              </div>
+            </a>
+            {% else %}
+            <div class="tenant-main is-static">
+              <div>
+                <div class="name">{{ t.nombre }}</div>
+                <div class="desc">{{ t.descripcion }} · sin panel en consola aún</div>
+              </div>
+              <div class="meta">
+                <span class="status">pendiente</span>
+              </div>
+            </div>
+            {% endif %}
+            <a class="tenant-admin is-secondary" href="{{ t.url }}" target="_blank" rel="noopener">Abrir ERP</a>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+
+      <p class="foot">Separación: Super Administrador (plataforma) ≠ Administrador (facultades del ERP cliente). Sin fusionar bases.</p>
+    </main>
+  </div>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ brand }} — Administración</title>
+  <title>{{ brand }} — ERP clientes</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
@@ -15,28 +15,30 @@
       {% include "_topbar.html" %}
 
       <div class="section-head">
+        <p class="crumb"><a href="{{ url_for('home') }}">Inicio</a> / ERP clientes</p>
         <h2>Administración de ERP</h2>
-        <p>Usuarios, módulos y respaldos de La Concepción y DEMO. Río Maipo queda fuera por ahora.</p>
+        <p>Paneles dentro de la consola. No te lleva al ERP; el acceso web queda aparte.</p>
       </div>
 
       <ul class="tenant-list">
         {% for t in admin_tenants %}
         <li>
-          <a href="{{ url_for('admin_tenant', slug=t.slug) }}">
-            <div>
-              <div class="name">{{ t.nombre }}</div>
-              <div class="desc">Administrar sin entrar al ERP</div>
-            </div>
-            <div class="meta">
-              <span class="status">admin</span>
-              <span class="go">Configurar →</span>
-            </div>
-          </a>
+          <div class="tenant-row">
+            <a class="tenant-main" href="{{ url_for('admin_tenant', slug=t.slug) }}">
+              <div>
+                <div class="name">{{ t.nombre }}</div>
+                <div class="desc">Usuarios · módulos · respaldos</div>
+              </div>
+              <div class="meta">
+                <span class="status">consola</span>
+                <span class="go">Abrir panel →</span>
+              </div>
+            </a>
+            <a class="tenant-admin is-secondary" href="{{ t.url }}" target="_blank" rel="noopener">ERP web</a>
+          </div>
         </li>
         {% endfor %}
       </ul>
-
-      <p class="foot">Los cambios se escriben en la base de cada ERP. No fusiona código ni bases.</p>
     </main>
   </div>
 </body>

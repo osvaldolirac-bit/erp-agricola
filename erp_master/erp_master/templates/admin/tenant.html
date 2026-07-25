@@ -15,9 +15,13 @@
       {% include "_topbar.html" %}
 
       <div class="section-head">
-        <p class="crumb"><a href="{{ url_for('admin_index') }}">Administración</a> / {{ tenant.nombre }}</p>
-        <h2>{{ tenant.nombre }}</h2>
-        <p>Gestiona usuarios, módulos de operador y respaldos desde la consola.</p>
+        <p class="crumb">
+          <a href="{{ url_for('home') }}">Inicio</a> /
+          {% if user.is_super %}<a href="{{ url_for('admin_index') }}">ERP clientes</a> /{% endif %}
+          {{ tenant.nombre }}
+        </p>
+        <h2>Panel · {{ tenant.nombre }}</h2>
+        <p>Facultades de Administrador de este ERP, dentro de la consola.</p>
       </div>
 
       {% if msg %}
@@ -25,10 +29,10 @@
       {% endif %}
 
       <nav class="tabs" aria-label="Secciones">
-        <a class="{% if sec == 'usuarios' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='usuarios') }}">Usuarios</a>
+        <a class="{% if sec == 'usuarios' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='usuarios') }}">Usuarios ERP</a>
         <a class="{% if sec == 'modulos' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='modulos') }}">Módulos</a>
         <a class="{% if sec == 'respaldo' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='respaldo') }}">Respaldo</a>
-        <a href="{{ tenant.url }}" target="_blank" rel="noopener">Abrir ERP →</a>
+        <a class="tab-secondary" href="{{ tenant.url }}" target="_blank" rel="noopener">ERP web ↗</a>
       </nav>
 
       {% if sec == 'usuarios' %}

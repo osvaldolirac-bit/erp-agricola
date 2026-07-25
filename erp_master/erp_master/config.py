@@ -19,7 +19,7 @@ class Config:
 
     DATABASE = _env("ERP_MASTER_DB", "/root/erp_master.db")
     BRAND_NAME = "ERP Master"
-    BRAND_TAGLINE = "Consola de clientes"
+    BRAND_TAGLINE = "Super consola · Super Admin y Administrador"
 
     # Home links — includes Río Maipo for access only (no admin yet).
     TENANTS = [

@@ -5,6 +5,7 @@ from functools import wraps
 
 from flask import (
     Flask,
+    g,
     redirect,
     render_template,
     request,
@@ -14,7 +15,17 @@ from flask import (
 
 from erp_master import tenant_admin as tad
 from erp_master.config import Config
-from erp_master.db import authenticate, close_db, init_db
+from erp_master.db import (
+    ROL_LABEL,
+    authenticate,
+    change_master_password,
+    close_db,
+    create_master_user,
+    delete_master_user,
+    init_db,
+    list_master_users,
+    set_master_user_activo,
+)
 
 
 def login_required(view):
@@ -27,12 +38,45 @@ def login_required(view):
     return wrapped
 
 
+def super_admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("master_email"):
+            return redirect(url_for("login", next=request.path))
+        if session.get("master_rol") != "super_admin":
+            return redirect(url_for("home"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 def _admin_tenant_map(app: Flask) -> dict:
     return {t["slug"]: t for t in app.config["ADMIN_TENANTS"]}
 
 
 def _get_admin_tenant(app: Flask, slug: str) -> dict | None:
     return _admin_tenant_map(app).get(slug)
+
+
+def _can_manage_tenant(slug: str) -> bool:
+    rol = session.get("master_rol")
+    if rol == "super_admin":
+        return True
+    if rol == "admin":
+        return session.get("master_tenant") == slug
+    return False
+
+
+def _session_user() -> dict:
+    rol = session.get("master_rol") or "admin"
+    return {
+        "email": session.get("master_email") or "",
+        "nombre": session.get("master_nombre") or "",
+        "rol": rol,
+        "rol_label": ROL_LABEL.get(rol, rol),
+        "tenant_slug": session.get("master_tenant") or "",
+        "is_super": rol == "super_admin",
+    }
 
 
 def create_app(config_object: type = Config) -> Flask:
@@ -54,6 +98,12 @@ def create_app(config_object: type = Config) -> Flask:
     with app.app_context():
         init_db()
 
+    @app.context_processor
+    def inject_console_user():
+        if session.get("master_email"):
+            return {"user": _session_user(), "brand": app.config["BRAND_NAME"]}
+        return {"user": None, "brand": app.config["BRAND_NAME"]}
+
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if session.get("master_email"):
@@ -68,6 +118,8 @@ def create_app(config_object: type = Config) -> Flask:
                 session.clear()
                 session["master_email"] = user["email"]
                 session["master_nombre"] = user.get("nombre") or ""
+                session["master_rol"] = user.get("rol") or "admin"
+                session["master_tenant"] = user.get("tenant_slug") or ""
                 session.permanent = True
                 nxt = request.args.get("next") or url_for("home")
                 if not str(nxt).startswith("/"):
@@ -78,7 +130,7 @@ def create_app(config_object: type = Config) -> Flask:
         return render_template(
             "login.html",
             brand=app.config["BRAND_NAME"],
-            tagline=app.config["BRAND_TAGLINE"],
+            tagline="Super consola · facultades separadas",
             error=error,
         )
 
@@ -90,33 +142,52 @@ def create_app(config_object: type = Config) -> Flask:
     @app.route("/")
     @login_required
     def home():
+        user = _session_user()
+        admin_map = _admin_tenant_map(app)
+        tenants_view = []
+        for t in app.config["TENANTS"]:
+            item = dict(t)
+            item["adminable"] = t["slug"] in admin_map
+            item["can_manage"] = item["adminable"] and _can_manage_tenant(t["slug"])
+            tenants_view.append(item)
+
+        if user["is_super"]:
+            return render_template(
+                "home_super.html",
+                tagline=app.config["BRAND_TAGLINE"],
+                tenants=tenants_view,
+                admin_tenants=app.config["ADMIN_TENANTS"],
+            )
+
+        # Administrador: entra a su ERP en consola, no al ERP web
+        slug = user["tenant_slug"]
+        tenant = admin_map.get(slug) if slug else None
         return render_template(
-            "home.html",
-            brand=app.config["BRAND_NAME"],
-            tagline=app.config["BRAND_TAGLINE"],
-            tenants=app.config["TENANTS"],
-            admin_tenants=app.config["ADMIN_TENANTS"],
-            email=session.get("master_email"),
-            nombre=session.get("master_nombre") or "",
+            "home_admin.html",
+            tenant=tenant,
+            tenants=tenants_view,
         )
 
     @app.route("/admin")
     @login_required
     def admin_index():
+        user = _session_user()
+        if not user["is_super"]:
+            slug = user["tenant_slug"]
+            if slug and _get_admin_tenant(app, slug):
+                return redirect(url_for("admin_tenant", slug=slug))
+            return redirect(url_for("home"))
         return render_template(
             "admin/index.html",
-            brand=app.config["BRAND_NAME"],
             admin_tenants=app.config["ADMIN_TENANTS"],
-            email=session.get("master_email"),
-            nombre=session.get("master_nombre") or "",
         )
 
     @app.route("/admin/<slug>", methods=["GET", "POST"])
     @login_required
     def admin_tenant(slug: str):
         tenant = _get_admin_tenant(app, slug)
-        if not tenant:
-            return redirect(url_for("admin_index"))
+        if not tenant or not _can_manage_tenant(slug):
+            return redirect(url_for("home"))
 
         msg = None
         msg_type = "ok"
@@ -155,7 +226,6 @@ def create_app(config_object: type = Config) -> Flask:
 
         return render_template(
             "admin/tenant.html",
-            brand=app.config["BRAND_NAME"],
             tenant=tenant,
             sec=sec,
             users=users,
@@ -170,8 +240,57 @@ def create_app(config_object: type = Config) -> Flask:
             mod_all=mod_all,
             msg=msg,
             msg_type=msg_type,
-            email=session.get("master_email"),
-            nombre=session.get("master_nombre") or "",
+        )
+
+    @app.route("/consola/usuarios", methods=["GET", "POST"])
+    @super_admin_required
+    def consola_usuarios():
+        msg = None
+        msg_type = "ok"
+        if request.method == "POST":
+            action = (request.form.get("action") or "").strip()
+            if action == "crear":
+                ok, text = create_master_user(
+                    request.form.get("email") or "",
+                    request.form.get("password") or "",
+                    request.form.get("nombre") or "",
+                    request.form.get("rol") or "admin",
+                    request.form.get("tenant_slug") or "",
+                )
+            elif action == "clave":
+                try:
+                    uid = int(request.form.get("user_id") or 0)
+                except ValueError:
+                    uid = 0
+                ok, text = change_master_password(uid, request.form.get("password") or "")
+            elif action == "activar":
+                try:
+                    uid = int(request.form.get("user_id") or 0)
+                except ValueError:
+                    uid = 0
+                ok, text = set_master_user_activo(uid, True)
+            elif action == "desactivar":
+                try:
+                    uid = int(request.form.get("user_id") or 0)
+                except ValueError:
+                    uid = 0
+                ok, text = set_master_user_activo(uid, False)
+            elif action == "eliminar":
+                try:
+                    uid = int(request.form.get("user_id") or 0)
+                except ValueError:
+                    uid = 0
+                ok, text = delete_master_user(uid)
+            else:
+                ok, text = False, "Acción no reconocida."
+            msg, msg_type = text, ("ok" if ok else "error")
+
+        return render_template(
+            "consola_usuarios.html",
+            users=list_master_users(),
+            admin_tenants=app.config["ADMIN_TENANTS"],
+            msg=msg,
+            msg_type=msg_type,
         )
 
     @app.get("/health")
