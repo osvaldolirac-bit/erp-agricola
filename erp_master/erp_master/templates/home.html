@@ -12,42 +12,38 @@
 <body>
   <div class="shell">
     <main class="console">
-      <header class="topbar">
-        <div class="brand">
-          <div class="eyebrow">Consola</div>
-          <h1>{{ brand }}</h1>
-        </div>
-        <div class="who">
-          <strong>{{ nombre or email }}</strong>
-          <form method="post" action="{{ url_for('logout') }}" style="margin-top:0.45rem">
-            <button class="btn btn-ghost" type="submit">Cerrar sesión</button>
-          </form>
-        </div>
-      </header>
+      {% include "_topbar.html" %}
 
       <div class="section-head">
         <h2>Clientes</h2>
-        <p>Cada cliente abre su propio ERP. Las sesiones no se mezclan.</p>
+        <p>Abrir cada ERP, o administrar LC y DEMO desde la consola.</p>
       </div>
 
       <ul class="tenant-list">
         {% for t in tenants %}
         <li>
-          <a href="{{ t.url }}" target="_blank" rel="noopener">
-            <div>
-              <div class="name">{{ t.nombre }}</div>
-              <div class="desc">{{ t.descripcion }}</div>
-            </div>
-            <div class="meta">
-              <span class="status">{{ t.estado }}</span>
-              <span class="go">Abrir →</span>
-            </div>
-          </a>
+          <div class="tenant-row">
+            <a class="tenant-main" href="{{ t.url }}" target="_blank" rel="noopener">
+              <div>
+                <div class="name">{{ t.nombre }}</div>
+                <div class="desc">{{ t.descripcion }}</div>
+              </div>
+              <div class="meta">
+                <span class="status">{{ t.estado }}</span>
+                <span class="go">Abrir ERP →</span>
+              </div>
+            </a>
+            {% if t.slug in ['concepcion', 'demo'] %}
+            <a class="tenant-admin" href="{{ url_for('admin_tenant', slug=t.slug) }}">Administrar</a>
+            {% else %}
+            <span class="tenant-admin is-disabled" title="Próximamente">Sin admin</span>
+            {% endif %}
+          </div>
         </li>
         {% endfor %}
       </ul>
 
-      <p class="foot">Los ERP siguen independientes. Esta consola no fusiona bases ni módulos.</p>
+      <p class="foot">Administración master: usuarios, módulos y respaldos — sin fusionar los ERP.</p>
     </main>
   </div>
 </body>

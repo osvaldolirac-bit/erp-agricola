@@ -1,0 +1,347 @@
+"""Administración de ERP tenants (LC / DEMO) desde la consola master.
+
+Lee/escribe SQLite de cada tenant. No toca Río Maipo ni fusiona código.
+"""
+from __future__ import annotations
+
+import hashlib
+import re
+import sqlite3
+from contextlib import contextmanager
+from datetime import date, timedelta
+from typing import Any
+
+FRECUENCIAS = ("diario", "semanal", "mensual")
+
+MENU_LC = [
+    ("DASHBOARD", "Dashboard"),
+    ("Compras", "Compras"),
+    ("Tesoreria", "Tesorería"),
+    ("Flujo financiero", "Flujo financiero"),
+    ("Costos", "Costos"),
+    ("RRHH", "RRHH"),
+    ("Espino", "El Espino"),
+    ("Libro de Campo", "Libro de Campo"),
+    ("Petróleo", "Petróleo"),
+    ("Bodega", "Bodega"),
+    ("Maquinaria", "Maquinaria"),
+    ("GlobalGAP", "GlobalGAP"),
+    ("Soporte", "Soporte"),
+    ("Manual", "Manual"),
+]
+
+MENU_DEMO = [
+    ("DASHBOARD", "Dashboard"),
+    ("Compras", "Compras"),
+    ("Tesoreria", "Tesorería"),
+    ("Flujo financiero", "Flujo financiero"),
+    ("Costos", "Costos"),
+    ("RRHH", "RRHH"),
+    ("Campob", "Campo B"),
+    ("Libro de Campo", "Libro de Campo"),
+    ("Petróleo", "Petróleo"),
+    ("Bodega", "Bodega"),
+    ("Maquinaria", "Maquinaria"),
+    ("GlobalGAP", "GlobalGAP"),
+    ("Soporte", "Soporte"),
+    ("Manual", "Manual"),
+]
+
+ROLES_LC = ("admin", "operador", "certificacion", "lector")
+ROLES_DEMO = ("super_admin", "admin_cliente", "admin", "operador", "certificacion")
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def hash_password(password: str, kind: str) -> str:
+    raw = str(password or "")
+    if kind == "lc":
+        raw = raw.strip()
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def menu_for(kind: str) -> list[tuple[str, str]]:
+    return list(MENU_LC if kind == "lc" else MENU_DEMO)
+
+
+def roles_for(kind: str) -> tuple[str, ...]:
+    return ROLES_LC if kind == "lc" else ROLES_DEMO
+
+
+def protected_role(kind: str) -> str:
+    return "admin" if kind == "lc" else "super_admin"
+
+
+@contextmanager
+def tenant_conn(db_path: str):
+    conn = sqlite3.connect(db_path, timeout=10)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _meta_get(conn: sqlite3.Connection, clave: str, default: str = "") -> str:
+    row = conn.execute(
+        "SELECT valor FROM schema_meta WHERE clave = ?", (clave,)
+    ).fetchone()
+    return (row["valor"] if row and row["valor"] is not None else default) or default
+
+
+def _meta_set(conn: sqlite3.Connection, clave: str, valor: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO schema_meta (clave, valor) VALUES (?, ?)
+        ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
+        """,
+        (clave, valor),
+    )
+
+
+def list_users(db_path: str, kind: str) -> list[dict[str, Any]]:
+    with tenant_conn(db_path) as conn:
+        if kind == "demo":
+            rows = conn.execute(
+                """
+                SELECT id, email, rol, modulos, mail_tesoreria,
+                       fecha_expira, invitado_por
+                FROM usuarios
+                ORDER BY lower(email)
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, email, rol, modulos, mail_tesoreria,
+                       solo_lectura, mail_petroleo_bitacora
+                FROM usuarios
+                ORDER BY lower(email)
+                """
+            ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        mods = (d.get("modulos") or "").strip()
+        d["modulos_txt"] = "Todos" if not mods else mods
+        d["es_operador"] = (d.get("rol") or "") in {"operador", "lector"}
+        out.append(d)
+    return out
+
+
+def create_user(
+    db_path: str,
+    kind: str,
+    email: str,
+    password: str,
+    rol: str,
+    *,
+    dias_demo: int = 30,
+    invitado_por: str = "",
+) -> tuple[bool, str]:
+    email_n = (email or "").strip().lower()
+    if not email_n or not _EMAIL_RE.match(email_n):
+        return False, "Correo inválido."
+    if not password or len(password) < 4:
+        return False, "La clave debe tener al menos 4 caracteres."
+    if rol not in roles_for(kind):
+        return False, "Rol no válido para este ERP."
+    with tenant_conn(db_path) as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM usuarios WHERE lower(email) = ?", (email_n,)
+        ).fetchone()
+        if exists:
+            return False, "Ya existe un usuario con ese correo."
+        pwd = hash_password(password, kind)
+        if kind == "demo":
+            exp = (date.today() + timedelta(days=max(1, int(dias_demo)))).isoformat()
+            conn.execute(
+                """
+                INSERT INTO usuarios
+                  (email, password, rol, fecha_expira, invitado_por, modulos)
+                VALUES (?, ?, ?, ?, ?, '')
+                """,
+                (email_n, pwd, rol, exp, (invitado_por or "").strip()),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO usuarios (email, password, rol, modulos)
+                VALUES (?, ?, ?, '')
+                """,
+                (email_n, pwd, rol),
+            )
+    return True, "Usuario creado."
+
+
+def change_role(db_path: str, kind: str, user_id: int, rol: str) -> tuple[bool, str]:
+    if rol not in roles_for(kind):
+        return False, "Rol no válido."
+    with tenant_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, email, rol FROM usuarios WHERE id = ?", (user_id,)
+        ).fetchone()
+        if not row:
+            return False, "Usuario no encontrado."
+        prot = protected_role(kind)
+        if row["rol"] == prot and rol != prot:
+            n = conn.execute(
+                "SELECT COUNT(*) AS n FROM usuarios WHERE rol = ?", (prot,)
+            ).fetchone()["n"]
+            if int(n) <= 1:
+                return False, f"No se puede quitar el último {prot}."
+        conn.execute("UPDATE usuarios SET rol = ? WHERE id = ?", (rol, user_id))
+    return True, "Rol actualizado."
+
+
+def change_password(
+    db_path: str, kind: str, user_id: int, password: str
+) -> tuple[bool, str]:
+    if not password or len(password) < 4:
+        return False, "La clave debe tener al menos 4 caracteres."
+    with tenant_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT id FROM usuarios WHERE id = ?", (user_id,)
+        ).fetchone()
+        if not row:
+            return False, "Usuario no encontrado."
+        conn.execute(
+            "UPDATE usuarios SET password = ? WHERE id = ?",
+            (hash_password(password, kind), user_id),
+        )
+    return True, "Clave actualizada."
+
+
+def delete_user(db_path: str, kind: str, user_id: int) -> tuple[bool, str]:
+    with tenant_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, email, rol FROM usuarios WHERE id = ?", (user_id,)
+        ).fetchone()
+        if not row:
+            return False, "Usuario no encontrado."
+        prot = protected_role(kind)
+        if row["rol"] == prot:
+            n = conn.execute(
+                "SELECT COUNT(*) AS n FROM usuarios WHERE rol = ?", (prot,)
+            ).fetchone()["n"]
+            if int(n) <= 1:
+                return False, f"No se puede eliminar el último {prot}."
+        conn.execute("DELETE FROM usuarios WHERE id = ?", (user_id,))
+    return True, "Usuario eliminado."
+
+
+def set_mail_flags(
+    db_path: str,
+    kind: str,
+    user_id: int,
+    *,
+    mail_tesoreria: bool | None = None,
+    mail_petroleo: bool | None = None,
+    solo_lectura: bool | None = None,
+) -> tuple[bool, str]:
+    with tenant_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT id FROM usuarios WHERE id = ?", (user_id,)
+        ).fetchone()
+        if not row:
+            return False, "Usuario no encontrado."
+        if mail_tesoreria is not None:
+            conn.execute(
+                "UPDATE usuarios SET mail_tesoreria = ? WHERE id = ?",
+                (1 if mail_tesoreria else 0, user_id),
+            )
+        if kind == "lc":
+            if mail_petroleo is not None:
+                conn.execute(
+                    "UPDATE usuarios SET mail_petroleo_bitacora = ? WHERE id = ?",
+                    (1 if mail_petroleo else 0, user_id),
+                )
+            if solo_lectura is not None:
+                conn.execute(
+                    "UPDATE usuarios SET solo_lectura = ? WHERE id = ?",
+                    (1 if solo_lectura else 0, user_id),
+                )
+    return True, "Preferencias actualizadas."
+
+
+def get_user_modules(db_path: str, user_id: int) -> tuple[str, list[str], bool]:
+    """Returns email, selected keys, all_modules flag."""
+    with tenant_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT email, modulos, rol FROM usuarios WHERE id = ?", (user_id,)
+        ).fetchone()
+    if not row:
+        return "", [], True
+    raw = (row["modulos"] or "").strip()
+    if not raw:
+        return row["email"], [], True
+    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    return row["email"], keys, False
+
+
+def save_user_modules(
+    db_path: str, kind: str, user_id: int, selected: list[str]
+) -> tuple[bool, str]:
+    valid = {k for k, _ in menu_for(kind)}
+    chosen = [k for k in selected if k in valid]
+    # Empty selection or full set → store "" (all modules)
+    if not chosen or set(chosen) >= valid:
+        value = ""
+    else:
+        value = ",".join(chosen)
+    with tenant_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, rol FROM usuarios WHERE id = ?", (user_id,)
+        ).fetchone()
+        if not row:
+            return False, "Usuario no encontrado."
+        if row["rol"] not in {"operador", "lector"}:
+            return False, "Los módulos solo aplican a operador/lector."
+        conn.execute(
+            "UPDATE usuarios SET modulos = ? WHERE id = ?", (value, user_id)
+        )
+    return True, "Módulos guardados."
+
+
+def get_respaldo_config(db_path: str) -> dict[str, str]:
+    with tenant_conn(db_path) as conn:
+        return {
+            "email": _meta_get(conn, "respaldo_email"),
+            "activo": _meta_get(conn, "respaldo_activo", "0"),
+            "frecuencia": _meta_get(conn, "respaldo_frecuencia", "diario"),
+            "codigo_frecuencia": _meta_get(
+                conn, "respaldo_codigo_frecuencia", "semanal"
+            ),
+            "ultimo_envio": _meta_get(conn, "respaldo_ultimo_envio"),
+            "ultimo_error": _meta_get(conn, "respaldo_ultimo_error"),
+            "codigo_ultimo_envio": _meta_get(conn, "respaldo_codigo_ultimo_envio"),
+            "codigo_ultimo_error": _meta_get(conn, "respaldo_codigo_ultimo_error"),
+        }
+
+
+def save_respaldo_config(
+    db_path: str,
+    email: str,
+    activo: bool,
+    freq_datos: str,
+    freq_codigo: str,
+) -> tuple[bool, str]:
+    email_n = (email or "").strip()
+    if freq_datos not in FRECUENCIAS:
+        freq_datos = "diario"
+    if freq_codigo not in FRECUENCIAS:
+        freq_codigo = "semanal"
+    if activo:
+        parts = [p.strip() for p in email_n.replace(";", ",").split(",") if p.strip()]
+        if not parts or not all(_EMAIL_RE.match(p) for p in parts):
+            return False, "Correo destino inválido para activar el respaldo."
+    with tenant_conn(db_path) as conn:
+        _meta_set(conn, "respaldo_email", email_n)
+        _meta_set(conn, "respaldo_activo", "1" if activo else "0")
+        _meta_set(conn, "respaldo_frecuencia", freq_datos)
+        _meta_set(conn, "respaldo_codigo_frecuencia", freq_codigo)
+    return True, "Configuración de respaldo guardada."

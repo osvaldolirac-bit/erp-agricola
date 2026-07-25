@@ -21,7 +21,7 @@ class Config:
     BRAND_NAME = "ERP Master"
     BRAND_TAGLINE = "Consola de clientes"
 
-    # Tenants are links only — each ERP keeps its own login/session/DB.
+    # Home links — includes Río Maipo for access only (no admin yet).
     TENANTS = [
         {
             "slug": "concepcion",
@@ -43,6 +43,26 @@ class Config:
             "descripcion": "Cotizaciones y cobranza",
             "url": "/riomaipo/",
             "estado": "activo",
+        },
+    ]
+
+    # Administered from master (Río Maipo excluded until later).
+    ADMIN_TENANTS = [
+        {
+            "slug": "concepcion",
+            "nombre": "La Concepción",
+            "kind": "lc",
+            "db": _env("ERP_LC_DB", "/root/erp_concepcion_v6.db"),
+            "url": "/laconcepcion/",
+            "url_admin": "/laconcepcion/m/admin",
+        },
+        {
+            "slug": "demo",
+            "nombre": "DEMO Agrícola",
+            "kind": "demo",
+            "db": _env("ERP_DEMO_DB", "/root/demo/erp_demo.db"),
+            "url": "/demo/",
+            "url_admin": "/demo/m/admin",
         },
     ]
 

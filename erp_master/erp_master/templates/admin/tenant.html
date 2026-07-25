@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — {{ tenant.nombre }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
+</head>
+<body>
+  <div class="shell shell-wide">
+    <main class="console">
+      {% include "_topbar.html" %}
+
+      <div class="section-head">
+        <p class="crumb"><a href="{{ url_for('admin_index') }}">Administración</a> / {{ tenant.nombre }}</p>
+        <h2>{{ tenant.nombre }}</h2>
+        <p>Gestiona usuarios, módulos de operador y respaldos desde la consola.</p>
+      </div>
+
+      {% if msg %}
+      <p class="banner banner-{{ msg_type }}" role="alert">{{ msg }}</p>
+      {% endif %}
+
+      <nav class="tabs" aria-label="Secciones">
+        <a class="{% if sec == 'usuarios' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='usuarios') }}">Usuarios</a>
+        <a class="{% if sec == 'modulos' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='modulos') }}">Módulos</a>
+        <a class="{% if sec == 'respaldo' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='respaldo') }}">Respaldo</a>
+        <a href="{{ tenant.url }}" target="_blank" rel="noopener">Abrir ERP →</a>
+      </nav>
+
+      {% if sec == 'usuarios' %}
+      <section class="admin-block">
+        <h3>Crear usuario</h3>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="crear_usuario">
+          <input type="hidden" name="sec" value="usuarios">
+          <label>Correo
+            <input type="email" name="email" required>
+          </label>
+          <label>Clave
+            <input type="text" name="password" required minlength="4" autocomplete="off">
+          </label>
+          <label>Rol
+            <select name="rol">
+              {% for r in roles %}
+              <option value="{{ r }}" {% if r == 'operador' %}selected{% endif %}>{{ r }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% if tenant.kind == 'demo' %}
+          <label>Días demo
+            <input type="number" name="dias_demo" value="30" min="1" max="365">
+          </label>
+          {% endif %}
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Crear</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="admin-block">
+        <h3>Usuarios ({{ users|length }})</h3>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Correo</th>
+                <th>Rol</th>
+                <th>Módulos</th>
+                {% if tenant.kind == 'demo' %}<th>Expira</th>{% endif %}
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td>
+                  <div class="cell-strong">{{ u.email }}</div>
+                  <div class="cell-muted">
+                    mail tesorería: {{ 'sí' if u.mail_tesoreria else 'no' }}
+                    {% if tenant.kind == 'lc' %}
+                    · petróleo: {{ 'sí' if u.mail_petroleo_bitacora else 'no' }}
+                    · solo lectura: {{ 'sí' if u.solo_lectura else 'no' }}
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  <form method="post" class="inline-form">
+                    <input type="hidden" name="action" value="cambiar_rol">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <select name="rol" onchange="this.form.submit()">
+                      {% for r in roles %}
+                      <option value="{{ r }}" {% if r == u.rol %}selected{% endif %}>{{ r }}</option>
+                      {% endfor %}
+                    </select>
+                  </form>
+                </td>
+                <td class="cell-muted">{{ u.modulos_txt }}</td>
+                {% if tenant.kind == 'demo' %}
+                <td class="cell-muted">{{ u.fecha_expira or '—' }}</td>
+                {% endif %}
+                <td class="actions">
+                  <form method="post" class="inline-form">
+                    <input type="hidden" name="action" value="cambiar_clave">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <input type="text" name="password" placeholder="Nueva clave" minlength="4" required>
+                    <button class="btn btn-ghost" type="submit">Clave</button>
+                  </form>
+                  <form method="post" class="inline-form flags">
+                    <input type="hidden" name="action" value="flags_usuario">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <label><input type="checkbox" name="mail_tesoreria" value="1" {% if u.mail_tesoreria %}checked{% endif %}> Teso</label>
+                    {% if tenant.kind == 'lc' %}
+                    <label><input type="checkbox" name="mail_petroleo" value="1" {% if u.mail_petroleo_bitacora %}checked{% endif %}> Petróleo</label>
+                    <label><input type="checkbox" name="solo_lectura" value="1" {% if u.solo_lectura %}checked{% endif %}> Lectura</label>
+                    {% endif %}
+                    <button class="btn btn-ghost" type="submit">Flags</button>
+                  </form>
+                  {% if u.es_operador %}
+                  <a class="btn btn-ghost" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='modulos', uid=u.id) }}">Módulos</a>
+                  {% endif %}
+                  <form method="post" class="inline-form" onsubmit="return confirm('¿Eliminar {{ u.email }}?');">
+                    <input type="hidden" name="action" value="eliminar_usuario">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <button class="btn btn-danger" type="submit">Eliminar</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endif %}
+
+      {% if sec == 'modulos' %}
+      <section class="admin-block">
+        <h3>Módulos de operador</h3>
+        <p class="help">Solo aplica a roles operador/lector. Vacío o todos = acceso completo.</p>
+        <form method="get" class="form-grid narrow">
+          <input type="hidden" name="sec" value="modulos">
+          <label>Usuario
+            <select name="uid" onchange="this.form.submit()">
+              <option value="">— elegir —</option>
+              {% for u in operadores %}
+              <option value="{{ u.id }}" {% if mod_user_id == u.id %}selected{% endif %}>{{ u.email }} ({{ u.rol }})</option>
+              {% endfor %}
+            </select>
+          </label>
+        </form>
+
+        {% if mod_user_id %}
+        <form method="post" class="modulos-form">
+          <input type="hidden" name="action" value="modulos_guardar">
+          <input type="hidden" name="sec" value="modulos">
+          <input type="hidden" name="user_id" value="{{ mod_user_id }}">
+          <p class="help">Editando: <strong>{{ mod_email }}</strong></p>
+          <label class="check-all">
+            <input type="checkbox" name="todos" value="1" {% if mod_all %}checked{% endif %} id="chkTodos">
+            Todos los módulos
+          </label>
+          <div class="modulos-grid" id="modulosGrid">
+            {% for key, label in menu %}
+            <label>
+              <input type="checkbox" name="modulos" value="{{ key }}"
+                {% if mod_all or key in mod_keys %}checked{% endif %}>
+              {{ label }}
+            </label>
+            {% endfor %}
+          </div>
+          <button class="btn btn-primary" type="submit">Guardar módulos</button>
+        </form>
+        <script>
+          (function () {
+            const all = document.getElementById('chkTodos');
+            const grid = document.getElementById('modulosGrid');
+            if (!all || !grid) return;
+            const boxes = () => grid.querySelectorAll('input[type=checkbox]');
+            all.addEventListener('change', () => {
+              boxes().forEach(b => { b.checked = all.checked; });
+            });
+            grid.addEventListener('change', () => {
+              const list = [...boxes()];
+              all.checked = list.length > 0 && list.every(b => b.checked);
+            });
+          })();
+        </script>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if sec == 'respaldo' %}
+      <section class="admin-block">
+        <h3>Configuración de respaldo</h3>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="respaldo_guardar">
+          <input type="hidden" name="sec" value="respaldo">
+          <label>Correo destino
+            <input type="text" name="email" value="{{ respaldo.email }}" placeholder="correo@dominio.cl">
+          </label>
+          <label>Frecuencia datos
+            <select name="freq_datos">
+              {% for f in frecuencias %}
+              <option value="{{ f }}" {% if respaldo.frecuencia == f %}selected{% endif %}>{{ f }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Frecuencia código
+            <select name="freq_codigo">
+              {% for f in frecuencias %}
+              <option value="{{ f }}" {% if respaldo.codigo_frecuencia == f %}selected{% endif %}>{{ f }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="check-inline">
+            <input type="checkbox" name="activo" value="1" {% if respaldo.activo == '1' %}checked{% endif %}>
+            Respaldo automático activo
+          </label>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Guardar</button>
+          </div>
+        </form>
+        <dl class="status-dl">
+          <div><dt>Último datos</dt><dd>{{ respaldo.ultimo_envio or '—' }}</dd></div>
+          <div><dt>Error datos</dt><dd>{{ respaldo.ultimo_error or '—' }}</dd></div>
+          <div><dt>Último código</dt><dd>{{ respaldo.codigo_ultimo_envio or '—' }}</dd></div>
+          <div><dt>Error código</dt><dd>{{ respaldo.codigo_ultimo_error or '—' }}</dd></div>
+        </dl>
+      </section>
+      {% endif %}
+    </main>
+  </div>
+</body>
+</html>

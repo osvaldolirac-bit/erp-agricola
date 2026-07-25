@@ -1,0 +1,16 @@
+<header class="topbar">
+  <div class="brand">
+    <div class="eyebrow">Consola</div>
+    <h1><a href="{{ url_for('home') }}">{{ brand }}</a></h1>
+  </div>
+  <div class="who">
+    <strong>{{ nombre or email }}</strong>
+    <nav class="top-nav">
+      <a href="{{ url_for('home') }}">Clientes</a>
+      <a href="{{ url_for('admin_index') }}">Administración</a>
+      <form method="post" action="{{ url_for('logout') }}">
+        <button class="btn btn-ghost" type="submit">Cerrar sesión</button>
+      </form>
+    </nav>
+  </div>
+</header>
