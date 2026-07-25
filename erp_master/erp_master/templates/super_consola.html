@@ -44,6 +44,9 @@
         <a class="{% if sec == 'usuarios' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios') }}">Usuarios</a>
         <a class="{% if sec == 'modulos' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='modulos') }}">Módulos</a>
         <a class="{% if sec == 'respaldo' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='respaldo') }}">Respaldos</a>
+        {% if tenant.kind == 'demo' %}
+        <a class="{% if sec == 'plataforma' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='plataforma') }}">Plataforma</a>
+        {% endif %}
         <a class="{% if sec == 'bitacora' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='bitacora') }}">Bitácora</a>
         {% if user.is_super %}
         <a href="{{ url_for('consola_usuarios') }}">Usuarios consola</a>
@@ -74,6 +77,10 @@
           <label>Días demo
             <input type="number" name="dias_demo" value="30" min="1" max="365">
           </label>
+          <label class="check-inline">
+            <input type="checkbox" name="enviar_invitacion" value="1" checked>
+            Enviar invitación por correo
+          </label>
           {% endif %}
           <div class="form-actions">
             <button class="btn btn-primary" type="submit">Crear</button>
@@ -91,7 +98,7 @@
                 <th>Rol</th>
                 <th>Opciones</th>
                 <th>Módulos</th>
-                {% if tenant.kind == 'demo' %}<th>Expira</th>{% endif %}
+                {% if tenant.kind == 'demo' %}<th>Expira</th><th>Invitado por</th>{% endif %}
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -127,6 +134,7 @@
                 <td class="cell-muted">{{ u.modulos_txt }}</td>
                 {% if tenant.kind == 'demo' %}
                 <td class="cell-muted">{{ u.fecha_expira or '—' }}</td>
+                <td class="cell-muted">{{ u.invitado_por or '—' }}</td>
                 {% endif %}
                 <td class="actions">
                   <form method="post" class="inline-form">
@@ -246,6 +254,63 @@
           <div><dt>Último código</dt><dd>{{ respaldo.codigo_ultimo_envio or '—' }}</dd></div>
           <div><dt>Error código</dt><dd>{{ respaldo.codigo_ultimo_error or '—' }}</dd></div>
         </dl>
+      </section>
+      {% endif %}
+
+      {% if sec == 'plataforma' and tenant.kind == 'demo' and plataforma %}
+      <section class="admin-block">
+        <h3>Plataforma DEMO</h3>
+        <p class="help">Gestión de invitaciones y datos ficticios del entorno demo. Usuarios se crean en la pestaña Usuarios.</p>
+        <div class="kpi-row">
+          <div class="kpi"><span class="kpi-label">Super admin</span><strong>{{ plataforma.n_super }}</strong></div>
+          <div class="kpi"><span class="kpi-label">Admins campo</span><strong>{{ plataforma.n_cliente }}</strong></div>
+          <div class="kpi"><span class="kpi-label">Días de prueba</span><strong>{{ plataforma.dias_prueba }}</strong></div>
+        </div>
+        <p class="help">
+          Seed: <strong>{{ plataforma.seed_version }}</strong> ·
+          Estado: <strong>{% if plataforma.seed_ok %}sembrado{% else %}pendiente{% endif %}</strong> ·
+          Acceso: <a href="{{ plataforma.login_url }}" target="_blank" rel="noopener">{{ plataforma.login_url }}</a><br>
+          Base: <code>{{ plataforma.nombre_db }}</code>
+        </p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Perfil</th>
+                <th>Vigencia</th>
+                <th>Invitado por</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in plataforma.usuarios_plat %}
+              <tr>
+                <td>{{ u.email }}</td>
+                <td>{{ u.perfil }}</td>
+                <td class="cell-muted">{{ u.vigencia }}</td>
+                <td class="cell-muted">{{ u.invitado_por or '—' }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="cell-muted">Sin usuarios.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="admin-block">
+        <h3>Re-sembrar datos ficticios</h3>
+        <p class="help">Borra movimientos operativos y vuelve a cargar datos ficticios. <strong>No elimina usuarios.</strong></p>
+        <form method="post" class="form-grid" onsubmit="return confirm('¿Re-sembrar todos los datos operativos del DEMO?');">
+          <input type="hidden" name="action" value="reseed_demo">
+          <input type="hidden" name="sec" value="plataforma">
+          <label class="check-inline">
+            <input type="checkbox" name="confirm" value="1" required>
+            Confirmo re-sembrar todos los datos operativos
+          </label>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Ejecutar re-seed</button>
+          </div>
+        </form>
       </section>
       {% endif %}
 

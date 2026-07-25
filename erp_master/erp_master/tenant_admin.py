@@ -8,11 +8,16 @@ import hashlib
 import os
 import re
 import sqlite3
+import sys
 from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import Any
 
 from flask import current_app
+
+DEMO_DIAS_PRUEBA_DEFAULT = 30
+DEMO_LOGIN_URL = os.environ.get("ERP_AGRICOLA_LOGIN_URL", "https://erpmaster.cl/agricola/login")
+DEMO_WEB_ROOT = os.environ.get("ERP_DEMO_WEB_ROOT", "/root/demo-web")
 
 FRECUENCIAS = ("diario", "semanal", "mensual")
 
@@ -136,6 +141,12 @@ def list_users(db_path: str, kind: str) -> list[dict[str, Any]]:
     return out
 
 
+def _ensure_demo_web_path() -> None:
+    root = (DEMO_WEB_ROOT or "").strip()
+    if root and root not in sys.path and os.path.isdir(root):
+        sys.path.insert(0, root)
+
+
 def create_user(
     db_path: str,
     kind: str,
@@ -145,6 +156,7 @@ def create_user(
     *,
     dias_demo: int = 30,
     invitado_por: str = "",
+    enviar_invitacion: bool = True,
 ) -> tuple[bool, str]:
     email_n = (email or "").strip().lower()
     if not email_n or not _EMAIL_RE.match(email_n):
@@ -153,6 +165,7 @@ def create_user(
         return False, "La clave debe tener al menos 4 caracteres."
     if rol not in roles_for(kind):
         return False, "Rol no válido para este ERP."
+    exp = ""
     with tenant_conn(db_path) as conn:
         exists = conn.execute(
             "SELECT 1 FROM usuarios WHERE lower(email) = ?", (email_n,)
@@ -178,7 +191,164 @@ def create_user(
                 """,
                 (email_n, pwd, rol),
             )
-    return True, "Usuario creado."
+    msg = "Usuario creado."
+    if kind == "demo":
+        msg = f"Usuario creado. Vigencia hasta {exp}."
+        if enviar_invitacion:
+            ok_mail, mail_txt = send_demo_invitation(
+                db_path,
+                email_n,
+                password,
+                rol,
+                invitado_por or "",
+                exp,
+            )
+            msg = f"{msg} {mail_txt}"
+            if not ok_mail:
+                return True, msg
+    return True, msg
+
+
+def send_demo_invitation(
+    db_path: str,
+    email: str,
+    password_plain: str,
+    rol: str,
+    admin_email: str,
+    fecha_expira: str,
+) -> tuple[bool, str]:
+    """Envía correo de invitación demo (usa helpers de app_demo)."""
+    try:
+        _ensure_demo_web_path()
+        import app_demo as demo  # noqa: WPS433
+
+        demo.NOMBRE_DB = db_path
+        # Acceso unificado del rubro agrícola
+        demo.DEMO_URL = DEMO_LOGIN_URL
+        res = demo.enviar_correo_invitacion_demo(
+            email, password_plain, rol, admin_email, fecha_expira
+        )
+        ok = bool(res.get("invitado")) if isinstance(res, dict) else bool(res)
+        if ok:
+            return True, f"Correo de invitación enviado a {email}."
+        return False, "No se pudo enviar el correo de invitación (revise SMTP)."
+    except Exception as exc:
+        return False, f"Invitación no enviada: {exc}"
+
+
+def get_plataforma_demo(db_path: str) -> dict[str, Any]:
+    """Resumen de plataforma demo (antes en Administración ERP)."""
+    _ensure_demo_web_path()
+    seed_version = "demo_datos_v6"
+    try:
+        from demo_seed import DEMO_SEED_VERSION  # noqa: WPS433
+
+        seed_version = DEMO_SEED_VERSION
+    except Exception:
+        pass
+
+    with tenant_conn(db_path) as conn:
+        try:
+            import app_demo as demo  # noqa: WPS433
+
+            demo.NOMBRE_DB = db_path
+            n_super, n_cliente = demo.contar_roles_admin_demo(conn)
+            dias = int(getattr(demo, "DEMO_DIAS_PRUEBA", DEMO_DIAS_PRUEBA_DEFAULT))
+        except Exception:
+            n_super = conn.execute(
+                "SELECT COUNT(*) AS n FROM usuarios WHERE rol='super_admin'"
+            ).fetchone()["n"]
+            n_cliente = conn.execute(
+                "SELECT COUNT(*) AS n FROM usuarios WHERE rol='admin_cliente'"
+            ).fetchone()["n"]
+            dias = DEMO_DIAS_PRUEBA_DEFAULT
+        seed_ok = bool(
+            conn.execute(
+                "SELECT 1 FROM schema_meta WHERE clave=? AND valor='1'",
+                (seed_version,),
+            ).fetchone()
+        )
+        rows = conn.execute(
+            """
+            SELECT email, COALESCE(rol,'operador') AS rol,
+                   fecha_expira, COALESCE(invitado_por,'') AS invitado_por
+            FROM usuarios
+            ORDER BY lower(email)
+            """
+        ).fetchall()
+    usuarios = []
+    for r in rows:
+        perfil = r["rol"]
+        try:
+            import app_demo as demo  # noqa: WPS433
+
+            perfil = demo.etiqueta_perfil_demo(r["rol"], r["email"])
+        except Exception:
+            pass
+        usuarios.append(
+            {
+                "email": r["email"],
+                "perfil": perfil,
+                "vigencia": "Permanente" if not r["fecha_expira"] else str(r["fecha_expira"])[:10],
+                "invitado_por": r["invitado_por"] or "",
+            }
+        )
+    return {
+        "n_super": int(n_super or 0),
+        "n_cliente": int(n_cliente or 0),
+        "dias_prueba": dias,
+        "seed_version": seed_version,
+        "seed_ok": seed_ok,
+        "nombre_db": db_path,
+        "login_url": DEMO_LOGIN_URL,
+        "usuarios_plat": usuarios,
+    }
+
+
+def reseed_demo(db_path: str) -> tuple[bool, str]:
+    """Re-siembra datos ficticios del DEMO (no borra usuarios)."""
+    try:
+        _ensure_demo_web_path()
+        from demo_seed import DEMO_SEED_VERSION, sembrar_datos_demo, vaciar_datos_demo
+        import app_demo as demo  # noqa: WPS433
+
+        demo.NOMBRE_DB = db_path
+        with tenant_conn(db_path) as conn:
+            cur = conn.cursor()
+            vaciar_datos_demo(cur)
+            h = demo.hora_chile().date()
+            sembrar_datos_demo(
+                cur,
+                h,
+                demo.hora_chile().strftime("%m"),
+                demo.hora_chile().year,
+                demo.PRORRATEO_RRHH,
+                demo.CENTROS_COSTO,
+                demo.CUARTELES_PRORRATEO,
+                demo.TEMPORADAS_COSTOS,
+                demo.RAZONES_SOCIALES_COMPRAS[0],
+                demo.TIPO_GASTO_SIN_CLASIFICAR,
+                demo.hora_chile,
+            )
+            cur.execute(
+                "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, '1')",
+                (DEMO_SEED_VERSION,),
+            )
+            try:
+                cur.execute(
+                    "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
+                    (
+                        "MASTER",
+                        "DEMO RESEED",
+                        DEMO_SEED_VERSION,
+                        demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S"),
+                    ),
+                )
+            except Exception:
+                pass
+        return True, "Datos ficticios re-sembrados."
+    except Exception as exc:
+        return False, f"No se pudo re-sembrar: {exc}"
 
 
 def change_role(db_path: str, kind: str, user_id: int, rol: str) -> tuple[bool, str]:

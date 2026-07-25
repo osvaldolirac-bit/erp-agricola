@@ -265,7 +265,10 @@ def create_app(config_object: type = Config) -> Flask:
         msg = None
         msg_type = "ok"
         sec = (request.args.get("sec") or request.form.get("sec") or "usuarios").strip()
-        if sec not in {"usuarios", "modulos", "respaldo", "bitacora"}:
+        allowed_sec = {"usuarios", "modulos", "respaldo", "bitacora"}
+        if tenant.get("kind") == "demo":
+            allowed_sec.add("plataforma")
+        if sec not in allowed_sec:
             sec = "usuarios"
 
         if request.method == "POST":
@@ -299,14 +302,23 @@ def create_app(config_object: type = Config) -> Flask:
                 sec = "modulos"
             elif action.startswith("respaldo"):
                 sec = "respaldo"
+            elif action.startswith("reseed") or action == "plataforma":
+                sec = "plataforma"
             else:
-                sec = "usuarios"
+                sec = request.form.get("sec") or "usuarios"
+                if sec not in allowed_sec:
+                    sec = "usuarios"
 
         users = tad.list_users(tenant["db"], tenant["kind"])
         respaldo = tad.get_respaldo_config(tenant["db"])
         menu = tad.menu_for(tenant["kind"])
         roles = tad.roles_for(tenant["kind"])
         bitacora_rows = list_bitacora(tenant["slug"]) if sec == "bitacora" else []
+        plataforma = (
+            tad.get_plataforma_demo(tenant["db"])
+            if tenant.get("kind") == "demo" and sec == "plataforma"
+            else None
+        )
 
         mod_user_id = request.args.get("uid") or request.form.get("uid") or ""
         mod_email, mod_keys, mod_all = "", [], True
@@ -338,6 +350,7 @@ def create_app(config_object: type = Config) -> Flask:
             mod_keys=mod_keys,
             mod_all=mod_all,
             bitacora_rows=bitacora_rows,
+            plataforma=plataforma,
             msg=msg,
             msg_type=msg_type,
         )
@@ -413,6 +426,9 @@ def _log_admin_action(
         activo = "activo" if request.form.get("activo") == "1" else "inactivo"
         detalle = f"{email or '—'} · {activo}"
         accion = "RESPALDO"
+    elif action == "reseed_demo":
+        detalle = "Re-siembra datos ficticios DEMO"
+        accion = "RESEED_DEMO"
     else:
         accion = (action or "ACCION").upper()
     log_bitacora(slug, master_email, accion, detalle)
@@ -431,7 +447,17 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
             request.form.get("rol") or "operador",
             dias_demo=int(request.form.get("dias_demo") or 30),
             invitado_por=master_email,
+            enviar_invitacion=(
+                kind != "demo" or request.form.get("enviar_invitacion") == "1"
+            ),
         )
+
+    if action == "reseed_demo":
+        if kind != "demo":
+            return False, "Re-seed solo aplica al DEMO."
+        if request.form.get("confirm") != "1":
+            return False, "Debe confirmar el re-seed."
+        return tad.reseed_demo(db)
 
     if action == "cambiar_rol":
         try:

@@ -578,6 +578,36 @@ button, input { font: inherit; }
   border-radius: var(--radius);
   background: rgba(255, 252, 246, 0.62);
 }
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+.kpi {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 252, 246, 0.55);
+}
+.kpi-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+.kpi strong {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  color: var(--field-deep);
+}
+@media (max-width: 640px) {
+  .kpi-row { grid-template-columns: 1fr; }
+}
+
 .admin-block h3 {
   margin: 0 0 0.85rem;
   font-family: var(--font-display);
