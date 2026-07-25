@@ -14,6 +14,10 @@ def _registrar_acceso_sesion(demo, email: str, modulo: str = "") -> None:
     from demo_web.services.erp_loader import get_erp_app
     from flask import session
 
+    # Ingreso desde Super Consola: no contaminar la bitácora del tenant.
+    if session.get("from_master_console"):
+        return
+
     app_tag = "lc" if get_erp_app() == "concepcion" else "demo"
     tag = f"acceso_v1154_{app_tag}_{email}_{demo.hora_chile().strftime('%Y%m%d')}"
     if session.get(tag):

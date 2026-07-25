@@ -85,6 +85,7 @@ def master_entry():
     session.clear()
     session["email"] = row[0]
     session["rol"] = demo.normalizar_rol_usuario(row[1], row[0])
+    session["from_master_console"] = True
     session.permanent = False
     try:
         from demo_web.services.mantenimiento import (
