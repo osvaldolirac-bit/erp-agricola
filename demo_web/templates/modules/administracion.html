@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo, nav_temporada %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Administración — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Maestras y configuración operativa del ERP{% if erp_app == 'concepcion' %} — La Concepción{% endif %}</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {% if es_super %}
+  <p class="small text-muted">
+    <strong>Nota:</strong> usuarios, módulos y respaldos se gestionan en la Super Consola (<a href="https://erpmaster.cl/" target="_blank" rel="noopener">erpmaster.cl</a>). Aquí: bitácora, maestras y plataforma demo.
+  </p>
+  {% else %}
+  <p class="small text-muted">
+    <strong>Administrador de campo:</strong> maestras, presupuesto e ingresos flujo. Usuarios/módulos/respaldos: Super Consola.
+  </p>
+  {% endif %}
+
+  {{ nav_modulo('modules.admin', secciones, sec_activa) }}
+
+  {% if sec_activa == 'bitacora' %}
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <input type="hidden" name="sec" value="bitacora">
+    <div class="col-auto">
+      <label class="form-label">Desde</label>
+      <input type="date" name="desde" class="form-control form-control-sm" value="{{ desde }}">
+    </div>
+    <div class="col-auto">
+      <label class="form-label">Hasta</label>
+      <input type="date" name="hasta" class="form-control form-control-sm" value="{{ hasta }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+    </div>
+    {{ pdf_btn(pdf_bitacora_url, '📥 PDF BITÁCORA', 'btn-outline-secondary btn-sm') }}
+  </form>
+  {% if bitacora_rows %}
+  <p class="small text-muted mb-2">{{ bitacora_total }} movimiento(s) · más recientes arriba</p>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped demo-datatable-bitacora w-100">
+      <thead><tr>{% for c in bitacora_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in bitacora_rows %}
+        <tr>{% for c in bitacora_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Sin registros en el rango seleccionado.</div>
+  {% endif %}
+
+
+  {% elif sec_activa == 'familias' %}
+  <p class="small text-muted">Catálogo usado en Compras y Bodega. No elimine familias con productos en inventario.</p>
+  {% if familias_rows %}
+  <div class="table-responsive mb-3">
+    <table class="table table-sm table-striped demo-datatable w-100">
+      <thead><tr><th>Familia</th><th>Productos</th></tr></thead>
+      <tbody>{% for f in familias_rows %}<tr><td>{{ f.familia }}</td><td>{{ f.productos }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No hay familias registradas.</div>
+  {% endif %}
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="panel-card">
+        <h2 class="h6">Nueva familia</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="crear_familia">
+          <div class="col-12"><input type="text" name="nombre" class="form-control form-control-sm" placeholder="Nombre familia" required></div>
+          <div class="col-12"><button type="submit" class="btn btn-primary btn-sm">Crear familia</button></div>
+        </form>
+      </div>
+    </div>
+    {% if familias_list %}
+    <div class="col-lg-4">
+      <div class="panel-card">
+        <h2 class="h6">Renombrar familia</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="renombrar_familia">
+          <div class="col-12">
+            <select name="familia" class="form-select form-select-sm">
+              {% for f in familias_list %}<option value="{{ f }}" {% if f == familia_sel %}selected{% endif %}>{{ f }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-12"><input type="text" name="nuevo_nombre" class="form-control form-control-sm" placeholder="Nuevo nombre" required></div>
+          <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar cambio</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="panel-card border-danger">
+        <h2 class="h6 text-danger">Eliminar familia</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="eliminar_familia">
+          <div class="col-12">
+            <select name="familia" class="form-select form-select-sm">
+              {% for f in familias_list %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmFamDel"><label class="form-check-label small" for="confirmFamDel">Confirmo eliminar</label></div></div>
+          <div class="col-12"><button type="submit" class="btn btn-danger btn-sm">Eliminar familia</button></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'maquinaria' %}
+  <p class="small text-muted">Catálogo con código automático (TRAC, CAM, NEB…). Use <strong>Inactivo</strong> para ocultar equipos con historial.</p>
+  {% if maquinaria_rows %}
+  <div class="table-responsive mb-3">
+    <table class="table table-sm table-striped demo-datatable w-100">
+      <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Activo</th><th>Eventos</th><th>Notas</th></tr></thead>
+      <tbody>
+        {% for m in maquinaria_rows %}
+        <tr><td>{{ m.codigo }}</td><td>{{ m.nombre }}</td><td>{{ m.tipo }}</td><td>{{ m.activo_txt }}</td><td>{{ m.eventos }}</td><td>{{ m.notas }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Aún no hay equipos registrados.</div>
+  {% endif %}
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="panel-card">
+        <h2 class="h6">Registrar equipo</h2>
+        <form method="get" class="mb-2">
+          <input type="hidden" name="sec" value="maquinaria">
+          <label class="form-label small">Tipo de equipo</label>
+          <div class="input-group input-group-sm">
+            <select name="tipo" class="form-select" onchange="this.form.submit()">
+              {% for t in tipos_maquinaria %}<option value="{{ t }}" {% if t == tipo_sel %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+          </div>
+        </form>
+        <div class="alert alert-success small py-2">Próximo código: <strong>{{ cod_preview }}</strong></div>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="crear_maquinaria">
+          <input type="hidden" name="tipo" value="{{ tipo_sel }}">
+          <div class="col-12"><input type="text" name="nombre" class="form-control form-control-sm" placeholder="Nombre / descripción" required></div>
+          <div class="col-12"><input type="text" name="notas" class="form-control form-control-sm" placeholder="Notas (opcional)"></div>
+          <div class="col-12"><button type="submit" class="btn btn-primary btn-sm">Registrar maquinaria</button></div>
+        </form>
+      </div>
+    </div>
+    {% if maq_edit %}
+    <div class="col-lg-4">
+      <div class="panel-card">
+        <h2 class="h6">Editar equipo</h2>
+        <form method="get" class="mb-2">
+          <input type="hidden" name="sec" value="maquinaria">
+          <select name="codigo" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% for m in maquinaria_rows %}<option value="{{ m.codigo }}" {% if m.codigo == maq_edit_sel %}selected{% endif %}>{{ m.codigo }} — {{ m.nombre }}</option>{% endfor %}
+          </select>
+        </form>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="editar_maquinaria">
+          <input type="hidden" name="codigo" value="{{ maq_edit.codigo }}">
+          <div class="col-12"><input type="text" name="nombre" class="form-control form-control-sm" value="{{ maq_edit.nombre }}" required></div>
+          <div class="col-12">
+            <select name="tipo" class="form-select form-select-sm">
+              {% for t in tipos_maquinaria %}<option value="{{ t }}" {% if t == maq_edit.tipo %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" name="activo" value="1" id="maqActivo" {% if maq_edit.activo %}checked{% endif %}><label class="form-check-label small" for="maqActivo">Activo</label></div></div>
+          <div class="col-12"><input type="text" name="notas" class="form-control form-control-sm" value="{{ maq_edit.notas }}" placeholder="Notas"></div>
+          <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar cambios</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="col-lg-3">
+      <div class="panel-card border-danger">
+        <h2 class="h6 text-danger">Eliminar equipo</h2>
+        <p class="small text-muted">Solo si no tiene eventos ({{ maq_edit.eventos }} actualmente).</p>
+        <form method="post">
+          <input type="hidden" name="action" value="eliminar_maquinaria">
+          <input type="hidden" name="codigo" value="{{ maq_edit.codigo }}">
+          <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmMaqDel"><label class="form-check-label small" for="confirmMaqDel">Confirmo eliminar</label></div>
+          <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'proveedores' %}
+  <p class="small text-muted">Catálogo usado en Compras, Tesorería y Petróleo.</p>
+  {% if proveedores_rows %}
+  <div class="table-responsive mb-3">
+    <table class="table table-sm table-striped demo-datatable w-100">
+      <thead><tr><th>Código</th><th>Nombre</th><th>RUT</th><th>Contacto</th><th>Mail</th><th>Tipo</th><th>Activo</th><th>Refs.</th></tr></thead>
+      <tbody>
+        {% for p in proveedores_rows %}
+        <tr><td>{{ p.codigo }}</td><td>{{ p.nombre }}</td><td>{{ p.rut }}</td><td>{{ p.contacto }}</td><td>{{ p.mail }}</td><td>{{ p.tipo }}</td><td>{{ p.activo_txt }}</td><td>{{ p.refs }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Aún no hay proveedores registrados.</div>
+  {% endif %}
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="panel-card">
+        <h2 class="h6">Registrar proveedor</h2>
+        <div class="alert alert-primary small py-2 mb-2">Próximo código: <strong>{{ cod_preview_prov }}</strong></div>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="crear_proveedor">
+          <div class="col-md-8"><input type="text" name="nombre" class="form-control form-control-sm" placeholder="Razón social" required></div>
+          <div class="col-md-4">
+            <input type="text" name="rut" class="form-control form-control-sm js-rut" placeholder="RUT *" required data-rut-required="1">
+            <div class="invalid-feedback js-rut-msg"></div>
+          </div>
+          <div class="col-md-6">
+            <select name="tipo" class="form-select form-select-sm">{% for t in tipos_proveedor %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
+          </div>
+          <div class="col-md-6"><input type="text" name="contacto" class="form-control form-control-sm" placeholder="Contacto"></div>
+          <div class="col-md-6"><input type="email" name="email" class="form-control form-control-sm" placeholder="Email"></div>
+          <div class="col-md-6"><input type="text" name="telefono" class="form-control form-control-sm" placeholder="Teléfono"></div>
+          <div class="col-md-6"><input type="text" name="celular" class="form-control form-control-sm" placeholder="Celular"></div>
+          <div class="col-md-6"><input type="text" name="direccion" class="form-control form-control-sm" placeholder="Dirección"></div>
+          <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="mail_pago" value="1" id="provMailPago"><label class="form-check-label small" for="provMailPago">Mail al pagar</label></div></div>
+          <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="whatsapp_pago" value="1" id="provWaPago"><label class="form-check-label small" for="provWaPago">WhatsApp al pagar</label></div></div>
+          <div class="col-12"><input type="text" name="notas" class="form-control form-control-sm" placeholder="Notas"></div>
+          <div class="col-12"><button type="submit" class="btn btn-primary btn-sm">Registrar proveedor</button></div>
+        </form>
+      </div>
+    </div>
+    {% if prov_edit %}
+    <div class="col-lg-6">
+      <div class="panel-card">
+        <h2 class="h6">Editar proveedor</h2>
+        <form method="get" class="mb-2">
+          <input type="hidden" name="sec" value="proveedores">
+          <select name="codigo" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% for p in proveedores_rows %}<option value="{{ p.codigo }}" {% if p.codigo == prov_edit_sel %}selected{% endif %}>{{ p.codigo }} — {{ p.nombre }}</option>{% endfor %}
+          </select>
+        </form>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="editar_proveedor">
+          <input type="hidden" name="codigo" value="{{ prov_edit.codigo }}">
+          <div class="col-md-8"><input type="text" name="nombre" class="form-control form-control-sm" value="{{ prov_edit.nombre }}" required></div>
+          <div class="col-md-4">
+            <input type="text" name="rut" class="form-control form-control-sm js-rut" value="{{ prov_edit.rut }}" placeholder="RUT *" required data-rut-required="1">
+            <div class="invalid-feedback js-rut-msg"></div>
+          </div>
+          <div class="col-md-6"><select name="tipo" class="form-select form-select-sm">{% for t in tipos_proveedor %}<option value="{{ t }}" {% if t == prov_edit.tipo %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+          <div class="col-md-6"><div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="activo" value="1" id="provActivo" {% if prov_edit.activo %}checked{% endif %}><label class="form-check-label small" for="provActivo">Activo</label></div></div>
+          <div class="col-md-6"><input type="text" name="edit_contacto" class="form-control form-control-sm" value="{{ prov_edit.contacto }}" placeholder="Contacto"></div>
+          <div class="col-md-6"><input type="email" name="edit_email" class="form-control form-control-sm" value="{{ prov_edit.mail }}" placeholder="Email"></div>
+          <div class="col-md-6"><input type="text" name="edit_telefono" class="form-control form-control-sm" value="{{ prov_edit.telefono }}"></div>
+          <div class="col-md-6"><input type="text" name="edit_celular" class="form-control form-control-sm" value="{{ prov_edit.celular }}"></div>
+          <div class="col-12"><input type="text" name="edit_direccion" class="form-control form-control-sm" value="{{ prov_edit.direccion }}" placeholder="Dirección"></div>
+          <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="edit_mail_pago" value="1" id="editMailPago" {% if prov_edit.mail_pago %}checked{% endif %}><label class="form-check-label small" for="editMailPago">Mail al pagar</label></div></div>
+          <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="edit_whatsapp_pago" value="1" id="editWaPago" {% if prov_edit.whatsapp_pago %}checked{% endif %}><label class="form-check-label small" for="editWaPago">WhatsApp al pagar</label></div></div>
+          <div class="col-12"><input type="text" name="notas" class="form-control form-control-sm" value="{{ prov_edit.notas }}"></div>
+          <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar cambios</button></div>
+        </form>
+        <hr>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="eliminar_proveedor">
+          <input type="hidden" name="codigo" value="{{ prov_edit.codigo }}">
+          <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmProvDel"><label class="form-check-label small text-danger" for="confirmProvDel">Confirmo eliminar ({{ prov_edit.refs }} refs.)</label></div></div>
+          <div class="col-12"><button type="submit" class="btn btn-danger btn-sm">Eliminar proveedor</button></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'encargados' %}
+  <p class="small text-muted">Personas autorizadas a rendir gastos de caja chica en Compras.</p>
+  {% if encargados_rows %}
+  <div class="table-responsive mb-3">
+    <table class="table table-sm table-striped demo-datatable w-100">
+      <thead><tr><th>Nombre</th><th>RUT</th><th>Email</th><th>Teléfono</th><th>Estado</th><th>Notas</th></tr></thead>
+      <tbody>{% for e in encargados_rows %}<tr><td>{{ e.nombre }}</td><td>{{ e.rut }}</td><td>{{ e.email }}</td><td>{{ e.telefono }}</td><td>{{ e.estado }}</td><td>{{ e.notas }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Aún no hay encargados registrados.</div>
+  {% endif %}
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="panel-card">
+        <h2 class="h6">Nuevo encargado</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="crear_encargado">
+          <div class="col-md-6"><input type="text" name="nombre" class="form-control form-control-sm" placeholder="Nombre *" required></div>
+          <div class="col-md-6">
+            <input type="text" name="rut" class="form-control form-control-sm js-rut" placeholder="RUT">
+            <div class="invalid-feedback js-rut-msg"></div>
+          </div>
+          <div class="col-md-6"><input type="email" name="email" class="form-control form-control-sm" placeholder="Email"></div>
+          <div class="col-md-6"><input type="text" name="telefono" class="form-control form-control-sm" placeholder="Teléfono"></div>
+          <div class="col-12"><textarea name="notas" class="form-control form-control-sm" rows="2" placeholder="Notas"></textarea></div>
+          <div class="col-12"><button type="submit" class="btn btn-primary btn-sm">Crear encargado</button></div>
+        </form>
+      </div>
+    </div>
+    {% if enc_edit %}
+    <div class="col-lg-5">
+      <div class="panel-card">
+        <h2 class="h6">Editar encargado</h2>
+        <form method="get" class="mb-2">
+          <input type="hidden" name="sec" value="encargados">
+          <select name="enc_id" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% for e in encargados_rows %}<option value="{{ e.id }}" {% if e.id == enc_edit_id %}selected{% endif %}>{{ e.nombre }}</option>{% endfor %}
+          </select>
+        </form>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="editar_encargado">
+          <input type="hidden" name="enc_id" value="{{ enc_edit.id }}">
+          <div class="col-md-6"><input type="text" name="nombre" class="form-control form-control-sm" value="{{ enc_edit.nombre }}" required></div>
+          <div class="col-md-6">
+            <input type="text" name="rut" class="form-control form-control-sm js-rut" value="{{ enc_edit.rut }}" placeholder="RUT">
+            <div class="invalid-feedback js-rut-msg"></div>
+          </div>
+          <div class="col-md-6"><input type="email" name="email" class="form-control form-control-sm" value="{{ enc_edit.email }}"></div>
+          <div class="col-md-6"><input type="text" name="telefono" class="form-control form-control-sm" value="{{ enc_edit.telefono }}"></div>
+          <div class="col-12"><textarea name="notas" class="form-control form-control-sm" rows="2">{{ enc_edit.notas }}</textarea></div>
+          <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" name="activo" value="1" id="encActivo" {% if enc_edit.activo %}checked{% endif %}><label class="form-check-label small" for="encActivo">Activo</label></div></div>
+          <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar cambios</button></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'ppto' %}
+  <p class="small text-muted">Metas por temporada usadas en Costos.</p>
+  {{ nav_temporada('modules.admin', temporadas, temp_sel, {'sec': 'ppto'}) }}
+  <p class="small text-muted mb-3">Período: <strong>{{ temp_fi }}</strong> al <strong>{{ temp_ff }}</strong></p>
+  <form method="post">
+    <input type="hidden" name="action" value="guardar_metas">
+    <input type="hidden" name="temporada" value="{{ temp_sel }}">
+    <div class="table-responsive mb-3">
+      <table class="table table-sm table-bordered w-100">
+        <thead><tr><th>Cuartel</th><th>Presupuesto ($)</th><th>Kg estimados</th></tr></thead>
+        <tbody>
+          {% for c in ppto_cuarteles %}
+          <tr>
+            <td>{{ c.nombre }}</td>
+            <td><input type="number" name="ppto_{{ c.cc }}" class="form-control form-control-sm" value="{{ c.ppto|int }}" min="0" step="100000"></td>
+            <td><input type="number" name="kg_{{ c.cc }}" class="form-control form-control-sm" value="{{ c.kg }}" min="0" step="100"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Guardar metas de la temporada</button>
+  </form>
+
+  {% elif sec_activa == 'flujo' %}
+  <p class="small text-muted">Ingresos proyectados por centro de costo. El total del fundo es la suma de los CC por mes.</p>
+  {{ nav_temporada('modules.admin', temporadas, temp_sel, {'sec': 'flujo'}) }}
+  <p class="small mb-2">
+    Período: <strong>{{ temp_fi }}</strong> → <strong>{{ temp_ff }}</strong>
+    {% if flujo_vigente %}<span class="badge text-bg-info">temporada en curso</span>{% endif %}
+  </p>
+  {% if flujo_meses_txt %}<div class="alert alert-info small py-2 mb-3">Meses: {{ flujo_meses_txt }}</div>{% endif %}
+  {% if flujo_cuarteles %}
+  <form method="post">
+    <input type="hidden" name="action" value="guardar_ingresos_flujo">
+    <input type="hidden" name="temporada" value="{{ temp_sel }}">
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <label class="form-label small">Saldo caja inicial ($)</label>
+        <input type="number" name="caja_inicial" class="form-control form-control-sm" value="{{ caja_inicial|int }}" min="0" step="100000">
+      </div>
+    </div>
+    {% for cc in flujo_cuarteles %}
+    <div class="panel-card mb-3">
+      <h2 class="h6">{{ cc.nombre }}</h2>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0">
+          <thead><tr><th>Mes</th><th>Ingreso ($)</th><th>Nota</th></tr></thead>
+          <tbody>
+            {% for m in cc.meses %}
+            <tr>
+              <td>{{ m.label }}</td>
+              <td><input type="number" name="ing_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.monto|int }}" min="0" step="100000"></td>
+              <td><input type="text" name="nota_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.nota }}" placeholder="Nota…"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary btn-sm">Guardar ingresos {{ temp_sel }}</button>
+  </form>
+  <details class="mt-4">
+    <summary class="small text-muted">Vista resumen (solo lectura)</summary>
+    <div class="table-responsive mt-2">
+      <table class="table table-sm table-bordered w-100">
+        <thead><tr><th>Cuartel</th>{% for m in flujo_meses %}<th class="text-end">{{ m }}</th>{% endfor %}<th class="text-end">Total</th></tr></thead>
+        <tbody>
+          {% for row in flujo_rows %}
+          <tr><td>{{ row.cuartel }}</td>{% for m in flujo_meses %}<td class="text-end">{{ row[m] }}</td>{% endfor %}<td class="text-end fw-semibold">{{ row.total }}</td></tr>
+          {% endfor %}
+          <tr class="table-light fw-semibold"><td>Total fundo</td>{% for m in flujo_meses %}<td class="text-end">{{ flujo_totales_mes[m] }}</td>{% endfor %}<td></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% else %}
+  <div class="alert alert-info">Sin meses en esta temporada.</div>
+  {% endif %}
+
+
+  {% elif sec_activa == 'plataforma' %}
+  <div class="row g-2 mb-3">
+    <div class="col-4 col-md"><div class="kpi-card"><div class="kpi-label">Super administradores</div><div class="kpi-value">{{ n_super }}</div></div></div>
+    <div class="col-4 col-md"><div class="kpi-card"><div class="kpi-label">Admins. de campo</div><div class="kpi-value">{{ n_cliente }}</div></div></div>
+    <div class="col-4 col-md"><div class="kpi-card"><div class="kpi-label">Días de prueba</div><div class="kpi-value">{{ dias_prueba }}</div></div></div>
+  </div>
+  <div class="alert alert-info small">
+    Versión seed: <strong>{{ seed_version }}</strong> · Estado: <strong>{% if seed_ok %}sembrado{% else %}pendiente{% endif %}</strong> · Base: <code>{{ nombre_db }}</code>
+  </div>
+  {% if usuarios_plat %}
+  <div class="table-responsive mb-4">
+    <table class="table table-sm table-striped demo-datatable w-100">
+      <thead><tr><th>Usuario</th><th>Perfil</th><th>Vigencia</th><th>Invitado por</th></tr></thead>
+      <tbody>{% for u in usuarios_plat %}<tr><td>{{ u.email }}</td><td>{{ u.perfil }}</td><td>{{ u.vigencia }}</td><td>{{ u.invitado_por }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endif %}
+  <div class="panel-card border-warning">
+    <h2 class="h6">Re-sembrar datos ficticios</h2>
+    <p class="small text-muted">Borra movimientos operativos y vuelve a cargar datos ficticios. No elimina usuarios.</p>
+    <form method="post">
+      <input type="hidden" name="action" value="reseed">
+      <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmReseed"><label class="form-check-label" for="confirmReseed">Confirmo re-sembrar todos los datos operativos</label></div>
+      <button type="submit" class="btn btn-warning btn-sm">Ejecutar re-seed</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
