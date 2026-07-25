@@ -15,7 +15,6 @@ from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_dat
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
 SECCION_DEFS = [
     ("bitacora", "📜 BITÁCORA", "super"),
-    ("prorrateo", "📐 SUPERFICIES / PRORRATEO CC", "all"),
     ("familias", "🏷️ FAMILIAS PRODUCTO", "all"),
     ("maquinaria", "🚜 MAESTRA MAQUINARIA", "all"),
     ("proveedores", "🏢 MAESTRA PROVEEDORES", "all"),
@@ -36,10 +35,11 @@ ACCIONES_MOVIDAS_A_MASTER = frozenset({
     "enviar_respaldo_datos",
     "enviar_respaldo_codigo",
     "download_db",
+    "guardar_prorrateo",
 })
 MSG_MOVIDO_A_MASTER = (
     "Esta función se gestiona en la Super Consola de ERP Master "
-    "(https://erpmaster.cl/ → Usuarios / Alertas / Respaldos / Plataforma), "
+    "(https://erpmaster.cl/ → Usuarios / Alertas / Prorrateo CC / Respaldos / Plataforma), "
     "no en la Administración del ERP."
 )
 
@@ -56,7 +56,7 @@ def _secciones_visibles(demo) -> list[tuple[str, str]]:
 def _sec_activa(demo) -> str:
     visibles = _secciones_visibles(demo)
     keys = {k for k, _ in visibles}
-    default = "prorrateo" if "prorrateo" in keys else (visibles[0][0] if visibles else "familias")
+    default = visibles[0][0] if visibles else "familias"
     sec = request.args.get("sec", default)
     return sec if sec in keys else default
 
@@ -67,79 +67,6 @@ def _puede_editar_admin(demo) -> bool:
         return bool(demo.es_admin())
     except Exception:
         return False
-
-
-def _cuarteles_prorrateo(demo) -> list[str]:
-    cuarteles = list(getattr(demo, "CUARTELES_PRORRATEO", None) or [])
-    if cuarteles:
-        return cuarteles
-    default = getattr(demo, "PRORRATEO_CC_DEFAULT", None) or {}
-    if default:
-        return list(default.keys())
-    centros = list(getattr(demo, "CENTROS_COSTO", None) or [])
-    return [c for c in centros if str(c).upper() not in {"CAMPO B", "EL ESPINO", "OTROS"}]
-
-
-def _ensure_prorrateo(demo, conn) -> None:
-    if hasattr(demo, "_ensure_prorrateo_cc"):
-        demo._ensure_prorrateo_cc(conn)
-        return
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS prorrateo_cc (
-            centro_costo TEXT PRIMARY KEY,
-            porcentaje REAL NOT NULL,
-            superficie_ha REAL DEFAULT 0
-        )"""
-    )
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(prorrateo_cc)").fetchall()}
-    if "superficie_ha" not in cols:
-        try:
-            conn.execute("ALTER TABLE prorrateo_cc ADD COLUMN superficie_ha REAL DEFAULT 0")
-        except Exception:
-            pass
-
-
-def _gather_prorrateo(demo, conn) -> dict:
-    _ensure_prorrateo(demo, conn)
-    cuarteles = _cuarteles_prorrateo(demo)
-    if hasattr(demo, "cargar_prorrateo_cc_pct"):
-        pcts = demo.cargar_prorrateo_cc_pct(conn)
-    else:
-        rows = conn.execute("SELECT centro_costo, porcentaje FROM prorrateo_cc").fetchall()
-        pcts = {str(r[0]): float(r[1]) for r in rows}
-    if hasattr(demo, "cargar_superficies_cc"):
-        has = demo.cargar_superficies_cc(conn)
-    else:
-        rows = conn.execute(
-            "SELECT centro_costo, COALESCE(superficie_ha, 0) FROM prorrateo_cc"
-        ).fetchall()
-        has = {str(r[0]): float(r[1] or 0) for r in rows}
-
-    items = []
-    for cc in cuarteles:
-        items.append(
-            {
-                "cc": cc,
-                "nombre": str(cc).title() if str(cc).isupper() else str(cc),
-                "superficie_ha": float(has.get(cc, 0) or 0),
-                "porcentaje": float(pcts.get(cc, 0) or 0),
-            }
-        )
-    suma_ha = sum(i["superficie_ha"] for i in items)
-    suma_pct = sum(i["porcentaje"] for i in items)
-    directos = list(getattr(demo, "CUARTELES_IMPUTACION_DIRECTA", None) or [])
-    if not directos:
-        # DEMO: Campo B queda fuera del prorrateo (gasto propio).
-        if any(c == "CAMPO B" for c in getattr(demo, "CENTROS_COSTO", []) or []):
-            directos = ["CAMPO B"]
-    return {
-        "prorrateo_rows": items,
-        "prorrateo_suma_ha": suma_ha,
-        "prorrateo_suma_pct": suma_pct,
-        "prorrateo_ok": abs(suma_pct - 100.0) < 0.05,
-        "prorrateo_directos": directos,
-        "puede_editar_admin": _puede_editar_admin(demo),
-    }
 
 
 def _pdf_url(demo, df, titulo: str, archivo: str) -> str | None:
@@ -611,8 +538,6 @@ def gather_admin(user_email: str, user_rol: str) -> dict:
     try:
         if sec == "bitacora":
             ctx.update(_gather_bitacora(demo, conn))
-        elif sec == "prorrateo":
-            ctx.update(_gather_prorrateo(demo, conn))
         elif sec == "familias":
             ctx.update(_gather_familias(demo, conn))
         elif sec == "maquinaria":
@@ -629,65 +554,6 @@ def gather_admin(user_email: str, user_rol: str) -> dict:
         conn.close()
 
     return ctx
-
-
-def _post_guardar_prorrateo(demo, conn) -> dict:
-    if not _puede_editar_admin(demo):
-        return {"ok": False, "msg": "Solo administradores pueden guardar superficies / prorrateo."}
-    if get_erp_app() != "demo":
-        clave = (request.form.get("clave_maestra") or "").strip()
-        if clave != getattr(demo, "CLAVE_MAESTRA", None):
-            return {"ok": False, "msg": "Clave maestra incorrecta."}
-
-    cuarteles = _cuarteles_prorrateo(demo)
-    if not cuarteles:
-        return {"ok": False, "msg": "No hay centros de costo prorrateables configurados."}
-
-    datos: dict[str, dict] = {}
-    for cc in cuarteles:
-        key = cc.replace(" ", "_")
-        try:
-            ha = float(request.form.get(f"ha_{key}") or 0)
-            pct = float(request.form.get(f"pct_{key}") or 0)
-        except (TypeError, ValueError):
-            return {"ok": False, "msg": f"Valor inválido en {cc}."}
-        if ha < 0 or pct < 0:
-            return {"ok": False, "msg": f"Valores negativos no permitidos ({cc})."}
-        datos[cc] = {"superficie_ha": ha, "porcentaje": pct}
-
-    suma_ha = sum(v["superficie_ha"] for v in datos.values())
-    modo = (request.form.get("modo") or "ha").strip().lower()
-    if modo == "ha" or suma_ha > 0:
-        if suma_ha <= 0:
-            return {"ok": False, "msg": "Ingrese superficies (ha) mayores a cero, o use modo porcentaje."}
-        for cc, vals in datos.items():
-            vals["porcentaje"] = round(100.0 * vals["superficie_ha"] / suma_ha, 4)
-    else:
-        suma_pct = sum(v["porcentaje"] for v in datos.values())
-        if abs(suma_pct - 100.0) >= 0.05:
-            return {"ok": False, "msg": f"Los porcentajes deben sumar 100 % (suma actual: {suma_pct:.2f} %)."}
-
-    if hasattr(demo, "guardar_prorrateo_superficies_cc"):
-        demo.guardar_prorrateo_superficies_cc(conn, datos)
-    else:
-        _ensure_prorrateo(demo, conn)
-        for cc, vals in datos.items():
-            conn.execute(
-                "INSERT INTO prorrateo_cc (centro_costo, porcentaje, superficie_ha) VALUES (?,?,?) "
-                "ON CONFLICT(centro_costo) DO UPDATE SET "
-                "porcentaje=excluded.porcentaje, superficie_ha=excluded.superficie_ha",
-                (cc, float(vals["porcentaje"]), float(vals["superficie_ha"])),
-            )
-        conn.commit()
-
-    detalle = ", ".join(
-        f"{k}={v['superficie_ha']:.2f}ha/{v['porcentaje']:.2f}%" for k, v in datos.items()
-    )
-    demo.registrar_accion("PRORRATEO CC", detalle)
-    return {
-        "ok": True,
-        "msg": "Superficies / prorrateo guardados. Aplica a liquidaciones y costos nuevos.",
-    }
 
 
 def _post_crear_usuario(demo, conn, user_email: str) -> dict:
@@ -1354,16 +1220,14 @@ def view(user_email: str, user_rol: str):
             flash(MSG_MOVIDO_A_MASTER, "warning")
             return redirect_module("admin", sec=sec)
 
-        if action and action != "guardar_prorrateo" and not _puede_editar_admin(demo):
+        if action and not _puede_editar_admin(demo):
             flash("Solo administradores pueden modificar la configuración.", "danger")
             return redirect_module("admin", sec=sec)
 
         conn = demo.conectar_db()
         try:
             result: dict | None = None
-            if action == "guardar_prorrateo":
-                result = _post_guardar_prorrateo(demo, conn)
-            elif action == "crear_familia":
+            if action == "crear_familia":
                 result = _post_crear_familia(demo, conn)
             elif action == "renombrar_familia":
                 result = _post_renombrar_familia(demo, conn)
@@ -1409,8 +1273,6 @@ def view(user_email: str, user_rol: str):
                     extra["codigo"] = request.form.get("codigo", "")
                 if action == "editar_encargado":
                     extra["enc_id"] = request.form.get("enc_id", "")
-                if action == "guardar_prorrateo":
-                    extra["sec"] = "prorrateo"
                 return redirect_module("admin", **extra)
         finally:
             conn.close()

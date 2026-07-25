@@ -20,83 +20,7 @@
   </div>
   {% endif %}
 
-  {% if sec_activa == 'prorrateo' %}
-  <p class="small text-muted mb-3">
-    Superficies de los centros de costo usadas para imputar <strong>costos fijos</strong>
-    (sueldos / RRHH de la casa, y otros gastos prorrateados del fundo).
-    El sistema calcula el <strong>%</strong> a partir de las hectáreas.
-    {% if prorrateo_directos %}
-    Quedan fuera de este reparto (imputación directa):
-    <strong>{{ prorrateo_directos|join(', ') }}</strong>.
-    {% endif %}
-    Los movimientos ya registrados no se recalculan.
-  </p>
-  <form method="post" id="formProrrateo" class="panel-card">
-    <input type="hidden" name="action" value="guardar_prorrateo">
-    <input type="hidden" name="modo" id="prorrateoModo" value="ha">
-    <div class="table-responsive mb-3">
-      <table class="table table-sm table-bordered w-100" id="tablaProrrateo">
-        <thead>
-          <tr>
-            <th>Centro de costo</th>
-            <th style="width:9rem">Superficie (ha)</th>
-            <th style="width:9rem">% imputación</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in prorrateo_rows %}
-          <tr data-cc="{{ r.cc }}">
-            <td>{{ r.nombre }}</td>
-            <td>
-              <input type="number" name="ha_{{ r.cc|replace(' ', '_') }}" class="form-control form-control-sm js-ha"
-                     value="{{ '%.4f'|format(r.superficie_ha) }}" min="0" step="0.0001"
-                     {% if not puede_editar_admin %}readonly{% endif %}>
-            </td>
-            <td>
-              <input type="number" name="pct_{{ r.cc|replace(' ', '_') }}" class="form-control form-control-sm js-pct"
-                     value="{{ '%.4f'|format(r.porcentaje) }}" min="0" max="100" step="0.0001"
-                     {% if not puede_editar_admin %}readonly{% endif %}>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr class="table-light fw-semibold">
-            <td>Total</td>
-            <td id="sumaHa">{{ '%.4f'|format(prorrateo_suma_ha) }} ha</td>
-            <td id="sumaPct" class="{% if prorrateo_ok %}text-success{% else %}text-danger{% endif %}">
-              {{ '%.2f'|format(prorrateo_suma_pct) }} %
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-    {% if puede_editar_admin %}
-    <div class="row g-2 align-items-end">
-      {% if erp_app != 'demo' %}
-      <div class="col-md-3">
-        <label class="form-label small">Clave maestra</label>
-        <input type="password" name="clave_maestra" class="form-control form-control-sm" required>
-      </div>
-      {% endif %}
-      <div class="col-md-3">
-        <button type="submit" class="btn btn-primary btn-sm" onclick="document.getElementById('prorrateoModo').value='ha'">
-          Guardar desde superficies (ha)
-        </button>
-      </div>
-      <div class="col-md-4">
-        <button type="submit" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('prorrateoModo').value='pct'">
-          Guardar % manuales (deben sumar 100)
-        </button>
-      </div>
-    </div>
-    <p class="small text-muted mt-2 mb-0">
-      Recomendado: edite hectáreas y guarde con “desde superficies”. El % se recalcula solo.
-    </p>
-    {% endif %}
-  </form>
-
-  {% elif sec_activa == 'bitacora' %}
+  {% if sec_activa == 'bitacora' %}
   {% if bitacora_desactivada %}
   <div class="alert alert-secondary">
     Bitácora en cero para este cliente. No se registran ingresos ni acciones.
@@ -500,35 +424,4 @@
 
   {% endif %}
 </div>
-{% endblock %}
-
-{% block scripts %}
-{% if sec_activa == 'prorrateo' and puede_editar_admin %}
-<script>
-(function () {
-  const table = document.getElementById('tablaProrrateo');
-  if (!table) return;
-  const haInputs = () => Array.from(table.querySelectorAll('.js-ha'));
-  const pctInputs = () => Array.from(table.querySelectorAll('.js-pct'));
-  function recalcFromHa() {
-    const has = haInputs().map((el) => parseFloat(el.value) || 0);
-    const total = has.reduce((a, b) => a + b, 0);
-    const pctEls = pctInputs();
-    pctEls.forEach((el, i) => {
-      el.value = total > 0 ? ((100 * has[i]) / total).toFixed(4) : '0';
-    });
-    const sumaHa = document.getElementById('sumaHa');
-    const sumaPct = document.getElementById('sumaPct');
-    if (sumaHa) sumaHa.textContent = total.toFixed(4) + ' ha';
-    if (sumaPct) {
-      const pctTotal = pctEls.reduce((a, el) => a + (parseFloat(el.value) || 0), 0);
-      sumaPct.textContent = pctTotal.toFixed(2) + ' %';
-      sumaPct.classList.toggle('text-success', Math.abs(pctTotal - 100) < 0.05);
-      sumaPct.classList.toggle('text-danger', Math.abs(pctTotal - 100) >= 0.05);
-    }
-  }
-  haInputs().forEach((el) => el.addEventListener('input', recalcFromHa));
-})();
-</script>
-{% endif %}
 {% endblock %}

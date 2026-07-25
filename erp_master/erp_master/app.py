@@ -266,7 +266,7 @@ def create_app(config_object: type = Config) -> Flask:
         msg = None
         msg_type = "ok"
         sec = (request.args.get("sec") or request.form.get("sec") or "usuarios").strip()
-        allowed_sec = {"usuarios", "modulos", "respaldo", "alertas", "bitacora"}
+        allowed_sec = {"usuarios", "modulos", "respaldo", "alertas", "prorrateo", "bitacora"}
         if tenant.get("kind") == "demo":
             allowed_sec.add("plataforma")
         if sec not in allowed_sec:
@@ -324,6 +324,8 @@ def create_app(config_object: type = Config) -> Flask:
                 sec = "respaldo"
             elif action.startswith("alertas"):
                 sec = "alertas"
+            elif action.startswith("prorrateo"):
+                sec = "prorrateo"
             elif action.startswith("reseed") or action.startswith("bitacora_erp") or action == "plataforma":
                 sec = "plataforma" if tenant.get("kind") == "demo" else (
                     request.form.get("sec") or "usuarios"
@@ -336,6 +338,11 @@ def create_app(config_object: type = Config) -> Flask:
         users = tad.list_users(tenant["db"], tenant["kind"])
         respaldo = tad.get_respaldo_config(tenant["db"])
         alertas = tad.get_mail_alertas(tenant.get("secrets") or "")
+        prorrateo = (
+            tad.get_prorrateo_cc(tenant["db"], tenant["kind"])
+            if sec == "prorrateo"
+            else None
+        )
         menu = tad.menu_for(tenant["kind"])
         roles = tad.roles_for(tenant["kind"])
         bitacora_rows = list_bitacora(tenant["slug"]) if sec == "bitacora" else []
@@ -380,6 +387,7 @@ def create_app(config_object: type = Config) -> Flask:
             menu=menu,
             respaldo=respaldo,
             alertas=alertas,
+            prorrateo=prorrateo,
             frecuencias=tad.FRECUENCIAS,
             mod_user_id=uid_int or "",
             mod_email=mod_email,
@@ -476,6 +484,9 @@ def _log_admin_action(
     elif action == "alertas_guardar":
         detalle = (request.form.get("correo_receptor") or "").strip()
         accion = "MAIL_ALERTAS"
+    elif action == "prorrateo_guardar":
+        detalle = "Prorrateo CC actualizado"
+        accion = "PRORRATEO_CC"
     elif action == "reenviar_invitacion":
         detalle = target or f"#{uid}"
         accion = "INVITACION"
@@ -530,6 +541,34 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
             tenant.get("secrets") or "",
             request.form.get("correo_receptor") or "",
         )
+
+    if action == "prorrateo_guardar":
+        pcts: dict[str, float] = {}
+        for key, val in request.form.items():
+            if not key.startswith("pct_"):
+                continue
+            cc = key[4:].replace("_", " ")
+            try:
+                pcts[cc] = float(val or 0)
+            except (TypeError, ValueError):
+                return False, f"Porcentaje inválido en {cc}."
+        # Prefer explicit cc list from current config to keep original names
+        actual = tad.get_prorrateo_cc(db, kind)
+        mapped: dict[str, float] = {}
+        for row in actual.get("rows") or []:
+            cc = row["cc"]
+            key = "pct_" + cc.replace(" ", "_")
+            raw = request.form.get(key)
+            if raw is None:
+                mapped[cc] = float(row.get("porcentaje") or 0)
+            else:
+                try:
+                    mapped[cc] = float(raw)
+                except (TypeError, ValueError):
+                    return False, f"Porcentaje inválido en {cc}."
+        if not mapped and pcts:
+            mapped = pcts
+        return tad.save_prorrateo_cc(db, kind, mapped)
 
     if action == "respaldo_enviar_datos":
         return tad.enviar_respaldo_ahora(tenant, tipo="datos", usuario=master_email)
