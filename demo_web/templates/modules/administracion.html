@@ -12,16 +12,6 @@
     <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
   </div>
 
-  {% if es_super %}
-  <p class="small text-muted">
-    <strong>Nota:</strong> usuarios, módulos y respaldos se gestionan en la Super Consola (<a href="https://erpmaster.cl/" target="_blank" rel="noopener">erpmaster.cl</a>). Aquí: bitácora, maestras y plataforma demo.
-  </p>
-  {% else %}
-  <p class="small text-muted">
-    <strong>Administrador de campo:</strong> maestras, presupuesto e ingresos flujo. Usuarios/módulos/respaldos: Super Consola.
-  </p>
-  {% endif %}
-
   {{ nav_modulo('modules.admin', secciones, sec_activa) }}
 
   {% if sec_activa == 'bitacora' %}
