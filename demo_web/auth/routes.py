@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import os
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
 from demo_web.auth.user_db import fetch_login_row
 from demo_web.services.demo_loader import get_demo_module
@@ -40,13 +49,30 @@ def login():
             session.permanent = False
             try:
                 from demo_web.services.mantenimiento import slug_for_app, stamp_session_epoch
-                from flask import current_app
+
                 slug = slug_for_app(current_app.config.get("ERP_APP", ""))
                 if slug:
                     stamp_session_epoch(slug)
             except Exception:
                 pass
-            nxt = request.args.get("next") or url_for("modules.dashboard")
+            nxt = (request.args.get("next") or "").strip()
+            prefix = (
+                (request.headers.get("X-Forwarded-Prefix") or "").rstrip("/")
+                or (request.environ.get("SCRIPT_NAME") or "").rstrip("/")
+                or (current_app.config.get("APPLICATION_ROOT") or "").rstrip("/")
+            )
+            # next solo dentro del mismo ERP (evita saltar a /riomaipo u otros)
+            if (
+                not nxt
+                or not nxt.startswith("/")
+                or nxt.startswith("//")
+                or "://" in nxt
+                or nxt.startswith("/riomaipo")
+                or (prefix == "/demo" and nxt.startswith("/laconcepcion"))
+                or (prefix == "/laconcepcion" and nxt.startswith("/demo"))
+                or (prefix and not (nxt == prefix or nxt.startswith(prefix + "/")))
+            ):
+                nxt = url_for("modules.dashboard")
             return redirect(nxt)
         demo.enviar_correo_alerta(email or "desconocido", exitoso=False)
         error = "Acceso denegado o periodo de prueba vencido."

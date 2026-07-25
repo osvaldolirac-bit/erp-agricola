@@ -51,6 +51,21 @@ def stamp_session_epoch(slug: str) -> None:
     session["erp_session_epoch"] = session_epoch(slug)
 
 
+def acceso_login_path(app: Flask) -> str:
+    """Ruta de acceso del tenant actual (fija al prefijo del ERP)."""
+    slug = slug_for_app(app.config.get("ERP_APP", ""))
+    expected = {"demo": "/demo", "concepcion": "/laconcepcion"}.get(slug, "")
+    prefix = (
+        (request.headers.get("X-Forwarded-Prefix") or "").strip().rstrip("/")
+        or (request.environ.get("SCRIPT_NAME") or "").strip().rstrip("/")
+        or (app.config.get("APPLICATION_ROOT") or "").strip().rstrip("/")
+        or expected
+    )
+    if expected:
+        prefix = expected
+    return f"{prefix}/login"
+
+
 def _pagina_mantenimiento(titulo: str) -> str:
     safe_title = (titulo or "ERP").replace("<", "").replace(">", "")
     return f"""<!doctype html>
@@ -205,6 +220,10 @@ def register_mantenimiento(app: Flask) -> None:
                 session["erp_session_epoch"] = epoch
             elif sess_epoch != epoch:
                 session.clear()
-                if request.endpoint not in {"auth.login", "static", "logo_asset"}:
-                    return redirect(url_for("auth.login"))
+                login_path = acceso_login_path(app)
+                # Si ya estamos en login del mismo tenant, no rebotar.
+                req_path = (request.path or "").rstrip("/") or "/"
+                if req_path.endswith("/login"):
+                    return None
+                return redirect(login_path)
         return None
