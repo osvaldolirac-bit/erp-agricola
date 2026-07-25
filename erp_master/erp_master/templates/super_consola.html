@@ -88,6 +88,7 @@
               <tr>
                 <th>Correo</th>
                 <th>Rol</th>
+                <th>Opciones</th>
                 <th>Módulos</th>
                 {% if tenant.kind == 'demo' %}<th>Expira</th>{% endif %}
                 <th>Acciones</th>
@@ -98,13 +99,6 @@
               <tr>
                 <td>
                   <div class="cell-strong">{{ u.email }}</div>
-                  <div class="cell-muted">
-                    mail tesorería: {{ 'sí' if u.mail_tesoreria else 'no' }}
-                    {% if tenant.kind == 'lc' %}
-                    · petróleo: {{ 'sí' if u.mail_petroleo_bitacora else 'no' }}
-                    · solo lectura: {{ 'sí' if u.solo_lectura else 'no' }}
-                    {% endif %}
-                  </div>
                 </td>
                 <td>
                   <form method="post" class="inline-form">
@@ -117,6 +111,18 @@
                     </select>
                   </form>
                 </td>
+                <td>
+                  <form method="post" class="flags-grid">
+                    <input type="hidden" name="action" value="flags_usuario">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <label><input type="checkbox" name="mail_tesoreria" value="1" {% if u.mail_tesoreria %}checked{% endif %}> Mail tesorería</label>
+                    {% if tenant.kind == 'lc' %}
+                    <label><input type="checkbox" name="mail_petroleo" value="1" {% if u.mail_petroleo_bitacora %}checked{% endif %}> Mail petróleo</label>
+                    <label><input type="checkbox" name="solo_lectura" value="1" {% if u.solo_lectura %}checked{% endif %}> Solo lectura</label>
+                    {% endif %}
+                    <button class="btn btn-ghost" type="submit">Guardar</button>
+                  </form>
+                </td>
                 <td class="cell-muted">{{ u.modulos_txt }}</td>
                 {% if tenant.kind == 'demo' %}
                 <td class="cell-muted">{{ u.fecha_expira or '—' }}</td>
@@ -127,16 +133,6 @@
                     <input type="hidden" name="user_id" value="{{ u.id }}">
                     <input type="text" name="password" placeholder="Nueva clave" minlength="4" required>
                     <button class="btn btn-ghost" type="submit">Clave</button>
-                  </form>
-                  <form method="post" class="inline-form flags">
-                    <input type="hidden" name="action" value="flags_usuario">
-                    <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <label><input type="checkbox" name="mail_tesoreria" value="1" {% if u.mail_tesoreria %}checked{% endif %}> Teso</label>
-                    {% if tenant.kind == 'lc' %}
-                    <label><input type="checkbox" name="mail_petroleo" value="1" {% if u.mail_petroleo_bitacora %}checked{% endif %}> Petróleo</label>
-                    <label><input type="checkbox" name="solo_lectura" value="1" {% if u.solo_lectura %}checked{% endif %}> Lectura</label>
-                    {% endif %}
-                    <button class="btn btn-ghost" type="submit">Flags</button>
                   </form>
                   {% if u.es_operador %}
                   <a class="btn btn-ghost" href="{{ url_for('super_consola', slug=tenant.slug, sec='modulos', uid=u.id) }}">Módulos</a>
@@ -183,10 +179,10 @@
           </label>
           <div class="modulos-grid" id="modulosGrid">
             {% for key, label in menu %}
-            <label>
+            <label class="modulos-item">
               <input type="checkbox" name="modulos" value="{{ key }}"
                 {% if mod_all or key in mod_keys %}checked{% endif %}>
-              {{ label }}
+              <span>{{ label }}</span>
             </label>
             {% endfor %}
           </div>
