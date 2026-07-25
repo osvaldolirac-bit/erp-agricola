@@ -28,6 +28,7 @@ class Config:
             "nombre": "La Concepción",
             "descripcion": "ERP agrícola en producción",
             "url": "/laconcepcion/",
+            "url_dashboard": "/laconcepcion/m/dashboard",
             "estado": "activo",
         },
         {
@@ -35,6 +36,7 @@ class Config:
             "nombre": "DEMO Agrícola",
             "descripcion": "Entorno de prueba e invitaciones",
             "url": "/demo/",
+            "url_dashboard": "/demo/m/dashboard",
             "estado": "activo",
         },
         {
@@ -42,6 +44,7 @@ class Config:
             "nombre": "Río Maipo",
             "descripcion": "Cotizaciones y cobranza",
             "url": "/riomaipo/",
+            "url_dashboard": "/riomaipo/",
             "estado": "activo",
         },
     ]

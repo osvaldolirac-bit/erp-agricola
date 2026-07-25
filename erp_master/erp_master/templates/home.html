@@ -16,7 +16,7 @@
 
       <div class="section-head">
         <h2>Clientes</h2>
-        <p>Elige un cliente para la Super Consola, o marca mantención del sitio.</p>
+        <p>Super Consola, acceso directo al ERP (dashboard) o mantención del sitio.</p>
       </div>
 
       <ul class="tenant-list">
@@ -35,7 +35,7 @@
                 {% else %}
                 <span class="status">activo</span>
                 {% endif %}
-                <span class="go">Entrar →</span>
+                <span class="go">Consola →</span>
               </div>
             </a>
             {% else %}
@@ -52,6 +52,12 @@
                 {% endif %}
               </div>
             </div>
+            {% endif %}
+
+            {% if t.url_dashboard %}
+            <a class="tenant-erp" href="{{ t.url_dashboard }}" target="_blank" rel="noopener" title="Abrir ERP en el dashboard">
+              Abrir ERP
+            </a>
             {% endif %}
 
             {% if t.can_mantenimiento %}

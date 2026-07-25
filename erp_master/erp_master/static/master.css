@@ -301,22 +301,26 @@ button, input { font: inherit; }
 
 .tenant-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   align-items: stretch;
 }
 
-.tenant-admin {
+.tenant-admin,
+.tenant-erp {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 0 1.1rem;
   border-left: 1px solid var(--line);
   color: var(--field);
   font-weight: 650;
   font-size: 0.88rem;
-  transition: background 160ms ease;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease;
 }
 
-.tenant-admin:hover { background: rgba(196, 106, 44, 0.1); color: var(--accent); }
+.tenant-admin:hover,
+.tenant-erp:hover { background: rgba(196, 106, 44, 0.1); color: var(--accent); }
 .tenant-admin.is-disabled {
   color: var(--muted);
   font-weight: 500;
@@ -513,6 +517,11 @@ button, input { font: inherit; }
 
 @media (max-width: 640px) {
   .tenant-row { grid-template-columns: 1fr; }
+  .tenant-erp {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 0.85rem 1.1rem;
+  }
   .tenant-maint {
     border-left: 0;
     border-top: 1px solid var(--line);
