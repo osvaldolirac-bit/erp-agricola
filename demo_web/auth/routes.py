@@ -48,11 +48,20 @@ def login():
             session["rol"] = demo.normalizar_rol_usuario(row[1], row[0])
             session.permanent = False
             try:
-                from demo_web.services.mantenimiento import slug_for_app, stamp_session_epoch
+                from demo_web.services.mantenimiento import (
+                    clear_post_mantenimiento,
+                    en_post_mantenimiento,
+                    slug_for_app,
+                    stamp_session_epoch,
+                )
 
                 slug = slug_for_app(current_app.config.get("ERP_APP", ""))
                 if slug:
                     stamp_session_epoch(slug)
+                    # Tras mantención: siempre dashboard (ignora next a módulos viejos).
+                    if en_post_mantenimiento(slug):
+                        clear_post_mantenimiento(slug)
+                        return redirect(url_for("modules.dashboard"))
             except Exception:
                 pass
             nxt = (request.args.get("next") or "").strip()

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from flask import Flask, Response, redirect, request, session, url_for
+from flask import Flask, Response, redirect, request, session
 
 _STATUS_DIR = os.environ.get("ERP_STATUS_DIR", "/root/erp_status").strip() or "/root/erp_status"
 
@@ -34,35 +34,52 @@ def en_mantenimiento(slug: str) -> bool:
 
 
 def session_epoch(slug: str) -> str:
-    """Epoch que invalida sesiones al salir de mantención."""
     safe = _safe_slug(slug)
     if not safe:
         return "0"
     path = os.path.join(_STATUS_DIR, f"{safe}.session_epoch")
     try:
         with open(path, encoding="utf-8") as f:
-            return (f.read().strip() or "0")
+            return f.read().strip() or "0"
     except OSError:
         return "0"
 
 
 def stamp_session_epoch(slug: str) -> None:
-    """Marca la sesión actual como válida para el epoch vigente."""
     session["erp_session_epoch"] = session_epoch(slug)
 
 
+def _post_maint_path(slug: str) -> str:
+    return os.path.join(_STATUS_DIR, f"{_safe_slug(slug)}.post_maint")
+
+
+def en_post_mantenimiento(slug: str) -> bool:
+    try:
+        with open(_post_maint_path(slug), encoding="utf-8") as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return False
+
+
+def set_post_mantenimiento(slug: str, activo: bool) -> None:
+    path = _post_maint_path(slug)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("1\n" if activo else "0\n")
+    except OSError:
+        pass
+
+
+def clear_post_mantenimiento(slug: str) -> None:
+    set_post_mantenimiento(slug, False)
+
+
 def acceso_login_path(app: Flask) -> str:
-    """Ruta de acceso del tenant actual (fija al prefijo del ERP)."""
+    """Login limpio del tenant (sin ?next= a módulos viejos)."""
     slug = slug_for_app(app.config.get("ERP_APP", ""))
     expected = {"demo": "/demo", "concepcion": "/laconcepcion"}.get(slug, "")
-    prefix = (
-        (request.headers.get("X-Forwarded-Prefix") or "").strip().rstrip("/")
-        or (request.environ.get("SCRIPT_NAME") or "").strip().rstrip("/")
-        or (app.config.get("APPLICATION_ROOT") or "").strip().rstrip("/")
-        or expected
-    )
-    if expected:
-        prefix = expected
+    prefix = expected or (app.config.get("APPLICATION_ROOT") or "").strip().rstrip("/")
     return f"{prefix}/login"
 
 
@@ -78,8 +95,6 @@ def _pagina_mantenimiento(titulo: str) -> str:
     :root {{
       --ink: #1f2a24;
       --muted: #5f6b64;
-      --paper: #f7f4ec;
-      --paper-2: #ebe6da;
       --accent: #b45309;
       --line: rgba(31, 42, 36, 0.12);
     }}
@@ -204,15 +219,28 @@ def register_mantenimiento(app: Flask) -> None:
         if not slug:
             return None
 
+        login_path = acceso_login_path(app)
+        req_path = (request.path or "").rstrip("/") or "/"
+        en_login = req_path.endswith("/login")
+
         if en_mantenimiento(slug):
-            # Cierra sesión para que, al restaurar, caiga en acceso/login.
             if session.get("email") or session.get("auth_ok"):
                 session.clear()
             titulo = app.config.get("ERP_TITLE") or app.config.get("ERP_BRAND") or "ERP"
-            html = _pagina_mantenimiento(str(titulo))
-            return Response(html, status=503, mimetype="text/html; charset=utf-8")
+            return Response(
+                _pagina_mantenimiento(str(titulo)),
+                status=503,
+                mimetype="text/html; charset=utf-8",
+            )
 
-        # Tras restaurar / cambiar epoch: sesiones viejas vuelven a pantalla de acceso.
+        # Tras restaurar: URL limpia de acceso (sin módulo viejo ni ?next=).
+        if en_post_mantenimiento(slug):
+            if session.get("email"):
+                session.clear()
+            if not en_login:
+                return redirect(login_path)
+            return None
+
         epoch = session_epoch(slug)
         if session.get("email"):
             sess_epoch = session.get("erp_session_epoch")
@@ -220,10 +248,6 @@ def register_mantenimiento(app: Flask) -> None:
                 session["erp_session_epoch"] = epoch
             elif sess_epoch != epoch:
                 session.clear()
-                login_path = acceso_login_path(app)
-                # Si ya estamos en login del mismo tenant, no rebotar.
-                req_path = (request.path or "").rstrip("/") or "/"
-                if req_path.endswith("/login"):
-                    return None
-                return redirect(login_path)
+                if not en_login:
+                    return redirect(login_path)
         return None

@@ -396,12 +396,16 @@ def set_mantenimiento(slug: str, activo: bool) -> tuple[bool, str]:
     if not safe:
         return False, "Cliente inválido."
     path = _mantenimiento_path(safe)
+    post_path = os.path.join(_status_dir(), f"{safe}.post_maint")
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write("1\n" if activo else "0\n")
         # Al activar o restaurar, fuerza re-acceso en el ERP.
         _bump_session_epoch(safe)
+        # Al restaurar: siguiente visita = login limpio y luego dashboard.
+        with open(post_path, "w", encoding="utf-8") as f:
+            f.write("0\n" if activo else "1\n")
     except OSError as exc:
         return False, f"No se pudo actualizar mantención: {exc}"
     estado = "activado" if activo else "desactivado"
