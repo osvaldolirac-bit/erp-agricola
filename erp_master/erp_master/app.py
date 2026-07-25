@@ -291,57 +291,6 @@ def create_app(config_object: type = Config) -> Flask:
             msg_type=msg_type,
         )
 
-    @app.route("/consola/usuarios", methods=["GET", "POST"])
-    @super_admin_required
-    def consola_usuarios():
-        msg = None
-        msg_type = "ok"
-        if request.method == "POST":
-            action = (request.form.get("action") or "").strip()
-            if action == "crear":
-                ok, text = create_master_user(
-                    request.form.get("email") or "",
-                    request.form.get("password") or "",
-                    request.form.get("nombre") or "",
-                    request.form.get("rol") or "admin",
-                    request.form.get("tenant_slug") or "",
-                )
-            elif action == "clave":
-                try:
-                    uid = int(request.form.get("user_id") or 0)
-                except ValueError:
-                    uid = 0
-                ok, text = change_master_password(uid, request.form.get("password") or "")
-            elif action == "activar":
-                try:
-                    uid = int(request.form.get("user_id") or 0)
-                except ValueError:
-                    uid = 0
-                ok, text = set_master_user_activo(uid, True)
-            elif action == "desactivar":
-                try:
-                    uid = int(request.form.get("user_id") or 0)
-                except ValueError:
-                    uid = 0
-                ok, text = set_master_user_activo(uid, False)
-            elif action == "eliminar":
-                try:
-                    uid = int(request.form.get("user_id") or 0)
-                except ValueError:
-                    uid = 0
-                ok, text = delete_master_user(uid)
-            else:
-                ok, text = False, "Acción no reconocida."
-            msg, msg_type = text, ("ok" if ok else "error")
-
-        return render_template(
-            "consola_usuarios.html",
-            users=list_master_users(),
-            admin_tenants=app.config["ADMIN_TENANTS"],
-            msg=msg,
-            msg_type=msg_type,
-        )
-
     @app.get("/health")
     def health():
         return {"ok": True, "app": "erp_master"}
