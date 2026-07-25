@@ -373,6 +373,24 @@ def get_mantenimiento(slug: str) -> bool:
         return False
 
 
+def _bump_session_epoch(slug: str) -> None:
+    """Invalida sesiones del ERP para volver a pantalla de acceso al restaurar."""
+    path = os.path.join(_status_dir(), f"{slug}.session_epoch")
+    try:
+        cur = 0
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                cur = int((f.read().strip() or "0") or "0")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"{cur + 1}\n")
+    except (OSError, ValueError):
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("1\n")
+        except OSError:
+            pass
+
+
 def set_mantenimiento(slug: str, activo: bool) -> tuple[bool, str]:
     safe = re.sub(r"[^a-z0-9_-]+", "", (slug or "").strip().lower())
     if not safe:
@@ -382,6 +400,8 @@ def set_mantenimiento(slug: str, activo: bool) -> tuple[bool, str]:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write("1\n" if activo else "0\n")
+        # Al activar o restaurar, fuerza re-acceso en el ERP.
+        _bump_session_epoch(safe)
     except OSError as exc:
         return False, f"No se pudo actualizar mantención: {exc}"
     estado = "activado" if activo else "desactivado"

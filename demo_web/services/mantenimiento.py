@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from flask import Flask, Response, request
+from flask import Flask, Response, redirect, request, session, url_for
 
 _STATUS_DIR = os.environ.get("ERP_STATUS_DIR", "/root/erp_status").strip() or "/root/erp_status"
 
@@ -17,8 +17,12 @@ def slug_for_app(erp_app: str) -> str:
     return _SLUG_BY_APP.get((erp_app or "").strip().lower(), "")
 
 
+def _safe_slug(slug: str) -> str:
+    return "".join(c for c in (slug or "").lower() if c.isalnum() or c in "-_")
+
+
 def en_mantenimiento(slug: str) -> bool:
-    safe = "".join(c for c in (slug or "").lower() if c.isalnum() or c in "-_")
+    safe = _safe_slug(slug)
     if not safe:
         return False
     path = os.path.join(_STATUS_DIR, f"{safe}.mantenimiento")
@@ -27,6 +31,24 @@ def en_mantenimiento(slug: str) -> bool:
             return f.read().strip() == "1"
     except OSError:
         return False
+
+
+def session_epoch(slug: str) -> str:
+    """Epoch que invalida sesiones al salir de mantención."""
+    safe = _safe_slug(slug)
+    if not safe:
+        return "0"
+    path = os.path.join(_STATUS_DIR, f"{safe}.session_epoch")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return (f.read().strip() or "0")
+    except OSError:
+        return "0"
+
+
+def stamp_session_epoch(slug: str) -> None:
+    """Marca la sesión actual como válida para el epoch vigente."""
+    session["erp_session_epoch"] = session_epoch(slug)
 
 
 def _pagina_mantenimiento(titulo: str) -> str:
@@ -39,110 +61,102 @@ def _pagina_mantenimiento(titulo: str) -> str:
   <title>Sitio en mantención — {safe_title}</title>
   <style>
     :root {{
-      --ink: #1c1914;
-      --muted: #5c564c;
-      --sand: #f3efe4;
-      --amber: #d97706;
-      --stripe: #f59e0b;
-      --barrier: #111827;
+      --ink: #1f2a24;
+      --muted: #5f6b64;
+      --paper: #f7f4ec;
+      --paper-2: #ebe6da;
+      --accent: #b45309;
+      --line: rgba(31, 42, 36, 0.12);
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       min-height: 100vh;
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        repeating-linear-gradient(
-          -45deg,
-          var(--stripe),
-          var(--stripe) 18px,
-          var(--barrier) 18px,
-          var(--barrier) 36px
-        );
+        radial-gradient(900px 500px at 20% 0%, rgba(180, 83, 9, 0.10), transparent 55%),
+        linear-gradient(180deg, #f8f5ee 0%, #ece7db 100%);
       display: grid;
       place-items: center;
       padding: 1.5rem;
     }}
     .card {{
-      width: min(560px, 100%);
-      background: var(--sand);
-      border: 4px solid var(--barrier);
-      box-shadow: 0 18px 40px rgba(0,0,0,.28);
+      width: min(520px, 100%);
+      background: rgba(247, 244, 236, 0.96);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 16px 40px rgba(31, 42, 36, 0.10);
       padding: 2rem 1.6rem 1.7rem;
       text-align: center;
     }}
-    .cones {{
+    .mark {{
       display: flex;
       justify-content: center;
       align-items: flex-end;
-      gap: 1.4rem;
-      margin-bottom: 1.1rem;
-      height: 64px;
+      gap: 1rem;
+      height: 56px;
+      margin-bottom: 1rem;
     }}
     .cone {{
       width: 0;
       height: 0;
-      border-left: 22px solid transparent;
-      border-right: 22px solid transparent;
-      border-bottom: 48px solid var(--amber);
+      border-left: 18px solid transparent;
+      border-right: 18px solid transparent;
+      border-bottom: 40px solid #c2410c;
       position: relative;
-      filter: drop-shadow(0 2px 0 #111);
     }}
     .cone::after {{
       content: "";
       position: absolute;
-      left: -14px;
-      top: 18px;
-      width: 28px;
-      height: 7px;
-      background: #111;
+      left: -12px;
+      top: 14px;
+      width: 24px;
+      height: 5px;
+      background: #1f2a24;
     }}
-    .barrier-bar {{
-      width: 70px;
-      height: 14px;
-      margin-bottom: 8px;
-      background: repeating-linear-gradient(
-        90deg,
-        var(--stripe) 0 10px,
-        var(--barrier) 10px 20px
-      );
-      border: 2px solid #111;
+    .bar {{
+      width: 64px;
+      height: 12px;
+      margin-bottom: 6px;
+      border-radius: 3px;
+      background: #c2410c;
+      border: 1px solid #1f2a24;
     }}
     .badge {{
       display: inline-block;
-      background: var(--amber);
-      color: #111;
-      font-family: "Segoe UI", sans-serif;
+      background: #fff7ed;
+      color: var(--accent);
+      border: 1px solid rgba(180, 83, 9, 0.25);
       font-size: .72rem;
       font-weight: 800;
-      letter-spacing: .14em;
+      letter-spacing: .12em;
       text-transform: uppercase;
       padding: .35rem .7rem;
+      border-radius: 999px;
       margin-bottom: .85rem;
     }}
     h1 {{
       margin: 0 0 .55rem;
-      font-size: clamp(1.7rem, 5vw, 2.2rem);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(1.7rem, 5vw, 2.15rem);
       line-height: 1.1;
+      font-weight: 600;
     }}
     p {{
       margin: 0;
-      font-family: "Segoe UI", sans-serif;
       color: var(--muted);
-      font-size: 1.05rem;
+      font-size: 1.02rem;
       line-height: 1.45;
     }}
     .soon {{
       margin-top: 1rem;
-      font-family: "Segoe UI", sans-serif;
       font-weight: 700;
       color: var(--ink);
-      font-size: 1.12rem;
+      font-size: 1.1rem;
     }}
     .foot {{
-      margin-top: 1.35rem;
-      font-family: "Segoe UI", sans-serif;
+      margin-top: 1.25rem;
       font-size: .82rem;
       color: #7a7468;
     }}
@@ -150,9 +164,9 @@ def _pagina_mantenimiento(titulo: str) -> str:
 </head>
 <body>
   <main class="card">
-    <div class="cones" aria-hidden="true">
+    <div class="mark" aria-hidden="true">
       <span class="cone"></span>
-      <span class="barrier-bar"></span>
+      <span class="bar"></span>
       <span class="cone"></span>
     </div>
     <div class="badge">Sitio en mantención</div>
@@ -169,11 +183,28 @@ def _pagina_mantenimiento(titulo: str) -> str:
 def register_mantenimiento(app: Flask) -> None:
     @app.before_request
     def _bloquea_si_mantenimiento():
-        if request.path.startswith("/static/"):
+        if request.path.startswith("/static/") or request.path.startswith("/assets/"):
             return None
         slug = slug_for_app(app.config.get("ERP_APP", ""))
-        if not slug or not en_mantenimiento(slug):
+        if not slug:
             return None
-        titulo = app.config.get("ERP_TITLE") or app.config.get("ERP_BRAND") or "ERP"
-        html = _pagina_mantenimiento(str(titulo))
-        return Response(html, status=503, mimetype="text/html; charset=utf-8")
+
+        if en_mantenimiento(slug):
+            # Cierra sesión para que, al restaurar, caiga en acceso/login.
+            if session.get("email") or session.get("auth_ok"):
+                session.clear()
+            titulo = app.config.get("ERP_TITLE") or app.config.get("ERP_BRAND") or "ERP"
+            html = _pagina_mantenimiento(str(titulo))
+            return Response(html, status=503, mimetype="text/html; charset=utf-8")
+
+        # Tras restaurar / cambiar epoch: sesiones viejas vuelven a pantalla de acceso.
+        epoch = session_epoch(slug)
+        if session.get("email"):
+            sess_epoch = session.get("erp_session_epoch")
+            if sess_epoch is None:
+                session["erp_session_epoch"] = epoch
+            elif sess_epoch != epoch:
+                session.clear()
+                if request.endpoint not in {"auth.login", "static", "logo_asset"}:
+                    return redirect(url_for("auth.login"))
+        return None

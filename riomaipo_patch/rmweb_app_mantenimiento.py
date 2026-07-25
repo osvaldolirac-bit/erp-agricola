@@ -38,14 +38,26 @@ except Exception:  # pragma: no cover
     pass
 
 
+def _riomaipo_status_dir() -> str:
+    return os.environ.get("ERP_STATUS_DIR", "/root/erp_status").strip() or "/root/erp_status"
+
+
 def _riomaipo_en_mantenimiento() -> bool:
-    status_dir = os.environ.get("ERP_STATUS_DIR", "/root/erp_status").strip() or "/root/erp_status"
-    path = os.path.join(status_dir, "riomaipo.mantenimiento")
+    path = os.path.join(_riomaipo_status_dir(), "riomaipo.mantenimiento")
     try:
         with open(path, encoding="utf-8") as f:
             return f.read().strip() == "1"
     except OSError:
         return False
+
+
+def _riomaipo_session_epoch() -> str:
+    path = os.path.join(_riomaipo_status_dir(), "riomaipo.session_epoch")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() or "0"
+    except OSError:
+        return "0"
 
 
 @app.before_request
@@ -58,25 +70,26 @@ def _boot():
         return None
     if _riomaipo_en_mantenimiento():
         from flask import Response
-
+        if session.get("auth_ok"):
+            session.clear()
         html = """<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sitio en mantención — Río Maipo</title>
 <style>
-body{margin:0;min-height:100vh;display:grid;place-items:center;padding:1.5rem;font-family:Georgia,serif;color:#1c1914;
-background:repeating-linear-gradient(-45deg,#f59e0b,#f59e0b 18px,#111827 18px,#111827 36px)}
-.card{width:min(560px,100%);background:#f3efe4;border:4px solid #111827;box-shadow:0 18px 40px rgba(0,0,0,.28);padding:2rem 1.6rem;text-align:center}
-.cones{display:flex;justify-content:center;align-items:flex-end;gap:1.4rem;height:64px;margin-bottom:1rem}
-.cone{width:0;height:0;border-left:22px solid transparent;border-right:22px solid transparent;border-bottom:48px solid #d97706;filter:drop-shadow(0 2px 0 #111);position:relative}
-.cone:after{content:"";position:absolute;left:-14px;top:18px;width:28px;height:7px;background:#111}
-.bar{width:70px;height:14px;margin-bottom:8px;border:2px solid #111;background:repeating-linear-gradient(90deg,#f59e0b 0 10px,#111 10px 20px)}
-.badge{display:inline-block;background:#d97706;font-family:Segoe UI,sans-serif;font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:.35rem .7rem;margin:.2rem 0 .85rem}
-h1{margin:0 0 .55rem;font-size:clamp(1.7rem,5vw,2.2rem)}
-p{margin:0;font-family:Segoe UI,sans-serif;color:#5c564c;font-size:1.05rem;line-height:1.45}
-.soon{margin-top:1rem;font-weight:700;color:#1c1914;font-size:1.12rem}
-.foot{margin-top:1.35rem;font-size:.82rem;color:#7a7468}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:1.5rem;font-family:Segoe UI,sans-serif;color:#1f2a24;
+background:radial-gradient(900px 500px at 20% 0%,rgba(180,83,9,.10),transparent 55%),linear-gradient(180deg,#f8f5ee 0%,#ece7db 100%)}
+.card{width:min(520px,100%);background:rgba(247,244,236,.96);border:1px solid rgba(31,42,36,.12);border-radius:18px;box-shadow:0 16px 40px rgba(31,42,36,.10);padding:2rem 1.6rem;text-align:center}
+.mark{display:flex;justify-content:center;align-items:flex-end;gap:1rem;height:56px;margin-bottom:1rem}
+.cone{width:0;height:0;border-left:18px solid transparent;border-right:18px solid transparent;border-bottom:40px solid #c2410c;position:relative}
+.cone:after{content:"";position:absolute;left:-12px;top:14px;width:24px;height:5px;background:#1f2a24}
+.bar{width:64px;height:12px;margin-bottom:6px;border-radius:3px;background:#c2410c;border:1px solid #1f2a24}
+.badge{display:inline-block;background:#fff7ed;color:#b45309;border:1px solid rgba(180,83,9,.25);font-size:.72rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:.35rem .7rem;border-radius:999px;margin-bottom:.85rem}
+h1{margin:0 0 .55rem;font-family:Georgia,serif;font-size:clamp(1.7rem,5vw,2.15rem);font-weight:600}
+p{margin:0;color:#5f6b64;font-size:1.02rem;line-height:1.45}
+.soon{margin-top:1rem;font-weight:700;color:#1f2a24;font-size:1.1rem}
+.foot{margin-top:1.25rem;font-size:.82rem;color:#7a7468}
 </style></head><body><main class="card">
-<div class="cones" aria-hidden="true"><span class="cone"></span><span class="bar"></span><span class="cone"></span></div>
+<div class="mark" aria-hidden="true"><span class="cone"></span><span class="bar"></span><span class="cone"></span></div>
 <div class="badge">Sitio en mantención</div>
 <h1>Río Maipo</h1>
 <p>Estamos realizando una actualización o reparación programada.</p>
@@ -84,6 +97,15 @@ p{margin:0;font-family:Segoe UI,sans-serif;color:#5c564c;font-size:1.05rem;line-
 <p class="foot">Más adelante publicaremos datos de contacto aquí.</p>
 </main></body></html>"""
         return Response(html, status=503, mimetype="text/html; charset=utf-8")
+    epoch = _riomaipo_session_epoch()
+    if session.get("auth_ok"):
+        sess_epoch = session.get("erp_session_epoch")
+        if sess_epoch is None:
+            session["erp_session_epoch"] = epoch
+        elif sess_epoch != epoch:
+            session.clear()
+            if request.endpoint != "login":
+                return redirect(url_for("login"))
     if not getattr(g, "_db_ready", False):
         core.init_db()
         g._db_ready = True
@@ -147,6 +169,7 @@ def login():
         )
         if user:
             session["auth_ok"] = True
+            session["erp_session_epoch"] = _riomaipo_session_epoch()
             session["auth_user"] = user["usuario"]
             session["auth_nombre"] = user["nombre"] or user["usuario"]
             session["auth_tipo"] = user["tipo"] or "Consulta"
