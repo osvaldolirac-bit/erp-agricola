@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — Clientes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <main class="console">
+      <header class="topbar">
+        <div class="brand">
+          <div class="eyebrow">Consola</div>
+          <h1>{{ brand }}</h1>
+        </div>
+        <div class="who">
+          <strong>{{ nombre or email }}</strong>
+          <form method="post" action="{{ url_for('logout') }}" style="margin-top:0.45rem">
+            <button class="btn btn-ghost" type="submit">Cerrar sesión</button>
+          </form>
+        </div>
+      </header>
+
+      <div class="section-head">
+        <h2>Clientes</h2>
+        <p>Cada cliente abre su propio ERP. Las sesiones no se mezclan.</p>
+      </div>
+
+      <ul class="tenant-list">
+        {% for t in tenants %}
+        <li>
+          <a href="{{ t.url }}" target="_blank" rel="noopener">
+            <div>
+              <div class="name">{{ t.nombre }}</div>
+              <div class="desc">{{ t.descripcion }}</div>
+            </div>
+            <div class="meta">
+              <span class="status">{{ t.estado }}</span>
+              <span class="go">Abrir →</span>
+            </div>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+
+      <p class="foot">Los ERP siguen independientes. Esta consola no fusiona bases ni módulos.</p>
+    </main>
+  </div>
+</body>
+</html>
