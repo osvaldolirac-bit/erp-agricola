@@ -44,7 +44,6 @@ class Config:
             "nombre": "Río Maipo",
             "descripcion": "Cotizaciones y cobranza",
             "url": "/riomaipo/",
-            "url_dashboard": "/riomaipo/",
             "estado": "activo",
         },
     ]
