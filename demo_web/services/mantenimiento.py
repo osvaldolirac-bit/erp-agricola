@@ -75,6 +75,32 @@ def clear_post_mantenimiento(slug: str) -> None:
     set_post_mantenimiento(slug, False)
 
 
+def _bitacora_path(slug: str) -> str:
+    return os.path.join(_STATUS_DIR, f"{_safe_slug(slug)}.bitacora")
+
+
+def bitacora_erp_activa(slug: str) -> bool:
+    """Bitácora operativa del ERP por tenant. Solo activa si el flag es 1."""
+    safe = _safe_slug(slug)
+    if not safe:
+        return False
+    try:
+        with open(_bitacora_path(safe), encoding="utf-8") as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return False
+
+
+def set_bitacora_erp(slug: str, activo: bool) -> None:
+    path = _bitacora_path(slug)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("1\n" if activo else "0\n")
+    except OSError:
+        pass
+
+
 def acceso_login_path(app: Flask) -> str:
     """Login limpio del rubro agrícola (sin ?next= a módulos viejos)."""
     prefix = (app.config.get("APPLICATION_ROOT") or "/agricola").strip().rstrip("/")

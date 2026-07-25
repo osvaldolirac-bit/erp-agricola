@@ -18,6 +18,17 @@ def _registrar_acceso_sesion(demo, email: str, modulo: str = "") -> None:
     if session.get("from_master_console"):
         return
 
+    try:
+        from demo_web.services.mantenimiento import bitacora_erp_activa
+
+        slug = session.get("tenant_slug") or (
+            "concepcion" if get_erp_app() == "concepcion" else "demo"
+        )
+        if not bitacora_erp_activa(slug):
+            return
+    except Exception:
+        return
+
     app_tag = "lc" if get_erp_app() == "concepcion" else "demo"
     tag = f"acceso_v1154_{app_tag}_{email}_{demo.hora_chile().strftime('%Y%m%d')}"
     if session.get(tag):

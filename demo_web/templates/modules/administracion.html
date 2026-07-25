@@ -15,6 +15,12 @@
   {{ nav_modulo('modules.admin', secciones, sec_activa) }}
 
   {% if sec_activa == 'bitacora' %}
+  {% if bitacora_desactivada %}
+  <div class="alert alert-secondary">
+    Bitácora en cero para este cliente. No se registran ingresos ni acciones.
+    Se puede activar desde Super Consola cuando corresponda.
+  </div>
+  {% else %}
   <form method="get" class="row g-2 align-items-end mb-3">
     <input type="hidden" name="sec" value="bitacora">
     <div class="col-auto">
@@ -44,6 +50,7 @@
   </div>
   {% else %}
   <div class="alert alert-info">Sin registros en el rango seleccionado.</div>
+  {% endif %}
   {% endif %}
 
 

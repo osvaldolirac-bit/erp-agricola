@@ -74,6 +74,31 @@ def _gather_bitacora(demo, conn) -> dict:
     ff = parse_date(request.args.get("hasta"), hoy)
     if fi > ff:
         fi, ff = ff, fi
+
+    bitacora_activa = True
+    try:
+        from flask import session
+        from demo_web.services.mantenimiento import bitacora_erp_activa
+
+        slug = (session.get("tenant_slug") or "").strip().lower()
+        if not slug:
+            slug = "concepcion" if get_erp_app() == "concepcion" else "demo"
+        bitacora_activa = bitacora_erp_activa(slug)
+    except Exception:
+        bitacora_activa = False
+
+    if not bitacora_activa:
+        cols = ["usuario", "accion", "detalle", "fecha_hora"]
+        return {
+            "desde": fi.isoformat(),
+            "hasta": ff.isoformat(),
+            "bitacora_cols": cols,
+            "bitacora_rows": [],
+            "bitacora_total": 0,
+            "pdf_bitacora_url": None,
+            "bitacora_desactivada": True,
+        }
+
     df = pd.read_sql_query(
         """SELECT usuario, accion, detalle, fecha_hora FROM bitacora
            WHERE substr(fecha_hora, 1, 10) BETWEEN ? AND ?
@@ -90,6 +115,7 @@ def _gather_bitacora(demo, conn) -> dict:
         "bitacora_rows": rows,
         "bitacora_total": len(rows),
         "pdf_bitacora_url": pdf_url,
+        "bitacora_desactivada": False,
     }
 
 

@@ -276,6 +276,10 @@ def get_plataforma_demo(db_path: str) -> dict[str, Any]:
             ORDER BY lower(email)
             """
         ).fetchall()
+        try:
+            n_bit = conn.execute("SELECT COUNT(*) AS n FROM bitacora").fetchone()["n"]
+        except Exception:
+            n_bit = 0
     usuarios = []
     for r in rows:
         perfil = r["rol"]
@@ -302,6 +306,8 @@ def get_plataforma_demo(db_path: str) -> dict[str, Any]:
         "nombre_db": db_path,
         "login_url": DEMO_LOGIN_URL,
         "usuarios_plat": usuarios,
+        "bitacora_activa": get_bitacora_erp("demo"),
+        "bitacora_registros": int(n_bit or 0),
     }
 
 
@@ -334,18 +340,26 @@ def reseed_demo(db_path: str) -> tuple[bool, str]:
                 "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, '1')",
                 (DEMO_SEED_VERSION,),
             )
+            # DEMO: bitácora queda en cero salvo que Master la active.
             try:
-                cur.execute(
-                    "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
-                    (
-                        "MASTER",
-                        "DEMO RESEED",
-                        DEMO_SEED_VERSION,
-                        demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S"),
-                    ),
-                )
+                cur.execute("DELETE FROM bitacora")
             except Exception:
                 pass
+            if get_bitacora_erp("demo"):
+                try:
+                    cur.execute(
+                        "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
+                        (
+                            "MASTER",
+                            "DEMO RESEED",
+                            DEMO_SEED_VERSION,
+                            demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S"),
+                        ),
+                    )
+                except Exception:
+                    pass
+            else:
+                set_bitacora_erp("demo", False)
         return True, "Datos ficticios re-sembrados."
     except Exception as exc:
         return False, f"No se pudo re-sembrar: {exc}"
@@ -559,6 +573,45 @@ def _bump_session_epoch(slug: str) -> None:
                 f.write("1\n")
         except OSError:
             pass
+
+
+def _bitacora_erp_path(slug: str) -> str:
+    safe = re.sub(r"[^a-z0-9_-]+", "", (slug or "").strip().lower())
+    return os.path.join(_status_dir(), f"{safe}.bitacora")
+
+
+def get_bitacora_erp(slug: str) -> bool:
+    path = _bitacora_erp_path(slug)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() == "1"
+    except OSError:
+        return False
+
+
+def set_bitacora_erp(slug: str, activo: bool) -> tuple[bool, str]:
+    safe = re.sub(r"[^a-z0-9_-]+", "", (slug or "").strip().lower())
+    if not safe:
+        return False, "Cliente inválido."
+    path = _bitacora_erp_path(safe)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("1\n" if activo else "0\n")
+    except OSError as exc:
+        return False, f"No se pudo actualizar bitácora ERP: {exc}"
+    return True, "Bitácora ERP activada." if activo else "Bitácora ERP desactivada (en cero)."
+
+
+def clear_bitacora_erp(db_path: str) -> tuple[bool, str]:
+    """Vacía la tabla bitácora operativa del tenant."""
+    try:
+        with tenant_conn(db_path) as conn:
+            n = conn.execute("SELECT COUNT(*) AS n FROM bitacora").fetchone()["n"]
+            conn.execute("DELETE FROM bitacora")
+        return True, f"Bitácora ERP vaciada ({int(n or 0)} registros eliminados)."
+    except Exception as exc:
+        return False, f"No se pudo vaciar bitácora: {exc}"
 
 
 def set_mantenimiento(slug: str, activo: bool) -> tuple[bool, str]:

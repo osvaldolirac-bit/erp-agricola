@@ -302,8 +302,10 @@ def create_app(config_object: type = Config) -> Flask:
                 sec = "modulos"
             elif action.startswith("respaldo"):
                 sec = "respaldo"
-            elif action.startswith("reseed") or action == "plataforma":
-                sec = "plataforma"
+            elif action.startswith("reseed") or action.startswith("bitacora_erp") or action == "plataforma":
+                sec = "plataforma" if tenant.get("kind") == "demo" else (
+                    request.form.get("sec") or "usuarios"
+                )
             else:
                 sec = request.form.get("sec") or "usuarios"
                 if sec not in allowed_sec:
@@ -319,6 +321,16 @@ def create_app(config_object: type = Config) -> Flask:
             if tenant.get("kind") == "demo" and sec == "plataforma"
             else None
         )
+        bitacora_erp_activa = tad.get_bitacora_erp(tenant["slug"])
+        try:
+            bitacora_erp_n = 0
+            if sec in {"plataforma", "usuarios", "bitacora"}:
+                with tad.tenant_conn(tenant["db"]) as _c:
+                    bitacora_erp_n = int(
+                        _c.execute("SELECT COUNT(*) AS n FROM bitacora").fetchone()["n"] or 0
+                    )
+        except Exception:
+            bitacora_erp_n = 0
 
         mod_user_id = request.args.get("uid") or request.form.get("uid") or ""
         mod_email, mod_keys, mod_all = "", [], True
@@ -351,6 +363,8 @@ def create_app(config_object: type = Config) -> Flask:
             mod_all=mod_all,
             bitacora_rows=bitacora_rows,
             plataforma=plataforma,
+            bitacora_erp_activa=bitacora_erp_activa,
+            bitacora_erp_n=bitacora_erp_n,
             msg=msg,
             msg_type=msg_type,
         )
@@ -429,6 +443,12 @@ def _log_admin_action(
     elif action == "reseed_demo":
         detalle = "Re-siembra datos ficticios DEMO"
         accion = "RESEED_DEMO"
+    elif action == "bitacora_erp_toggle":
+        detalle = "Bitácora ERP ON" if request.form.get("activo") == "1" else "Bitácora ERP OFF"
+        accion = "BITACORA_ERP"
+    elif action == "bitacora_erp_vaciar":
+        detalle = "Bitácora ERP vaciada"
+        accion = "BITACORA_ERP_CLEAR"
     else:
         accion = (action or "ACCION").upper()
     log_bitacora(slug, master_email, accion, detalle)
@@ -458,6 +478,18 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
         if request.form.get("confirm") != "1":
             return False, "Debe confirmar el re-seed."
         return tad.reseed_demo(db)
+
+    if action == "bitacora_erp_toggle":
+        activo = request.form.get("activo") == "1"
+        return tad.set_bitacora_erp(tenant["slug"], activo)
+
+    if action == "bitacora_erp_vaciar":
+        if request.form.get("confirm") != "1":
+            return False, "Debe confirmar vaciar la bitácora."
+        ok, text = tad.clear_bitacora_erp(db)
+        if ok:
+            tad.set_bitacora_erp(tenant["slug"], False)
+        return ok, text
 
     if action == "cambiar_rol":
         try:

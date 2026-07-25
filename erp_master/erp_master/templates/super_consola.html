@@ -312,9 +312,62 @@
           </div>
         </form>
       </section>
+      <section class="admin-block">
+        <h3>Bitácora del ERP (DEMO)</h3>
+        <p class="help">
+          Registro operativo dentro del ERP (ingresos, módulos). Ahora:
+          <strong>{% if bitacora_erp_activa %}activa{% else %}desactivada / en cero{% endif %}</strong>
+          · {{ bitacora_erp_n }} registros.
+        </p>
+        <form method="post" class="inline-form" style="margin-bottom:0.75rem">
+          <input type="hidden" name="action" value="bitacora_erp_toggle">
+          <input type="hidden" name="sec" value="plataforma">
+          {% if bitacora_erp_activa %}
+          <input type="hidden" name="activo" value="0">
+          <button class="btn btn-ghost" type="submit">Desactivar bitácora ERP</button>
+          {% else %}
+          <input type="hidden" name="activo" value="1">
+          <button class="btn btn-primary" type="submit">Activar bitácora ERP</button>
+          {% endif %}
+        </form>
+        <form method="post" class="inline-form" onsubmit="return confirm('¿Vaciar toda la bitácora del ERP DEMO?');">
+          <input type="hidden" name="action" value="bitacora_erp_vaciar">
+          <input type="hidden" name="sec" value="plataforma">
+          <input type="hidden" name="confirm" value="1">
+          <button class="btn btn-danger" type="submit">Vaciar bitácora ERP</button>
+        </form>
+      </section>
       {% endif %}
 
       {% if sec == 'bitacora' %}
+      <section class="admin-block">
+        <h3>Bitácora ERP del cliente</h3>
+        <p class="help">
+          Estado:
+          <strong>{% if bitacora_erp_activa %}activa{% else %}desactivada{% endif %}</strong>
+          · {{ bitacora_erp_n }} registros en el ERP.
+          {% if tenant.kind == 'demo' %}Se gestiona también en Plataforma.{% endif %}
+        </p>
+        <form method="post" class="inline-form">
+          <input type="hidden" name="action" value="bitacora_erp_toggle">
+          <input type="hidden" name="sec" value="bitacora">
+          {% if bitacora_erp_activa %}
+          <input type="hidden" name="activo" value="0">
+          <button class="btn btn-ghost" type="submit">Desactivar</button>
+          {% else %}
+          <input type="hidden" name="activo" value="1">
+          <button class="btn btn-primary" type="submit">Activar</button>
+          {% endif %}
+        </form>
+        {% if not bitacora_erp_activa %}
+        <form method="post" class="inline-form" style="margin-top:0.55rem" onsubmit="return confirm('¿Vaciar bitácora del ERP?');">
+          <input type="hidden" name="action" value="bitacora_erp_vaciar">
+          <input type="hidden" name="sec" value="bitacora">
+          <input type="hidden" name="confirm" value="1">
+          <button class="btn btn-danger" type="submit">Vaciar ahora</button>
+        </form>
+        {% endif %}
+      </section>
       <section class="admin-block">
         <h3>Bitácora de consola</h3>
         <p class="help">Movimientos hechos desde la Super Consola sobre <strong>{{ tenant.nombre }}</strong>. No se mezcla con la bitácora del ERP.</p>

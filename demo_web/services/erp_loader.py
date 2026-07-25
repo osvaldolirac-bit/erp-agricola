@@ -52,6 +52,31 @@ def get_erp_app() -> str:
     return (os.environ.get("ERP_APP") or "demo").strip().lower()
 
 
+def _wrap_registrar_accion(erp: Any) -> None:
+    """Respeta flag bitácora por tenant (Master puede activarla/desactivarla)."""
+    if getattr(erp, "_bitacora_gate_wrapped", False):
+        return
+    original = getattr(erp, "registrar_accion", None)
+    if not callable(original):
+        return
+
+    def registrar_accion(accion, detalle=""):  # noqa: ANN001
+        try:
+            from demo_web.services.mantenimiento import bitacora_erp_activa
+
+            slug = _request_tenant_slug()
+            if not slug:
+                slug = "concepcion" if get_erp_app() == "concepcion" else "demo"
+            if not bitacora_erp_activa(slug):
+                return None
+        except Exception:
+            return None
+        return original(accion, detalle)
+
+    erp.registrar_accion = registrar_accion
+    erp._bitacora_gate_wrapped = True
+
+
 def _load_module(erp_app: str) -> Any:
     install_streamlit_mock()
     if erp_app == "concepcion":
@@ -59,6 +84,7 @@ def _load_module(erp_app: str) -> Any:
     else:
         import app_demo as erp  # noqa: WPS433
     patch_erp_module(erp, erp_app)
+    _wrap_registrar_accion(erp)
     return erp
 
 
