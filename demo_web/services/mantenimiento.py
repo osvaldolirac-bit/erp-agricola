@@ -76,10 +76,8 @@ def clear_post_mantenimiento(slug: str) -> None:
 
 
 def acceso_login_path(app: Flask) -> str:
-    """Login limpio del tenant (sin ?next= a módulos viejos)."""
-    slug = slug_for_app(app.config.get("ERP_APP", ""))
-    expected = {"demo": "/demo", "concepcion": "/laconcepcion"}.get(slug, "")
-    prefix = expected or (app.config.get("APPLICATION_ROOT") or "").strip().rstrip("/")
+    """Login limpio del rubro agrícola (sin ?next= a módulos viejos)."""
+    prefix = (app.config.get("APPLICATION_ROOT") or "/agricola").strip().rstrip("/")
     return f"{prefix}/login"
 
 
@@ -215,19 +213,27 @@ def register_mantenimiento(app: Flask) -> None:
     def _bloquea_si_mantenimiento():
         if request.path.startswith("/static/") or request.path.startswith("/assets/"):
             return None
-        slug = slug_for_app(app.config.get("ERP_APP", ""))
-        if not slug:
-            return None
 
         login_path = acceso_login_path(app)
         req_path = (request.path or "").rstrip("/") or "/"
-        # Incluye /login/master (puente Super Consola → dashboard).
-        en_login = req_path.endswith("/login") or req_path.endswith("/login/master")
+        # Incluye puente master y selector de empresa.
+        en_login = (
+            req_path.endswith("/login")
+            or req_path.endswith("/login/master")
+            or req_path.endswith("/login/empresa")
+        )
+        # Sin tenant en sesión: permitir acceso al login del rubro.
+        slug = (session.get("tenant_slug") or "").strip().lower()
+        if not slug:
+            return None
 
         if en_mantenimiento(slug):
             if session.get("email") or session.get("auth_ok"):
                 session.clear()
-            titulo = app.config.get("ERP_TITLE") or app.config.get("ERP_BRAND") or "ERP"
+            from demo_web.tenants import get_tenant
+
+            t = get_tenant(slug)
+            titulo = (t or {}).get("nombre") or app.config.get("ERP_TITLE") or "ERP"
             return Response(
                 _pagina_mantenimiento(str(titulo)),
                 status=503,
@@ -236,7 +242,6 @@ def register_mantenimiento(app: Flask) -> None:
 
         # Tras restaurar: URL limpia de acceso (sin módulo viejo ni ?next=).
         if en_post_mantenimiento(slug):
-            # El puente master crea sesión y limpia el flag; no bloquearlo.
             if req_path.endswith("/login/master"):
                 return None
             if session.get("email"):

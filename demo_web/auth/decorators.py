@@ -57,17 +57,16 @@ def login_required(view: Callable):
     @wraps(view)
     def wrapped(*args, **kwargs):
         user = _current_user()
-        if not user:
+        if not user or not session.get("tenant_slug"):
             # Tras restaurar mantención no reenviar a la actividad previa.
             try:
                 from flask import current_app
                 from demo_web.services.mantenimiento import (
                     acceso_login_path,
                     en_post_mantenimiento,
-                    slug_for_app,
                 )
 
-                slug = slug_for_app(current_app.config.get("ERP_APP", ""))
+                slug = session.get("tenant_slug") or ""
                 if slug and en_post_mantenimiento(slug):
                     return redirect(acceso_login_path(current_app))
             except Exception:

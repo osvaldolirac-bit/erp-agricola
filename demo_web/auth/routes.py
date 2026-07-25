@@ -12,11 +12,11 @@ from flask import (
     session,
     url_for,
 )
-
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from demo_web.auth.user_db import fetch_bridge_user, fetch_login_row
-from demo_web.services.demo_loader import get_demo_module
+from demo_web.services.erp_loader import bind_tenant_context, get_erp_module_for
+from demo_web.tenants import get_tenant, list_tenants
 
 bp = Blueprint("auth", __name__)
 
@@ -24,9 +24,8 @@ _BRIDGE_SALT = "erp-master-bridge-v1"
 _BRIDGE_MAX_AGE = 120
 
 
-def _remember_storage_key(db_path: str) -> str:
-    slug = os.path.basename(str(db_path or "erp")).replace(".", "_")
-    return f"erp_login_remember_{slug}"
+def _remember_storage_key() -> str:
+    return "erp_login_remember_agricola"
 
 
 def _bridge_secret() -> str:
@@ -36,9 +35,87 @@ def _bridge_secret() -> str:
     )
 
 
+def _activate_session(
+    *,
+    email: str,
+    rol: str,
+    tenant_slug: str,
+    from_master: bool = False,
+) -> None:
+    bind_tenant_context(tenant_slug)
+    erp = get_erp_module_for(tenant_slug)
+    session.clear()
+    session["email"] = email
+    session["rol"] = erp.normalizar_rol_usuario(rol, email) if hasattr(erp, "normalizar_rol_usuario") else rol
+    session["tenant_slug"] = tenant_slug
+    if from_master:
+        session["from_master_console"] = True
+    session.permanent = False
+    try:
+        from demo_web.services.mantenimiento import (
+            clear_post_mantenimiento,
+            stamp_session_epoch,
+        )
+
+        stamp_session_epoch(tenant_slug)
+        clear_post_mantenimiento(tenant_slug)
+    except Exception:
+        pass
+
+
+def _find_login_matches(email: str, password: str) -> list[dict]:
+    matches: list[dict] = []
+    for t in list_tenants():
+        try:
+            erp = get_erp_module_for(t["slug"])
+            conn = erp.conectar_db()
+            try:
+                row = fetch_login_row(conn, email, erp.hash_password(password))
+            finally:
+                conn.close()
+            if not row:
+                continue
+            if not erp.usuario_prueba_vigente(row[2]):
+                continue
+            rol = erp.normalizar_rol_usuario(row[1], row[0]) if hasattr(erp, "normalizar_rol_usuario") else row[1]
+            matches.append(
+                {
+                    "slug": t["slug"],
+                    "nombre": t["nombre"],
+                    "descripcion": t.get("descripcion") or "",
+                    "email": row[0],
+                    "rol": rol,
+                }
+            )
+        except Exception:
+            continue
+    return matches
+
+
+def _safe_next(raw: str | None) -> str:
+    nxt = (raw or "").strip()
+    prefix = (
+        (request.headers.get("X-Forwarded-Prefix") or "").rstrip("/")
+        or (request.environ.get("SCRIPT_NAME") or "").rstrip("/")
+        or (current_app.config.get("APPLICATION_ROOT") or "").rstrip("/")
+    )
+    if (
+        not nxt
+        or not nxt.startswith("/")
+        or nxt.startswith("//")
+        or "://" in nxt
+        or nxt.startswith("/riomaipo")
+        or nxt.startswith("/laconcepcion")
+        or nxt.startswith("/demo")
+        or (prefix and not (nxt == prefix or nxt.startswith(prefix + "/")))
+    ):
+        return url_for("modules.dashboard")
+    return nxt
+
+
 @bp.route("/login/master")
 def master_entry():
-    """Ingreso desde Super Consola ERP Master → sesión + dashboard."""
+    """Ingreso desde Super Consola → tenant del token + dashboard."""
     token = (request.args.get("t") or "").strip()
     secret = _bridge_secret()
     if not token or not secret:
@@ -56,21 +133,21 @@ def master_entry():
 
     email = (data.get("email") or "").strip() if isinstance(data, dict) else ""
     token_slug = (data.get("slug") or "").strip().lower() if isinstance(data, dict) else ""
-    if not email:
+    if not email or not get_tenant(token_slug):
         return redirect(url_for("auth.login"))
 
+    # Mantención del tenant destino
     try:
-        from demo_web.services.mantenimiento import slug_for_app
+        from demo_web.services.mantenimiento import en_mantenimiento
 
-        app_slug = slug_for_app(current_app.config.get("ERP_APP", ""))
+        if en_mantenimiento(token_slug):
+            flash("Ese cliente está en mantención.", "warning")
+            return redirect(url_for("auth.login"))
     except Exception:
-        app_slug = ""
-    if token_slug and app_slug and token_slug != app_slug:
-        flash("El enlace no corresponde a este ERP.", "danger")
-        return redirect(url_for("auth.login"))
+        pass
 
-    demo = get_demo_module()
-    conn = demo.conectar_db()
+    erp = get_erp_module_for(token_slug)
+    conn = erp.conectar_db()
     try:
         row = fetch_bridge_user(conn, email)
     finally:
@@ -78,100 +155,97 @@ def master_entry():
     if not row:
         flash("Tu usuario de consola no existe en este ERP. Ingresa con tu clave.", "warning")
         return redirect(url_for("auth.login"))
-    if not demo.usuario_prueba_vigente(row[2]):
+    if not erp.usuario_prueba_vigente(row[2]):
         flash("Su periodo de prueba ha finalizado.", "warning")
         return redirect(url_for("auth.login"))
 
-    session.clear()
-    session["email"] = row[0]
-    session["rol"] = demo.normalizar_rol_usuario(row[1], row[0])
-    session["from_master_console"] = True
-    session.permanent = False
-    try:
-        from demo_web.services.mantenimiento import (
-            clear_post_mantenimiento,
-            slug_for_app,
-            stamp_session_epoch,
-        )
-
-        slug = slug_for_app(current_app.config.get("ERP_APP", ""))
-        if slug:
-            stamp_session_epoch(slug)
-            clear_post_mantenimiento(slug)
-    except Exception:
-        pass
+    _activate_session(
+        email=row[0],
+        rol=row[1],
+        tenant_slug=token_slug,
+        from_master=True,
+    )
     return redirect(url_for("modules.dashboard"))
 
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
-    if session.get("email"):
+    if session.get("email") and session.get("tenant_slug"):
         return redirect(url_for("modules.dashboard"))
-    demo = get_demo_module()
+
     error = None
     open_panel = False
-    remember_key = _remember_storage_key(demo.NOMBRE_DB)
+    remember_key = _remember_storage_key()
+
     if request.method == "POST":
         email = (request.form.get("email") or "").strip()
         password = request.form.get("password") or ""
-        conn = demo.conectar_db()
-        try:
-            row = fetch_login_row(conn, email, demo.hash_password(password))
-        finally:
-            conn.close()
-        if row and demo.usuario_prueba_vigente(row[2]):
-            if email.lower() != "osvaldolira@laconcepcion.cl":
-                demo.enviar_correo_alerta(email, exitoso=True)
-            session.clear()
-            session["email"] = row[0]
-            session["rol"] = demo.normalizar_rol_usuario(row[1], row[0])
-            session.permanent = False
+        matches = _find_login_matches(email, password)
+        if not matches:
+            # alerta en el primer tenant demo si existe (best-effort)
             try:
-                from demo_web.services.mantenimiento import (
-                    clear_post_mantenimiento,
-                    en_post_mantenimiento,
-                    slug_for_app,
-                    stamp_session_epoch,
-                )
-
-                slug = slug_for_app(current_app.config.get("ERP_APP", ""))
-                if slug:
-                    stamp_session_epoch(slug)
-                    # Tras mantención: siempre dashboard (ignora next a módulos viejos).
-                    if en_post_mantenimiento(slug):
-                        clear_post_mantenimiento(slug)
-                        return redirect(url_for("modules.dashboard"))
+                erp = get_erp_module_for("demo")
+                erp.enviar_correo_alerta(email or "desconocido", exitoso=False)
             except Exception:
                 pass
-            nxt = (request.args.get("next") or "").strip()
-            prefix = (
-                (request.headers.get("X-Forwarded-Prefix") or "").rstrip("/")
-                or (request.environ.get("SCRIPT_NAME") or "").rstrip("/")
-                or (current_app.config.get("APPLICATION_ROOT") or "").rstrip("/")
-            )
-            # next solo dentro del mismo ERP (evita saltar a /riomaipo u otros)
-            if (
-                not nxt
-                or not nxt.startswith("/")
-                or nxt.startswith("//")
-                or "://" in nxt
-                or nxt.startswith("/riomaipo")
-                or (prefix == "/demo" and nxt.startswith("/laconcepcion"))
-                or (prefix == "/laconcepcion" and nxt.startswith("/demo"))
-                or (prefix and not (nxt == prefix or nxt.startswith(prefix + "/")))
-            ):
-                nxt = url_for("modules.dashboard")
-            return redirect(nxt)
-        demo.enviar_correo_alerta(email or "desconocido", exitoso=False)
-        error = "Acceso denegado o periodo de prueba vencido."
-        open_panel = True
-        flash(error, "danger")
+            error = "Acceso denegado o periodo de prueba vencido."
+            open_panel = True
+            flash(error, "danger")
+        elif len(matches) == 1:
+            m = matches[0]
+            if email.lower() != "osvaldolira@laconcepcion.cl":
+                try:
+                    get_erp_module_for(m["slug"]).enviar_correo_alerta(email, exitoso=True)
+                except Exception:
+                    pass
+            _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
+            return redirect(_safe_next(request.args.get("next")))
+        else:
+            # Varios tenants: selector
+            session["pending_login"] = {
+                "email": matches[0]["email"],
+                "options": [
+                    {
+                        "slug": m["slug"],
+                        "nombre": m["nombre"],
+                        "descripcion": m["descripcion"],
+                        "rol": m["rol"],
+                    }
+                    for m in matches
+                ],
+            }
+            return redirect(url_for("auth.elegir_empresa"))
+
     return render_template(
         "login.html",
         error=error,
         open_panel=open_panel,
-        demo_url=demo.DEMO_URL,
         remember_key=remember_key,
+    )
+
+
+@bp.route("/login/empresa", methods=["GET", "POST"])
+def elegir_empresa():
+    pending = session.get("pending_login") or {}
+    options = pending.get("options") or []
+    email = pending.get("email") or ""
+    if not options or not email:
+        return redirect(url_for("auth.login"))
+
+    if request.method == "POST":
+        slug = (request.form.get("tenant_slug") or "").strip().lower()
+        chosen = next((o for o in options if o.get("slug") == slug), None)
+        if not chosen or not get_tenant(slug):
+            flash("Elige una empresa válida.", "warning")
+            return redirect(url_for("auth.elegir_empresa"))
+        _activate_session(email=email, rol=chosen.get("rol") or "operador", tenant_slug=slug)
+        session.pop("pending_login", None)
+        return redirect(url_for("modules.dashboard"))
+
+    return render_template(
+        "select_tenant.html",
+        email=email,
+        options=options,
     )
 
 
