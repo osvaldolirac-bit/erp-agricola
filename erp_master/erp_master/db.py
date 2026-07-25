@@ -55,14 +55,19 @@ def init_db() -> None:
         """
     )
     cols = _column_names(db, "master_usuarios")
-    if "rol" not in cols:
-        db.execute(
-            "ALTER TABLE master_usuarios ADD COLUMN rol TEXT NOT NULL DEFAULT 'admin'"
-        )
-    if "tenant_slug" not in cols:
-        db.execute(
-            "ALTER TABLE master_usuarios ADD COLUMN tenant_slug TEXT DEFAULT ''"
-        )
+    for col, ddl in (
+        ("rol", "ALTER TABLE master_usuarios ADD COLUMN rol TEXT NOT NULL DEFAULT 'admin'"),
+        ("tenant_slug", "ALTER TABLE master_usuarios ADD COLUMN tenant_slug TEXT DEFAULT ''"),
+    ):
+        if col in cols:
+            continue
+        try:
+            db.execute(ddl)
+        except sqlite3.OperationalError as exc:
+            # Carrera entre workers gunicorn al migrar
+            if "duplicate column" not in str(exc).lower():
+                raise
+        cols = _column_names(db, "master_usuarios")
     # Promote legacy single seed user to super_admin
     db.execute(
         """
