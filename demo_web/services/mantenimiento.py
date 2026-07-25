@@ -221,7 +221,8 @@ def register_mantenimiento(app: Flask) -> None:
 
         login_path = acceso_login_path(app)
         req_path = (request.path or "").rstrip("/") or "/"
-        en_login = req_path.endswith("/login")
+        # Incluye /login/master (puente Super Consola → dashboard).
+        en_login = req_path.endswith("/login") or req_path.endswith("/login/master")
 
         if en_mantenimiento(slug):
             if session.get("email") or session.get("auth_ok"):
@@ -235,6 +236,9 @@ def register_mantenimiento(app: Flask) -> None:
 
         # Tras restaurar: URL limpia de acceso (sin módulo viejo ni ?next=).
         if en_post_mantenimiento(slug):
+            # El puente master crea sesión y limpia el flag; no bloquearlo.
+            if req_path.endswith("/login/master"):
+                return None
             if session.get("email"):
                 session.clear()
             if not en_login:

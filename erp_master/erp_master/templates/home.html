@@ -55,7 +55,7 @@
             {% endif %}
 
             {% if t.url_dashboard %}
-            <a class="tenant-erp" href="{{ url_for('entrar_erp', slug=t.slug) }}" title="Entrar al ERP (dashboard)">
+            <a class="tenant-erp" href="{{ url_for('entrar_erp', slug=t.slug) }}" target="_blank" rel="noopener" title="Entrar al ERP (dashboard) en una pestaña nueva">
               Abrir ERP
             </a>
             {% endif %}
