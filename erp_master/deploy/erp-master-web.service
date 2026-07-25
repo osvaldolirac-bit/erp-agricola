@@ -3,6 +3,7 @@ Description=ERP Master Console (Flask)
 After=network.target
 
 [Service]
+Environment=ERP_MASTER_BRIDGE_SECRET=7b2b56c51a86a65e35cee151f21a1a5987bb4519a70963dddf6e65adc9148e75
 Type=simple
 User=root
 Group=root
@@ -12,6 +13,7 @@ Environment=ERP_MASTER_DB=/root/erp_master.db
 Environment=ERP_MASTER_SESSION_COOKIE=erp_master_session
 Environment=ERP_MASTER_COOKIE_SECURE=1
 Environment=ERP_MASTER_SECRET_KEY=fab008332102d0fa94251aca081f1a1fbb7f602d5a8f2fdce0d6d2d5d534a543
+Environment=ERP_MASTER_BRIDGE_SECRET=change-me-bridge-shared-with-erp
 Environment=ERP_MASTER_SEED_EMAIL=osvaldolirac@gmail.com
 Environment=ERP_MASTER_SEED_PASSWORD=Erpmaster2026
 ExecStart=/root/erp_master/.venv/bin/gunicorn --chdir /root/erp_master --bind 127.0.0.1:8507 --workers 2 --timeout 60 wsgi:app

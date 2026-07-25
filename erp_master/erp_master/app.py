@@ -11,8 +11,10 @@ from flask import (
     session,
     url_for,
 )
+from urllib.parse import quote
 
 from erp_master import tenant_admin as tad
+from erp_master.bridge import mint_entry_token
 from erp_master.config import Config
 from erp_master.db import (
     ROL_LABEL,
@@ -166,6 +168,23 @@ def create_app(config_object: type = Config) -> Flask:
         activo = request.form.get("activo") == "1"
         tad.set_mantenimiento(slug, activo)
         return redirect(url_for("home"))
+
+    @app.route("/clientes/<slug>/entrar")
+    @login_required
+    def entrar_erp(slug: str):
+        """Abre el ERP autenticado y va directo al dashboard."""
+        tenants = {t["slug"]: t for t in app.config["TENANTS"]}
+        tenant = tenants.get(slug)
+        if not tenant or not tenant.get("url_dashboard"):
+            return redirect(url_for("home"))
+        secret = (app.config.get("BRIDGE_SECRET") or "").strip()
+        email = (_session_user().get("email") or "").strip()
+        if not secret or not email:
+            # Sin puente: caer al dashboard (pedirá login del ERP).
+            return redirect(tenant["url_dashboard"])
+        token = mint_entry_token(secret=secret, slug=slug, email=email)
+        base = (tenant.get("url") or "/").rstrip("/")
+        return redirect(f"{base}/login/master?t={quote(token)}")
 
     @app.route("/admin")
     @app.route("/admin/<slug>")
