@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ brand }} — {{ tenant.nombre }}</title>
+  <title>{{ brand }} — Super Consola</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
@@ -14,30 +14,45 @@
     <main class="console">
       {% include "_topbar.html" %}
 
-      <div class="section-head">
-        <p class="crumb">
-          <a href="{{ url_for('home') }}">Inicio</a> /
-          {% if user.is_super %}<a href="{{ url_for('admin_index') }}">ERP clientes</a> /{% endif %}
-          {{ tenant.nombre }}
-        </p>
-        <h2>Panel · {{ tenant.nombre }}</h2>
-        <p>Facultades de Administrador de este ERP, dentro de la consola.</p>
+      <div class="section-head section-super">
+        <p class="crumb"><a href="{{ url_for('home') }}">Clientes</a> / Super Consola</p>
+        <h2>Super Consola</h2>
+        <p>Poderes de Super Administrador. Identidad ERP Master — no es la interfaz del cliente.</p>
+      </div>
+
+      <div class="context-bar" aria-label="Cliente en gestión">
+        <div class="context-label">Cliente en gestión</div>
+        <form method="get" class="context-switch" action="{{ url_for('super_consola', slug=tenant.slug) }}">
+          <input type="hidden" name="sec" value="{{ sec }}">
+          {% if user.is_super and admin_tenants|length > 1 %}
+          <select name="slug" id="switchTenant" aria-label="Cambiar cliente">
+            {% for t in admin_tenants %}
+            <option value="{{ t.slug }}" {% if t.slug == tenant.slug %}selected{% endif %}>{{ t.nombre }}</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <strong class="context-name">{{ tenant.nombre }}</strong>
+          {% endif %}
+        </form>
       </div>
 
       {% if msg %}
       <p class="banner banner-{{ msg_type }}" role="alert">{{ msg }}</p>
       {% endif %}
 
-      <nav class="tabs" aria-label="Secciones">
-        <a class="{% if sec == 'usuarios' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='usuarios') }}">Usuarios ERP</a>
-        <a class="{% if sec == 'modulos' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='modulos') }}">Módulos</a>
-        <a class="{% if sec == 'respaldo' %}is-active{% endif %}" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='respaldo') }}">Respaldo</a>
-        <a class="tab-secondary" href="{{ tenant.url }}" target="_blank" rel="noopener">ERP web ↗</a>
+      <nav class="tabs" aria-label="Poderes">
+        <a class="{% if sec == 'usuarios' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios') }}">Usuarios</a>
+        <a class="{% if sec == 'modulos' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='modulos') }}">Módulos</a>
+        <a class="{% if sec == 'respaldo' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='respaldo') }}">Respaldos</a>
+        {% if user.is_super %}
+        <a href="{{ url_for('consola_usuarios') }}">Usuarios consola</a>
+        {% endif %}
       </nav>
 
       {% if sec == 'usuarios' %}
       <section class="admin-block">
-        <h3>Crear usuario</h3>
+        <h3>Usuarios</h3>
+        <p class="help">Alta y control de cuentas del cliente seleccionado. Operas desde Master.</p>
         <form method="post" class="form-grid">
           <input type="hidden" name="action" value="crear_usuario">
           <input type="hidden" name="sec" value="usuarios">
@@ -66,7 +81,7 @@
       </section>
 
       <section class="admin-block">
-        <h3>Usuarios ({{ users|length }})</h3>
+        <h3>Cuentas ({{ users|length }})</h3>
         <div class="table-wrap">
           <table class="data">
             <thead>
@@ -124,7 +139,7 @@
                     <button class="btn btn-ghost" type="submit">Flags</button>
                   </form>
                   {% if u.es_operador %}
-                  <a class="btn btn-ghost" href="{{ url_for('admin_tenant', slug=tenant.slug, sec='modulos', uid=u.id) }}">Módulos</a>
+                  <a class="btn btn-ghost" href="{{ url_for('super_consola', slug=tenant.slug, sec='modulos', uid=u.id) }}">Módulos</a>
                   {% endif %}
                   <form method="post" class="inline-form" onsubmit="return confirm('¿Eliminar {{ u.email }}?');">
                     <input type="hidden" name="action" value="eliminar_usuario">
@@ -142,8 +157,8 @@
 
       {% if sec == 'modulos' %}
       <section class="admin-block">
-        <h3>Módulos de operador</h3>
-        <p class="help">Solo aplica a roles operador/lector. Vacío o todos = acceso completo.</p>
+        <h3>Módulos</h3>
+        <p class="help">Permisos de operador/lector del cliente en gestión.</p>
         <form method="get" class="form-grid narrow">
           <input type="hidden" name="sec" value="modulos">
           <label>Usuario
@@ -198,7 +213,8 @@
 
       {% if sec == 'respaldo' %}
       <section class="admin-block">
-        <h3>Configuración de respaldo</h3>
+        <h3>Respaldos</h3>
+        <p class="help">Configuración de respaldo del cliente en gestión.</p>
         <form method="post" class="form-grid">
           <input type="hidden" name="action" value="respaldo_guardar">
           <input type="hidden" name="sec" value="respaldo">
@@ -237,5 +253,17 @@
       {% endif %}
     </main>
   </div>
+  {% if user.is_super and admin_tenants|length > 1 %}
+  <script>
+    (function () {
+      const sel = document.getElementById('switchTenant');
+      if (!sel) return;
+      sel.addEventListener('change', function () {
+        const sec = new URLSearchParams(window.location.search).get('sec') || 'usuarios';
+        window.location = '/consola/' + encodeURIComponent(sel.value) + '?sec=' + encodeURIComponent(sec);
+      });
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>

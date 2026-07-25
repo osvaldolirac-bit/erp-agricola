@@ -5,7 +5,6 @@ from functools import wraps
 
 from flask import (
     Flask,
-    g,
     redirect,
     render_template,
     request,
@@ -142,7 +141,6 @@ def create_app(config_object: type = Config) -> Flask:
     @app.route("/")
     @login_required
     def home():
-        user = _session_user()
         admin_map = _admin_tenant_map(app)
         tenants_view = []
         for t in app.config["TENANTS"]:
@@ -150,41 +148,71 @@ def create_app(config_object: type = Config) -> Flask:
             item["adminable"] = t["slug"] in admin_map
             item["can_manage"] = item["adminable"] and _can_manage_tenant(t["slug"])
             tenants_view.append(item)
-
-        if user["is_super"]:
-            return render_template(
-                "home_super.html",
-                tagline=app.config["BRAND_TAGLINE"],
-                tenants=tenants_view,
-                admin_tenants=app.config["ADMIN_TENANTS"],
-            )
-
-        # Administrador: entra a su ERP en consola, no al ERP web
-        slug = user["tenant_slug"]
-        tenant = admin_map.get(slug) if slug else None
-        return render_template(
-            "home_admin.html",
-            tenant=tenant,
-            tenants=tenants_view,
-        )
+        return render_template("home.html", tenants=tenants_view)
 
     @app.route("/admin")
+    @app.route("/admin/<slug>")
     @login_required
-    def admin_index():
-        user = _session_user()
-        if not user["is_super"]:
-            slug = user["tenant_slug"]
-            if slug and _get_admin_tenant(app, slug):
-                return redirect(url_for("admin_tenant", slug=slug))
-            return redirect(url_for("home"))
+    def admin_legacy(slug: str | None = None):
+        """Compat: /admin → inicio; /admin/<slug> → Super Consola."""
+        if slug and _can_manage_tenant(slug) and _get_admin_tenant(app, slug):
+            return redirect(url_for("super_consola", slug=slug, sec=request.args.get("sec")))
+        return redirect(url_for("home"))
+
+    @app.route("/plataforma/usuarios", methods=["GET", "POST"])
+    @super_admin_required
+    def consola_usuarios():
+        msg = None
+        msg_type = "ok"
+        if request.method == "POST":
+            action = (request.form.get("action") or "").strip()
+            if action == "crear":
+                ok, text = create_master_user(
+                    request.form.get("email") or "",
+                    request.form.get("password") or "",
+                    request.form.get("nombre") or "",
+                    request.form.get("rol") or "admin",
+                    request.form.get("tenant_slug") or "",
+                )
+            elif action == "clave":
+                try:
+                    uid = int(request.form.get("user_id") or 0)
+                except ValueError:
+                    uid = 0
+                ok, text = change_master_password(uid, request.form.get("password") or "")
+            elif action == "activar":
+                try:
+                    uid = int(request.form.get("user_id") or 0)
+                except ValueError:
+                    uid = 0
+                ok, text = set_master_user_activo(uid, True)
+            elif action == "desactivar":
+                try:
+                    uid = int(request.form.get("user_id") or 0)
+                except ValueError:
+                    uid = 0
+                ok, text = set_master_user_activo(uid, False)
+            elif action == "eliminar":
+                try:
+                    uid = int(request.form.get("user_id") or 0)
+                except ValueError:
+                    uid = 0
+                ok, text = delete_master_user(uid)
+            else:
+                ok, text = False, "Acción no reconocida."
+            msg, msg_type = text, ("ok" if ok else "error")
+
         return render_template(
-            "admin/index.html",
+            "consola_usuarios.html",
+            users=list_master_users(),
             admin_tenants=app.config["ADMIN_TENANTS"],
+            msg=msg,
+            msg_type=msg_type,
         )
 
-    @app.route("/admin/<slug>", methods=["GET", "POST"])
+    @app.route("/consola/<slug>", methods=["GET", "POST"])
     @login_required
-    def admin_tenant(slug: str):
+    def super_consola(slug: str):
         tenant = _get_admin_tenant(app, slug)
         if not tenant or not _can_manage_tenant(slug):
             return redirect(url_for("home"))
@@ -223,10 +251,14 @@ def create_app(config_object: type = Config) -> Flask:
             mod_email, mod_keys, mod_all = tad.get_user_modules(tenant["db"], uid_int)
 
         operadores = [u for u in users if u.get("es_operador")]
+        manage_tenants = [
+            t for t in app.config["ADMIN_TENANTS"] if _can_manage_tenant(t["slug"])
+        ]
 
         return render_template(
-            "admin/tenant.html",
+            "super_consola.html",
             tenant=tenant,
+            admin_tenants=manage_tenants,
             sec=sec,
             users=users,
             operadores=operadores,

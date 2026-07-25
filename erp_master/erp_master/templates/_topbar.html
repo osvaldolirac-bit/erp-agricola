@@ -1,18 +1,15 @@
 <header class="topbar">
   <div class="brand">
-    <div class="eyebrow">Super consola</div>
+    <div class="eyebrow">ERP Master</div>
     <h1><a href="{{ url_for('home') }}">{{ brand }}</a></h1>
   </div>
   <div class="who">
     <strong>{{ user.nombre or user.email }}</strong>
     <span class="role-badge role-{{ user.rol }}">{{ user.rol_label }}</span>
     <nav class="top-nav">
-      <a href="{{ url_for('home') }}">Inicio</a>
+      <a href="{{ url_for('home') }}">Clientes</a>
       {% if user.is_super %}
-      <a href="{{ url_for('admin_index') }}">ERP clientes</a>
       <a href="{{ url_for('consola_usuarios') }}">Usuarios consola</a>
-      {% elif user.tenant_slug %}
-      <a href="{{ url_for('admin_tenant', slug=user.tenant_slug) }}">Mi ERP</a>
       {% endif %}
       <form method="post" action="{{ url_for('logout') }}">
         <button class="btn btn-ghost" type="submit">Cerrar sesión</button>

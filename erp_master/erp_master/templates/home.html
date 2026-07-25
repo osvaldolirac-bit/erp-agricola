@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — Clientes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <main class="console">
+      {% include "_topbar.html" %}
+
+      <div class="section-head">
+        <h2>Clientes</h2>
+        <p>Elige un cliente para entrar a la Super Consola. No abre el ERP.</p>
+      </div>
+
+      <ul class="tenant-list">
+        {% for t in tenants %}
+        <li>
+          {% if t.can_manage %}
+          <a class="tenant-main" href="{{ url_for('super_consola', slug=t.slug) }}">
+            <div>
+              <div class="name">{{ t.nombre }}</div>
+              <div class="desc">{{ t.descripcion }}</div>
+            </div>
+            <div class="meta">
+              <span class="status">activo</span>
+              <span class="go">Entrar →</span>
+            </div>
+          </a>
+          {% else %}
+          <div class="tenant-main is-static">
+            <div>
+              <div class="name">{{ t.nombre }}</div>
+              <div class="desc">{{ t.descripcion }} · aún sin Super Consola</div>
+            </div>
+            <div class="meta">
+              <span class="status">pendiente</span>
+            </div>
+          </div>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+
+      <p class="foot">Inicio aparte del ERP. Al entrar ves poderes de Super Administrador con identidad ERP Master.</p>
+    </main>
+  </div>
+</body>
+</html>

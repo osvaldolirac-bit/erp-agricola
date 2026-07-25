@@ -408,6 +408,41 @@ button, input { font: inherit; }
 .tenant-main.is-static {
   cursor: default;
 }
+
+.section-super h2 {
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+}
+
+.context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin: 0 0 1.15rem;
+  padding: 0.75rem 1rem;
+  border: 1px dashed rgba(19, 32, 26, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 252, 246, 0.45);
+}
+.context-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.context-switch select {
+  font: inherit;
+  border: 1px solid rgba(19, 32, 26, 0.16);
+  background: #fffdf8;
+  border-radius: 10px;
+  padding: 0.45rem 0.7rem;
+  min-width: 220px;
+}
+.context-name {
+  font-size: 1rem;
+  color: var(--ink-soft);
+}
 .tenant-admin.is-secondary {
   color: var(--muted);
   font-weight: 550;
