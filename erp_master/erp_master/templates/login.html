@@ -29,9 +29,43 @@
         <input id="password" name="password" type="password"
                autocomplete="current-password" required>
 
+        <label class="remember-row" for="remember">
+          <input id="remember" name="remember" type="checkbox" value="1">
+          Recordar usuario
+        </label>
+
         <button class="btn btn-primary" type="submit">Entrar a la consola</button>
       </form>
     </section>
   </div>
+  <script>
+  (function () {
+    const storageKey = 'erp_master_remember_user';
+    const form = document.querySelector('.panel');
+    const emailInput = document.getElementById('email');
+    const rememberInput = document.getElementById('remember');
+    if (!form || !emailInput || !rememberInput) return;
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const data = raw ? JSON.parse(raw) : null;
+      if (data && data.remember && data.email) {
+        emailInput.value = String(data.email).trim();
+        rememberInput.checked = true;
+      }
+    } catch (err) {}
+
+    form.addEventListener('submit', function () {
+      try {
+        const email = (emailInput.value || '').trim();
+        if (rememberInput.checked && email) {
+          localStorage.setItem(storageKey, JSON.stringify({ remember: true, email: email }));
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      } catch (err) {}
+    });
+  })();
+  </script>
 </body>
 </html>
