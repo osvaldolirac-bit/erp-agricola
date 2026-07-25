@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from datetime import datetime
 from functools import wraps
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from flask import current_app, g
 
@@ -12,6 +14,12 @@ ROL_LABEL = {
     "super_admin": "Super Administrador",
     "admin": "Administrador",
 }
+
+_TZ_CHILE = ZoneInfo("America/Santiago")
+
+
+def now_chile() -> str:
+    return datetime.now(_TZ_CHILE).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def hash_password(password: str) -> str:
@@ -89,6 +97,24 @@ def init_db() -> None:
     )
     db.commit()
 
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS master_bitacora (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_slug TEXT NOT NULL,
+            usuario TEXT NOT NULL DEFAULT '',
+            accion TEXT NOT NULL DEFAULT '',
+            detalle TEXT NOT NULL DEFAULT '',
+            fecha_hora TEXT NOT NULL
+        )
+        """
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_master_bitacora_tenant_fecha "
+        "ON master_bitacora (tenant_slug, fecha_hora DESC)"
+    )
+    db.commit()
+
     row = db.execute("SELECT COUNT(*) AS n FROM master_usuarios").fetchone()
     if int(row["n"] or 0) == 0:
         email = (current_app.config.get("SEED_EMAIL") or "").strip().lower()
@@ -102,6 +128,56 @@ def init_db() -> None:
                 (email, hash_password(password), "Super Administrador"),
             )
             db.commit()
+
+
+def log_bitacora(
+    tenant_slug: str,
+    usuario: str,
+    accion: str,
+    detalle: str = "",
+) -> None:
+    """Registra un movimiento de Super Consola por tenant (no va a la bitácora del ERP)."""
+    slug = (tenant_slug or "").strip().lower()
+    if not slug:
+        return
+    try:
+        get_db().execute(
+            """
+            INSERT INTO master_bitacora (tenant_slug, usuario, accion, detalle, fecha_hora)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                slug,
+                (usuario or "").strip() or "consola",
+                (accion or "").strip() or "ACCION",
+                (detalle or "").strip(),
+                now_chile(),
+            ),
+        )
+        get_db().commit()
+    except Exception:
+        pass
+
+
+def list_bitacora(tenant_slug: str, limit: int = 200) -> list[dict[str, Any]]:
+    slug = (tenant_slug or "").strip().lower()
+    if not slug:
+        return []
+    try:
+        lim = max(1, min(int(limit or 200), 500))
+    except (TypeError, ValueError):
+        lim = 200
+    rows = get_db().execute(
+        """
+        SELECT id, usuario, accion, detalle, fecha_hora
+        FROM master_bitacora
+        WHERE tenant_slug = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (slug, lim),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def authenticate(email: str, password: str) -> dict[str, Any] | None:

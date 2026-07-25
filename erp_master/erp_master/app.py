@@ -24,7 +24,9 @@ from erp_master.db import (
     create_master_user,
     delete_master_user,
     init_db,
+    list_bitacora,
     list_master_users,
+    log_bitacora,
     set_master_user_activo,
 )
 
@@ -167,6 +169,12 @@ def create_app(config_object: type = Config) -> Flask:
             return redirect(url_for("home"))
         activo = request.form.get("activo") == "1"
         tad.set_mantenimiento(slug, activo)
+        log_bitacora(
+            slug,
+            user.get("email") or "",
+            "MANTENCION_ON" if activo else "MANTENCION_OFF",
+            "Sitio en mantención" if activo else "Sitio reactivado",
+        )
         return redirect(url_for("home"))
 
     @app.route("/clientes/<slug>/entrar")
@@ -179,6 +187,7 @@ def create_app(config_object: type = Config) -> Flask:
             return redirect(url_for("home"))
         secret = (app.config.get("BRIDGE_SECRET") or "").strip()
         email = (_session_user().get("email") or "").strip()
+        log_bitacora(slug, email, "ENTRAR_ERP", "Ingreso al dashboard desde Super Consola")
         if not secret or not email:
             # Sin puente: caer al dashboard (pedirá login del ERP).
             return redirect(tenant["url_dashboard"])
@@ -256,15 +265,36 @@ def create_app(config_object: type = Config) -> Flask:
         msg = None
         msg_type = "ok"
         sec = (request.args.get("sec") or request.form.get("sec") or "usuarios").strip()
-        if sec not in {"usuarios", "modulos", "respaldo"}:
+        if sec not in {"usuarios", "modulos", "respaldo", "bitacora"}:
             sec = "usuarios"
 
         if request.method == "POST":
             action = (request.form.get("action") or "").strip()
+            pre_target = ""
+            try:
+                pre_uid = int(request.form.get("user_id") or 0)
+            except ValueError:
+                pre_uid = 0
+            if pre_uid and action in {
+                "cambiar_rol",
+                "cambiar_clave",
+                "eliminar_usuario",
+                "flags_usuario",
+                "modulos_guardar",
+            }:
+                pre_target = _user_email_by_id(tenant, pre_uid)
             ok, text = _handle_admin_action(
                 tenant, action, session.get("master_email") or ""
             )
             msg, msg_type = text, ("ok" if ok else "error")
+            if ok:
+                _log_admin_action(
+                    tenant,
+                    session.get("master_email") or "",
+                    action,
+                    text,
+                    target_email=pre_target,
+                )
             if action.startswith("modulos"):
                 sec = "modulos"
             elif action.startswith("respaldo"):
@@ -276,6 +306,7 @@ def create_app(config_object: type = Config) -> Flask:
         respaldo = tad.get_respaldo_config(tenant["db"])
         menu = tad.menu_for(tenant["kind"])
         roles = tad.roles_for(tenant["kind"])
+        bitacora_rows = list_bitacora(tenant["slug"]) if sec == "bitacora" else []
 
         mod_user_id = request.args.get("uid") or request.form.get("uid") or ""
         mod_email, mod_keys, mod_all = "", [], True
@@ -306,6 +337,7 @@ def create_app(config_object: type = Config) -> Flask:
             mod_email=mod_email,
             mod_keys=mod_keys,
             mod_all=mod_all,
+            bitacora_rows=bitacora_rows,
             msg=msg,
             msg_type=msg_type,
         )
@@ -315,6 +347,75 @@ def create_app(config_object: type = Config) -> Flask:
         return {"ok": True, "app": "erp_master"}
 
     return app
+
+
+def _user_email_by_id(tenant: dict, user_id: int) -> str:
+    try:
+        for u in tad.list_users(tenant["db"], tenant["kind"]):
+            if int(u.get("id") or 0) == int(user_id):
+                return str(u.get("email") or "")
+    except Exception:
+        pass
+    return f"#{user_id}"
+
+
+def _log_admin_action(
+    tenant: dict,
+    master_email: str,
+    action: str,
+    result_text: str,
+    target_email: str = "",
+) -> None:
+    slug = tenant["slug"]
+    detalle = (result_text or "").strip()
+    try:
+        uid = int(request.form.get("user_id") or 0)
+    except ValueError:
+        uid = 0
+    target = (target_email or "").strip() or (
+        _user_email_by_id(tenant, uid) if uid else ""
+    )
+
+    if action == "crear_usuario":
+        email = (request.form.get("email") or "").strip()
+        rol = (request.form.get("rol") or "").strip()
+        detalle = f"{email} · rol {rol}" if email else detalle
+        accion = "CREAR_USUARIO"
+    elif action == "cambiar_rol":
+        rol = (request.form.get("rol") or "").strip()
+        detalle = f"{target or f'#{uid}'} → rol {rol}"
+        accion = "CAMBIAR_ROL"
+    elif action == "cambiar_clave":
+        detalle = target or f"#{uid}"
+        accion = "CAMBIAR_CLAVE"
+    elif action == "eliminar_usuario":
+        detalle = target or f"#{uid}"
+        accion = "ELIMINAR_USUARIO"
+    elif action == "flags_usuario":
+        flags = []
+        if request.form.get("mail_tesoreria") == "1":
+            flags.append("mail_tesoreria")
+        if request.form.get("mail_petroleo") == "1":
+            flags.append("mail_petroleo")
+        if request.form.get("solo_lectura") == "1":
+            flags.append("solo_lectura")
+        detalle = f"{target or f'#{uid}'} · {', '.join(flags) if flags else 'sin flags'}"
+        accion = "FLAGS_USUARIO"
+    elif action == "modulos_guardar":
+        mods = request.form.getlist("modulos")
+        if request.form.get("todos") == "1":
+            detalle = f"{target or f'#{uid}'} · todos los módulos"
+        else:
+            detalle = f"{target or f'#{uid}'} · {len(mods)} módulos"
+        accion = "MODULOS"
+    elif action == "respaldo_guardar":
+        email = (request.form.get("email") or "").strip()
+        activo = "activo" if request.form.get("activo") == "1" else "inactivo"
+        detalle = f"{email or '—'} · {activo}"
+        accion = "RESPALDO"
+    else:
+        accion = (action or "ACCION").upper()
+    log_bitacora(slug, master_email, accion, detalle)
 
 
 def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[bool, str]:

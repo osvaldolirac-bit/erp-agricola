@@ -44,6 +44,7 @@
         <a class="{% if sec == 'usuarios' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios') }}">Usuarios</a>
         <a class="{% if sec == 'modulos' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='modulos') }}">Módulos</a>
         <a class="{% if sec == 'respaldo' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='respaldo') }}">Respaldos</a>
+        <a class="{% if sec == 'bitacora' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='bitacora') }}">Bitácora</a>
         {% if user.is_super %}
         <a href="{{ url_for('consola_usuarios') }}">Usuarios consola</a>
         {% endif %}
@@ -245,6 +246,39 @@
           <div><dt>Último código</dt><dd>{{ respaldo.codigo_ultimo_envio or '—' }}</dd></div>
           <div><dt>Error código</dt><dd>{{ respaldo.codigo_ultimo_error or '—' }}</dd></div>
         </dl>
+      </section>
+      {% endif %}
+
+      {% if sec == 'bitacora' %}
+      <section class="admin-block">
+        <h3>Bitácora de consola</h3>
+        <p class="help">Movimientos hechos desde la Super Consola sobre <strong>{{ tenant.nombre }}</strong>. No se mezcla con la bitácora del ERP.</p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Usuario consola</th>
+                <th>Acción</th>
+                <th>Detalle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in bitacora_rows %}
+              <tr>
+                <td class="cell-muted">{{ r.fecha_hora }}</td>
+                <td>{{ r.usuario }}</td>
+                <td><span class="status">{{ r.accion }}</span></td>
+                <td>{{ r.detalle or '—' }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="4" class="cell-muted">Sin movimientos aún.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </section>
       {% endif %}
     </main>
