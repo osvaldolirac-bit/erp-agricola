@@ -147,8 +147,25 @@ def create_app(config_object: type = Config) -> Flask:
             item = dict(t)
             item["adminable"] = t["slug"] in admin_map
             item["can_manage"] = item["adminable"] and _can_manage_tenant(t["slug"])
+            # Mantención aplica a todos los clientes listados (LC, DEMO, Río Maipo).
+            item["can_mantenimiento"] = _session_user()["is_super"] or item["can_manage"]
+            item["en_mantenimiento"] = tad.get_mantenimiento(t["slug"])
             tenants_view.append(item)
         return render_template("home.html", tenants=tenants_view)
+
+    @app.route("/clientes/<slug>/mantenimiento", methods=["POST"])
+    @login_required
+    def toggle_mantenimiento(slug: str):
+        user = _session_user()
+        admin_map = _admin_tenant_map(app)
+        known = {t["slug"] for t in app.config["TENANTS"]}
+        if slug not in known:
+            return redirect(url_for("home"))
+        if not (user["is_super"] or (slug in admin_map and _can_manage_tenant(slug))):
+            return redirect(url_for("home"))
+        activo = request.form.get("activo") == "1"
+        tad.set_mantenimiento(slug, activo)
+        return redirect(url_for("home"))
 
     @app.route("/admin")
     @app.route("/admin/<slug>")

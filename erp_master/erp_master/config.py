@@ -66,6 +66,9 @@ class Config:
         },
     ]
 
+    # Flags de estado por cliente (mantención, etc.)
+    STATUS_DIR = _env("ERP_STATUS_DIR", "/root/erp_status")
+
     # Seed only if the DB has no users yet.
     SEED_EMAIL = _env("ERP_MASTER_SEED_EMAIL", "osvaldolirac@gmail.com")
     SEED_PASSWORD = _env("ERP_MASTER_SEED_PASSWORD", "Erpmaster2026")

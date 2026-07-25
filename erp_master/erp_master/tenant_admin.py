@@ -5,11 +5,14 @@ Lee/escribe SQLite de cada tenant. No toca Río Maipo ni fusiona código.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import Any
+
+from flask import current_app
 
 FRECUENCIAS = ("diario", "semanal", "mensual")
 
@@ -345,3 +348,41 @@ def save_respaldo_config(
         _meta_set(conn, "respaldo_frecuencia", freq_datos)
         _meta_set(conn, "respaldo_codigo_frecuencia", freq_codigo)
     return True, "Configuración de respaldo guardada."
+
+
+def _status_dir() -> str:
+    try:
+        return current_app.config.get("STATUS_DIR") or "/root/erp_status"
+    except RuntimeError:
+        return os.environ.get("ERP_STATUS_DIR", "/root/erp_status").strip() or "/root/erp_status"
+
+
+def _mantenimiento_path(slug: str) -> str:
+    safe = re.sub(r"[^a-z0-9_-]+", "", (slug or "").strip().lower())
+    return os.path.join(_status_dir(), f"{safe}.mantenimiento")
+
+
+def get_mantenimiento(slug: str) -> bool:
+    path = _mantenimiento_path(slug)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() == "1"
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+
+
+def set_mantenimiento(slug: str, activo: bool) -> tuple[bool, str]:
+    safe = re.sub(r"[^a-z0-9_-]+", "", (slug or "").strip().lower())
+    if not safe:
+        return False, "Cliente inválido."
+    path = _mantenimiento_path(safe)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("1\n" if activo else "0\n")
+    except OSError as exc:
+        return False, f"No se pudo actualizar mantención: {exc}"
+    estado = "activado" if activo else "desactivado"
+    return True, f"Sitio en mantención {estado}."

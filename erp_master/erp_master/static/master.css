@@ -469,6 +469,57 @@ button, input { font: inherit; }
   font-size: 0.8rem;
 }
 .tenant-admin.is-secondary:hover { color: var(--accent); }
+
+.status-maint {
+  color: #9a4d12 !important;
+}
+
+.tenant-maint {
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--line);
+  padding: 0.65rem 0.85rem;
+  background: rgba(255, 252, 246, 0.35);
+}
+
+.btn-maint {
+  border: 1px solid rgba(154, 77, 18, 0.35);
+  background: #fff7ef;
+  color: #8a3f12;
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: normal;
+  max-width: 11.5rem;
+  line-height: 1.25;
+  text-align: center;
+  transition: background 150ms ease, transform 150ms ease;
+}
+.btn-maint:hover {
+  background: #ffe8d4;
+  transform: translateY(-1px);
+}
+.btn-maint.is-on {
+  background: #c46a2c;
+  border-color: #c46a2c;
+  color: #fff8f1;
+}
+.btn-maint.is-on:hover { background: #a8561f; }
+
+@media (max-width: 640px) {
+  .tenant-row { grid-template-columns: 1fr; }
+  .tenant-maint {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    justify-content: stretch;
+  }
+  .btn-maint { max-width: none; width: 100%; }
+}
 .tabs a.tab-secondary {
   margin-left: auto;
   color: var(--muted);

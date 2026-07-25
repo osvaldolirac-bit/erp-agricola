@@ -16,39 +16,61 @@
 
       <div class="section-head">
         <h2>Clientes</h2>
-        <p>Elige un cliente para entrar a la Super Consola. No abre el ERP.</p>
+        <p>Elige un cliente para la Super Consola, o marca mantención del sitio.</p>
       </div>
 
       <ul class="tenant-list">
         {% for t in tenants %}
         <li>
-          {% if t.can_manage %}
-          <a class="tenant-main" href="{{ url_for('super_consola', slug=t.slug) }}">
-            <div>
-              <div class="name">{{ t.nombre }}</div>
-              <div class="desc">{{ t.descripcion }}</div>
+          <div class="tenant-row">
+            {% if t.can_manage %}
+            <a class="tenant-main" href="{{ url_for('super_consola', slug=t.slug) }}">
+              <div>
+                <div class="name">{{ t.nombre }}</div>
+                <div class="desc">{{ t.descripcion }}</div>
+              </div>
+              <div class="meta">
+                {% if t.en_mantenimiento %}
+                <span class="status status-maint">mantención</span>
+                {% else %}
+                <span class="status">activo</span>
+                {% endif %}
+                <span class="go">Entrar →</span>
+              </div>
+            </a>
+            {% else %}
+            <div class="tenant-main is-static">
+              <div>
+                <div class="name">{{ t.nombre }}</div>
+                <div class="desc">{{ t.descripcion }}{% if not t.can_manage %} · sin Super Consola aún{% endif %}</div>
+              </div>
+              <div class="meta">
+                {% if t.en_mantenimiento %}
+                <span class="status status-maint">mantención</span>
+                {% else %}
+                <span class="status">pendiente</span>
+                {% endif %}
+              </div>
             </div>
-            <div class="meta">
-              <span class="status">activo</span>
-              <span class="go">Entrar →</span>
-            </div>
-          </a>
-          {% else %}
-          <div class="tenant-main is-static">
-            <div>
-              <div class="name">{{ t.nombre }}</div>
-              <div class="desc">{{ t.descripcion }} · aún sin Super Consola</div>
-            </div>
-            <div class="meta">
-              <span class="status">pendiente</span>
-            </div>
+            {% endif %}
+
+            {% if t.can_mantenimiento %}
+            <form method="post" action="{{ url_for('toggle_mantenimiento', slug=t.slug) }}" class="tenant-maint">
+              {% if t.en_mantenimiento %}
+              <input type="hidden" name="activo" value="0">
+              <button type="submit" class="btn-maint is-on" title="Quitar mantención">En mantención · clic para reactivar</button>
+              {% else %}
+              <input type="hidden" name="activo" value="1">
+              <button type="submit" class="btn-maint">Sitio en mantención</button>
+              {% endif %}
+            </form>
+            {% endif %}
           </div>
-          {% endif %}
         </li>
         {% endfor %}
       </ul>
 
-      <p class="foot">Inicio aparte del ERP. Al entrar ves poderes de Super Administrador con identidad ERP Master.</p>
+      <p class="foot">Mantención muestra un aviso en la página de acceso del ERP. La Super Consola sigue operativa.</p>
     </main>
   </div>
 </body>
