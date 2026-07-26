@@ -1,131 +1,121 @@
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ brand }} — Usuarios consola</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
-</head>
-<body>
-  <div class="shell shell-wide">
-    <main class="console">
-      {% include "_topbar.html" %}
-
-      <div class="section-head">
-        <p class="crumb"><a href="{{ url_for('home') }}">Clientes</a> / Usuarios consola</p>
-        <h2>Usuarios de la consola</h2>
-        <p>Solo Super Administrador. Define quién es Super Admin y quién es Administrador de un ERP.</p>
-      </div>
-
-      {% if msg %}
-      <p class="banner banner-{{ msg_type }}" role="alert">{{ msg }}</p>
-      {% endif %}
-
-      <section class="admin-block">
-        <h3>Crear usuario de consola</h3>
-        <form method="post" class="form-grid" id="formCrearConsola">
-          <input type="hidden" name="action" value="crear">
-          <label>Correo
-            <input type="email" name="email" required>
-          </label>
-          <label>Nombre
-            <input type="text" name="nombre" placeholder="Opcional">
-          </label>
-          <label>Clave
-            <input type="text" name="password" required minlength="4" autocomplete="off">
-          </label>
-          <label>Rol consola
-            <select name="rol" id="rolConsola">
-              <option value="admin">Administrador (ERP)</option>
-              <option value="super_admin">Super Administrador</option>
-            </select>
-          </label>
-          <label id="wrapTenant">ERP asignado
-            <select name="tenant_slug">
-              <option value="">— elegir —</option>
-              {% for t in admin_tenants %}
-              <option value="{{ t.slug }}">{{ t.nombre }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <div class="form-actions">
-            <button class="btn btn-primary" type="submit">Crear</button>
-          </div>
-        </form>
-        <p class="help">Administrador = facultades del ERP asignado. Super Administrador = plataforma completa.</p>
-      </section>
-
-      <section class="admin-block">
-        <h3>Cuentas ({{ users|length }})</h3>
-        <div class="table-wrap">
-          <table class="data">
-            <thead>
-              <tr>
-                <th>Usuario</th>
-                <th>Rol</th>
-                <th>ERP</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for u in users %}
-              <tr>
-                <td>
-                  <div class="cell-strong">{{ u.email }}</div>
-                  <div class="cell-muted">{{ u.nombre or '—' }}</div>
-                </td>
-                <td><span class="role-badge role-{{ u.rol }}">{{ u.rol_label }}</span></td>
-                <td class="cell-muted">{{ u.tenant_slug or '—' }}</td>
-                <td class="cell-muted">{{ 'activo' if u.activo else 'inactivo' }}</td>
-                <td class="actions">
-                  <form method="post" class="inline-form">
-                    <input type="hidden" name="action" value="clave">
-                    <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <input type="text" name="password" placeholder="Nueva clave" minlength="4" required>
-                    <button class="btn btn-ghost" type="submit">Clave</button>
-                  </form>
-                  {% if u.activo %}
-                  <form method="post" class="inline-form">
-                    <input type="hidden" name="action" value="desactivar">
-                    <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <button class="btn btn-ghost" type="submit">Desactivar</button>
-                  </form>
-                  {% else %}
-                  <form method="post" class="inline-form">
-                    <input type="hidden" name="action" value="activar">
-                    <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <button class="btn btn-ghost" type="submit">Activar</button>
-                  </form>
-                  {% endif %}
-                  <form method="post" class="inline-form" onsubmit="return confirm('¿Eliminar {{ u.email }}?');">
-                    <input type="hidden" name="action" value="eliminar">
-                    <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <button class="btn btn-danger" type="submit">Eliminar</button>
-                  </form>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+{% extends "_base_app.html" %}
+{% set nav_active = 'usuarios_consola' %}
+{% block title %}{{ brand }} — Usuarios consola{% endblock %}
+{% block breadcrumb %}
+<span><a href="{{ url_for('home') }}">Clientes</a></span><span>›</span>
+<span class="current">Usuarios consola</span>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Usuarios de la consola</h1>
+    <p>Solo Super Administrador. Define quién es Super Admin y quién administra un ERP.</p>
   </div>
-  <script>
-    (function () {
-      const rol = document.getElementById('rolConsola');
-      const wrap = document.getElementById('wrapTenant');
-      if (!rol || !wrap) return;
-      const sync = () => {
-        wrap.style.display = rol.value === 'admin' ? '' : 'none';
-      };
-      rol.addEventListener('change', sync);
-      sync();
-    })();
-  </script>
-</body>
-</html>
+</div>
+
+{% if msg %}
+<p class="banner banner-{{ msg_type }}" role="alert">{{ msg }}</p>
+{% endif %}
+
+<section class="admin-block">
+  <h3>Crear usuario de consola</h3>
+  <form method="post" class="form-grid" id="formCrearConsola">
+    <input type="hidden" name="action" value="crear">
+    <label>Correo
+      <input type="email" name="email" required>
+    </label>
+    <label>Nombre
+      <input type="text" name="nombre" placeholder="Opcional">
+    </label>
+    <label>Clave
+      <input type="text" name="password" required minlength="4" autocomplete="off">
+    </label>
+    <label>Rol consola
+      <select name="rol" id="rolConsola">
+        <option value="admin">Administrador (ERP)</option>
+        <option value="super_admin">Super Administrador</option>
+      </select>
+    </label>
+    <label id="wrapTenant">ERP asignado
+      <select name="tenant_slug">
+        <option value="">— elegir —</option>
+        {% for t in admin_tenants %}
+        <option value="{{ t.slug }}">{{ t.nombre }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Crear</button>
+    </div>
+  </form>
+  <p class="help">Administrador = facultades del ERP asignado. Super Administrador = plataforma completa.</p>
+</section>
+
+<section class="admin-block">
+  <h3>Cuentas ({{ users|length }})</h3>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Rol</th>
+          <th>ERP</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            <div class="cell-strong">{{ u.email }}</div>
+            <div class="cell-muted">{{ u.nombre or '—' }}</div>
+          </td>
+          <td><span class="role-badge role-{{ u.rol }}">{{ u.rol_label }}</span></td>
+          <td class="cell-muted">{{ u.tenant_slug or '—' }}</td>
+          <td class="cell-muted">{{ 'activo' if u.activo else 'inactivo' }}</td>
+          <td class="actions">
+            <form method="post" class="inline-form">
+              <input type="hidden" name="action" value="clave">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <input type="text" name="password" placeholder="Nueva clave" minlength="4" required>
+              <button class="btn btn-ghost" type="submit">Clave</button>
+            </form>
+            {% if u.activo %}
+            <form method="post" class="inline-form">
+              <input type="hidden" name="action" value="desactivar">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <button class="btn btn-ghost" type="submit">Desactivar</button>
+            </form>
+            {% else %}
+            <form method="post" class="inline-form">
+              <input type="hidden" name="action" value="activar">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <button class="btn btn-ghost" type="submit">Activar</button>
+            </form>
+            {% endif %}
+            <form method="post" class="inline-form" onsubmit="return confirm('¿Eliminar {{ u.email }}?');">
+              <input type="hidden" name="action" value="eliminar">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <button class="btn btn-danger" type="submit">Eliminar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const rol = document.getElementById('rolConsola');
+    const wrap = document.getElementById('wrapTenant');
+    if (!rol || !wrap) return;
+    const sync = () => { wrap.style.display = rol.value === 'admin' ? '' : 'none'; };
+    rol.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+{% endblock %}

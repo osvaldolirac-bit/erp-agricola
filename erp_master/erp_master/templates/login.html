@@ -4,48 +4,44 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ brand }} — Acceso</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
 </head>
-<body>
-  <div class="shell">
-    <section class="login" aria-label="Acceso consola">
-      <header class="brand-mark">
-        <div class="eyebrow">Consola</div>
-        <h1>{{ brand }}</h1>
-        <p>{{ tagline }}. No es el ERP: es la consola de plataforma.</p>
-      </header>
+<body class="login-page">
+  <section class="login-card" aria-label="Acceso consola">
+    <img class="logo" src="{{ url_for('static', filename='logo_erpmaster.png') }}" alt="ERP Master">
+    <div class="kicker">Consola de plataforma</div>
+    <h1>{{ brand }}</h1>
+    <p class="tagline">{{ tagline }}. No es el ERP del cliente: es la Super Consola.</p>
 
-      <form class="panel" method="post" autocomplete="off">
-        {% if error %}
-        <p class="error" role="alert">{{ error }}</p>
-        {% endif %}
-        <label for="email">Correo</label>
-        <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+    <form method="post" autocomplete="off" id="loginForm">
+      {% if error %}
+      <p class="error" role="alert">{{ error }}</p>
+      {% endif %}
+      <label for="email">Correo</label>
+      <input id="email" name="email" type="email" autocomplete="username" required autofocus>
 
-        <label for="password">Clave</label>
-        <input id="password" name="password" type="password"
-               autocomplete="current-password" required>
+      <label for="password">Clave</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
 
-        <label class="remember-row" for="remember">
-          <input id="remember" name="remember" type="checkbox" value="1">
-          Recordar usuario
-        </label>
+      <label class="remember-row" for="remember">
+        <input id="remember" name="remember" type="checkbox" value="1">
+        Recordar usuario
+      </label>
 
-        <button class="btn btn-primary" type="submit">Entrar a la consola</button>
-      </form>
-    </section>
-  </div>
+      <button class="btn btn-primary" type="submit" style="width:100%;margin-top:1.1rem">Entrar a la consola</button>
+    </form>
+  </section>
   <script>
   (function () {
     const storageKey = 'erp_master_remember_user';
-    const form = document.querySelector('.panel');
+    const form = document.getElementById('loginForm');
     const emailInput = document.getElementById('email');
     const rememberInput = document.getElementById('remember');
     if (!form || !emailInput || !rememberInput) return;
-
     try {
       const raw = localStorage.getItem(storageKey);
       const data = raw ? JSON.parse(raw) : null;
@@ -54,7 +50,6 @@
         rememberInput.checked = true;
       }
     } catch (err) {}
-
     form.addEventListener('submit', function () {
       try {
         const email = (emailInput.value || '').trim();
