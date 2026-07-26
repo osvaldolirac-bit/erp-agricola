@@ -10,6 +10,12 @@
     <a class="nav-link {% if nav_active == 'clientes' %}active{% endif %}" href="{{ url_for('home') }}">
       <span>▦</span> Clientes
     </a>
+    <a class="nav-link {% if nav_active == 'soporte' %}active{% endif %}" href="{{ url_for('consola_soporte') }}">
+      <span>🎫</span> Soporte
+      {% if soporte_badge is defined and soporte_badge %}
+      <span class="role-badge role-admin" style="margin-left:auto">{{ soporte_badge }}</span>
+      {% endif %}
+    </a>
 
     {% if tenant is defined and tenant %}
     <div class="nav-section">Cliente · {{ tenant.nombre }}</div>

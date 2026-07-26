@@ -34,7 +34,7 @@ MENU_LC = [
     ("Bodega", "Bodega"),
     ("Maquinaria", "Maquinaria"),
     ("GlobalGAP", "GlobalGAP"),
-    ("Soporte", "Soporte"),
+    ("Soporte", "Soporte"),  # usuarios reportan; inbox vive en Super Consola
     ("Manual", "Manual"),
 ]
 
@@ -51,7 +51,7 @@ MENU_DEMO = [
     ("Bodega", "Bodega"),
     ("Maquinaria", "Maquinaria"),
     ("GlobalGAP", "GlobalGAP"),
-    ("Soporte", "Soporte"),
+    ("Soporte", "Soporte"),  # usuarios reportan; inbox vive en Super Consola
     ("Manual", "Manual"),
 ]
 
@@ -976,3 +976,187 @@ def crear_descarga_db(db_path: str) -> tuple[bool, str, str | None]:
         return False, "No se pudo comprimir la base.", None
     except Exception as exc:
         return False, f"No se pudo preparar descarga: {exc}", None
+
+
+def _smtp_html_sender(secrets_path: str):
+    """Callable compatible con erp_soporte: (asunto, html, destinatarios) -> bool."""
+    _ensure_demo_web_path()
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    import smtplib
+
+    from erp_respaldo import cargar_smtp  # noqa: WPS433
+
+    smtp = cargar_smtp(secrets_path or "")
+    if not smtp:
+        return None
+
+    def _send(asunto: str, html: str, destinatarios) -> bool:
+        dests = [d.strip() for d in (destinatarios or []) if str(d or "").strip()]
+        if not dests:
+            return False
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = asunto
+            msg["From"] = smtp["from_header"]
+            msg["To"] = ", ".join(dests)
+            msg.attach(MIMEText(html or "", "html", "utf-8"))
+            server = smtplib.SMTP("smtp.gmail.com", 587, timeout=60)
+            server.starttls()
+            server.login(smtp["emisor"], smtp["clave"])
+            server.sendmail(smtp["emisor"], dests, msg.as_string())
+            server.quit()
+            return True
+        except Exception:
+            return False
+
+    return _send
+
+
+def list_tickets_soporte(
+    tenants: list[dict[str, Any]],
+    *,
+    solo_pendientes: bool = False,
+) -> dict[str, Any]:
+    """Inbox federado de tickets_soporte de todos los tenants administrables."""
+    _ensure_demo_web_path()
+    from erp_soporte import (  # noqa: WPS433
+        STATUSES_SOPORTE,
+        _ticket_esta_finalizado,
+        contar_tickets_soporte_no_resueltos,
+        migrar_tickets_soporte,
+    )
+
+    pendientes: list[dict[str, Any]] = []
+    historial: list[dict[str, Any]] = []
+    n_pend = 0
+
+    for t in tenants or []:
+        db = (t.get("db") or "").strip()
+        if not db or not os.path.isfile(db):
+            continue
+        slug = t.get("slug") or ""
+        nombre = t.get("nombre") or slug
+        try:
+            with tenant_conn(db) as conn:
+                migrar_tickets_soporte(conn)
+                n_pend += int(contar_tickets_soporte_no_resueltos(conn) or 0)
+                rows = conn.execute(
+                    """SELECT id, codigo_ticket, usuario, status, fecha_creacion,
+                              COALESCE(leido_admin, 0), descripcion,
+                              COALESCE(respuesta_admin, ''), fecha_respuesta, erp_origen
+                       FROM tickets_soporte
+                       ORDER BY COALESCE(leido_admin, 0) ASC, id DESC"""
+                ).fetchall()
+        except Exception:
+            continue
+
+        for r in rows:
+            item = {
+                "tenant_slug": slug,
+                "tenant_nombre": nombre,
+                "id": int(r[0]),
+                "codigo": r[1] or f"#{r[0]}",
+                "usuario": r[2] or "",
+                "estado": r[3] or "",
+                "fecha": str(r[4] or "")[:19],
+                "nuevo": not bool(r[5]),
+                "descripcion": r[6] or "",
+                "respuesta": r[7] or "",
+                "fecha_respuesta": str(r[8] or "")[:19],
+                "erp": r[9] or nombre,
+            }
+            if _ticket_esta_finalizado(item["estado"]):
+                if not solo_pendientes:
+                    historial.append(item)
+            else:
+                pendientes.append(item)
+
+    pendientes.sort(key=lambda x: (0 if x["nuevo"] else 1, -(x["id"] or 0)))
+    historial.sort(key=lambda x: -(x["id"] or 0))
+    return {
+        "pendientes": pendientes,
+        "historial": historial,
+        "n_pendientes": n_pend,
+        "statuses": list(STATUSES_SOPORTE),
+    }
+
+
+def marcar_ticket_soporte_leido(tenant: dict[str, Any], ticket_id: int) -> None:
+    _ensure_demo_web_path()
+    from erp_soporte import marcar_ticket_leido_admin, migrar_tickets_soporte  # noqa: WPS433
+
+    db = (tenant.get("db") or "").strip()
+    if not db or not ticket_id:
+        return
+    with tenant_conn(db) as conn:
+        migrar_tickets_soporte(conn)
+        marcar_ticket_leido_admin(conn, int(ticket_id))
+
+
+def responder_ticket_soporte(
+    tenant: dict[str, Any],
+    ticket_id: int,
+    respuesta: str,
+    status: str,
+) -> tuple[bool, str]:
+    """Responde un ticket en el DB del tenant y notifica por correo al usuario."""
+    _ensure_demo_web_path()
+    from erp_soporte import (  # noqa: WPS433
+        STATUSES_SOPORTE,
+        _fetch_ticket_soporte,
+        enviar_correo_respuesta_ticket,
+        migrar_tickets_soporte,
+    )
+
+    db = (tenant.get("db") or "").strip()
+    if not db or not os.path.isfile(db):
+        return False, "Base del cliente no disponible."
+    try:
+        tid = int(ticket_id)
+    except (TypeError, ValueError):
+        return False, "Ticket inválido."
+    txt = (respuesta or "").strip()
+    if len(txt) < 3:
+        return False, "Escriba una respuesta de al menos 3 caracteres."
+    nuevo_st = (status or "Abierto").strip()
+    if nuevo_st not in STATUSES_SOPORTE:
+        nuevo_st = "Abierto"
+
+    nombre_erp = tenant.get("nombre_erp") or tenant.get("nombre") or tenant.get("slug") or "ERP"
+    with tenant_conn(db) as conn:
+        migrar_tickets_soporte(conn)
+        row = _fetch_ticket_soporte(conn, tid)
+        if not row:
+            return False, "Ticket no encontrado."
+        usuario, descripcion = row[0], row[1]
+        codigo = (row[8] if len(row) > 8 else None) or f"#{tid}"
+        from datetime import datetime
+        try:
+            from zoneinfo import ZoneInfo
+
+            f_h = datetime.now(ZoneInfo("America/Santiago")).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            f_h = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            """UPDATE tickets_soporte
+               SET respuesta_admin=?, fecha_respuesta=?, status=?, fecha_actualizacion=?, leido_admin=1
+               WHERE id=?""",
+            (txt, f_h, nuevo_st, f_h, tid),
+        )
+
+    sender = _smtp_html_sender(tenant.get("secrets") or "")
+    mail_ok = False
+    if sender:
+        mail_ok = bool(
+            enviar_correo_respuesta_ticket(
+                nombre_erp, codigo, usuario, descripcion, txt, sender
+            )
+        )
+    if mail_ok:
+        return True, f"Respuesta enviada a {usuario} · ticket {codigo} ({tenant.get('nombre')})."
+    return (
+        True,
+        f"Respuesta guardada en ticket {codigo} ({tenant.get('nombre')}), "
+        "pero no se pudo enviar el correo al usuario.",
+    )

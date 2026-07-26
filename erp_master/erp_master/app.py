@@ -104,9 +104,19 @@ def create_app(config_object: type = Config) -> Flask:
 
     @app.context_processor
     def inject_console_user():
-        if session.get("master_email"):
-            return {"user": _session_user(), "brand": app.config["BRAND_NAME"]}
-        return {"user": None, "brand": app.config["BRAND_NAME"]}
+        brand = app.config["BRAND_NAME"]
+        if not session.get("master_email"):
+            return {"user": None, "brand": brand, "soporte_badge": 0}
+        user = _session_user()
+        badge = 0
+        try:
+            manage = [
+                t for t in app.config["ADMIN_TENANTS"] if _can_manage_tenant(t["slug"])
+            ]
+            badge = int(tad.list_tickets_soporte(manage).get("n_pendientes") or 0)
+        except Exception:
+            badge = 0
+        return {"user": user, "brand": brand, "soporte_badge": badge}
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -204,6 +214,88 @@ def create_app(config_object: type = Config) -> Flask:
         if slug and _can_manage_tenant(slug) and _get_admin_tenant(app, slug):
             return redirect(url_for("super_consola", slug=slug, sec=request.args.get("sec")))
         return redirect(url_for("home"))
+
+    @app.route("/plataforma/soporte", methods=["GET", "POST"])
+    @login_required
+    def consola_soporte():
+        """Inbox de tickets de todos los tenants administrables."""
+        manage_tenants = [
+            t for t in app.config["ADMIN_TENANTS"] if _can_manage_tenant(t["slug"])
+        ]
+        tenants_by_slug = {t["slug"]: t for t in manage_tenants}
+        msg = None
+        msg_type = "ok"
+        filtro = (request.args.get("tenant") or request.form.get("tenant") or "").strip()
+        vista = (request.args.get("vista") or request.form.get("vista") or "pendientes").strip()
+        if vista not in {"pendientes", "historial", "todos"}:
+            vista = "pendientes"
+
+        if request.method == "POST":
+            action = (request.form.get("action") or "").strip()
+            slug = (request.form.get("tenant_slug") or "").strip()
+            tenant = tenants_by_slug.get(slug)
+            if not tenant:
+                msg, msg_type = "Cliente no autorizado.", "error"
+            elif action == "responder":
+                try:
+                    tid = int(request.form.get("ticket_id") or 0)
+                except ValueError:
+                    tid = 0
+                ok, text = tad.responder_ticket_soporte(
+                    tenant,
+                    tid,
+                    request.form.get("respuesta") or "",
+                    request.form.get("status") or "Abierto",
+                )
+                msg, msg_type = text, ("ok" if ok else "error")
+                if ok:
+                    log_bitacora(
+                        slug,
+                        session.get("master_email") or "",
+                        "SOPORTE_RESPUESTA",
+                        text,
+                    )
+                filtro = slug or filtro
+                vista = "pendientes"
+            elif action == "marcar_leido":
+                try:
+                    tid = int(request.form.get("ticket_id") or 0)
+                except ValueError:
+                    tid = 0
+                tad.marcar_ticket_soporte_leido(tenant, tid)
+                msg, msg_type = "Ticket marcado como leído.", "ok"
+                filtro = slug or filtro
+
+        data = tad.list_tickets_soporte(manage_tenants)
+        if filtro and filtro in tenants_by_slug:
+            data["pendientes"] = [
+                t for t in data["pendientes"] if t.get("tenant_slug") == filtro
+            ]
+            data["historial"] = [
+                t for t in data["historial"] if t.get("tenant_slug") == filtro
+            ]
+            data["n_pendientes"] = len(data["pendientes"])
+
+        # Marcar como leídos los pendientes visibles (equivalente al inbox ERP).
+        for item in data["pendientes"]:
+            if item.get("nuevo"):
+                ten = tenants_by_slug.get(item["tenant_slug"])
+                if ten:
+                    try:
+                        tad.marcar_ticket_soporte_leido(ten, int(item["id"]))
+                        item["nuevo"] = False
+                    except Exception:
+                        pass
+
+        return render_template(
+            "soporte.html",
+            tenants=manage_tenants,
+            filtro=filtro,
+            vista=vista,
+            tickets=data,
+            msg=msg,
+            msg_type=msg_type,
+        )
 
     @app.route("/plataforma/usuarios", methods=["GET", "POST"])
     @super_admin_required

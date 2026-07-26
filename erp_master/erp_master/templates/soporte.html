@@ -1,0 +1,142 @@
+{% extends "_base_app.html" %}
+{% set nav_active = 'soporte' %}
+{% block title %}{{ brand }} — Soporte{% endblock %}
+{% block breadcrumb %}
+<span><a href="{{ url_for('home') }}">Clientes</a></span><span>›</span>
+<span class="current">Soporte</span>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Soporte</h1>
+    <p>Tickets de todos los clientes. Responda aquí; el módulo de inbox ya no vive en el ERP.</p>
+  </div>
+</div>
+
+{% if msg %}
+<p class="banner banner-{{ msg_type }}" role="alert">{{ msg }}</p>
+{% endif %}
+
+<div class="kpi-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+  <div class="kpi orange">
+    <div class="label">Pendientes</div>
+    <div class="value">{{ tickets.n_pendientes }}</div>
+    <div class="hint">Sin resolver / cerrar</div>
+  </div>
+  <div class="kpi blue">
+    <div class="label">En bandeja</div>
+    <div class="value">{{ tickets.pendientes|length }}</div>
+    <div class="hint">{% if filtro %}Filtro activo{% else %}Todos los clientes{% endif %}</div>
+  </div>
+  <div class="kpi cyan">
+    <div class="label">Historial</div>
+    <div class="value">{{ tickets.historial|length }}</div>
+    <div class="hint">Resueltos / cerrados</div>
+  </div>
+</div>
+
+<section class="panel">
+  <form method="get" class="form-grid" style="margin-bottom:0.5rem">
+    <label>Cliente
+      <select name="tenant" onchange="this.form.submit()">
+        <option value="">— todos —</option>
+        {% for t in tenants %}
+        <option value="{{ t.slug }}" {% if filtro == t.slug %}selected{% endif %}>{{ t.nombre }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Vista
+      <select name="vista" onchange="this.form.submit()">
+        <option value="pendientes" {% if vista == 'pendientes' %}selected{% endif %}>Pendientes</option>
+        <option value="historial" {% if vista == 'historial' %}selected{% endif %}>Historial</option>
+        <option value="todos" {% if vista == 'todos' %}selected{% endif %}>Todos</option>
+      </select>
+    </label>
+  </form>
+</section>
+
+{% if vista in ('pendientes', 'todos') %}
+<section class="admin-block">
+  <h3>Tickets pendientes</h3>
+  {% if not tickets.pendientes %}
+  <p class="help">No hay tickets pendientes{% if filtro %} en este cliente{% endif %}.</p>
+  {% endif %}
+  {% for t in tickets.pendientes %}
+  <article class="panel" style="border-left:4px solid {% if t.nuevo %}#e67e22{% else %}#2f6fed{% endif %}">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem;margin-bottom:.55rem">
+      <div>
+        <strong style="color:var(--brand);font-size:1.05rem">
+          {% if t.nuevo %}● {% endif %}{{ t.codigo }}
+        </strong>
+        <div class="cell-muted">{{ t.tenant_nombre }} · {{ t.usuario }} · {{ t.fecha }}</div>
+      </div>
+      <span class="role-badge role-admin">{{ t.estado }}</span>
+    </div>
+    <div class="help" style="white-space:pre-wrap;background:#f4f7fb;border:1px solid var(--line);border-radius:8px;padding:.75rem">{{ t.descripcion }}</div>
+    {% if t.respuesta %}
+    <p class="help"><strong>Última respuesta:</strong> {{ t.respuesta }}
+      {% if t.fecha_respuesta %}<span class="cell-muted"> · {{ t.fecha_respuesta }}</span>{% endif %}
+    </p>
+    {% endif %}
+    <form method="post" class="form-grid">
+      <input type="hidden" name="action" value="responder">
+      <input type="hidden" name="tenant_slug" value="{{ t.tenant_slug }}">
+      <input type="hidden" name="ticket_id" value="{{ t.id }}">
+      <input type="hidden" name="tenant" value="{{ filtro }}">
+      <input type="hidden" name="vista" value="{{ vista }}">
+      <label style="grid-column:1/-1">Respuesta al usuario
+        <textarea name="respuesta" rows="4" required placeholder="Respuesta que verá el usuario y recibirá por correo…"
+          style="font:inherit;border:1px solid var(--line);border-radius:8px;padding:.65rem .75rem;background:#f8fafc;resize:vertical"></textarea>
+      </label>
+      <label>Estado
+        <select name="status">
+          {% for s in tickets.statuses %}
+          <option value="{{ s }}" {% if s == t.estado %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Enviar respuesta</button>
+      </div>
+    </form>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if vista in ('historial', 'todos') %}
+<section class="admin-block">
+  <h3>Historial</h3>
+  {% if not tickets.historial %}
+  <p class="help">Sin tickets finalizados{% if filtro %} en este cliente{% endif %}.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Ticket</th>
+          <th>Cliente</th>
+          <th>Usuario</th>
+          <th>Estado</th>
+          <th>Fecha</th>
+          <th>Respuesta</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tickets.historial %}
+        <tr>
+          <td class="cell-strong">{{ t.codigo }}</td>
+          <td>{{ t.tenant_nombre }}</td>
+          <td>{{ t.usuario }}</td>
+          <td><span class="status">{{ t.estado }}</span></td>
+          <td class="cell-muted">{{ t.fecha }}</td>
+          <td class="cell-muted" style="max-width:28rem;white-space:pre-wrap">{{ t.respuesta or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
