@@ -22,6 +22,8 @@
 </div>
 <div class="panel mb-3">
   <div class="row g-2 small">
+    <div class="col-md-3"><strong>Factura proveedor</strong><div>{{ row.documento }}</div></div>
+    <div class="col-md-3"><strong>Tipo</strong><div>{{ (row.tipo_documento or 'factura')|capitalize }}</div></div>
     <div class="col-md-3"><strong>Emisión</strong><div>{{ fmt_dmy(row.fecha_emision) }}</div></div>
     <div class="col-md-3"><strong>Vence</strong><div>{{ fmt_dmy(row.fecha_vencimiento) }}</div></div>
     <div class="col-md-3"><strong>Neto / IVA</strong><div>{{ clp(row.neto) }} + {{ clp(row.iva) }}</div></div>

@@ -63,6 +63,29 @@
     </div>
     {% endif %}
 
+    <div class="col-12">
+      <h2 class="h6 mb-0">Documento del proveedor</h2>
+      <p class="text-muted small mb-0">Anote el Nº de factura (u otro documento) una vez recibido.</p>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold">Nº factura proveedor <span class="text-danger">*</span></label>
+      <input class="form-control form-control-lg" name="documento"
+             value="{{ row.documento if row else '' }}"
+             placeholder="Ej: F-12345 / 33-9876"
+             autocomplete="off" required
+             {% if not row %}autofocus{% endif %}>
+      <div class="form-text">Obligatorio al emitir la compra desde la OC.</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold">Tipo documento</label>
+      <select class="form-select" name="tipo_documento">
+        {% set tipo_actual = row.tipo_documento if row and row.tipo_documento else 'factura' %}
+        <option value="factura" {% if tipo_actual=='factura' %}selected{% endif %}>Factura</option>
+        <option value="boleta" {% if tipo_actual=='boleta' %}selected{% endif %}>Boleta</option>
+        <option value="guia" {% if tipo_actual=='guia' %}selected{% endif %}>Guía de despacho</option>
+        <option value="otro" {% if tipo_actual=='otro' %}selected{% endif %}>Otro</option>
+      </select>
+    </div>
     <div class="col-md-5">
       <label class="form-label fw-bold">Proveedor</label>
       {% if oc and not row %}
@@ -77,15 +100,14 @@
       </select>
       {% endif %}
     </div>
-    <div class="col-md-3"><label class="form-label fw-bold">Nº documento fiscal</label><input class="form-control" name="documento" value="{{ row.documento if row else (sugerido_documento or '') }}" required></div>
     <div class="col-md-4"><label class="form-label fw-bold">Concepto</label><input class="form-control" name="concepto" value="{{ row.concepto if row and row.concepto else (oc.concepto if oc and oc.concepto else '') }}"></div>
-    <div class="col-md-3"><label class="form-label fw-bold">Emisión</label><input type="date" class="form-control" name="fecha_emision" value="{{ row.fecha_emision if row else hoy }}"></div>
-    <div class="col-md-3"><label class="form-label fw-bold">Vencimiento</label><input type="date" class="form-control" name="fecha_vencimiento" value="{{ row.fecha_vencimiento if row else '' }}"></div>
-    <div class="col-md-3"><label class="form-label fw-bold">Días crédito</label><input type="number" class="form-control" name="dias_credito" value="30" min="0"></div>
-    <div class="col-md-3 d-flex align-items-end">
+    <div class="col-md-2"><label class="form-label fw-bold">Emisión</label><input type="date" class="form-control" name="fecha_emision" value="{{ row.fecha_emision if row else hoy }}"></div>
+    <div class="col-md-2"><label class="form-label fw-bold">Vencimiento</label><input type="date" class="form-control" name="fecha_vencimiento" value="{{ row.fecha_vencimiento if row else '' }}"></div>
+    <div class="col-md-2"><label class="form-label fw-bold">Días crédito</label><input type="number" class="form-control" name="dias_credito" value="30" min="0"></div>
+    <div class="col-md-2 d-flex align-items-end">
       <div class="form-check mb-2">
         <input class="form-check-input" type="checkbox" name="afecta_stock" value="1" id="stk" {% if row and row.afecta_stock %}checked{% endif %}>
-        <label class="form-check-label" for="stk">Entrar materiales a bodega</label>
+        <label class="form-check-label" for="stk">Entrar a bodega</label>
       </div>
     </div>
     <div class="col-12"><label class="form-label fw-bold">Notas</label><input class="form-control" name="notas" value="{{ row.notas if row and row.notas else (oc.notas if oc and oc.notas else '') }}"></div>

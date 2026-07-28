@@ -45,7 +45,10 @@ def ensure_oc_schema(c) -> None:
     core._ensure_columns(
         c,
         "facturas_compra",
-        [("orden_compra_id", "INTEGER")],
+        [
+            ("orden_compra_id", "INTEGER"),
+            ("tipo_documento", "TEXT DEFAULT 'factura'"),
+        ],
     )
 
 
