@@ -139,8 +139,8 @@ MODULOS_FEE: dict[str, dict[str, Any]] = {
 
 PACK = {
     "nombre": "Pack Comercial",
-    "fee": 59_900,
-    "fee_txt": "$59.900/mes",
+    "fee": 69_900,
+    "fee_txt": "$69.900/mes",
     "modulos": (
         "dashboard",
         "clientes",
