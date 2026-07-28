@@ -8,22 +8,43 @@
   </div>
   <a class="btn btn-outline-secondary" href="{{ url_for('tesoreria_list') }}">Ir a Tesorería</a>
 </div>
-<div class="kpi-grid kpi-grid-6">
-  <div class="kpi blue"><div class="label">Cotizaciones</div><div class="value">{{ n_cot }}</div><div class="hint">{{ clp(sum_cot) }}</div></div>
-  <div class="kpi green"><div class="label">Aprobadas</div><div class="value">{{ n_apr }}</div><div class="hint">Conversión {{ '%.0f'|format((n_apr/n_cot*100) if n_cot else 0) }}%</div></div>
-  <div class="kpi orange"><div class="label">Saldo cartera</div><div class="value">{{ clp(saldo) }}</div><div class="hint">{{ pend }} CxC con saldo</div></div>
-  <div class="kpi pink"><div class="label">Vencidos CxC</div><div class="value">{{ venc }}</div><div class="hint">Clientes en mora</div></div>
-  <a class="kpi cyan text-decoration-none" href="{{ url_for('tesoreria_list') }}">
-    <div class="label">Saldo por pagar</div>
+
+{# Widgets de a 2: ingresos (verde) · egresos (rojo) · alertas (ámbar/rojo) · neutro (azul) #}
+<div class="kpi-grid kpi-grid-2">
+  <div class="kpi kpi-info">
+    <div class="label">Cotizaciones</div>
+    <div class="value">{{ n_cot }}</div>
+    <div class="hint">{{ clp(sum_cot) }}</div>
+  </div>
+  <div class="kpi kpi-ingreso">
+    <div class="label">Aprobadas</div>
+    <div class="value">{{ n_apr }}</div>
+    <div class="hint">Conversión {{ '%.0f'|format((n_apr/n_cot*100) if n_cot else 0) }}%</div>
+  </div>
+
+  <div class="kpi kpi-ingreso">
+    <div class="label">Ingresos por cobrar</div>
+    <div class="value">{{ clp(saldo) }}</div>
+    <div class="hint">{{ pend }} CxC con saldo</div>
+  </div>
+  <div class="kpi kpi-alerta">
+    <div class="label">Vencidos por cobrar</div>
+    <div class="value">{{ venc }}</div>
+    <div class="hint">Clientes en mora</div>
+  </div>
+
+  <a class="kpi kpi-egreso text-decoration-none" href="{{ url_for('tesoreria_list') }}">
+    <div class="label">Egresos por pagar</div>
     <div class="value">{{ clp(kpis_cxp.sum_saldo) }}</div>
     <div class="hint">{{ kpis_cxp.pend_n + kpis_cxp.parc_n }} doc(s) Tesorería</div>
   </a>
-  <a class="kpi pink text-decoration-none" href="{{ url_for('tesoreria_list') }}">
-    <div class="label">Vencidos CxP</div>
+  <a class="kpi kpi-alerta-egreso text-decoration-none" href="{{ url_for('tesoreria_list') }}">
+    <div class="label">Vencidos por pagar</div>
     <div class="value">{{ venc_cxp }}</div>
     <div class="hint">{{ clp(venc_cxp_monto) }} en mora</div>
   </a>
 </div>
+
 <div class="row g-3">
   <div class="col-lg-6">
     <div class="panel">
@@ -59,7 +80,7 @@
 <div class="row g-3 mt-1">
   <div class="col-lg-7">
     <div class="panel">
-      <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
         <h5 class="fw-bold text-primary mb-0">Vencimientos Tesorería (CxP)</h5>
         <a class="small" href="{{ url_for('tesoreria_list') }}">Ver todos</a>
       </div>
