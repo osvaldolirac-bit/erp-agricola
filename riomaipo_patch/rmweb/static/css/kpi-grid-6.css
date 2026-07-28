@@ -1,0 +1,6 @@
+/* Fragment applied to /root/riomaipo/rmweb/static/css/app.css */
+.kpi-grid.kpi-grid-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+a.kpi { display: block; color: #fff; }
+a.kpi:hover { color: #fff; filter: brightness(1.05); }
