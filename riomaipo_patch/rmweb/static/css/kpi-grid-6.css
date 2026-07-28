@@ -1,0 +1,48 @@
+/* Dashboard KPIs: siempre 2 por fila (iPhone / desktop) + semántica ingresos/egresos */
+
+.kpi-grid,
+.kpi-grid.kpi-grid-2,
+.kpi-grid.kpi-grid-6 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 1100px) {
+  .kpi-grid,
+  .kpi-grid.kpi-grid-2,
+  .kpi-grid.kpi-grid-6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .kpi-grid,
+  .kpi-grid.kpi-grid-2,
+  .kpi-grid.kpi-grid-6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem;
+  }
+  .kpi {
+    min-height: 84px;
+    padding: .7rem .75rem;
+  }
+  .kpi .label { font-size: .68rem; line-height: 1.2; }
+  .kpi .value {
+    font-size: .95rem;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .kpi .hint { font-size: .68rem; }
+}
+
+a.kpi { display: block; color: #fff; }
+a.kpi:hover { color: #fff; filter: brightness(1.05); }
+
+/* Semántica de color */
+.kpi.kpi-info { background: linear-gradient(135deg, #1f4b99, #2f6fed); }           /* neutro / embudo */
+.kpi.kpi-ingreso { background: linear-gradient(135deg, #1f8a65, #2fbf71); }        /* ingresos / por cobrar */
+.kpi.kpi-egreso { background: linear-gradient(135deg, #b42318, #e04b3a); }         /* egresos / por pagar */
+.kpi.kpi-alerta { background: linear-gradient(135deg, #c46a12, #f0a202); }         /* mora ingresos */
+.kpi.kpi-alerta-egreso { background: linear-gradient(135deg, #8f1d4a, #d63b6a); } /* mora egresos */

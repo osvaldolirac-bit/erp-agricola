@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard de gestión</h1>
+    <p>Cartera de clientes, embudo comercial y deuda / vencimientos de Tesorería.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('tesoreria_list') }}">Ir a Tesorería</a>
+</div>
+
+{# Widgets de a 2: ingresos (verde) · egresos (rojo) · alertas (ámbar/rojo) · neutro (azul) #}
+<div class="kpi-grid kpi-grid-2">
+  <div class="kpi kpi-info">
+    <div class="label">Cotizaciones</div>
+    <div class="value">{{ n_cot }}</div>
+    <div class="hint">{{ clp(sum_cot) }}</div>
+  </div>
+  <div class="kpi kpi-ingreso">
+    <div class="label">Aprobadas</div>
+    <div class="value">{{ n_apr }}</div>
+    <div class="hint">Conversión {{ '%.0f'|format((n_apr/n_cot*100) if n_cot else 0) }}%</div>
+  </div>
+
+  <div class="kpi kpi-ingreso">
+    <div class="label">Ingresos por cobrar</div>
+    <div class="value">{{ clp(saldo) }}</div>
+    <div class="hint">{{ pend }} CxC con saldo</div>
+  </div>
+  <div class="kpi kpi-alerta">
+    <div class="label">Vencidos por cobrar</div>
+    <div class="value">{{ venc }}</div>
+    <div class="hint">Clientes en mora</div>
+  </div>
+
+  <a class="kpi kpi-egreso text-decoration-none" href="{{ url_for('tesoreria_list') }}">
+    <div class="label">Egresos por pagar</div>
+    <div class="value">{{ clp(kpis_cxp.sum_saldo) }}</div>
+    <div class="hint">{{ kpis_cxp.pend_n + kpis_cxp.parc_n }} doc(s) Tesorería</div>
+  </a>
+  <a class="kpi kpi-alerta-egreso text-decoration-none" href="{{ url_for('tesoreria_list') }}">
+    <div class="label">Vencidos por pagar</div>
+    <div class="value">{{ venc_cxp }}</div>
+    <div class="hint">{{ clp(venc_cxp_monto) }} en mora</div>
+  </a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="panel">
+      <h5 class="fw-bold text-primary mb-3">Embudo de cotizaciones</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Estado</th><th>Cantidad</th><th>Monto</th></tr></thead>
+        <tbody>
+          {% for r in cotas %}
+          <tr><td>{{ estado_label_cot(r.estado) }}</td><td>{{ r.n }}</td><td>{{ clp(r.t) }}</td></tr>
+          {% else %}
+          <tr><td colspan="3" class="text-muted">Sin datos</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="panel">
+      <h5 class="fw-bold text-primary mb-3">Top clientes por deuda</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Cliente</th><th>Saldo</th></tr></thead>
+        <tbody>
+          {% for r in top %}
+          <tr><td>{{ r.razon_social or '—' }}</td><td>{{ clp(r.saldo) }}</td></tr>
+          {% else %}
+          <tr><td colspan="2" class="text-muted">Sin saldos abiertos</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="row g-3 mt-1">
+  <div class="col-lg-7">
+    <div class="panel">
+      <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+        <h5 class="fw-bold text-primary mb-0">Vencimientos Tesorería (CxP)</h5>
+        <a class="small" href="{{ url_for('tesoreria_list') }}">Ver todos</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Proveedor</th><th>Documento</th><th>Vence</th><th>Saldo</th><th>Estado</th></tr></thead>
+          <tbody>
+            {% for r in vencimientos_cxp %}
+            <tr class="{% if r.vencido %}table-danger{% endif %}">
+              <td><strong>{{ r.proveedor or '—' }}</strong></td>
+              <td>{{ r.documento }}</td>
+              <td>{{ fmt_dmy(r.fecha_vencimiento) }}</td>
+              <td><strong>{{ clp(r.saldo) }}</strong></td>
+              <td><span class="estado {{ cxp_estado_class(r.estado) }}">{{ cxp_estado_label(r.estado) }}</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-muted">Sin saldos pendientes en Tesorería</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="panel">
+      <h5 class="fw-bold text-primary mb-3">Top proveedores por deuda</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Proveedor</th><th>Saldo</th></tr></thead>
+        <tbody>
+          {% for r in top_prov %}
+          <tr><td>{{ r.proveedor or '—' }}</td><td>{{ clp(r.saldo) }}</td></tr>
+          {% else %}
+          <tr><td colspan="2" class="text-muted">Sin deuda a proveedores</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
