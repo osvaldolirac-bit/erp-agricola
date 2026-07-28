@@ -85,6 +85,37 @@ def kpis_oc(c) -> dict[str, Any]:
     }
 
 
+def ocs_disponibles(c) -> list:
+    """OC que aún pueden emitirse como compra (no convertidas ni anuladas)."""
+    return c.execute(
+        """
+        SELECT o.*, p.razon_social AS proveedor
+        FROM ordenes_compra o
+        LEFT JOIN proveedores p ON p.id=o.proveedor_id
+        WHERE COALESCE(o.estado,'') IN ('borrador', 'emitida')
+        ORDER BY COALESCE(o.fecha,'') DESC, o.id DESC
+        """
+    ).fetchall()
+
+
+def cargar_oc(c, oid: int):
+    return c.execute(
+        """
+        SELECT o.*, p.razon_social AS proveedor
+        FROM ordenes_compra o
+        LEFT JOIN proveedores p ON p.id=o.proveedor_id
+        WHERE o.id=?
+        """,
+        (oid,),
+    ).fetchone()
+
+
+def oc_disponible(oc) -> bool:
+    if not oc:
+        return False
+    return (oc["estado"] or "").lower() in ("borrador", "emitida")
+
+
 def next_oc_folio(c) -> str:
     return core.next_code(c, "ordenes_compra", "folio", "OC")
 

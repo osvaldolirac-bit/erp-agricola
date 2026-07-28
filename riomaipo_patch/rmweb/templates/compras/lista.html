@@ -4,12 +4,13 @@
 <div class="page-head">
   <div>
     <h1>Compras</h1>
-    <p>Ingreso de facturas de proveedores. Los pagos se registran solo en <strong>Tesorería</strong>.</p>
+    <p>Facturas según <strong>Orden de compra</strong>. Los pagos se registran solo en <strong>Tesorería</strong>.</p>
   </div>
   <div class="d-flex gap-2 flex-wrap">
     <a class="btn btn-outline-secondary" href="{{ url_for('proveedores_list') }}">Proveedores</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('oc_list') }}">Órdenes de compra</a>
     <a class="btn btn-outline-primary" href="{{ url_for('tesoreria_list') }}">Tesorería</a>
-    <a class="btn btn-primary" href="{{ url_for('compras_form') }}"><i class="bi bi-plus-lg"></i> Nueva compra</a>
+    <a class="btn btn-primary" href="{{ url_for('compras_form') }}"><i class="bi bi-receipt"></i> Emitir compra desde OC</a>
   </div>
 </div>
 
@@ -31,13 +32,14 @@
     <table class="table table-hover align-middle datatable">
       <thead>
         <tr>
-          <th>Proveedor</th><th>Documento</th><th>Emisión</th><th>Vence</th>
+          <th>OC</th><th>Proveedor</th><th>Documento</th><th>Emisión</th><th>Vence</th>
           <th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th>Stock</th><th></th>
         </tr>
       </thead>
       <tbody>
         {% for r in rows %}
         <tr>
+          <td>{% if r.oc_folio %}<a href="{{ url_for('oc_detalle', oid=r.orden_compra_id) }}">{{ r.oc_folio }}</a>{% else %}—{% endif %}</td>
           <td><strong>{{ r.proveedor or '—' }}</strong></td>
           <td><span class="cot-num">{{ r.documento }}</span></td>
           <td>{{ fmt_dmy(r.fecha_emision) }}</td>

@@ -18,10 +18,7 @@
     </form>
     {% endif %}
     {% if row.estado in ('borrador', 'emitida') %}
-    <form method="post" action="{{ url_for('oc_convertir', oid=row.id) }}" class="d-inline"
-          onsubmit="return confirm('¿Convertir esta OC en una Compra (factura CxP)?');">
-      <button class="btn btn-primary" type="submit"><i class="bi bi-arrow-right-circle"></i> Convertir en compra</button>
-    </form>
+    <a class="btn btn-primary" href="{{ url_for('compras_form', oc=row.id) }}"><i class="bi bi-receipt"></i> Emitir compra según OC</a>
     <form method="post" action="{{ url_for('oc_estado', oid=row.id) }}" class="d-inline"
           onsubmit="return confirm('¿Anular esta orden de compra?');">
       <input type="hidden" name="estado" value="anulada">

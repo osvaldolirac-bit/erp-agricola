@@ -223,20 +223,8 @@ def register_oc_routes(app, login_required):
         db.close()
         return redirect(url_for("oc_detalle", oid=oid))
 
-    @app.route("/compras/ordenes/<int:oid>/convertir", methods=["POST"])
+    @app.route("/compras/ordenes/<int:oid>/convertir", methods=["GET", "POST"])
     @login_required
     def oc_convertir(oid: int):
-        db = core.conn()
-        ops.ensure_ops_schema(db)
-        ops_oc.ensure_oc_schema(db)
-        ok, res = ops_oc.convertir_oc_a_compra(db, oid)
-        if not ok:
-            db.close()
-            flash(str(res), "danger")
-            return redirect(url_for("oc_detalle", oid=oid))
-        # alinear saldo/pagado
-        ops.recalc_factura_compra(db, int(res))
-        db.commit()
-        db.close()
-        flash("OC convertida en compra. Complete Nº documento fiscal si corresponde.", "ok")
-        return redirect(url_for("compras_form", fid=int(res)))
+        # Compat: emitir compra = formulario de compra linkeado a la OC
+        return redirect(url_for("compras_form", oc=oid))
