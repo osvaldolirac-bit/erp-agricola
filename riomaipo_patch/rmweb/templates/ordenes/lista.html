@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Órdenes de compra{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Órdenes de compra</h1>
+    <p>Paso previo a la factura de proveedor. Luego se convierte en Compra (CxP).</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('compras_list') }}">Compras</a>
+    <a class="btn btn-primary" href="{{ url_for('oc_form') }}"><i class="bi bi-plus-lg"></i> Nueva OC</a>
+  </div>
+</div>
+
+<div class="kpi-grid kpi-grid-2">
+  <div class="kpi kpi-info"><div class="label">Órdenes</div><div class="value">{{ kpis.total }}</div><div class="hint">{{ clp(kpis.sum_total) }}</div></div>
+  <div class="kpi kpi-alerta"><div class="label">Borrador / Emitidas</div><div class="value">{{ kpis.abiertas }}</div><div class="hint">Pendientes de convertir</div></div>
+  <div class="kpi kpi-ingreso"><div class="label">Convertidas</div><div class="value">{{ kpis.convertidas }}</div><div class="hint">Ya son compra</div></div>
+  <div class="kpi kpi-egreso"><div class="label">Anuladas</div><div class="value">{{ kpis.anuladas }}</div></div>
+</div>
+
+<div class="panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle datatable">
+      <thead>
+        <tr>
+          <th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Entrega</th>
+          <th>Total</th><th>Estado</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><span class="cot-num">{{ r.folio }}</span></td>
+          <td><strong>{{ r.proveedor or '—' }}</strong></td>
+          <td>{{ fmt_dmy(r.fecha) }}</td>
+          <td>{{ fmt_dmy(r.fecha_entrega) }}</td>
+          <td><strong>{{ clp(r.total) }}</strong></td>
+          <td><span class="estado {{ oc_estado_class(r.estado) }}">{{ oc_estado_label(r.estado) }}</span></td>
+          <td class="actions-cell">
+            <a class="btn-act ver" href="{{ url_for('oc_detalle', oid=r.id) }}" title="Ver"><i class="bi bi-eye"></i></a>
+            {% if r.estado in ('borrador', 'emitida') %}
+            <a class="btn-act edit" href="{{ url_for('oc_form', oid=r.id) }}" title="Editar"><i class="bi bi-pencil"></i></a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not rows %}<p class="text-muted small mb-0 mt-2">No hay órdenes de compra aún.</p>{% endif %}
+</div>
+{% endblock %}

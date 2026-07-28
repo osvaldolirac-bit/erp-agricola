@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}OC {{ row.folio }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ row.folio }}</h1>
+    <p>{{ row.proveedor or '—' }} · {{ row.concepto or 'Sin concepto' }}</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('oc_list') }}">Volver</a>
+    {% if row.estado in ('borrador', 'emitida') %}
+    <a class="btn btn-outline-primary" href="{{ url_for('oc_form', oid=row.id) }}"><i class="bi bi-pencil"></i> Editar</a>
+    {% endif %}
+    {% if row.estado == 'borrador' %}
+    <form method="post" action="{{ url_for('oc_estado', oid=row.id) }}" class="d-inline">
+      <input type="hidden" name="estado" value="emitida">
+      <button class="btn btn-success" type="submit">Emitir OC</button>
+    </form>
+    {% endif %}
+    {% if row.estado in ('borrador', 'emitida') %}
+    <form method="post" action="{{ url_for('oc_convertir', oid=row.id) }}" class="d-inline"
+          onsubmit="return confirm('¿Convertir esta OC en una Compra (factura CxP)?');">
+      <button class="btn btn-primary" type="submit"><i class="bi bi-arrow-right-circle"></i> Convertir en compra</button>
+    </form>
+    <form method="post" action="{{ url_for('oc_estado', oid=row.id) }}" class="d-inline"
+          onsubmit="return confirm('¿Anular esta orden de compra?');">
+      <input type="hidden" name="estado" value="anulada">
+      <button class="btn btn-outline-danger" type="submit">Anular</button>
+    </form>
+    {% endif %}
+    {% if row.estado == 'convertida' and row.factura_id %}
+    <a class="btn btn-primary" href="{{ url_for('compras_detalle', fid=row.factura_id) }}">Ver compra</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="kpi-grid kpi-grid-2">
+  <div class="kpi kpi-info"><div class="label">Neto</div><div class="value">{{ clp(row.neto) }}</div></div>
+  <div class="kpi kpi-info"><div class="label">IVA</div><div class="value">{{ clp(row.iva) }}</div></div>
+  <div class="kpi kpi-egreso"><div class="label">Total</div><div class="value">{{ clp(row.total) }}</div></div>
+  <div class="kpi kpi-alerta"><div class="label">Estado</div><div class="value"><span class="estado {{ oc_estado_class(row.estado) }}">{{ oc_estado_label(row.estado) }}</span></div></div>
+</div>
+
+<div class="panel mb-3">
+  <div class="row g-2 small">
+    <div class="col-md-3"><strong>Fecha OC</strong><div>{{ fmt_dmy(row.fecha) }}</div></div>
+    <div class="col-md-3"><strong>Entrega</strong><div>{{ fmt_dmy(row.fecha_entrega) }}</div></div>
+    <div class="col-md-6"><strong>Notas</strong><div>{{ row.notas or '—' }}</div></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 class="h6">Ítems</h2>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Descripción</th><th>Un</th><th>Cant</th><th>Costo</th><th>Total</th><th>Tipo</th></tr></thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it.descripcion }}</td>
+          <td>{{ it.unidad }}</td>
+          <td>{{ it.cantidad }}</td>
+          <td>{{ clp(it.costo_unitario) }}</td>
+          <td>{{ clp(it.total) }}</td>
+          <td>{% if it.es_servicio %}Servicio{% else %}Material{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">Sin ítems</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
