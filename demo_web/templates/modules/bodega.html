@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Bodega — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Inventario, salidas por cuartel y trazabilidad PPPL</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_modulo('modules.bodega', secciones, sec_activa) }}
+
+  {% if alerta_lc %}
+  <div class="alert alert-warning">
+    <strong>Salida de bodega registrada.</strong><br>
+    <strong>Libro de Campo pendiente</strong> — La aplicación fitosanitaria no se anotó sola.<br>
+    Vaya a <strong>Libro de Campo → Ingreso aplicación</strong> y registre:
+    <strong>{{ alerta_lc.producto }}</strong> — {{ alerta_lc.cantidad }} {{ alerta_lc.um }} —
+    cuartel(es): <strong>{{ alerta_lc.cuarteles|join(', ') }}</strong>
+  </div>
+  {% endif %}
+
+  {% if sec_activa == 'stock' %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="stock">
+      <div class="col-md-8">
+        <label class="form-label">Buscar producto, familia o ingrediente activo</label>
+        <input type="search" name="q" class="form-control" value="{{ filtro_q }}" placeholder="Ej: urea, glifosato…">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  {% if stock_rows %}
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in stock_rows %}
+          <tr>
+            {% for c in stock_cols %}
+            <td>{{ row[c] }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No hay productos que coincidan con la búsqueda.</div>
+  {% endif %}
+  {% if pdf_stock_habilitado %}
+  <div class="d-flex justify-content-end mb-3">
+    {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK OPERATIVO') }}
+  </div>
+  {% endif %}
+  {% if es_admin and not es_certificacion and stock_rows %}
+  <div class="panel-card">
+    <h2 class="h6">Corregir stock / nombre / familia / PMP</h2>
+    {% if stock_edit %}
+    <form method="get" class="mb-2">
+      <input type="hidden" name="sec" value="stock">
+      {% if filtro_q %}<input type="hidden" name="q" value="{{ filtro_q }}">{% endif %}
+      <select name="edit_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for o in stock_opts %}
+        <option value="{{ o.id }}" {% if o.id == stock_edit.id %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="corregir_stock">
+      <input type="hidden" name="sec" value="stock">
+      <input type="hidden" name="producto_id" value="{{ stock_edit.id }}">
+      {% if filtro_q %}<input type="hidden" name="q" value="{{ filtro_q }}">{% endif %}
+      <div class="col-md-6"><label class="form-label small">Nombre producto</label><input type="text" name="nombre" class="form-control form-control-sm" value="{{ stock_edit.producto }}" required></div>
+      <div class="col-md-6"><label class="form-label small">Familia</label>
+        <select name="familia" class="form-select form-select-sm">
+          {% for f in familias_prod %}<option value="{{ f }}" {% if f == stock_edit.familia %}selected{% endif %}>{{ f }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3"><label class="form-label small">Stock real</label><input type="number" name="stock" class="form-control form-control-sm" value="{{ stock_edit.stock }}" min="0" step="0.01"></div>
+      <div class="col-md-3"><label class="form-label small">Unidad</label>
+        <select name="unidad_medida" class="form-select form-select-sm">
+          {% for u in unidades_medida %}<option value="{{ u }}" {% if u == stock_edit.unidad_medida %}selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3"><label class="form-label small">PMP neto ($)</label><input type="number" name="precio_medio" class="form-control form-control-sm" value="{{ stock_edit.precio_medio|int }}" min="0" step="1"></div>
+      <div class="col-md-6"><label class="form-label small">Ingrediente activo</label><input type="text" name="ingrediente_activo" class="form-control form-control-sm" value="{{ stock_edit.ingrediente_activo }}"></div>
+      <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm w-100">Guardar corrección</button></div>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% elif sec_activa == 'salida' %}
+  <div class="alert alert-primary small mb-3">
+    <b>Recuerde:</b> Libro de Campo y Bodega son <strong>módulos independientes</strong>.
+    Registrar aquí solo actualiza stock y costos del cuartel.
+    Si corresponde a una aplicación fitosanitaria, anótela también en
+    <strong>Libro de Campo → Ingreso aplicación</strong>.
+  </div>
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Registrar salida</h2>
+    {% if not productos_salida %}
+    <div class="alert alert-warning">No hay productos con stock disponible.</div>
+    {% else %}
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="salida">
+      <input type="hidden" name="sec" value="salida">
+      <div class="col-md-6">
+        <label class="form-label">Insumo</label>
+        <select name="producto_id" class="form-select" required>
+          <option value="">— Seleccione —</option>
+          {% for p in productos_salida %}
+          <option value="{{ p.id }}">{{ p.producto }} ({{ p.unidad_medida }}) — stock {{ p.stock_fmt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Cantidad</label>
+        <input type="number" name="cantidad" class="form-control" min="0.01" step="0.01" required>
+      </div>
+      <div class="col-12">
+        <label class="form-label d-block">Cuarteles (distribución equitativa)</label>
+        <div class="d-flex flex-wrap gap-3">
+          {% for cc in cuarteles %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="cuarteles" value="{{ cc }}" id="bod_cc_{{ loop.index }}">
+            <label class="form-check-label" for="bod_cc_{{ loop.index }}">{{ cc }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Registrar salida bodega</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'pppl' %}
+  <p class="small text-muted">Auditoría PPPL / SAG — cruza inventario con referencia SAG y PHI por familia.</p>
+  {% if pppl_kpis %}
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Fitosanitarios</div><div class="kpi-value">{{ pppl_kpis.fitos }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Autorizados</div><div class="kpi-value">{{ pppl_kpis.autorizados }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card kpi-warn"><div class="kpi-label">Pendientes</div><div class="kpi-value">{{ pppl_kpis.pendientes }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card kpi-warn"><div class="kpi-label">Desincronizados</div><div class="kpi-value">{{ pppl_kpis.desinc }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card kpi-warn"><div class="kpi-label">Revisar SAG</div><div class="kpi-value">{{ pppl_kpis.sin_ref }}</div></div></div>
+  </div>
+  {% endif %}
+  {% if pppl_rows %}
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead>
+          <tr>
+            <th>Producto</th><th>Familia</th><th>Estado</th><th>PPPL bodega</th>
+            <th>PHI bodega</th><th>PHI sugerido</th><th>Ingrediente SAG</th><th>Confianza</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in pppl_rows %}
+          <tr>
+            <td>{{ r.producto }}</td>
+            <td>{{ r.familia }}</td>
+            <td><span class="badge text-bg-{{ r.estado_css }}">{{ r.estado }}</span></td>
+            <td>{{ r.pppl_bodega }}</td>
+            <td>{{ r.phi_bodega }}</td>
+            <td>{{ r.phi_sugerido }}</td>
+            <td>{{ r.ingrediente }}</td>
+            <td>{{ r.confianza }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if puede_gestionar_pppl %}
+  <div class="panel-card mb-3">
+    <h2 class="h6">Generar / sincronizar PPPL</h2>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <form method="post" class="d-inline">
+        <input type="hidden" name="action" value="pppl_sync_ok">
+        <input type="hidden" name="sec" value="pppl">
+        <button type="submit" class="btn btn-success btn-sm">Autorizar pendientes (ref. SAG alta/media)</button>
+      </form>
+      <form method="post" class="d-inline">
+        <input type="hidden" name="action" value="pppl_sync_all">
+        <input type="hidden" name="sec" value="pppl">
+        <button type="submit" class="btn btn-warning btn-sm">Incluir referencia baja (PHI familia)</button>
+      </form>
+    </div>
+    {% if pppl_edit %}
+    <h2 class="h6">Edición manual</h2>
+    <form method="get" class="mb-2">
+      <input type="hidden" name="sec" value="pppl">
+      <select name="pppl_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for o in pppl_edit_opts %}
+        <option value="{{ o.id }}" {% if o.id == pppl_edit.id %}selected{% endif %}>{{ o.producto }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="pppl_manual">
+      <input type="hidden" name="sec" value="pppl">
+      <input type="hidden" name="producto_id" value="{{ pppl_edit.id }}">
+      <div class="col-md-4"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="pppl_aprobado" value="1" id="ppplOk" {% if pppl_edit.pppl_ok %}checked{% endif %}><label class="form-check-label" for="ppplOk">Aprobado PPPL en bodega</label></div></div>
+      <div class="col-md-4"><label class="form-label small">Días carencia (PHI)</label><input type="number" name="dias_carencia" class="form-control form-control-sm" value="{{ pppl_edit.phi_def }}" min="0" max="365"></div>
+      <div class="col-md-4"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="sync_gap" value="1" id="ppplGap" checked><label class="form-check-label" for="ppplGap">Registrar en PPPL GlobalGAP</label></div></div>
+      <div class="col-md-6"><label class="form-label small">Ingrediente activo</label><input type="text" name="ingrediente_activo" class="form-control form-control-sm" value="{{ pppl_edit.ingrediente }}"></div>
+      <div class="col-md-6"><label class="form-label small">Notas / resolución SAG</label><input type="text" name="notas" class="form-control form-control-sm" value="{{ pppl_edit.notas }}"></div>
+      <div class="col-12"><button type="submit" class="btn btn-primary btn-sm">Guardar PPPL manual</button></div>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="alert alert-info">No hay productos en bodega.</div>
+  {% endif %}
+
+  {% elif sec_activa == 'apertura' %}
+  <div class="alert alert-warning small">
+    Solo para <strong>apertura de inventario existente</strong> al iniciar el sistema.
+    Las compras de productos nuevos deben ingresarse en <strong>Compras → Insumos</strong>.
+  </div>
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Registro de stock inicial</h2>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="apertura">
+      <input type="hidden" name="sec" value="apertura">
+      <div class="col-md-6"><label class="form-label">Nombre comercial</label><input type="text" name="nombre" class="form-control form-control-sm" required></div>
+      <div class="col-md-6"><label class="form-label">Familia</label>
+        <select name="familia" class="form-select form-select-sm">{% for f in familias_prod %}<option value="{{ f }}">{{ f }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-4"><label class="form-label">Ingrediente activo</label>
+        <input type="text" name="ingrediente_activo" class="form-control form-control-sm" placeholder="Ej. Tebuconazol" autocomplete="off">
+      </div>
+      <div class="col-md-2"><label class="form-label">Unidad medida</label>
+        <select name="unidad_medida" class="form-select form-select-sm">{% for u in unidades_medida %}<option value="{{ u }}" {% if u == um_default %}selected{% endif %}>{{ u }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-2"><label class="form-label">Stock físico hoy</label><input type="number" name="stock" class="form-control form-control-sm" min="0" step="0.01" value="0"></div>
+      <div class="col-md-2"><label class="form-label">PMP estimado ($)</label><input type="number" name="precio_medio" class="form-control form-control-sm" min="0" step="1" value="0"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Registrar apertura</button></div>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'consulta' %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="consulta">
+      <div class="col-md-3">
+        <label class="form-label">Cuartel</label>
+        <select name="cuartel" class="form-select">
+          {% for c in cuarteles %}
+          <option value="{{ c }}" {% if c == filtro_cuartel %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Consultar</button>
+      </div>
+        {{ pdf_btn(pdf_consulta_url, '📥 PDF CONSULTA CUARTEL') }}
+    </form>
+  </div>
+  {% if consulta_rows %}
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr><th>N°</th><th>Fecha</th><th>Producto</th><th>Cantidad</th><th>UM</th><th>Valor imputado</th></tr></thead>
+        <tbody>
+          {% for r in consulta_rows %}
+          <tr>
+            <td>{{ r.n }}</td><td>{{ r.fecha }}</td><td>{{ r.producto }}</td>
+            <td>{{ r.cantidad }}</td><td>{{ r.um }}</td><td>{{ r.valor }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if es_admin and mov_edit %}
+  <div class="panel-card">
+    <h2 class="h6">Corregir / eliminar salida</h2>
+    <p class="small text-muted">Al eliminar o reducir cantidad, el stock se repone automáticamente.</p>
+    <form method="get" class="mb-2">
+      <input type="hidden" name="sec" value="consulta">
+      <input type="hidden" name="cuartel" value="{{ filtro_cuartel }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <select name="mov_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for o in mov_opts %}
+        <option value="{{ o.id }}" {% if o.id == mov_edit.id %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <p class="small">Editando ID <strong>{{ mov_edit.id }}</strong> — stock disponible: <strong>{{ mov_edit.stock_inv }} {{ mov_edit.um_inv }}</strong></p>
+    <form method="post" class="row g-2 mb-2">
+      <input type="hidden" name="action" value="corregir_mov">
+      <input type="hidden" name="sec" value="consulta">
+      <input type="hidden" name="mov_id" value="{{ mov_edit.id }}">
+      <input type="hidden" name="cuartel" value="{{ filtro_cuartel }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-3"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ mov_edit.fecha }}"></div>
+      <div class="col-md-3"><label class="form-label small">Cantidad</label><input type="number" name="cantidad" class="form-control form-control-sm" value="{{ mov_edit.cant_raw }}" min="0.01" step="0.01"></div>
+      <div class="col-md-3"><label class="form-label small">Valor imputado ($)</label><input type="number" name="valor" class="form-control form-control-sm" value="{{ mov_edit.valor_raw|int }}" min="0" step="1"></div>
+      <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button></div>
+    </form>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="eliminar_mov">
+      <input type="hidden" name="sec" value="consulta">
+      <input type="hidden" name="mov_id" value="{{ mov_edit.id }}">
+      <input type="hidden" name="cuartel" value="{{ filtro_cuartel }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-4"><label class="form-label small">Clave maestra p/ eliminar</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-4 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar salida</button></div>
+    </form>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="alert alert-info">No hay salidas de bodega en el período seleccionado.</div>
+  {% endif %}
+
+  {% elif sec_activa == 'desfase' %}
+  <div class="alert alert-info small">
+    Detecta productos <strong>PPPL</strong> registrados en un módulo pero no reflejados en el otro
+    (mismo producto, cuartel, cantidad equivalente ±2%, fecha dentro de la ventana).
+  </div>
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="desfase">
+      <div class="col-md-3"><label class="form-label">Desde</label><input type="date" name="desde" class="form-control" value="{{ filtro_desde }}"></div>
+      <div class="col-md-3"><label class="form-label">Hasta</label><input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}"></div>
+      <div class="col-md-2"><label class="form-label">Ventana ± días</label><input type="number" name="ventana" class="form-control" value="{{ ventana_dias }}" min="1" max="60"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Analizar</button></div>
+    </form>
+  </div>
+  {% if desfase_ok %}
+  <div class="alert alert-success">No hay desfaces PPPL en el período seleccionado.</div>
+  {% else %}
+  {% if desfase_lc_rows %}
+  <div class="alert alert-warning">{{ desfase_lc_rows|length }} registro(s) en Libro de Campo sin salida de bodega equivalente.</div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr>{% for k in desfase_lc_rows[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in desfase_lc_rows %}<tr>{% for v in row.values() %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% if desfase_bod_rows %}
+  <div class="alert alert-warning">{{ desfase_bod_rows|length }} salida(s) de bodega sin aplicación en Libro de Campo.</div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr>{% for k in desfase_bod_rows[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in desfase_bod_rows %}<tr>{% for v in row.values() %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
