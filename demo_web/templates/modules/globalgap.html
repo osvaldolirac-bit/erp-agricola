@@ -118,28 +118,89 @@
 
   {% elif sec_activa == 'documentos' %}
   <div class="panel-card mb-3">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <form method="get" class="row g-2">
+          <input type="hidden" name="sec" value="documentos">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <div class="col-8">
+            <label class="form-label small">Filtrar por tipo</label>
+            <select name="tipo" class="form-select form-select-sm" onchange="this.form.submit()">
+              {% for t in doc_tipos %}
+              <option value="{{ t }}" {% if t == doc_tipo_sel %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="col-md-5">
+        <div class="small text-muted">
+          {{ doc_stats.total }} documentos · {{ doc_stats.con_archivo }} con archivo · {{ doc_stats.sin_archivo }} sin archivo
+        </div>
+      </div>
+      {% if doc_import_disponible %}
+      <div class="col-md-3 text-md-end">
+        <form method="post" class="d-inline">
+          <input type="hidden" name="action" value="doc_import_catalog">
+          <input type="hidden" name="sec" value="documentos">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <button type="submit" class="btn btn-outline-primary btn-sm">Cargar Listado Maestro {{ especie_sel }}</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
     {% if doc_rows %}
     <div class="table-responsive mb-2">
-      <table class="table table-sm table-striped demo-datatable w-100">
-        <thead><tr>{% for c in doc_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
-        <tbody>{% for row in doc_rows %}<tr>{% for c in doc_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      <table class="table table-sm table-striped demo-datatable w-100" style="font-size:12px">
+        <thead>
+          <tr>
+            <th>Código</th><th>Tipo</th><th>Título</th><th>Ver</th><th>Vigente</th>
+            <th>Autoevaluación</th><th>Archivo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in doc_rows %}
+          <tr>
+            <td class="text-nowrap">{{ r.codigo }}</td>
+            <td>{{ r.tipo }}</td>
+            <td>{{ r.titulo }}</td>
+            <td>{{ r.version }}</td>
+            <td class="text-nowrap">{{ r.vigente }}</td>
+            <td>{{ r.checklist }}</td>
+            <td>
+              {% if r.tiene_archivo %}
+              <a href="{{ r.url }}">{{ r.archivo or 'Descargar' }}</a>
+              {% else %}
+              <span class="text-muted">Sin archivo</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
       </table>
     </div>
     {% if pdf_doc_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_doc_url }}" download data-pdf-label="PDF documentos">PDF documentos</a>{% endif %}
-    {% else %}<div class="alert alert-info mb-0">Sin documentos registrados.</div>{% endif %}
+    {% else %}<div class="alert alert-info mb-0">Sin documentos registrados. Use “Cargar Listado Maestro” o registre uno abajo.</div>{% endif %}
   </div>
   <div class="panel-card mb-3">
-    <h2 class="h6">Registrar documento</h2>
-    <form method="post" class="row g-2">
+    <h2 class="h6">Registrar / subir documento</h2>
+    <form method="post" enctype="multipart/form-data" class="row g-2">
       <input type="hidden" name="action" value="doc_add">
       <input type="hidden" name="sec" value="documentos">
       <input type="hidden" name="especie" value="{{ especie_sel }}">
-      <div class="col-md-3"><select name="tipo" class="form-select form-select-sm">{% for t in doc_tipos %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><input type="text" name="codigo" class="form-control form-control-sm" placeholder="Código (GGPR01)"></div>
+      <div class="col-md-3">
+        <select name="tipo" class="form-select form-select-sm">
+          {% for t in doc_tipos_form %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
       <div class="col-md-4"><input type="text" name="titulo" class="form-control form-control-sm" placeholder="Título" required></div>
-      <div class="col-md-2"><input type="text" name="version" class="form-control form-control-sm" value="1.0"></div>
-      <div class="col-md-3"><input type="date" name="fecha_vigencia" class="form-control form-control-sm" value="{{ hoy }}"></div>
-      <div class="col-md-4"><input type="text" name="responsable" class="form-control form-control-sm" placeholder="Responsable"></div>
-      <div class="col-md-6"><input type="text" name="notas" class="form-control form-control-sm" placeholder="Notas / ubicación física"></div>
+      <div class="col-md-1"><input type="text" name="version" class="form-control form-control-sm" value="00"></div>
+      <div class="col-md-2"><input type="date" name="fecha_vigencia" class="form-control form-control-sm" value="{{ hoy }}"></div>
+      <div class="col-md-3"><input type="text" name="responsable" class="form-control form-control-sm" placeholder="Responsable"></div>
+      <div class="col-md-4"><input type="text" name="checklist_codigos" class="form-control form-control-sm" placeholder="Ítems autoeval (AFB-01, CB-02)"></div>
+      <div class="col-md-3"><input type="file" name="archivo" class="form-control form-control-sm"></div>
+      <div class="col-md-2"><input type="text" name="notas" class="form-control form-control-sm" placeholder="Notas"></div>
       <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Registrar</button></div>
     </form>
   </div>
@@ -164,14 +225,35 @@
     </form>
     {% if checklist_rows %}
     <div class="table-responsive">
-      <table class="table table-sm table-striped demo-datatable w-100">
-        <thead><tr><th>Código</th><th>Capítulo</th><th>Descripción</th><th>Estado</th><th>Revisión</th><th>Responsable</th></tr></thead>
+      <table class="table table-sm table-striped demo-datatable w-100" style="font-size:12px">
+        <thead>
+          <tr>
+            <th>Código</th><th>Capítulo</th><th>Descripción</th><th>Estado</th>
+            <th>Documentos asociados</th><th>Revisión</th><th>Responsable</th>
+          </tr>
+        </thead>
         <tbody>
           {% for r in checklist_rows %}
           <tr>
-            <td>{{ r.codigo }}</td><td>{{ r.capitulo }}</td><td>{{ r.descripcion }}</td>
+            <td>{{ r.codigo }}</td>
+            <td>{{ r.capitulo }}</td>
+            <td>{{ r.descripcion }}</td>
             <td><span class="badge text-bg-{{ r.estado_css }}">{{ r.estado }}</span></td>
-            <td>{{ r.revision }}</td><td>{{ r.responsable }}</td>
+            <td>
+              {% if r.docs %}
+                {% for d in r.docs %}
+                  {% if d.url %}
+                  <div><a href="{{ d.url }}">{{ d.codigo or d.titulo }}</a></div>
+                  {% else %}
+                  <div>{{ d.codigo or d.titulo }}</div>
+                  {% endif %}
+                {% endfor %}
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>{{ r.revision }}</td>
+            <td>{{ r.responsable }}</td>
           </tr>
           {% endfor %}
         </tbody>

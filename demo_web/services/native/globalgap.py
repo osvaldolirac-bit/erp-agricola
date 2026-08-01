@@ -1,21 +1,55 @@
 from __future__ import annotations
 
 import csv
+import json
+import mimetypes
+import os
+import re
 import sqlite3
 from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
-from flask import flash, render_template, request, url_for
+from flask import abort, flash, render_template, request, send_file, url_for
+from werkzeug.utils import secure_filename
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, df_to_records, parse_date
 
 MERCADOS_PPPL = ["General", "UE", "USA", "China", "Nacional"]
-DOC_TIPOS = ["Manual BPA", "Mapa fundo", "Política integrada", "Análisis agua", "Procedimiento", "Otro"]
+DOC_TIPOS = [
+    "Anexo",
+    "Evaluaciones Riesgo",
+    "Procedimientos",
+    "Instructivos",
+    "Plan Gestion",
+    "Registro",
+    "Política",
+    "Manual BPA",
+    "Mapa fundo",
+    "Política integrada",
+    "Análisis agua",
+    "Otro",
+]
 CAP_TEMAS = ["Fitosanitarios", "SST / Seguridad", "Higiene cosecha", "Primeros auxilios", "Otro"]
 EVAL_ESTADOS = ["Cumple", "No cumple", "N/A", "Pendiente"]
+
+_DOC_EXTRA_COLS = [
+    ("codigo", "TEXT DEFAULT ''"),
+    ("archivo_relpath", "TEXT DEFAULT ''"),
+    ("nombre_archivo", "TEXT DEFAULT ''"),
+    ("mime", "TEXT DEFAULT ''"),
+    ("origen", "TEXT DEFAULT ''"),
+    ("formato", "TEXT DEFAULT 'Digital'"),
+]
+
+_ESPECIE_DOC_SLUG = {
+    "Cerezos": "cerezos",
+    "Ciruelos": "ciruelos",
+    "ESPECIE 1": "cerezos",
+    "ESPECIE 2": "ciruelos",
+}
 
 SECCIONES = [
     ("pppl", "📋 PPPL"),
@@ -195,37 +229,253 @@ def _section_pppl(demo, conn, especie: str) -> dict:
     }
 
 
+def _ensure_gap_documentos_schema(conn) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS gap_documentos (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               tipo TEXT, titulo TEXT, version TEXT, fecha_vigencia DATE,
+               responsable TEXT, notas TEXT, fecha_registro DATE, especie TEXT
+           )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS gap_doc_checklist (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               documento_id INTEGER NOT NULL,
+               checklist_codigo TEXT NOT NULL,
+               especie TEXT,
+               UNIQUE(documento_id, checklist_codigo, especie)
+           )"""
+    )
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(gap_documentos)").fetchall()}
+    for name, decl in _DOC_EXTRA_COLS:
+        if name not in cols:
+            try:
+                conn.execute(f"ALTER TABLE gap_documentos ADD COLUMN {name} {decl}")
+            except sqlite3.OperationalError:
+                pass
+    try:
+        conn.commit()
+    except Exception:
+        pass
+
+
+def _docs_static_root() -> Path:
+    return Path(__file__).resolve().parents[2] / "static" / "globalgap" / "docs"
+
+
+def _docs_especie_dir(especie: str) -> Path:
+    slug = _ESPECIE_DOC_SLUG.get((especie or "").strip(), "cerezos")
+    env_root = (os.environ.get("ERP_GAP_DOCS") or "").strip()
+    candidates = []
+    if env_root:
+        candidates.append(Path(env_root) / slug)
+    candidates.extend(
+        [
+            _docs_static_root() / slug,
+            Path(f"/root/demo-web/demo_web/static/globalgap/docs/{slug}"),
+            Path(f"/root/erp_gap_docs/{slug}"),
+        ]
+    )
+    for p in candidates:
+        if p.is_dir():
+            return p
+    return candidates[0]
+
+
+def _catalog_path(especie: str) -> Path | None:
+    slug = _ESPECIE_DOC_SLUG.get((especie or "").strip(), "cerezos")
+    for p in (
+        _docs_static_root() / f"catalogo_{slug}.json",
+        Path(f"/root/demo-web/demo_web/static/globalgap/docs/catalogo_{slug}.json"),
+    ):
+        if p.is_file():
+            return p
+    return None
+
+
+def _doc_map_path(especie: str) -> Path | None:
+    slug = _ESPECIE_DOC_SLUG.get((especie or "").strip(), "cerezos")
+    for p in (
+        _docs_static_root() / f"doc_checklist_map_{slug}.json",
+        Path(f"/root/demo-web/demo_web/static/globalgap/docs/doc_checklist_map_{slug}.json"),
+    ):
+        if p.is_file():
+            return p
+    return None
+
+
+def _load_doc_checklist_map(especie: str) -> dict[str, list[str]]:
+    path = _doc_map_path(especie)
+    if not path:
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    out: dict[str, list[str]] = {}
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if isinstance(v, list):
+                out[str(k)] = [str(x) for x in v]
+    return out
+
+
+def _safe_doc_file(especie: str, relpath: str) -> Path | None:
+    rel = (relpath or "").replace("\\", "/").lstrip("/")
+    if not rel or ".." in rel.split("/"):
+        return None
+    root = _docs_especie_dir(especie).resolve()
+    full = (root / rel).resolve()
+    try:
+        full.relative_to(root)
+    except ValueError:
+        return None
+    return full if full.is_file() else None
+
+
+def _doc_download_url(doc_id: int, especie: str) -> str:
+    return url_for(
+        "modules.globalgap",
+        download_doc=doc_id,
+        especie=especie,
+        sec="documentos",
+    )
+
+
+def _link_doc_checklist(conn, documento_id: int, codigo_doc: str, especie: str, extra_codes: list[str] | None = None) -> int:
+    mapping = _load_doc_checklist_map(especie)
+    codes = list(extra_codes or [])
+    codes.extend(mapping.get(codigo_doc or "", []))
+    # also accept comma-separated from form
+    n = 0
+    seen = set()
+    for cod in codes:
+        cod = (cod or "").strip()
+        if not cod or cod in seen:
+            continue
+        seen.add(cod)
+        try:
+            conn.execute(
+                """INSERT OR IGNORE INTO gap_doc_checklist (documento_id, checklist_codigo, especie)
+                   VALUES (?,?,?)""",
+                (documento_id, cod, especie),
+            )
+            n += 1
+        except sqlite3.Error:
+            pass
+    return n
+
+
+def _docs_linked_for_checklist(conn, especie: str) -> dict[str, list[dict]]:
+    _ensure_gap_documentos_schema(conn)
+    rows = conn.execute(
+        """SELECT l.checklist_codigo, d.id, d.codigo, d.titulo, d.archivo_relpath, d.nombre_archivo
+           FROM gap_doc_checklist l
+           JOIN gap_documentos d ON d.id = l.documento_id
+           WHERE COALESCE(l.especie, d.especie, 'ESPECIE 1')=?
+           ORDER BY d.codigo, d.titulo""",
+        (especie,),
+    ).fetchall()
+    out: dict[str, list[dict]] = {}
+    for r in rows:
+        item = {
+            "id": r[1],
+            "codigo": r[2] or "",
+            "titulo": r[3] or "",
+            "tiene_archivo": bool(r[4]),
+            "nombre_archivo": r[5] or "",
+            "url": _doc_download_url(r[1], especie) if r[4] else "",
+        }
+        out.setdefault(r[0], []).append(item)
+    return out
+
+
 def _section_documentos(demo, conn, especie: str) -> dict:
-    df = pd.read_sql_query(
-        """SELECT tipo AS TIPO, titulo AS TITULO, version AS VER, fecha_vigencia AS VIGENTE,
-                  responsable AS RESPONSABLE, notas AS NOTAS
+    _ensure_gap_documentos_schema(conn)
+    filtro_tipo = (request.args.get("tipo") or "TODOS").strip()
+    q = """SELECT id, COALESCE(codigo,'') AS codigo, tipo, titulo, version, fecha_vigencia,
+                  responsable, notas, COALESCE(archivo_relpath,'') AS archivo_relpath,
+                  COALESCE(nombre_archivo,'') AS nombre_archivo, COALESCE(origen,'') AS origen,
+                  COALESCE(formato,'Digital') AS formato
            FROM gap_documentos
-           WHERE COALESCE(especie,'ESPECIE 1')=?
-           ORDER BY fecha_registro DESC""",
-        conn,
-        params=(especie,),
-    )
-    cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+           WHERE COALESCE(especie,'ESPECIE 1')=?"""
+    params: list = [especie]
+    if filtro_tipo and filtro_tipo != "TODOS":
+        q += " AND tipo=?"
+        params.append(filtro_tipo)
+    q += " ORDER BY tipo, codigo, titulo"
+    df = pd.read_sql_query(q, conn, params=params)
+
+    # links by documento
+    links_by_doc: dict[int, list[str]] = {}
+    if not df.empty:
+        ids = [int(x) for x in df["id"].tolist()]
+        ph = ",".join("?" for _ in ids)
+        for r in conn.execute(
+            f"SELECT documento_id, checklist_codigo FROM gap_doc_checklist WHERE documento_id IN ({ph})",
+            ids,
+        ).fetchall():
+            links_by_doc.setdefault(int(r[0]), []).append(r[1])
+
+    rows = []
+    con_archivo = 0
+    for _, r in df.iterrows():
+        did = int(r["id"])
+        tiene = bool(str(r.get("archivo_relpath") or "").strip())
+        if tiene:
+            con_archivo += 1
+        rows.append(
+            {
+                "id": did,
+                "codigo": r.get("codigo") or "",
+                "tipo": r.get("tipo") or "",
+                "titulo": r.get("titulo") or "",
+                "version": r.get("version") or "",
+                "vigente": str(r.get("fecha_vigencia") or "")[:10],
+                "responsable": r.get("responsable") or "",
+                "origen": r.get("origen") or "",
+                "formato": r.get("formato") or "",
+                "notas": r.get("notas") or "",
+                "archivo": r.get("nombre_archivo") or "",
+                "tiene_archivo": tiene,
+                "url": _doc_download_url(did, especie) if tiene else "",
+                "checklist": ", ".join(links_by_doc.get(did, [])),
+            }
+        )
+
+    pdf_df = df[["tipo", "codigo", "titulo", "version", "fecha_vigencia", "responsable"]].copy() if not df.empty else df
+    if not pdf_df.empty:
+        pdf_df.columns = ["TIPO", "CÓDIGO", "TÍTULO", "VER", "VIGENTE", "RESPONSABLE"]
+    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
     pdf = _pdf_url(
-        demo, df, f"GLOBALGAP — {especie.upper()} — Documentos", f"globalgap_{pref}_documentos.pdf",
+        demo, pdf_df, f"GLOBALGAP — {especie.upper()} — Documentos", f"globalgap_{pref}_documentos.pdf",
     )
+    checklist_all = [
+        {"codigo": r[0], "descripcion": r[1]}
+        for r in conn.execute("SELECT codigo, descripcion FROM gap_checklist ORDER BY orden, id").fetchall()
+    ]
     return {
-        "doc_cols": cols,
         "doc_rows": rows,
         "pdf_doc_url": pdf,
-        "doc_tipos": DOC_TIPOS,
+        "doc_tipos": ["TODOS"] + DOC_TIPOS,
+        "doc_tipo_sel": filtro_tipo if filtro_tipo in (["TODOS"] + DOC_TIPOS) else "TODOS",
+        "doc_tipos_form": DOC_TIPOS,
+        "doc_stats": {"total": len(rows), "con_archivo": con_archivo, "sin_archivo": len(rows) - con_archivo},
+        "doc_import_disponible": bool(_catalog_path(especie)),
+        "doc_checklist_opts": checklist_all,
         "hoy": hoy_demo(demo).isoformat(),
     }
 
 
 def _section_autoeval(demo, conn, especie: str) -> dict:
+    _ensure_gap_documentos_schema(conn)
     filtro_cap = request.args.get("capitulo", "TODOS")
     if filtro_cap not in ["TODOS"] + demo.GAP_CAPITULOS:
         filtro_cap = "TODOS"
 
-    q = """SELECT c.codigo AS CODIGO, c.capitulo AS CAPÍTULO, c.descripcion AS DESCRIPCIÓN,
-                  COALESCE(e.estado,'Pendiente') AS ESTADO, e.fecha_revision AS REVISIÓN, e.responsable AS RESPONSABLE
+    q = """SELECT c.id AS CID, c.codigo AS CODIGO, c.capitulo AS CAPÍTULO, c.descripcion AS DESCRIPCIÓN,
+                  COALESCE(e.estado,'Pendiente') AS ESTADO, e.fecha_revision AS REVISIÓN,
+                  e.responsable AS RESPONSABLE, COALESCE(e.evidencia,'') AS EVIDENCIA
            FROM gap_checklist c
            LEFT JOIN gap_evaluacion e ON c.id=e.checklist_id AND COALESCE(e.especie,'ESPECIE 1')=?"""
     params: list = [especie]
@@ -234,26 +484,34 @@ def _section_autoeval(demo, conn, especie: str) -> dict:
         params.append(filtro_cap)
     q += " ORDER BY c.orden"
     df = pd.read_sql_query(q, conn, params=params)
+    linked = _docs_linked_for_checklist(conn, especie)
 
     rows = []
     for _, r in df.iterrows():
         est = str(r.get("ESTADO", "Pendiente"))
+        cod = str(r.get("CODIGO", ""))
+        docs = linked.get(cod, [])
         rows.append(
             {
-                "codigo": r.get("CODIGO", ""),
+                "codigo": cod,
                 "capitulo": r.get("CAPÍTULO", ""),
                 "descripcion": r.get("DESCRIPCIÓN", ""),
                 "estado": est,
                 "estado_css": _CHECKLIST_CSS.get(est, "secondary"),
                 "revision": str(r.get("REVISIÓN", "") or "")[:10],
                 "responsable": r.get("RESPONSABLE", "") or "",
+                "evidencia": r.get("EVIDENCIA", "") or "",
+                "docs": docs,
+                "docs_txt": ", ".join(
+                    f"{d['codigo'] or d['titulo']}" for d in docs
+                ),
             }
         )
 
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
     pdf = _pdf_url(
         demo,
-        df,
+        df[["CODIGO", "CAPÍTULO", "DESCRIPCIÓN", "ESTADO", "REVISIÓN", "RESPONSABLE"]] if not df.empty else df,
         f"GLOBALGAP — {especie.upper()} — Autoevaluación IFA ({filtro_cap})",
         f"globalgap_{pref}_checklist.pdf",
         demo._pdf_estilo_gap_checklist,
@@ -566,25 +824,216 @@ def _post_pppl_sync(demo, conn, incluir_baja: bool = False) -> dict:
 
 
 def _post_doc_add(demo, conn, especie: str) -> dict:
+    _ensure_gap_documentos_schema(conn)
     tit = (request.form.get("titulo") or "").strip()
     if not tit:
         return {"ok": False, "msg": "Ingrese el título del documento."}
-    conn.execute(
-        "INSERT INTO gap_documentos (tipo, titulo, version, fecha_vigencia, responsable, notas, fecha_registro, especie) VALUES (?,?,?,?,?,?,?,?)",
+    codigo = (request.form.get("codigo") or "").strip()
+    tipo = request.form.get("tipo") or DOC_TIPOS[0]
+    version = request.form.get("version") or "1.0"
+    fecha_vig = request.form.get("fecha_vigencia") or str(hoy_demo(demo))
+    responsable = (request.form.get("responsable") or "").strip()
+    notas = (request.form.get("notas") or "").strip()
+    checklist_raw = (request.form.get("checklist_codigos") or "").strip()
+    extra_codes = [c.strip() for c in re.split(r"[,;\s]+", checklist_raw) if c.strip()]
+
+    archivo_relpath = ""
+    nombre_archivo = ""
+    mime = ""
+    f = request.files.get("archivo")
+    if f and f.filename:
+        safe = secure_filename(f.filename)
+        if not safe:
+            return {"ok": False, "msg": "Nombre de archivo inválido."}
+        dest_dir = _docs_especie_dir(especie) / "uploads"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / safe
+        f.save(dest)
+        archivo_relpath = f"uploads/{safe}"
+        nombre_archivo = safe
+        mime = mimetypes.guess_type(safe)[0] or ""
+
+    cur = conn.execute(
+        """INSERT INTO gap_documentos
+           (tipo, titulo, version, fecha_vigencia, responsable, notas, fecha_registro, especie,
+            codigo, archivo_relpath, nombre_archivo, mime, origen, formato)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
-            request.form.get("tipo") or DOC_TIPOS[0],
+            tipo,
             tit,
-            request.form.get("version") or "1.0",
-            request.form.get("fecha_vigencia") or str(hoy_demo(demo)),
-            (request.form.get("responsable") or "").strip(),
-            (request.form.get("notas") or "").strip(),
+            version,
+            fecha_vig,
+            responsable,
+            notas,
             str(hoy_demo(demo)),
             especie,
+            codigo,
+            archivo_relpath,
+            nombre_archivo,
+            mime,
+            "Propio",
+            "Digital",
         ),
     )
+    doc_id = int(cur.lastrowid)
+    linked = _link_doc_checklist(conn, doc_id, codigo, especie, extra_codes)
     conn.commit()
-    demo.registrar_accion("GLOBALGAP DOC", tit)
-    return {"ok": True, "msg": "Documento registrado."}
+    demo.registrar_accion("GLOBALGAP DOC", f"{codigo or tit}")
+    msg = "Documento registrado."
+    if archivo_relpath:
+        msg += " Archivo guardado."
+    if linked:
+        msg += f" Asociado a {linked} ítem(s) de autoevaluación."
+    return {"ok": True, "msg": msg}
+
+
+def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
+    _ensure_gap_documentos_schema(conn)
+    path = _catalog_path(especie)
+    if not path:
+        return {"ok": False, "msg": f"No hay catálogo de documentos para {especie}."}
+    try:
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"ok": False, "msg": f"No se pudo leer el catálogo: {exc}"}
+    if not isinstance(catalog, list):
+        return {"ok": False, "msg": "Catálogo inválido."}
+
+    inserted = 0
+    updated = 0
+    linked_total = 0
+    for item in catalog:
+        if not isinstance(item, dict):
+            continue
+        codigo = str(item.get("codigo") or "").strip()
+        titulo = str(item.get("titulo") or "").strip()
+        if not titulo and not codigo:
+            continue
+        tipo = str(item.get("tipo") or "Otro").strip() or "Otro"
+        version = str(item.get("version") or "00").strip()
+        fecha_vig = item.get("fecha_vigencia") or None
+        origen = str(item.get("origen") or "Propio").strip()
+        formato = str(item.get("formato") or "Digital").strip()
+        rel = str(item.get("archivo_relpath") or "").replace("\\", "/").lstrip("/")
+        nombre = str(item.get("nombre_archivo") or "").strip()
+        if rel and not nombre:
+            nombre = Path(rel).name
+        mime = mimetypes.guess_type(nombre)[0] or "" if nombre else ""
+        esp = str(item.get("especie") or especie).strip() or especie
+
+        existing = None
+        if codigo:
+            existing = conn.execute(
+                """SELECT id FROM gap_documentos
+                   WHERE COALESCE(especie,'')=? AND COALESCE(codigo,'')=?
+                   LIMIT 1""",
+                (esp, codigo),
+            ).fetchone()
+        if not existing and titulo:
+            existing = conn.execute(
+                """SELECT id FROM gap_documentos
+                   WHERE COALESCE(especie,'')=? AND UPPER(TRIM(titulo))=UPPER(TRIM(?))
+                   LIMIT 1""",
+                (esp, titulo),
+            ).fetchone()
+
+        if existing:
+            doc_id = int(existing[0])
+            conn.execute(
+                """UPDATE gap_documentos SET
+                       tipo=?, titulo=?, version=?,
+                       fecha_vigencia=COALESCE(?, fecha_vigencia),
+                       origen=?, formato=?,
+                       archivo_relpath=CASE WHEN ?!='' THEN ? ELSE archivo_relpath END,
+                       nombre_archivo=CASE WHEN ?!='' THEN ? ELSE nombre_archivo END,
+                       mime=CASE WHEN ?!='' THEN ? ELSE mime END,
+                       codigo=CASE WHEN ?!='' THEN ? ELSE codigo END
+                   WHERE id=?""",
+                (
+                    tipo,
+                    titulo or codigo,
+                    version,
+                    fecha_vig,
+                    origen,
+                    formato,
+                    rel,
+                    rel,
+                    nombre,
+                    nombre,
+                    mime,
+                    mime,
+                    codigo,
+                    codigo,
+                    doc_id,
+                ),
+            )
+            updated += 1
+        else:
+            cur = conn.execute(
+                """INSERT INTO gap_documentos
+                   (tipo, titulo, version, fecha_vigencia, responsable, notas, fecha_registro, especie,
+                    codigo, archivo_relpath, nombre_archivo, mime, origen, formato)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    tipo,
+                    titulo or codigo,
+                    version,
+                    fecha_vig,
+                    "",
+                    "Importado desde Listado Maestro / Drive",
+                    str(hoy_demo(demo)),
+                    esp,
+                    codigo,
+                    rel,
+                    nombre,
+                    mime,
+                    origen,
+                    formato,
+                ),
+            )
+            doc_id = int(cur.lastrowid)
+            inserted += 1
+        linked_total += _link_doc_checklist(conn, doc_id, codigo, esp)
+
+    conn.commit()
+    demo.registrar_accion(
+        "GLOBALGAP DOC IMPORT",
+        f"{especie}: +{inserted} / ~{updated} / links {linked_total}",
+    )
+    return {
+        "ok": True,
+        "msg": (
+            f"Catálogo {especie}: {inserted} nuevos, {updated} actualizados, "
+            f"{linked_total} vínculos a autoevaluación."
+        ),
+    }
+
+
+def _download_gap_documento(demo, conn, especie: str):
+    _ensure_gap_documentos_schema(conn)
+    try:
+        doc_id = int(request.args.get("download_doc") or 0)
+    except (TypeError, ValueError):
+        abort(404)
+    if doc_id <= 0:
+        abort(404)
+    row = conn.execute(
+        """SELECT archivo_relpath, nombre_archivo, mime, COALESCE(especie,'')
+           FROM gap_documentos WHERE id=?""",
+        (doc_id,),
+    ).fetchone()
+    if not row or not row[0]:
+        abort(404)
+    esp = row[3] or especie
+    path = _safe_doc_file(esp, row[0])
+    if not path:
+        # try current especie folder as fallback
+        path = _safe_doc_file(especie, row[0])
+    if not path:
+        abort(404)
+    download_name = row[1] or path.name
+    mime = row[2] or mimetypes.guess_type(download_name)[0] or "application/octet-stream"
+    return send_file(path, mimetype=mime, as_attachment=True, download_name=download_name)
 
 
 def _post_eval_save(demo, conn, especie: str, user_email: str) -> dict:
@@ -2004,6 +2453,14 @@ def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
 
+    if request.method == "GET" and request.args.get("download_doc"):
+        especie = _especie_sel(demo)
+        conn = demo.conectar_db()
+        try:
+            return _download_gap_documento(demo, conn, especie)
+        finally:
+            conn.close()
+
     if request.method == "POST":
         action = request.form.get("action", "")
         sec = request.form.get("sec") or request.args.get("sec", "pppl")
@@ -2015,6 +2472,7 @@ def view(user_email: str, user_rol: str):
                 "pppl_sync_ok": lambda d, c: _post_pppl_sync(d, c, incluir_baja=False),
                 "pppl_sync_all": lambda d, c: _post_pppl_sync(d, c, incluir_baja=True),
                 "doc_add": lambda d, c: _post_doc_add(d, c, especie),
+                "doc_import_catalog": lambda d, c: _post_doc_import_catalog(d, c, especie),
                 "eval_save": lambda d, c: _post_eval_save(d, c, especie, user_email),
                 "nc_open": lambda d, c: _post_nc_open(d, c, especie),
                 "nc_close": _post_nc_close,
@@ -2039,6 +2497,8 @@ def view(user_email: str, user_rol: str):
                 extra = {"sec": sec, "especie": especie}
                 if sec == "autoeval" and request.form.get("capitulo"):
                     extra["capitulo"] = request.form.get("capitulo")
+                if sec == "documentos" and request.form.get("tipo"):
+                    extra["tipo"] = request.form.get("tipo")
                 if sec == "cosecha" and request.form.get("cuartel"):
                     extra["cuartel"] = request.form.get("cuartel")
                 if sec == "planilla":
