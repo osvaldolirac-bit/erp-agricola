@@ -999,50 +999,98 @@ def _section_planilla(demo, conn, especie: str) -> dict:
     cols, rows = df_to_records(show, set(), demo) if not show.empty else ([], [])
 
     plan_edit = None
-    edit_id_raw = request.args.get("edit_id") or request.args.get("linea_id")
-    if demo.es_admin() and edit_id_raw and str(edit_id_raw).isdigit():
-        edf = pd.read_sql_query(
-            """SELECT id, n_aplicacion, fecha, n_orden, sector, especie, variedad, motivo,
-                      producto, n_aplicacion_txt, ingrediente, dosis, unidad_dosis, vol_total,
-                      gasto_total, unidad_gasto, tractor, maquina, aplicadores,
-                      car_etiqueta, car_agenda, car_mayor, fecha_viable,
-                      t_max, t_min, hr_pct, viento_kmh
-               FROM libro_campo WHERE id=?""",
-            conn,
-            params=(int(edit_id_raw),),
+    plan_mod_eventos = []
+    plan_mod_lineas = []
+    plan_app_sel = None
+    if demo.es_admin() and not df.empty:
+        ev = (
+            df.groupby(["n_aplicacion", "fecha", "sector"], dropna=False)
+            .agg(productos=("producto", lambda s: " + ".join(str(x) for x in s)), n_prod=("producto", "count"))
+            .reset_index()
+            .sort_values(["fecha", "n_aplicacion"], ascending=[False, False])
         )
-        if not edf.empty:
-            data = edf.iloc[0]
-            u_d = str(data.get("unidad_dosis") or "")
-            plan_edit = {
-                "id": int(data["id"]),
-                "n_app": int(data.get("n_aplicacion") or 0),
-                "fecha": str(data.get("fecha") or "")[:10],
-                "n_orden": "" if data.get("n_orden") in (None, "") else str(data.get("n_orden")),
-                "cuartel": str(data.get("sector") or "").upper(),
-                "especie": data.get("especie") or "",
-                "variedad": data.get("variedad") or "",
-                "motivo": data.get("motivo") or "",
-                "producto": data.get("producto") or "",
-                "n_app_txt": data.get("n_aplicacion_txt") or "",
-                "ingrediente": data.get("ingrediente") or "",
-                "dosis": float(data.get("dosis") or 0),
-                "unidad_dosis": u_d if u_d in _UNIDADES_DOSIS_PLANILLA else _UNIDADES_DOSIS_PLANILLA[0],
-                "vol_agua": float(data.get("vol_total") or 0),
-                "gasto_total": float(data.get("gasto_total") or 0),
-                "unidad_gasto": data.get("unidad_gasto") or "",
-                "tractor": data.get("tractor") or "",
-                "maquina": data.get("maquina") or "",
-                "aplicador": data.get("aplicadores") or "",
-                "car_etiqueta": int(data.get("car_etiqueta") or 0),
-                "car_agenda": int(data.get("car_agenda") or 0),
-                "car_mayor": int(data.get("car_mayor") or 0),
-                "fecha_viable": str(data.get("fecha_viable") or data.get("fecha") or "")[:10],
-                "t_max": "" if pd.isna(data.get("t_max")) else data.get("t_max"),
-                "t_min": "" if pd.isna(data.get("t_min")) else data.get("t_min"),
-                "hr_pct": "" if pd.isna(data.get("hr_pct")) else data.get("hr_pct"),
-                "viento_kmh": "" if pd.isna(data.get("viento_kmh")) else data.get("viento_kmh"),
-            }
+        for _, r in ev.iterrows():
+            n_app = int(r["n_aplicacion"] or 0)
+            plan_mod_eventos.append(
+                {
+                    "n_app": n_app,
+                    "label": (
+                        f"{n_app:05d} | {str(r['fecha'])[:10]} | {r['sector']} | "
+                        f"{r['productos']} ({int(r['n_prod'])} prod.)"
+                    ),
+                }
+            )
+        if plan_mod_eventos:
+            app_raw = request.args.get("n_app") or request.args.get("edit_n_app")
+            if app_raw and str(app_raw).isdigit():
+                plan_app_sel = int(app_raw)
+            else:
+                plan_app_sel = plan_mod_eventos[0]["n_app"]
+            # keep selection even if filtered out of current df view
+            if plan_app_sel not in {e["n_app"] for e in plan_mod_eventos}:
+                plan_app_sel = plan_mod_eventos[0]["n_app"]
+
+            lineas_df = pd.read_sql_query(
+                """SELECT id, producto FROM libro_campo
+                   WHERE n_aplicacion=? ORDER BY id""",
+                conn,
+                params=(plan_app_sel,),
+            )
+            for _, r in lineas_df.iterrows():
+                plan_mod_lineas.append(
+                    {"id": int(r["id"]), "label": f"ID {int(r['id'])} | {r['producto']}"}
+                )
+
+            lid = None
+            linea_raw = request.args.get("linea_id") or request.args.get("edit_id")
+            if linea_raw and str(linea_raw).isdigit():
+                lid = int(linea_raw)
+            elif plan_mod_lineas:
+                lid = plan_mod_lineas[0]["id"]
+
+            if lid is not None:
+                edf = pd.read_sql_query(
+                    """SELECT id, n_aplicacion, fecha, n_orden, sector, especie, variedad, motivo,
+                              producto, n_aplicacion_txt, ingrediente, dosis, unidad_dosis, vol_total,
+                              gasto_total, unidad_gasto, tractor, maquina, aplicadores,
+                              car_etiqueta, car_agenda, car_mayor, fecha_viable,
+                              t_max, t_min, hr_pct, viento_kmh
+                       FROM libro_campo WHERE id=?""",
+                    conn,
+                    params=(lid,),
+                )
+                if not edf.empty:
+                    data = edf.iloc[0]
+                    u_d = str(data.get("unidad_dosis") or "")
+                    plan_edit = {
+                        "id": int(data["id"]),
+                        "n_app": int(data.get("n_aplicacion") or 0),
+                        "fecha": str(data.get("fecha") or "")[:10],
+                        "n_orden": "" if data.get("n_orden") in (None, "") else str(data.get("n_orden")),
+                        "cuartel": str(data.get("sector") or "").upper(),
+                        "especie": data.get("especie") or "",
+                        "variedad": data.get("variedad") or "",
+                        "motivo": data.get("motivo") or "",
+                        "producto": data.get("producto") or "",
+                        "n_app_txt": data.get("n_aplicacion_txt") or "",
+                        "ingrediente": data.get("ingrediente") or "",
+                        "dosis": float(data.get("dosis") or 0),
+                        "unidad_dosis": u_d if u_d in _UNIDADES_DOSIS_PLANILLA else _UNIDADES_DOSIS_PLANILLA[0],
+                        "vol_agua": float(data.get("vol_total") or 0),
+                        "gasto_total": float(data.get("gasto_total") or 0),
+                        "unidad_gasto": data.get("unidad_gasto") or "",
+                        "tractor": data.get("tractor") or "",
+                        "maquina": data.get("maquina") or "",
+                        "aplicador": data.get("aplicadores") or "",
+                        "car_etiqueta": int(data.get("car_etiqueta") or 0),
+                        "car_agenda": int(data.get("car_agenda") or 0),
+                        "car_mayor": int(data.get("car_mayor") or 0),
+                        "fecha_viable": str(data.get("fecha_viable") or data.get("fecha") or "")[:10],
+                        "t_max": "" if pd.isna(data.get("t_max")) else data.get("t_max"),
+                        "t_min": "" if pd.isna(data.get("t_min")) else data.get("t_min"),
+                        "hr_pct": "" if pd.isna(data.get("hr_pct")) else data.get("hr_pct"),
+                        "viento_kmh": "" if pd.isna(data.get("viento_kmh")) else data.get("viento_kmh"),
+                    }
     pref = (cc_sel if cc_sel != "TODOS" else "activos").lower().replace(" ", "_")[:18]
     pdf = _pdf_url(
         demo,
@@ -1073,6 +1121,9 @@ def _section_planilla(demo, conn, especie: str) -> dict:
         "plan_lineas": plan_lineas,
         "plan_admin": bool(demo.es_admin()),
         "plan_edit": plan_edit,
+        "plan_mod_eventos": plan_mod_eventos,
+        "plan_mod_lineas": plan_mod_lineas,
+        "plan_app_sel": plan_app_sel,
         "pdf_plan_url": pdf,
         "plan_cuarteles": ["TODOS"] + cuarteles,
         "plan_cuarteles_activos": cuarteles,
@@ -1701,7 +1752,7 @@ def _post_planilla_edit(demo, conn, especie: str) -> dict:
     return {
         "ok": True,
         "msg": f"Línea {lid} actualizada (App N° {n_app:05d}).",
-        "extra": {"cuartel": sector, "edit_id": ""},
+        "extra": {"cuartel": sector, "n_app": n_app, "linea_id": lid},
     }
 
 
@@ -1739,6 +1790,36 @@ def _post_planilla_delete(demo, conn, especie: str) -> dict:
         "ok": True,
         "msg": f"Línea eliminada (App N° {n_app:05d} · {producto}).",
         "extra": {"cuartel": sector},
+    }
+
+
+
+def _post_planilla_delete_evento(demo, conn, especie: str) -> dict:
+    denied = _require_admin_gap(demo, request.form.get("clave_maestra"))
+    if denied:
+        return denied
+    try:
+        n_app = int(request.form.get("n_app") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Aplicación inválida."}
+    if n_app <= 0:
+        return {"ok": False, "msg": "Aplicación inválida."}
+    row = conn.execute(
+        "SELECT sector FROM libro_campo WHERE n_aplicacion=? LIMIT 1",
+        (n_app,),
+    ).fetchone()
+    sector = (row[0] if row else request.form.get("cuartel") or "").upper()
+    conn.execute("DELETE FROM libro_campo WHERE n_aplicacion=?", (n_app,))
+    try:
+        conn.execute("DELETE FROM gap_orden_aplicacion WHERE n_aplicacion=?", (n_app,))
+    except sqlite3.OperationalError:
+        pass
+    conn.commit()
+    demo.registrar_accion("GLOBALGAP PLANILLA DEL APP", f"App N°{n_app} completa")
+    return {
+        "ok": True,
+        "msg": f"Aplicación N° {n_app:05d} eliminada por completo.",
+        "extra": {"cuartel": sector or "TODOS"},
     }
 
 
@@ -1895,6 +1976,7 @@ def view(user_email: str, user_rol: str):
                 "planilla_import": lambda d, c: _post_planilla_import(d, c, especie),
                 "planilla_edit": lambda d, c: _post_planilla_edit(d, c, especie),
                 "planilla_delete": lambda d, c: _post_planilla_delete(d, c, especie),
+                "planilla_delete_evento": lambda d, c: _post_planilla_delete_evento(d, c, especie),
                 "agua_add": _post_agua_add,
                 "cal_add": _post_cal_add,
                 "gantt_actividad": _post_gantt_actividad,
@@ -1913,7 +1995,10 @@ def view(user_email: str, user_rol: str):
                     cu = (result.get("extra") or {}).get("cuartel") or request.form.get("cuartel") or request.form.get("sector")
                     if cu and cu != "TODOS":
                         extra["cuartel"] = cu
-                    # no reabrir editor tras guardar/eliminar
+                    if action == "planilla_edit" and request.form.get("n_app"):
+                        extra["n_app"] = request.form.get("n_app")
+                        if request.form.get("linea_id"):
+                            extra["linea_id"] = request.form.get("linea_id")
                 return _redirect_gap(**extra)
         finally:
             conn.close()

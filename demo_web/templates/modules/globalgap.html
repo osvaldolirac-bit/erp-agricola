@@ -323,7 +323,6 @@
       <table class="table table-sm table-striped demo-datatable w-100" style="font-size:12px">
         <thead>
           <tr>
-            {% if plan_admin %}<th class="text-nowrap">Acciones</th>{% endif %}
             <th class="text-nowrap">FECHA</th>
             <th class="text-nowrap">N° ORDEN</th>
             <th class="text-nowrap">CUARTEL</th>
@@ -340,22 +339,7 @@
         </thead>
         <tbody>
           {% for row in plan_lineas %}
-          <tr {% if plan_edit and plan_edit.id == row.id %}class="table-warning"{% endif %}>
-            {% if plan_admin %}
-            <td class="text-nowrap">
-              <a class="btn btn-outline-primary btn-sm py-0 px-1"
-                 href="{{ url_for('modules.globalgap', sec='planilla', especie=especie_sel, cuartel=plan_cuartel_sel, edit_id=row.id) }}">Editar</a>
-              <form method="post" class="d-inline" onsubmit="return confirm('¿Eliminar esta línea de la planilla?');">
-                <input type="hidden" name="action" value="planilla_delete">
-                <input type="hidden" name="sec" value="planilla">
-                <input type="hidden" name="especie" value="{{ especie_sel }}">
-                <input type="hidden" name="cuartel" value="{{ plan_cuartel_sel }}">
-                <input type="hidden" name="linea_id" value="{{ row.id }}">
-                <input type="password" name="clave_maestra" class="form-control form-control-sm d-inline-block" style="width:7rem" placeholder="Clave" required>
-                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1">Eliminar</button>
-              </form>
-            </td>
-            {% endif %}
+          <tr>
             <td class="text-nowrap">{{ row.fecha }}</td>
             <td class="text-nowrap">{{ row.n_orden }}</td>
             <td class="text-nowrap">{{ row.cuartel }}</td>
@@ -378,17 +362,43 @@
     {% endif %}
   </div>
 
-  {% if plan_admin and plan_edit %}
-  <div class="panel-card mb-3 border-warning">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-      <h2 class="h6 panel-title mb-0">Editar línea #{{ plan_edit.id }} · App N° {{ '%05d'|format(plan_edit.n_app) }}</h2>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('modules.globalgap', sec='planilla', especie=especie_sel, cuartel=plan_cuartel_sel) }}">Cancelar</a>
-    </div>
-    <form method="post" class="row g-2">
+  {% if plan_admin %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title mb-1">Editar / eliminar aplicación</h2>
+    <p class="small text-muted mb-3">Solo administrador · requiere clave maestra para guardar o borrar.</p>
+    {% if not plan_mod_eventos %}
+    <div class="alert alert-info mb-0">No hay aplicaciones en este filtro para modificar.</div>
+    {% else %}
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="cuartel" value="{{ plan_cuartel_sel }}">
+      <div class="col-md-8">
+        <label class="form-label small">Aplicación</label>
+        <select name="n_app" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for e in plan_mod_eventos %}
+          <option value="{{ e.n_app }}" {% if e.n_app == plan_app_sel %}selected{% endif %}>{{ e.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Línea de producto</label>
+        <select name="linea_id" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for l in plan_mod_lineas %}
+          <option value="{{ l.id }}" {% if plan_edit and l.id == plan_edit.id %}selected{% endif %}>{{ l.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+
+    {% if plan_edit %}
+    <h3 class="h6">Editando App N° {{ '%05d'|format(plan_edit.n_app) }} — {{ plan_edit.producto }}</h3>
+    <form method="post" class="row g-2 mb-3">
       <input type="hidden" name="action" value="planilla_edit">
       <input type="hidden" name="sec" value="planilla">
       <input type="hidden" name="especie" value="{{ especie_sel }}">
       <input type="hidden" name="linea_id" value="{{ plan_edit.id }}">
+      <input type="hidden" name="n_app" value="{{ plan_edit.n_app }}">
       <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ plan_edit.fecha }}" required></div>
       <div class="col-md-2"><label class="form-label small">N° orden</label><input type="text" name="n_orden" class="form-control form-control-sm" value="{{ plan_edit.n_orden }}"></div>
       <div class="col-md-3"><label class="form-label small">Cuartel</label>
@@ -425,8 +435,32 @@
       <div class="col-md-2"><label class="form-label small">HR %</label><input type="number" name="hr_pct" class="form-control form-control-sm" step="any" value="{{ plan_edit.hr_pct }}"></div>
       <div class="col-md-2"><label class="form-label small">Viento</label><input type="number" name="viento_kmh" class="form-control form-control-sm" step="any" value="{{ plan_edit.viento_kmh }}"></div>
       <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
-      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-warning btn-sm w-100">Guardar cambios</button></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm w-100">Actualizar línea</button></div>
     </form>
+
+    <form method="post" class="row g-2 mb-2" onsubmit="return confirm('¿Eliminar esta línea de producto?');">
+      <input type="hidden" name="action" value="planilla_delete">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="cuartel" value="{{ plan_cuartel_sel }}">
+      <input type="hidden" name="linea_id" value="{{ plan_edit.id }}">
+      <input type="hidden" name="n_app" value="{{ plan_edit.n_app }}">
+      <div class="col-md-4"><label class="form-label small">Clave para eliminar línea</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar línea</button></div>
+    </form>
+
+    <hr>
+    <form method="post" class="row g-2" onsubmit="return confirm('¿Eliminar la aplicación completa N° {{ '%05d'|format(plan_edit.n_app) }} (todos sus productos)?');">
+      <input type="hidden" name="action" value="planilla_delete_evento">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="cuartel" value="{{ plan_cuartel_sel }}">
+      <input type="hidden" name="n_app" value="{{ plan_edit.n_app }}">
+      <div class="col-md-4"><label class="form-label small">Clave para eliminar aplicación completa</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-4 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar App N° {{ '%05d'|format(plan_edit.n_app) }}</button></div>
+    </form>
+    {% endif %}
+    {% endif %}
   </div>
   {% endif %}
 
