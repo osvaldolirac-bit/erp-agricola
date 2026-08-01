@@ -107,6 +107,18 @@ def _redirect_gap(sec: str, especie: str, **extra) -> redirect_module:
     return redirect_module("globalgap", sec=sec, especie=especie, **extra)
 
 
+def _check_master_gap(demo, clave: str) -> bool:
+    return (clave or "").strip() == getattr(demo, "CLAVE_MAESTRA", "")
+
+
+def _require_admin_gap(demo, clave: str | None = None) -> dict | None:
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Requiere perfil administrador."}
+    if clave is not None and not _check_master_gap(demo, clave):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+    return None
+
+
 def _pdf_url(demo, df, titulo: str, archivo: str, estilo_fn=None) -> str | None:
     if df is None or df.empty:
         return None
@@ -922,6 +934,7 @@ def _section_planilla(demo, conn, especie: str) -> dict:
     )
 
     show = pd.DataFrame()
+    plan_lineas = []
     if not df.empty:
         show = pd.DataFrame({
             "FECHA": df["fecha"].astype(str).str[:10],
@@ -950,8 +963,86 @@ def _section_planilla(demo, conn, especie: str) -> dict:
             "HR%": df["hr_pct"].apply(lambda v: _fmt_num(v, 0)),
             "V km/h": df["viento_kmh"].apply(lambda v: _fmt_num(v, 1)),
         })
+        for _, r in df.iterrows():
+            plan_lineas.append(
+                {
+                    "id": int(r["id"]),
+                    "n_app": int(r["n_aplicacion"] or 0),
+                    "fecha": str(r["fecha"] or "")[:10],
+                    "n_orden": "" if r["n_orden"] in (None, "") else str(r["n_orden"]),
+                    "cuartel": r["sector"] or "",
+                    "especie": r["especie"] or "",
+                    "variedad": r["variedad"] or "",
+                    "motivo": r["motivo"] or "",
+                    "producto": r["producto"] or "",
+                    "n_app_txt": r["n_app_txt"] or "",
+                    "ingrediente": r["ingrediente"] or "",
+                    "dosis": _fmt_num(r["dosis"], 4),
+                    "unidad_dosis": r["unidad_dosis"] or "",
+                    "vol_agua": _fmt_num(r["vol_total"], 1),
+                    "gasto_total": _fmt_num(r["gasto_total"], 4),
+                    "unidad_gasto": r["unidad_gasto"] or "",
+                    "tractor": r["tractor"] or "",
+                    "maquina": r["maquina"] or "",
+                    "aplicador": r["aplicadores"] or "",
+                    "car_etiqueta": _fmt_num(r["car_etiqueta"], 0),
+                    "car_agenda": _fmt_num(r["car_agenda"], 0),
+                    "car_mayor": _fmt_num(r["car_mayor"], 0),
+                    "fecha_viable": str(r["fecha_viable"] or "")[:10].replace("None", ""),
+                    "t_max": _fmt_num(r["t_max"], 1),
+                    "t_min": _fmt_num(r["t_min"], 1),
+                    "hr_pct": _fmt_num(r["hr_pct"], 0),
+                    "viento_kmh": _fmt_num(r["viento_kmh"], 1),
+                }
+            )
 
     cols, rows = df_to_records(show, set(), demo) if not show.empty else ([], [])
+
+    plan_edit = None
+    edit_id_raw = request.args.get("edit_id") or request.args.get("linea_id")
+    if demo.es_admin() and edit_id_raw and str(edit_id_raw).isdigit():
+        edf = pd.read_sql_query(
+            """SELECT id, n_aplicacion, fecha, n_orden, sector, especie, variedad, motivo,
+                      producto, n_aplicacion_txt, ingrediente, dosis, unidad_dosis, vol_total,
+                      gasto_total, unidad_gasto, tractor, maquina, aplicadores,
+                      car_etiqueta, car_agenda, car_mayor, fecha_viable,
+                      t_max, t_min, hr_pct, viento_kmh
+               FROM libro_campo WHERE id=?""",
+            conn,
+            params=(int(edit_id_raw),),
+        )
+        if not edf.empty:
+            data = edf.iloc[0]
+            u_d = str(data.get("unidad_dosis") or "")
+            plan_edit = {
+                "id": int(data["id"]),
+                "n_app": int(data.get("n_aplicacion") or 0),
+                "fecha": str(data.get("fecha") or "")[:10],
+                "n_orden": "" if data.get("n_orden") in (None, "") else str(data.get("n_orden")),
+                "cuartel": str(data.get("sector") or "").upper(),
+                "especie": data.get("especie") or "",
+                "variedad": data.get("variedad") or "",
+                "motivo": data.get("motivo") or "",
+                "producto": data.get("producto") or "",
+                "n_app_txt": data.get("n_aplicacion_txt") or "",
+                "ingrediente": data.get("ingrediente") or "",
+                "dosis": float(data.get("dosis") or 0),
+                "unidad_dosis": u_d if u_d in _UNIDADES_DOSIS_PLANILLA else _UNIDADES_DOSIS_PLANILLA[0],
+                "vol_agua": float(data.get("vol_total") or 0),
+                "gasto_total": float(data.get("gasto_total") or 0),
+                "unidad_gasto": data.get("unidad_gasto") or "",
+                "tractor": data.get("tractor") or "",
+                "maquina": data.get("maquina") or "",
+                "aplicador": data.get("aplicadores") or "",
+                "car_etiqueta": int(data.get("car_etiqueta") or 0),
+                "car_agenda": int(data.get("car_agenda") or 0),
+                "car_mayor": int(data.get("car_mayor") or 0),
+                "fecha_viable": str(data.get("fecha_viable") or data.get("fecha") or "")[:10],
+                "t_max": "" if pd.isna(data.get("t_max")) else data.get("t_max"),
+                "t_min": "" if pd.isna(data.get("t_min")) else data.get("t_min"),
+                "hr_pct": "" if pd.isna(data.get("hr_pct")) else data.get("hr_pct"),
+                "viento_kmh": "" if pd.isna(data.get("viento_kmh")) else data.get("viento_kmh"),
+            }
     pref = (cc_sel if cc_sel != "TODOS" else "activos").lower().replace(" ", "_")[:18]
     pdf = _pdf_url(
         demo,
@@ -979,6 +1070,9 @@ def _section_planilla(demo, conn, especie: str) -> dict:
     return {
         "plan_cols": cols,
         "plan_rows": rows,
+        "plan_lineas": plan_lineas,
+        "plan_admin": bool(demo.es_admin()),
+        "plan_edit": plan_edit,
         "pdf_plan_url": pdf,
         "plan_cuarteles": ["TODOS"] + cuarteles,
         "plan_cuarteles_activos": cuarteles,
@@ -1540,6 +1634,114 @@ def _post_planilla_orden(demo, conn, especie: str) -> dict:
     }
 
 
+
+def _post_planilla_edit(demo, conn, especie: str) -> dict:
+    denied = _require_admin_gap(demo, request.form.get("clave_maestra"))
+    if denied:
+        return denied
+    _ensure_libro_campo_planilla(conn)
+    try:
+        lid = int(request.form.get("linea_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Línea inválida."}
+    row = conn.execute("SELECT id, n_aplicacion, sector FROM libro_campo WHERE id=?", (lid,)).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Línea no encontrada."}
+    n_app = int(row[1] or 0)
+    sector = (request.form.get("cuartel") or request.form.get("sector") or row[2] or "").strip().upper()
+    if sector and sector not in [c.upper() for c in PLANILLA_CUARTELES_ACTIVOS]:
+        return {"ok": False, "msg": "Cuartel no activo para planilla."}
+
+    car_e = _parse_int_form("car_etiqueta")
+    car_a = _parse_int_form("car_agenda")
+    car_m_raw = request.form.get("car_mayor")
+    car_m = max(car_e, car_a) if car_m_raw in (None, "") else _parse_int_form("car_mayor", max(car_e, car_a))
+    fe = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    fv = parse_date(request.form.get("fecha_viable"), fe + timedelta(days=car_m))
+
+    conn.execute(
+        """UPDATE libro_campo SET
+           fecha=?, n_orden=?, sector=?, especie=?, variedad=?, motivo=?, producto=?,
+           n_aplicacion_txt=?, ingrediente=?, dosis=?, unidad_dosis=?, vol_total=?,
+           gasto_total=?, unidad_gasto=?, tractor=?, maquina=?, aplicadores=?,
+           car_etiqueta=?, car_agenda=?, car_mayor=?, fecha_viable=?,
+           t_max=?, t_min=?, hr_pct=?, viento_kmh=?
+           WHERE id=?""",
+        (
+            fe.isoformat(),
+            (request.form.get("n_orden") or "").strip(),
+            sector,
+            (request.form.get("especie_cultivo") or request.form.get("especie") or especie).strip(),
+            (request.form.get("variedad") or "").strip(),
+            (request.form.get("motivo") or "").strip(),
+            (request.form.get("producto") or "").strip(),
+            (request.form.get("n_app_txt") or "").strip(),
+            (request.form.get("ingrediente") or "").strip(),
+            _parse_float_form("dosis"),
+            request.form.get("unidad_dosis") or _UNIDADES_DOSIS_PLANILLA[0],
+            _parse_float_form("vol_agua"),
+            _parse_float_form("gasto_total"),
+            (request.form.get("unidad_gasto") or "").strip(),
+            (request.form.get("tractor") or "").strip(),
+            (request.form.get("maquina") or "").strip(),
+            (request.form.get("aplicador") or "").strip(),
+            car_e,
+            car_a,
+            car_m,
+            fv.isoformat(),
+            _parse_optional_float_form("t_max"),
+            _parse_optional_float_form("t_min"),
+            _parse_optional_float_form("hr_pct"),
+            _parse_optional_float_form("viento_kmh"),
+            lid,
+        ),
+    )
+    conn.commit()
+    demo.registrar_accion("GLOBALGAP PLANILLA EDIT", f"App N°{n_app} línea {lid}")
+    return {
+        "ok": True,
+        "msg": f"Línea {lid} actualizada (App N° {n_app:05d}).",
+        "extra": {"cuartel": sector, "edit_id": ""},
+    }
+
+
+def _post_planilla_delete(demo, conn, especie: str) -> dict:
+    denied = _require_admin_gap(demo, request.form.get("clave_maestra"))
+    if denied:
+        return denied
+    try:
+        lid = int(request.form.get("linea_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Línea inválida."}
+    row = conn.execute(
+        "SELECT id, n_aplicacion, sector, producto FROM libro_campo WHERE id=?",
+        (lid,),
+    ).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Línea no encontrada."}
+    n_app = int(row[1] or 0)
+    sector = (row[2] or "").upper()
+    producto = row[3] or ""
+    conn.execute("DELETE FROM libro_campo WHERE id=?", (lid,))
+    # si no quedan líneas del evento, limpia cabecera de orden
+    left = conn.execute(
+        "SELECT COUNT(*) FROM libro_campo WHERE n_aplicacion=?",
+        (n_app,),
+    ).fetchone()[0]
+    if left == 0:
+        try:
+            conn.execute("DELETE FROM gap_orden_aplicacion WHERE n_aplicacion=?", (n_app,))
+        except sqlite3.OperationalError:
+            pass
+    conn.commit()
+    demo.registrar_accion("GLOBALGAP PLANILLA DEL", f"App N°{n_app} línea {lid} · {producto}")
+    return {
+        "ok": True,
+        "msg": f"Línea eliminada (App N° {n_app:05d} · {producto}).",
+        "extra": {"cuartel": sector},
+    }
+
+
 def _post_planilla_import(demo, conn, especie: str) -> dict:
     _ensure_libro_campo_planilla(conn)
     paths = _planilla_csv_paths()
@@ -1691,6 +1893,8 @@ def view(user_email: str, user_rol: str):
                 "planilla_matriz": lambda d, c: _post_planilla_orden(d, c, especie),
                 "planilla_orden": lambda d, c: _post_planilla_orden(d, c, especie),
                 "planilla_import": lambda d, c: _post_planilla_import(d, c, especie),
+                "planilla_edit": lambda d, c: _post_planilla_edit(d, c, especie),
+                "planilla_delete": lambda d, c: _post_planilla_delete(d, c, especie),
                 "agua_add": _post_agua_add,
                 "cal_add": _post_cal_add,
                 "gantt_actividad": _post_gantt_actividad,
@@ -1706,9 +1910,10 @@ def view(user_email: str, user_rol: str):
                 if sec == "cosecha" and request.form.get("cuartel"):
                     extra["cuartel"] = request.form.get("cuartel")
                 if sec == "planilla":
-                    cu = (result.get("extra") or {}).get("cuartel") or request.form.get("cuartel")
+                    cu = (result.get("extra") or {}).get("cuartel") or request.form.get("cuartel") or request.form.get("sector")
                     if cu and cu != "TODOS":
                         extra["cuartel"] = cu
+                    # no reabrir editor tras guardar/eliminar
                 return _redirect_gap(**extra)
         finally:
             conn.close()

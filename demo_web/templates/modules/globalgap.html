@@ -318,17 +318,117 @@
       <button type="submit" class="btn btn-outline-primary btn-sm">Cargar historial CEREZOS CORTE 1</button>
     </form>
     {% endif %}
-    {% if plan_rows %}
+    {% if plan_lineas %}
     <div class="table-responsive mb-0">
       <table class="table table-sm table-striped demo-datatable w-100" style="font-size:12px">
-        <thead><tr>{% for c in plan_cols %}<th class="text-nowrap">{{ c }}</th>{% endfor %}</tr></thead>
-        <tbody>{% for row in plan_rows %}<tr>{% for c in plan_cols %}<td class="text-nowrap">{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        <thead>
+          <tr>
+            {% if plan_admin %}<th class="text-nowrap">Acciones</th>{% endif %}
+            <th class="text-nowrap">FECHA</th>
+            <th class="text-nowrap">N° ORDEN</th>
+            <th class="text-nowrap">CUARTEL</th>
+            <th class="text-nowrap">PRODUCTO</th>
+            <th class="text-nowrap">N° APLICACIÓN</th>
+            <th class="text-nowrap">ING. ACTIVO</th>
+            <th class="text-nowrap">DOSIS/100</th>
+            <th class="text-nowrap">VOL AGUA</th>
+            <th class="text-nowrap">GASTO PROD</th>
+            <th class="text-nowrap">APLICADOR</th>
+            <th class="text-nowrap">MOTIVO</th>
+            <th class="text-nowrap">FECHA VIABLE</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in plan_lineas %}
+          <tr {% if plan_edit and plan_edit.id == row.id %}class="table-warning"{% endif %}>
+            {% if plan_admin %}
+            <td class="text-nowrap">
+              <a class="btn btn-outline-primary btn-sm py-0 px-1"
+                 href="{{ url_for('modules.globalgap', sec='planilla', especie=especie_sel, cuartel=plan_cuartel_sel, edit_id=row.id) }}">Editar</a>
+              <form method="post" class="d-inline" onsubmit="return confirm('¿Eliminar esta línea de la planilla?');">
+                <input type="hidden" name="action" value="planilla_delete">
+                <input type="hidden" name="sec" value="planilla">
+                <input type="hidden" name="especie" value="{{ especie_sel }}">
+                <input type="hidden" name="cuartel" value="{{ plan_cuartel_sel }}">
+                <input type="hidden" name="linea_id" value="{{ row.id }}">
+                <input type="password" name="clave_maestra" class="form-control form-control-sm d-inline-block" style="width:7rem" placeholder="Clave" required>
+                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1">Eliminar</button>
+              </form>
+            </td>
+            {% endif %}
+            <td class="text-nowrap">{{ row.fecha }}</td>
+            <td class="text-nowrap">{{ row.n_orden }}</td>
+            <td class="text-nowrap">{{ row.cuartel }}</td>
+            <td class="text-nowrap">{{ row.producto }}</td>
+            <td class="text-nowrap">{{ row.n_app_txt }}</td>
+            <td class="text-nowrap">{{ row.ingrediente }}</td>
+            <td class="text-nowrap">{{ row.dosis }} {{ row.unidad_dosis }}</td>
+            <td class="text-nowrap">{{ row.vol_agua }}</td>
+            <td class="text-nowrap">{{ row.gasto_total }} {{ row.unidad_gasto }}</td>
+            <td class="text-nowrap">{{ row.aplicador }}</td>
+            <td class="text-nowrap">{{ row.motivo }}</td>
+            <td class="text-nowrap">{{ row.fecha_viable }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
       </table>
     </div>
     {% else %}
     <div class="alert alert-info mb-0">Sin aplicaciones registradas para este filtro.</div>
     {% endif %}
   </div>
+
+  {% if plan_admin and plan_edit %}
+  <div class="panel-card mb-3 border-warning">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h2 class="h6 panel-title mb-0">Editar línea #{{ plan_edit.id }} · App N° {{ '%05d'|format(plan_edit.n_app) }}</h2>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('modules.globalgap', sec='planilla', especie=especie_sel, cuartel=plan_cuartel_sel) }}">Cancelar</a>
+    </div>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="planilla_edit">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="linea_id" value="{{ plan_edit.id }}">
+      <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ plan_edit.fecha }}" required></div>
+      <div class="col-md-2"><label class="form-label small">N° orden</label><input type="text" name="n_orden" class="form-control form-control-sm" value="{{ plan_edit.n_orden }}"></div>
+      <div class="col-md-3"><label class="form-label small">Cuartel</label>
+        <select name="cuartel" class="form-select form-select-sm" required>
+          {% for c in plan_cuarteles_activos %}
+          <option value="{{ c }}" {% if c == plan_edit.cuartel %}selected{% endif %}>{{ plan_sector_labels.get(c, c) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label small">Especie</label><input type="text" name="especie_cultivo" class="form-control form-control-sm" value="{{ plan_edit.especie }}"></div>
+      <div class="col-md-3"><label class="form-label small">Variedad</label><input type="text" name="variedad" class="form-control form-control-sm" value="{{ plan_edit.variedad }}"></div>
+      <div class="col-md-3"><label class="form-label small">Producto</label><input type="text" name="producto" class="form-control form-control-sm" value="{{ plan_edit.producto }}" required></div>
+      <div class="col-md-3"><label class="form-label small">Ingrediente</label><input type="text" name="ingrediente" class="form-control form-control-sm" value="{{ plan_edit.ingrediente }}"></div>
+      <div class="col-md-2"><label class="form-label small">N° aplicación</label><input type="text" name="n_app_txt" class="form-control form-control-sm" value="{{ plan_edit.n_app_txt }}"></div>
+      <div class="col-md-4"><label class="form-label small">Motivo / objetivo</label><input type="text" name="motivo" class="form-control form-control-sm" value="{{ plan_edit.motivo }}"></div>
+      <div class="col-md-2"><label class="form-label small">Dosis /100</label><input type="number" name="dosis" class="form-control form-control-sm" step="any" value="{{ plan_edit.dosis }}"></div>
+      <div class="col-md-2"><label class="form-label small">Unidad dosis</label>
+        <select name="unidad_dosis" class="form-select form-select-sm">
+          {% for u in plan_unidades %}<option value="{{ u }}" {% if u == plan_edit.unidad_dosis %}selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label small">Vol. agua</label><input type="number" name="vol_agua" class="form-control form-control-sm" step="any" value="{{ plan_edit.vol_agua }}"></div>
+      <div class="col-md-2"><label class="form-label small">Gasto prod.</label><input type="number" name="gasto_total" class="form-control form-control-sm" step="any" value="{{ plan_edit.gasto_total }}"></div>
+      <div class="col-md-2"><label class="form-label small">U. gasto</label><input type="text" name="unidad_gasto" class="form-control form-control-sm" value="{{ plan_edit.unidad_gasto }}"></div>
+      <div class="col-md-2"><label class="form-label small">Tractor</label><input type="text" name="tractor" class="form-control form-control-sm" value="{{ plan_edit.tractor }}"></div>
+      <div class="col-md-3"><label class="form-label small">Máquina</label><input type="text" name="maquina" class="form-control form-control-sm" value="{{ plan_edit.maquina }}"></div>
+      <div class="col-md-3"><label class="form-label small">Aplicador</label><input type="text" name="aplicador" class="form-control form-control-sm" value="{{ plan_edit.aplicador }}"></div>
+      <div class="col-md-2"><label class="form-label small">Car. etiqueta</label><input type="number" name="car_etiqueta" class="form-control form-control-sm" step="1" value="{{ plan_edit.car_etiqueta }}"></div>
+      <div class="col-md-2"><label class="form-label small">Car. agenda</label><input type="number" name="car_agenda" class="form-control form-control-sm" step="1" value="{{ plan_edit.car_agenda }}"></div>
+      <div class="col-md-2"><label class="form-label small">Car. mayor</label><input type="number" name="car_mayor" class="form-control form-control-sm" step="1" value="{{ plan_edit.car_mayor }}"></div>
+      <div class="col-md-2"><label class="form-label small">Fecha viable</label><input type="date" name="fecha_viable" class="form-control form-control-sm" value="{{ plan_edit.fecha_viable }}"></div>
+      <div class="col-md-2"><label class="form-label small">T° máx</label><input type="number" name="t_max" class="form-control form-control-sm" step="any" value="{{ plan_edit.t_max }}"></div>
+      <div class="col-md-2"><label class="form-label small">T° mín</label><input type="number" name="t_min" class="form-control form-control-sm" step="any" value="{{ plan_edit.t_min }}"></div>
+      <div class="col-md-2"><label class="form-label small">HR %</label><input type="number" name="hr_pct" class="form-control form-control-sm" step="any" value="{{ plan_edit.hr_pct }}"></div>
+      <div class="col-md-2"><label class="form-label small">Viento</label><input type="number" name="viento_kmh" class="form-control form-control-sm" step="any" value="{{ plan_edit.viento_kmh }}"></div>
+      <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-warning btn-sm w-100">Guardar cambios</button></div>
+    </form>
+  </div>
+  {% endif %}
 
   <div class="panel-card mb-3">
     <h2 class="h6 panel-title mb-1">Matriz de ingreso de aplicaciones</h2>
