@@ -6,7 +6,7 @@ import mimetypes
 import os
 import re
 import sqlite3
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -57,6 +57,27 @@ _ESPECIE_DOC_SLUG = {
     "ESPECIE 1": "cerezos",
     "ESPECIE 2": "ciruelos",
 }
+
+# Ancla de cosecha para Gantt GlobalGAP (Planificación).
+_PLANIF_COSECHA = {
+    "Cerezos": date(2026, 11, 1),
+    "Ciruelos": date(2027, 1, 15),
+    "ESPECIE 1": date(2026, 11, 1),
+    "ESPECIE 2": date(2027, 1, 15),
+}
+_PLANIF_COSECHA_FIN = {
+    "Cerezos": date(2026, 11, 22),
+    "Ciruelos": date(2027, 2, 7),
+    "ESPECIE 1": date(2026, 11, 22),
+    "ESPECIE 2": date(2027, 2, 7),
+}
+_PLANIF_CUARTEL = {
+    "Cerezos": "CEREZOS CORTE 1",
+    "Ciruelos": "CIRUELOS",
+    "ESPECIE 1": "CEREZOS CORTE 1",
+    "ESPECIE 2": "CIRUELOS",
+}
+_PLANIF_PROYECTO_PREF = "GlobalGAP Certificación"
 
 SECCIONES = [
     ("pppl", "📋 PPPL"),
@@ -780,6 +801,335 @@ def _section_calibracion(demo, conn, especie: str) -> dict:
     }
 
 
+def _cosecha_ancla(especie: str) -> date:
+    return _PLANIF_COSECHA.get((especie or "").strip(), date(2026, 11, 1))
+
+
+def _cosecha_fin(especie: str) -> date:
+    return _PLANIF_COSECHA_FIN.get((especie or "").strip(), date(2026, 11, 22))
+
+
+def _d(base: date, days: int) -> str:
+    return (base + timedelta(days=days)).isoformat()
+
+
+def _planif_proyecto_nombre(especie: str) -> str:
+    h = _cosecha_ancla(especie)
+    return f"{_PLANIF_PROYECTO_PREF} — {especie} (cosecha {h.strftime('%b %Y')})"
+
+
+def _planif_tasks_certificacion(especie: str) -> list[dict]:
+    """Gantt de certificación alineada a documentos + autoevaluación, anclada a cosecha."""
+    h = _cosecha_ancla(especie)
+    h_fin = _cosecha_fin(especie)
+    cierre = h_fin + timedelta(days=14)
+    cuartel = _PLANIF_CUARTEL.get(especie, "")
+    return [
+        {
+            "actividad": "Documentos GlobalGAP cargados (Listado Maestro / Drive)",
+            "inicio": _d(h, -120),
+            "fin": _d(h, -100),
+            "prioridad": "Alta",
+            "responsable": "Certificación",
+            "notas": "SYNC:DOCS_ARCHIVO",
+        },
+        {
+            "actividad": "Evaluaciones de riesgo (GGAR) marcadas Cumple en autoevaluación",
+            "inicio": _d(h, -110),
+            "fin": _d(h, -75),
+            "prioridad": "Alta",
+            "responsable": "Certificación",
+            "notas": "SYNC:DOCS_TIPO:Evaluaciones Riesgo",
+        },
+        {
+            "actividad": "Procedimientos e instructivos (GGPR/GGIN) con Cumple",
+            "inicio": _d(h, -100),
+            "fin": _d(h, -65),
+            "prioridad": "Alta",
+            "responsable": "Jefe de Campo",
+            "notas": "SYNC:DOCS_TIPO:Procedimientos|Instructivos",
+        },
+        {
+            "actividad": "Planes de gestión (GGPL) vigentes y asociados",
+            "inicio": _d(h, -95),
+            "fin": _d(h, -55),
+            "prioridad": "Alta",
+            "responsable": "Certificación",
+            "notas": "SYNC:DOCS_TIPO:Plan Gestion",
+        },
+        {
+            "actividad": "Registros operativos (GGRG) y Anexos con Cumple",
+            "inicio": _d(h, -90),
+            "fin": _d(h, -40),
+            "prioridad": "Media",
+            "responsable": "Administración Campo",
+            "notas": "SYNC:DOCS_TIPO:Registro|Anexo",
+        },
+        {
+            "actividad": "Autoevaluación AFB (predio, personal, trazabilidad)",
+            "inicio": _d(h, -85),
+            "fin": _d(h, -50),
+            "prioridad": "Alta",
+            "responsable": "Certificación",
+            "notas": "SYNC:CAP:AFB",
+        },
+        {
+            "actividad": "Autoevaluación CB + planilla aplicaciones / PPPL",
+            "inicio": _d(h, -75),
+            "fin": _d(h, -35),
+            "prioridad": "Alta",
+            "responsable": "Jefe de Campo",
+            "notas": "SYNC:CAP:CB",
+        },
+        {
+            "actividad": "Autoevaluación AGUA + calibración equipos",
+            "inicio": _d(h, -60),
+            "fin": _d(h, -25),
+            "prioridad": "Alta",
+            "responsable": "Riego / Taller",
+            "notas": "SYNC:CAP:AGUA",
+        },
+        {
+            "actividad": "Autoevaluación FV (PHI, higiene y liberación a cosecha)",
+            "inicio": _d(h, -45),
+            "fin": _d(h, -10),
+            "prioridad": "Alta",
+            "responsable": "Supervisor Cosecha",
+            "notas": "SYNC:CAP:FV",
+        },
+        {
+            "actividad": "Autoevaluación AUDITORIA / NC / mejora continua",
+            "inicio": _d(h, -40),
+            "fin": _d(h, -15),
+            "prioridad": "Alta",
+            "responsable": "Certificación",
+            "notas": "SYNC:CAP:AUDITORIA",
+        },
+        {
+            "actividad": f"Preparación logística cosecha — {cuartel or especie}",
+            "inicio": _d(h, -20),
+            "fin": _d(h, -1),
+            "prioridad": "Alta",
+            "responsable": "Supervisor Cosecha",
+            "notas": "Pre-cosecha",
+        },
+        {
+            "actividad": f"Cosecha {especie} ({h.isoformat()} → {h_fin.isoformat()})",
+            "inicio": h.isoformat(),
+            "fin": h_fin.isoformat(),
+            "prioridad": "Alta",
+            "responsable": "Supervisor Cosecha",
+            "notas": "COSECHA",
+        },
+        {
+            "actividad": "Cierre post-cosecha: trazabilidad, balance de masas y evidencias",
+            "inicio": h.isoformat(),
+            "fin": cierre.isoformat(),
+            "prioridad": "Media",
+            "responsable": "Certificación",
+            "notas": "SYNC:CAP:AFB|FV|AUDITORIA",
+        },
+    ]
+
+
+def _avance_sync_from_notas(conn, especie: str, notas: str) -> float | None:
+    """Calcula % avance desde autoevaluación/documentos según tag SYNC: en notas."""
+    tag = (notas or "").strip()
+    if not tag.startswith("SYNC:"):
+        return None
+    _ensure_gap_documentos_schema(conn)
+    kind = tag[5:]
+
+    def _pct(ok: int, total: int) -> float:
+        if total <= 0:
+            return 0.0
+        return round(100.0 * ok / total, 1)
+
+    if kind == "DOCS_ARCHIVO":
+        row = conn.execute(
+            """SELECT COUNT(*),
+                      SUM(CASE WHEN COALESCE(archivo_relpath,'')!='' THEN 1 ELSE 0 END)
+               FROM gap_documentos WHERE COALESCE(especie,'')=?""",
+            (especie,),
+        ).fetchone()
+        return _pct(int(row[1] or 0), int(row[0] or 0))
+
+    if kind.startswith("DOCS_TIPO:"):
+        tipos = [t.strip() for t in kind.split(":", 1)[1].split("|") if t.strip()]
+        if not tipos:
+            return 0.0
+        ph = ",".join("?" for _ in tipos)
+        # docs de esos tipos vinculados a checklist de la especie
+        row = conn.execute(
+            f"""SELECT COUNT(*),
+                       SUM(CASE WHEN COALESCE(l.cumple,0)=1 THEN 1 ELSE 0 END)
+                FROM gap_doc_checklist l
+                JOIN gap_documentos d ON d.id=l.documento_id
+                WHERE COALESCE(l.especie,d.especie,'')=?
+                  AND d.tipo IN ({ph})""",
+            [especie, *tipos],
+        ).fetchone()
+        return _pct(int(row[1] or 0), int(row[0] or 0))
+
+    if kind.startswith("CAP:"):
+        caps = [c.strip() for c in kind.split(":", 1)[1].split("|") if c.strip()]
+        if not caps:
+            return 0.0
+        ph = ",".join("?" for _ in caps)
+        # avance = docs cumple / docs asociados de ítems del capítulo
+        row = conn.execute(
+            f"""SELECT COUNT(*),
+                       SUM(CASE WHEN COALESCE(l.cumple,0)=1 THEN 1 ELSE 0 END)
+                FROM gap_doc_checklist l
+                JOIN gap_checklist c ON c.codigo=l.checklist_codigo
+                WHERE COALESCE(l.especie,'ESPECIE 1')=?
+                  AND c.capitulo IN ({ph})""",
+            [especie, *caps],
+        ).fetchone()
+        total, ok = int(row[0] or 0), int(row[1] or 0)
+        if total == 0:
+            # fallback: ítems del capítulo evaluados como Cumple
+            row2 = conn.execute(
+                f"""SELECT COUNT(*),
+                           SUM(CASE WHEN COALESCE(e.estado,'Pendiente')='Cumple' THEN 1 ELSE 0 END)
+                    FROM gap_checklist c
+                    LEFT JOIN gap_evaluacion e
+                      ON e.checklist_id=c.id AND COALESCE(e.especie,'ESPECIE 1')=?
+                    WHERE c.capitulo IN ({ph})""",
+                [especie, *caps],
+            ).fetchone()
+            return _pct(int(row2[1] or 0), int(row2[0] or 0))
+        return _pct(ok, total)
+
+    return None
+
+
+def _sync_gantt_avances(conn, especie: str) -> int:
+    """Actualiza avance_pct/estado de tareas con tags SYNC: según documentos/autoeval."""
+    rows = conn.execute(
+        """SELECT t.id, t.notas, t.avance_pct, t.estado
+           FROM gantt_tareas t
+           JOIN gantt_proyectos p ON p.id=t.proyecto_id
+           WHERE p.estado='Activo' AND COALESCE(p.especie,'')=?
+             AND COALESCE(t.notas,'') LIKE 'SYNC:%'""",
+        (especie,),
+    ).fetchall()
+    n = 0
+    for tid, notas, avance, estado in rows:
+        pct = _avance_sync_from_notas(conn, especie, notas or "")
+        if pct is None:
+            continue
+        nuevo_estado = "Completada" if pct >= 100 else ("En curso" if pct > 0 else "Pendiente")
+        if abs(float(avance or 0) - pct) > 0.05 or (estado or "") != nuevo_estado:
+            conn.execute(
+                "UPDATE gantt_tareas SET avance_pct=?, estado=? WHERE id=?",
+                (pct, nuevo_estado, tid),
+            )
+            n += 1
+    if n:
+        conn.commit()
+    return n
+
+
+def _ensure_planificacion_certificacion(conn, demo, especie: str, force: bool = False) -> dict:
+    """Crea/actualiza el proyecto Gantt de certificación para la especie (anclado a cosecha)."""
+    if especie not in _PLANIF_COSECHA and especie not in ("Cerezos", "Ciruelos", "ESPECIE 1", "ESPECIE 2"):
+        return {"ok": False, "msg": "Especie sin ancla de cosecha.", "proyecto_id": None}
+
+    nombre = _planif_proyecto_nombre(especie)
+    h = _cosecha_ancla(especie)
+    h_fin = _cosecha_fin(especie)
+    inicio = h - timedelta(days=120)
+    cuartel = _PLANIF_CUARTEL.get(especie, "")
+    desc = (
+        f"Planificación GlobalGAP alineada a documentos y autoevaluación. "
+        f"Cosecha {especie}: {h.isoformat()} a {h_fin.isoformat()}."
+    )
+
+    row = conn.execute(
+        """SELECT id FROM gantt_proyectos
+           WHERE COALESCE(especie,'')=? AND nombre LIKE ?
+           ORDER BY id DESC LIMIT 1""",
+        (especie, f"{_PLANIF_PROYECTO_PREF}%"),
+    ).fetchone()
+    if row:
+        proyecto_id = int(row[0])
+        conn.execute(
+            """UPDATE gantt_proyectos
+               SET nombre=?, descripcion=?, fecha_inicio=?, fecha_fin=?,
+                   centro_costo=?, responsable=?, estado='Activo', especie=?
+               WHERE id=?""",
+            (
+                nombre,
+                desc,
+                inicio.isoformat(),
+                (h_fin + timedelta(days=14)).isoformat(),
+                cuartel or "OTROS",
+                "Certificación",
+                especie,
+                proyecto_id,
+            ),
+        )
+    else:
+        cur = conn.execute(
+            """INSERT INTO gantt_proyectos
+               (nombre, descripcion, fecha_inicio, fecha_fin, centro_costo, responsable, estado, especie)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                nombre,
+                desc,
+                inicio.isoformat(),
+                (h_fin + timedelta(days=14)).isoformat(),
+                cuartel or "OTROS",
+                "Certificación",
+                "Activo",
+                especie,
+            ),
+        )
+        proyecto_id = int(cur.lastrowid)
+
+    # Desactivar proyectos viejos de temporada genérica de la misma especie (si no son el de certificación)
+    conn.execute(
+        """UPDATE gantt_proyectos SET estado='Inactivo'
+           WHERE COALESCE(especie,'')=?
+             AND id!=?
+             AND (nombre LIKE 'Temporada %' OR nombre LIKE 'Certificación GlobalGAP%')""",
+        (especie, proyecto_id),
+    )
+
+    existing = conn.execute(
+        "SELECT COUNT(*) FROM gantt_tareas WHERE proyecto_id=?",
+        (proyecto_id,),
+    ).fetchone()[0]
+    if force or int(existing or 0) == 0:
+        conn.execute("DELETE FROM gantt_tareas WHERE proyecto_id=?", (proyecto_id,))
+        for t in _planif_tasks_certificacion(especie):
+            pct = _avance_sync_from_notas(conn, especie, t["notas"]) or 0.0
+            estado = "Completada" if pct >= 100 else ("En curso" if pct > 0 else "Pendiente")
+            conn.execute(
+                """INSERT INTO gantt_tareas
+                   (proyecto_id, actividad, fecha_inicio, fecha_fin, avance_pct,
+                    responsable, prioridad, estado, notas)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    proyecto_id,
+                    t["actividad"],
+                    t["inicio"],
+                    t["fin"],
+                    pct,
+                    t["responsable"],
+                    t["prioridad"],
+                    estado,
+                    t["notas"],
+                ),
+            )
+    else:
+        _sync_gantt_avances(conn, especie)
+
+    conn.commit()
+    return {"ok": True, "msg": f"Gantt certificación lista para {especie}.", "proyecto_id": proyecto_id}
+
+
 def _gantt_form_ctx(demo, conn, especie: str, df) -> dict:
     proys = pd.read_sql_query(
         """SELECT id, nombre FROM gantt_proyectos
@@ -811,10 +1161,38 @@ def _gantt_form_ctx(demo, conn, especie: str, df) -> dict:
 
 
 def _section_planificacion(demo, conn, especie: str) -> dict:
+    _ensure_gap_documentos_schema(conn)
+    _ensure_planificacion_certificacion(conn, demo, especie, force=False)
+    _sync_gantt_avances(conn, especie)
     df = demo.cargar_tareas_gantt(conn, especie=especie)
     form_ctx = _gantt_form_ctx(demo, conn, especie, df)
+
+    h = _cosecha_ancla(especie)
+    h_fin = _cosecha_fin(especie)
+    cosecha_ctx = {
+        "planif_cosecha_inicio": h.isoformat(),
+        "planif_cosecha_fin": h_fin.isoformat(),
+        "planif_cosecha_label": f"{h.strftime('%d-%m-%Y')} → {h_fin.strftime('%d-%m-%Y')}",
+        "planif_cuartel": _PLANIF_CUARTEL.get(especie, ""),
+        "planif_proyecto": _planif_proyecto_nombre(especie),
+        "planif_docs_url": url_for("modules.globalgap", sec="documentos", especie=especie),
+        "planif_autoeval_url": url_for("modules.globalgap", sec="autoeval", especie=especie),
+        "planif_planilla_url": url_for(
+            "modules.globalgap",
+            sec="planilla",
+            especie=especie,
+            cuartel=_PLANIF_CUARTEL.get(especie, ""),
+        ),
+    }
+
     if df is None or df.empty:
-        return {"gantt_rows": [], "gantt_kpis": {}, "pdf_gantt_url": None, **form_ctx}
+        return {
+            "gantt_rows": [],
+            "gantt_kpis": {},
+            "pdf_gantt_url": None,
+            **form_ctx,
+            **cosecha_ctx,
+        }
 
     kpis = {
         "actividades": len(df),
@@ -824,9 +1202,9 @@ def _section_planificacion(demo, conn, especie: str) -> dict:
         "avance_prom": round(float(df["avance_pct"].mean()), 1),
     }
     show = df[
-        ["proyecto", "actividad", "fecha_inicio", "fecha_fin", "avance_pct", "avance_esperado", "desfase_pct", "nivel_alerta", "responsable"]
+        ["proyecto", "actividad", "fecha_inicio", "fecha_fin", "avance_pct", "avance_esperado", "desfase_pct", "nivel_alerta", "responsable", "notas"]
     ].copy()
-    show.columns = ["PROYECTO", "ACTIVIDAD", "INICIO", "FIN", "% REAL", "% ESPERADO", "DESFASE", "ALERTA", "RESPONSABLE"]
+    show.columns = ["PROYECTO", "ACTIVIDAD", "INICIO", "FIN", "% REAL", "% ESPERADO", "DESFASE", "ALERTA", "RESPONSABLE", "NOTAS"]
     rows = []
     for _, r in show.iterrows():
         alerta = str(r.get("ALERTA", ""))
@@ -835,17 +1213,33 @@ def _section_planificacion(demo, conn, especie: str) -> dict:
                 "table-warning" if alerta in ("Alto", "Medio") else ""
             )
         )
-        rows.append({**{c: str(r[c]) for c in show.columns}, "row_class": css})
+        notas = str(r.get("NOTAS", "") or "")
+        sync = notas.startswith("SYNC:")
+        rows.append(
+            {
+                **{c: str(r[c]) for c in show.columns if c != "NOTAS"},
+                "row_class": css,
+                "sync": sync,
+                "origen": "Autoeval/Docs" if sync else ("Cosecha" if notas == "COSECHA" else "Operativo"),
+            }
+        )
 
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+    pdf_show = show.drop(columns=["NOTAS"], errors="ignore")
     pdf = _pdf_url(
         demo,
-        show,
-        f"GLOBALGAP — {especie.upper()} — Carta Gantt",
+        pdf_show,
+        f"GLOBALGAP — {especie.upper()} — Carta Gantt (cosecha {h.isoformat()})",
         f"globalgap_{pref}_gantt.pdf",
         demo._pdf_estilo_gantt_alerta,
     )
-    return {"gantt_rows": rows, "gantt_kpis": kpis, "pdf_gantt_url": pdf, **form_ctx}
+    return {
+        "gantt_rows": rows,
+        "gantt_kpis": kpis,
+        "pdf_gantt_url": pdf,
+        **form_ctx,
+        **cosecha_ctx,
+    }
 
 
 def _post_pppl_add(demo, conn) -> dict:
@@ -1359,6 +1753,21 @@ def _post_cal_add(demo, conn) -> dict:
     conn.commit()
     demo.registrar_accion("GLOBALGAP CAL", eq)
     return {"ok": True, "msg": "Calibración registrada."}
+
+
+def _post_gantt_rebuild(demo, conn, especie: str) -> dict:
+    res = _ensure_planificacion_certificacion(conn, demo, especie, force=True)
+    if res.get("ok"):
+        n = conn.execute(
+            "SELECT COUNT(*) FROM gantt_tareas WHERE proyecto_id=?",
+            (res["proyecto_id"],),
+        ).fetchone()[0]
+        demo.registrar_accion("GLOBALGAP GANTT REBUILD", f"{especie}: {n} actividades")
+        return {
+            "ok": True,
+            "msg": f"Gantt {especie} reconstruida ({n} actividades) anclada a cosecha {_cosecha_ancla(especie).isoformat()}.",
+        }
+    return {"ok": False, "msg": res.get("msg") or "No se pudo reconstruir la Gantt."}
 
 
 def _post_gantt_actividad(demo, conn) -> dict:
@@ -2616,6 +3025,7 @@ def view(user_email: str, user_rol: str):
                 "planilla_delete_evento": lambda d, c: _post_planilla_delete_evento(d, c, especie),
                 "agua_add": _post_agua_add,
                 "cal_add": _post_cal_add,
+                "gantt_rebuild": lambda d, c: _post_gantt_rebuild(d, c, especie),
                 "gantt_actividad": _post_gantt_actividad,
                 "gantt_avance": _post_gantt_avance,
             }
