@@ -229,7 +229,7 @@
         <thead>
           <tr>
             <th>Código</th><th>Capítulo</th><th>Descripción</th><th>Estado</th>
-            <th>Documentos asociados</th><th>Revisión</th><th>Responsable</th>
+            <th>Documentos asociados / Cumple</th><th>Avance</th><th>Revisión</th><th>Responsable</th>
           </tr>
         </thead>
         <tbody>
@@ -239,18 +239,50 @@
             <td>{{ r.capitulo }}</td>
             <td>{{ r.descripcion }}</td>
             <td><span class="badge text-bg-{{ r.estado_css }}">{{ r.estado }}</span></td>
-            <td>
+            <td style="min-width:280px">
               {% if r.docs %}
                 {% for d in r.docs %}
-                  {% if d.url %}
-                  <div><a href="{{ d.url }}">{{ d.codigo or d.titulo }}</a></div>
+                <div class="d-flex align-items-start gap-2 mb-2">
+                  <div class="flex-grow-1">
+                    {% if d.url %}
+                    <a href="{{ d.url }}">{{ d.codigo or d.titulo }}</a>
+                    {% else %}
+                    <span>{{ d.codigo or d.titulo }}</span>
+                    {% endif %}
+                    {% if d.cumple %}
+                    <div class="text-success small">
+                      Cumple · {{ d.cumple_por }}{% if d.cumple_fecha %} · {{ d.cumple_fecha }}{% endif %}
+                    </div>
+                    {% endif %}
+                  </div>
+                  {% if d.cumple %}
+                  <label class="form-check mb-0 text-nowrap" title="No se puede desmarcar">
+                    <input class="form-check-input" type="checkbox" checked disabled>
+                    <span class="form-check-label small">Cumple</span>
+                  </label>
                   {% else %}
-                  <div>{{ d.codigo or d.titulo }}</div>
+                  <form method="post" class="mb-0 text-nowrap">
+                    <input type="hidden" name="action" value="doc_cumple">
+                    <input type="hidden" name="sec" value="autoeval">
+                    <input type="hidden" name="especie" value="{{ especie_sel }}">
+                    <input type="hidden" name="capitulo" value="{{ filtro_capitulo }}">
+                    <input type="hidden" name="link_id" value="{{ d.link_id }}">
+                    <label class="form-check mb-0">
+                      <input class="form-check-input" type="checkbox" onchange="this.form.submit()" title="Marcar Cumple (no se puede desmarcar)">
+                      <span class="form-check-label small">Cumple</span>
+                    </label>
+                  </form>
                   {% endif %}
+                </div>
                 {% endfor %}
               {% else %}
               <span class="text-muted">—</span>
               {% endif %}
+            </td>
+            <td class="text-nowrap">
+              {% if r.docs_total %}
+              {{ r.docs_ok }}/{{ r.docs_total }}
+              {% else %}—{% endif %}
             </td>
             <td>{{ r.revision }}</td>
             <td>{{ r.responsable }}</td>

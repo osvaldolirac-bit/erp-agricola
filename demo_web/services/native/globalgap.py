@@ -44,6 +44,13 @@ _DOC_EXTRA_COLS = [
     ("formato", "TEXT DEFAULT 'Digital'"),
 ]
 
+_DOC_LINK_EXTRA_COLS = [
+    ("cumple", "INTEGER DEFAULT 0"),
+    ("cumple_por", "TEXT DEFAULT ''"),
+    ("cumple_fecha", "TEXT DEFAULT ''"),
+    ("cumple_usuario", "TEXT DEFAULT ''"),
+]
+
 _ESPECIE_DOC_SLUG = {
     "Cerezos": "cerezos",
     "Ciruelos": "ciruelos",
@@ -253,6 +260,13 @@ def _ensure_gap_documentos_schema(conn) -> None:
                 conn.execute(f"ALTER TABLE gap_documentos ADD COLUMN {name} {decl}")
             except sqlite3.OperationalError:
                 pass
+    link_cols = {r[1] for r in conn.execute("PRAGMA table_info(gap_doc_checklist)").fetchall()}
+    for name, decl in _DOC_LINK_EXTRA_COLS:
+        if name not in link_cols:
+            try:
+                conn.execute(f"ALTER TABLE gap_doc_checklist ADD COLUMN {name} {decl}")
+            except sqlite3.OperationalError:
+                pass
     try:
         conn.commit()
     except Exception:
@@ -369,7 +383,9 @@ def _link_doc_checklist(conn, documento_id: int, codigo_doc: str, especie: str, 
 def _docs_linked_for_checklist(conn, especie: str) -> dict[str, list[dict]]:
     _ensure_gap_documentos_schema(conn)
     rows = conn.execute(
-        """SELECT l.checklist_codigo, d.id, d.codigo, d.titulo, d.archivo_relpath, d.nombre_archivo
+        """SELECT l.id, l.checklist_codigo, d.id, d.codigo, d.titulo, d.archivo_relpath,
+                  d.nombre_archivo, COALESCE(l.cumple,0), COALESCE(l.cumple_por,''),
+                  COALESCE(l.cumple_fecha,''), COALESCE(l.cumple_usuario,'')
            FROM gap_doc_checklist l
            JOIN gap_documentos d ON d.id = l.documento_id
            WHERE COALESCE(l.especie, d.especie, 'ESPECIE 1')=?
@@ -379,15 +395,57 @@ def _docs_linked_for_checklist(conn, especie: str) -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {}
     for r in rows:
         item = {
-            "id": r[1],
-            "codigo": r[2] or "",
-            "titulo": r[3] or "",
-            "tiene_archivo": bool(r[4]),
-            "nombre_archivo": r[5] or "",
-            "url": _doc_download_url(r[1], especie) if r[4] else "",
+            "link_id": int(r[0]),
+            "id": r[2],
+            "codigo": r[3] or "",
+            "titulo": r[4] or "",
+            "tiene_archivo": bool(r[5]),
+            "nombre_archivo": r[6] or "",
+            "url": _doc_download_url(r[2], especie) if r[5] else "",
+            "cumple": bool(int(r[7] or 0)),
+            "cumple_por": r[8] or "",
+            "cumple_fecha": str(r[9] or "")[:10],
+            "cumple_usuario": r[10] or "",
         }
-        out.setdefault(r[0], []).append(item)
+        out.setdefault(r[1], []).append(item)
     return out
+
+
+def _sync_checklist_cumple_from_docs(conn, demo, especie: str, checklist_codigo: str, user_email: str, responsable: str) -> bool:
+    """Si todos los docs asociados están en cumple, marca el ítem como Cumple. Retorna True si quedó Cumple."""
+    rows = conn.execute(
+        """SELECT COALESCE(cumple,0) FROM gap_doc_checklist
+           WHERE checklist_codigo=? AND COALESCE(especie,'ESPECIE 1')=?""",
+        (checklist_codigo, especie),
+    ).fetchall()
+    if not rows:
+        return False
+    if not all(int(r[0] or 0) == 1 for r in rows):
+        return False
+    chk = conn.execute("SELECT id FROM gap_checklist WHERE codigo=?", (checklist_codigo,)).fetchone()
+    if not chk:
+        return False
+    chk_id = chk[0]
+    evidencia = f"Documentos asociados marcados cumple ({len(rows)})"
+    conn.execute(
+        "DELETE FROM gap_evaluacion WHERE checklist_id=? AND COALESCE(especie,'ESPECIE 1')=?",
+        (chk_id, especie),
+    )
+    conn.execute(
+        """INSERT INTO gap_evaluacion
+           (checklist_id, estado, evidencia, responsable, fecha_revision, usuario, especie)
+           VALUES (?,?,?,?,?,?,?)""",
+        (
+            chk_id,
+            "Cumple",
+            evidencia,
+            responsable or user_email,
+            str(hoy_demo(demo)),
+            user_email,
+            especie,
+        ),
+    )
+    return True
 
 
 def _section_documentos(demo, conn, especie: str) -> dict:
@@ -491,6 +549,11 @@ def _section_autoeval(demo, conn, especie: str) -> dict:
         est = str(r.get("ESTADO", "Pendiente"))
         cod = str(r.get("CODIGO", ""))
         docs = linked.get(cod, [])
+        docs_ok = sum(1 for d in docs if d.get("cumple"))
+        docs_total = len(docs)
+        if docs_total and docs_ok == docs_total and est != "Cumple":
+            # refleja en UI aunque falte sync previo
+            est = "Cumple"
         rows.append(
             {
                 "codigo": cod,
@@ -502,6 +565,8 @@ def _section_autoeval(demo, conn, especie: str) -> dict:
                 "responsable": r.get("RESPONSABLE", "") or "",
                 "evidencia": r.get("EVIDENCIA", "") or "",
                 "docs": docs,
+                "docs_ok": docs_ok,
+                "docs_total": docs_total,
                 "docs_txt": ", ".join(
                     f"{d['codigo'] or d['titulo']}" for d in docs
                 ),
@@ -1062,6 +1127,69 @@ def _post_eval_save(demo, conn, especie: str, user_email: str) -> dict:
     )
     conn.commit()
     return {"ok": True, "msg": "Evaluación guardada."}
+
+
+def _post_doc_cumple(demo, conn, especie: str, user_email: str) -> dict:
+    """Marca un documento asociado como Cumple (irreversible). Si todos cumplen, el ítem pasa a Cumple."""
+    _ensure_gap_documentos_schema(conn)
+    try:
+        link_id = int(request.form.get("link_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Documento inválido."}
+    if link_id <= 0:
+        return {"ok": False, "msg": "Documento inválido."}
+
+    row = conn.execute(
+        """SELECT id, checklist_codigo, documento_id, COALESCE(cumple,0), COALESCE(especie,'')
+           FROM gap_doc_checklist WHERE id=?""",
+        (link_id,),
+    ).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Vínculo documento/checklist no encontrado."}
+    if int(row[3] or 0) == 1:
+        return {"ok": False, "msg": "Este documento ya está marcado como Cumple y no se puede desmarcar."}
+
+    checklist_codigo = row[1]
+    esp = (row[4] or especie or "").strip() or especie
+    responsable = (request.form.get("responsable") or "").strip()
+    if not responsable:
+        # preferir nombre legible del correo
+        responsable = (user_email or "").split("@")[0].replace(".", " ").strip() or user_email
+
+    conn.execute(
+        """UPDATE gap_doc_checklist
+           SET cumple=1, cumple_por=?, cumple_fecha=?, cumple_usuario=?
+           WHERE id=? AND COALESCE(cumple,0)=0""",
+        (responsable, str(hoy_demo(demo)), user_email or "", link_id),
+    )
+    item_ok = _sync_checklist_cumple_from_docs(
+        conn, demo, esp, checklist_codigo, user_email or "", responsable
+    )
+    conn.commit()
+
+    doc = conn.execute(
+        """SELECT COALESCE(d.codigo,''), COALESCE(d.titulo,'')
+           FROM gap_doc_checklist l JOIN gap_documentos d ON d.id=l.documento_id
+           WHERE l.id=?""",
+        (link_id,),
+    ).fetchone()
+    doc_label = ((doc[0] if doc else "") or (doc[1] if doc else "") or f"#{link_id}").strip()
+    demo.registrar_accion("GLOBALGAP DOC CUMPLE", f"{checklist_codigo} · {doc_label}")
+    if item_ok:
+        return {
+            "ok": True,
+            "msg": f"{doc_label}: Cumple registrado por {responsable}. Ítem {checklist_codigo} pasó a CUMPLE.",
+        }
+    # progreso
+    tot = conn.execute(
+        """SELECT COUNT(*), SUM(CASE WHEN COALESCE(cumple,0)=1 THEN 1 ELSE 0 END)
+           FROM gap_doc_checklist WHERE checklist_codigo=? AND COALESCE(especie,'ESPECIE 1')=?""",
+        (checklist_codigo, esp),
+    ).fetchone()
+    return {
+        "ok": True,
+        "msg": f"{doc_label}: Cumple registrado por {responsable}. Avance {int(tot[1] or 0)}/{int(tot[0] or 0)} en {checklist_codigo}.",
+    }
 
 
 def _post_nc_open(demo, conn, especie: str) -> dict:
@@ -2473,6 +2601,7 @@ def view(user_email: str, user_rol: str):
                 "pppl_sync_all": lambda d, c: _post_pppl_sync(d, c, incluir_baja=True),
                 "doc_add": lambda d, c: _post_doc_add(d, c, especie),
                 "doc_import_catalog": lambda d, c: _post_doc_import_catalog(d, c, especie),
+                "doc_cumple": lambda d, c: _post_doc_cumple(d, c, especie, user_email),
                 "eval_save": lambda d, c: _post_eval_save(d, c, especie, user_email),
                 "nc_open": lambda d, c: _post_nc_open(d, c, especie),
                 "nc_close": _post_nc_close,
