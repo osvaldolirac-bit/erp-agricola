@@ -112,7 +112,8 @@
     }
     var api = $t.DataTable();
     var ids = [];
-    api.rows({ order: 'current', search: 'applied' }).every(function () {
+    // page:'all' = orden actual completo, no solo la página visible
+    api.rows({ order: 'current', search: 'applied', page: 'all' }).every(function () {
       var id = $(this.node()).attr(dataAttr);
       if (id) ids.push(id);
     });
