@@ -1,0 +1,61 @@
+fecha,n_orden,especie,variedad,motivo,producto,n_app_txt,ingrediente,dosis,unidad_dosis,vol_total,gasto_total,unidad_gasto,tractor,maquina,aplicadores,car_etiqueta,car_agenda,car_mayor,fecha_viable,t_max,t_min,hr,viento,sector
+2025-06-06,0,Cerezos,Santina,Control de hongos,Orius 43 SC,1 de 1,Tebuconazol,0.6,Kilogramos (kg),1700.0,10.2,kg,1,Pulverizadora,P.A.,10,5,10,2025-06-17,16.0,6.0,37.0,8.0,CEREZOS CORTE 1
+2025-07-14,1,Cerezos,Santina,Rompe dormancia y adelanta floración,Nexus,1 de 3,"Cianamida 1,5%",3.0,Litros (L),1700.0,51.0,L,1,Pulverizadora,P.A.,0,0,0,2025-07-15,12.0,6.0,85.0,4.0,CEREZOS CORTE 1
+2025-07-14,2,Cerezos,Santina,Coadyuvante,Break,No aplica,Tensioactivo organosilícico 2%,,Litros (L),1700.0,3.4,L,1,Pulverizadora,P.A.,0,0,0,2025-07-15,12.0,6.0,85.0,4.0,CEREZOS CORTE 1
+2025-07-22,3,Cerezos,Santina,Protegen cultivos a bajas temperaturas,Biolife psychro 250,No aplica,Trichoderma atroviride y Bacillus,0.025,Kilogramos (kg),1700.0,0.425,kg,1,Pulverizadora,P.A.,0,0,0,2025-07-23,12.0,4.0,52.0,7.6,CEREZOS CORTE 1
+2025-08-06,4,Cerezos,Santina,Regulador de crecimiento,Piriproxifen 100 EC,1 de 1,Piriproxifen,0.07,Litros (L),3400.0,2.38,L,1,Pulverizadora,P.A.,14,7,14,2025-08-21,12.0,4.0,64.0,9.0,CEREZOS CORTE 1
+2025-08-06,5,Cerezos,Santina,Arañita,Aceite Bioil Spray,1 de 3,Aceite de Linaza,2.0,Litros (L),3400.0,68.0,L,1,Pulverizadora,P.A.,0,0,0,2025-08-07,12.0,4.0,64.0,9.0,CEREZOS CORTE 1
+2025-08-06,6,Cerezos,Santina,Cancer Bacteria,Nordox 75 WG,1 de 5,Cobre,0.2,Kilogramos (kg),3400.0,6.8,kg,1,Pulverizadora,P.A.,0,0,0,2025-08-07,12.0,4.0,64.0,9.0,CEREZOS CORTE 1
+2025-01-28,7,Cerezos,Santina,Fertilizante,Ácido Fosfórico,No aplica,Ácido Fosfórico,0.2,Kilogramos (kg),3400.0,6.8,kg,1,Pulverizadora,P.A.,0,0,0,2025-01-29,26.0,15.0,33.0,16.0,CEREZOS CORTE 1
+2025-01-31,8,Cerezos,Santina,Fertilizante,Urea,No aplica,Urea,0.15,Kilogramos (kg),3400.0,5.1,kg,1,Pulverizadora,P.A.,0,0,0,2025-02-01,26.0,15.0,38.0,15.0,CEREZOS CORTE 1
+2025-01-31,9,Cerezos,Santina,Arañita,Magister,1 de 1,Fenazaquina,0.05,Kilogramos (kg),3400.0,1.7,kg,1,Pulverizadora,P.A.,1,0,2,2025-02-03,26.0,15.0,38.0,15.0,CEREZOS CORTE 1
+2025-08-12,7,Cerezos,Santina,Control de maleza,Galigan,1 de 2,Oxifluorfeno,0.375,Litros (L),800.0,3.0,L,1,Pulverizadora,P.A.,0,0,0,2025-08-13,15.0,6.0,39.0,10.0,CEREZOS CORTE 1
+2025-08-12,8,Cerezos,Santina,Control de maleza,Panzer,1 de 5,Glifosato,0.375,Litros (L),800.0,3.0,L,1,Pulverizadora,P.A.,0,0,0,2025-08-13,15.0,6.0,39.0,10.0,CEREZOS CORTE 1
+2025-08-20,9,Cerezos,Santina,Cancer Bacterial,Pilot,1 de 2,Piraclostrobin,0.05,Litros (L),2000.0,1.0,kg,1,Pulverizadora,P.A.,1,5,5,2025-08-26,19.0,10.0,54.0,10.0,CEREZOS CORTE 1
+2025-08-20,10,Cerezos,Santina,Regulador de crecimiento,Kelpack,No aplica,Citoquinina,0.3,Litros (L),2000.0,6.0,L,1,Pulverizadora,P.A.,0,0,0,2025-08-21,19.0,10.0,54.0,10.0,CEREZOS CORTE 1
+2025-08-21,11,Cerezos,Santina,Antihelada,Antihelada,No aplica,,1.6,Litros (L),2000.0,32.0,L,1,Pulverizadora,P.A.,0,0,0,2025-08-22,14.0,3.0,55.0,13.0,CEREZOS CORTE 1
+2025-08-29,12,Cerezos,Santina,Brotitis- Oidio,Tebuconazole,1 de 2,Tebuconazole,0.07,Litros (L),2000.0,1.4,L,1,Pulverizadora,P.A.,3,15,15,2025-09-14,14.0,8.0,88.0,10.0,CEREZOS CORTE 1
+2025-08-29,13,Cerezos,Santina,Fertilizante,Zinc,No aplica,Zinc,0.03,Litros (L),2000.0,0.6,L,1,Pulverizadora,P.A.,0,0,0,2025-08-30,14.0,8.0,88.0,10.0,CEREZOS CORTE 1
+2025-08-29,14,Cerezos,Santina,Fertilizante,Boro,No aplica,Boro,0.2,Litros (L),2000.0,4.0,L,1,Pulverizadora,P.A.,0,0,0,2025-08-30,14.0,8.0,88.0,10.0,CEREZOS CORTE 1
+2025-08-29,15,Cerezos,Santina,Estimula formación de raíces,Basfoliar Kelp,No aplica,Ascophyllum nodosum,0.3,Litros (L),2000.0,6.0,L,1,Pulverizadora,P.A.,0,0,0,2025-08-30,14.0,8.0,88.0,10.0,CEREZOS CORTE 1
+2025-09-05,16,Cerezos,Santina,Control de enfermedades,Frontal,1 de 2,Fenhexamida,0.13,Litros (L),2200.0,2.86,L,1,Pulverizadora,P.A.,1,2,2,2025-09-08,21.0,7.0,43.0,10.0,CEREZOS CORTE 1
+2025-09-05,17,Cerezos,Santina,Mejor la firmeza,Calcio,No aplica,Calcio,0.2,Litros (L),2200.0,4.4,L,1,Pulverizadora,P.A.,0,0,0,2025-09-06,21.0,7.0,43.0,10.0,CEREZOS CORTE 1
+2025-09-05,18,Cerezos,Santina,Fertilizante,Zinc,No aplica,Zinc,0.03,Litros (L),2200.0,0.66,L,1,Pulverizadora,P.A.,0,0,0,2025-09-06,21.0,7.0,43.0,10.0,CEREZOS CORTE 1
+2025-09-05,19,Cerezos,Santina,Mejora rendimiento,Evolution fifty,No aplica,Ascophyllum,0.13,Litros (L),2200.0,2.86,L,1,Pulverizadora,P.A.,0,0,0,2025-09-06,21.0,7.0,43.0,10.0,CEREZOS CORTE 1
+2025-09-05,20,Cerezos,Santina,Fertilizante,Boro,No aplica,Boro,0.1,Litros (L),2200.0,2.2,L,1,Pulverizadora,P.A.,0,0,0,2025-09-06,21.0,7.0,43.0,10.0,CEREZOS CORTE 1
+2025-09-05,21,Cerezos,Santina,Bioestimulante,Brasstec,No aplica,Ascophyllum,0.13,Litros (L),2200.0,2.86,L,1,Pulverizadora,P.A.,0,0,0,2025-09-06,21.0,7.0,43.0,10.0,CEREZOS CORTE 1
+2025-09-10,22,Cerezos,Santina,Control de enfermedades,Frontal,1 de 2,Fenhexamida,0.13,Litros (L),2200.0,2.86,L,1,Pulverizadora,P.A.,1,2,2,2025-09-13,23.0,10.0,43.0,11.0,CEREZOS CORTE 1
+2025-09-10,23,Cerezos,Santina,Mejor la firmeza,Calcio,No aplica,Calcio,0.2,Litros (L),450.0,0.9,L,1,Pulverizadora,P.A.,0,0,0,2025-09-11,23.0,10.0,43.0,11.0,CEREZOS CORTE 1
+2025-09-10,24,Cerezos,Santina,Fertilizante,Zinc,No aplica,Zinc,0.03,Litros (L),450.0,0.135,L,1,Pulverizadora,P.A.,0,0,0,2025-09-11,23.0,10.0,43.0,11.0,CEREZOS CORTE 1
+2025-09-10,25,Cerezos,Santina,Mejora rendimiento,Evolution fifty,No aplica,Ascophyllum,0.13,Litros (L),450.0,0.585,L,1,Pulverizadora,P.A.,0,0,0,2025-09-11,23.0,10.0,43.0,11.0,CEREZOS CORTE 1
+2025-09-10,26,Cerezos,Santina,Fertilizante,Boro,No aplica,Boro,0.1,Litros (L),450.0,0.45,L,1,Pulverizadora,P.A.,0,0,0,2025-09-11,23.0,10.0,43.0,11.0,CEREZOS CORTE 1
+2025-09-10,27,Cerezos,Santina,Bioestimulante,Brasstec,No aplica,Ascophyllum,0.13,Litros (L),450.0,0.585,L,1,Pulverizadora,P.A.,0,0,0,2025-09-11,23.0,10.0,43.0,11.0,CEREZOS CORTE 1
+2025-09-23,28,Cerezos,Santina,Mejor la firmeza,Calcio,No aplica,Calcio,0.2,Litros (L),2550.0,5.1,L,1,Pulverizadora,P.A.,0,0,0,2025-09-24,17.0,8.0,48.0,11.0,CEREZOS CORTE 1
+2025-09-23,29,Cerezos,Santina,Mejora rendimiento,Evolution fifty,No aplica,Ascophyllum,0.13,Litros (L),2650.0,3.445,L,1,Pulverizadora,P.A.,0,0,0,2025-09-24,17.0,8.0,48.0,11.0,CEREZOS CORTE 1
+2025-09-24,30,Cerezos,Santina,Mejor la firmeza,Calcio,No aplica,Calcio,0.2,Litros (L),2000.0,4.0,L,1,Pulverizadora,P.A.,0,0,0,2025-09-25,27.0,12.0,42.0,10.0,CEREZOS CORTE 1
+2025-09-24,31,Cerezos,Santina,Mejora rendimiento,Evolution fifty,No aplica,Ascophyllum,0.14,Litros (L),2000.0,2.8,L,1,Pulverizadora,P.A.,0,0,0,2025-09-25,27.0,12.0,42.0,10.0,CEREZOS CORTE 1
+2025-09-24,32,Cerezos,Santina,Bioestimulante,Brasstec,No aplica,Ascophyllum,0.15,Litros (L),2000.0,3.0,L,1,Pulverizadora,P.A.,0,0,0,2025-09-25,27.0,12.0,42.0,10.0,CEREZOS CORTE 1
+2025-09-24,33,Cerezos,Santina,Control de enfermedades fungosas,Indar,1 de 4,Fenbuconazole,0.07,Litros (L),2000.0,1.4,L,1,Pulverizadora,P.A.,0,0,0,2025-09-25,27.0,12.0,42.0,10.0,CEREZOS CORTE 1
+2025-09-24,34,Cerezos,Santina,Uniforma y aumenta calibre,Thidiazuron,1 de 2,Thidiazuron,1.05,Litros (L),2000.0,21.0,L,1,Pulverizadora,P.A.,0,0,0,2025-09-25,27.0,12.0,42.0,10.0,CEREZOS CORTE 1
+2025-09-30,35,Cerezos,Santina,Controla la Botritis,Boscalid,1 de 1,Boscalid,0.08,Litros (L),2550.0,2.04,L,1,Pulverizadora,P.A.,7,1,0,2025-10-01,16.0,6.0,56.0,13.0,CEREZOS CORTE 1
+2025-10-10,36,Cerezos,Santina,Mejora rendimiento,Evolution fifty,No aplica,Ascophyllum,0.2,Litros (L),2550.0,5.1,L,1,Pulverizadora,P.A.,0,0,0,2025-10-11,16.0,6.0,56.0,13.0,CEREZOS CORTE 1
+2025-10-10,37,Cerezos,Santina,Bioestimulante,Brasstec,No aplica,Ascophyllum,0.2,Litros (L),2550.0,5.1,L,1,Pulverizadora,P.A.,0,0,0,2025-10-11,19.0,8.0,50.0,13.0,CEREZOS CORTE 1
+2025-10-15,39,Cerezos,Santina,Amplia gama de insectos,Lambdacialotrina,1 de 4,Lambdacialotrina,0.02,Litros (L),2550.0,0.51,L,1,Pulverizadora,P.A.,3,4,4,2025-10-20,21.0,9.0,44.0,13.0,CEREZOS CORTE 1
+2025-10-15,40,Cerezos,Santina,Floración y llenado de fruto,Harvest More,No aplica,N P K,0.33,Kilogramos (kg),2550.0,8.415,kg,1,Pulverizadora,P.A.,0,0,0,2025-10-16,21.0,9.0,44.0,13.0,CEREZOS CORTE 1
+2025-10-20,42,Cerezos,Santina,Bioestimulante,Brasstec,No aplica,Ascophyllum,0.15,Litros (L),3400.0,5.1,kg,1,Pulverizadora,P.A.,0,0,0,2025-10-21,19.0,9.0,50.0,13.0,CEREZOS CORTE 1
+2025-10-21,43,Cerezos,Santina,Floración y llenado de fruto,Harvest More,No aplica,NPK,0.25,Kilogramos (kg),3400.0,8.5,L,1,Pulverizadora,P.A.,0,0,0,2025-10-22,20.0,9.0,46.0,13.0,CEREZOS CORTE 1
+2025-10-21,44,Cerezos,Santina,Control de enfermedades fungosas,Indar,2 de 4,Fenbuconazole,0.03,Litros (L),3400.0,1.02,L,1,Pulverizadora,P.A.,0,0,0,2025-10-22,20.0,9.0,46.0,13.0,CEREZOS CORTE 1
+2025-10-28,45,Cerezos,Santina,Floración y llenado de fruto,Harvest More,No aplica,NPK,0.25,Kilogramos (kg),3400.0,8.5,kg,1,Pulverizadora,P.A.,0,0,0,2025-10-29,20.0,8.0,43.0,13.0,CEREZOS CORTE 1
+2025-10-30,46,Cerezos,Santina,Drosophila de alas manchadas,Exirel,1 de 2,Ciantraniliprol,0.1,Litros (L),3400.0,3.4,kg,1,Pulverizadora,P.A.,3,0,3,2025-11-03,21.0,9.0,48.0,14.0,CEREZOS CORTE 1
+2025-11-03,47,Cerezos,Santina,Floración y llenado de fruto,Harvest More,No aplica,NPK,0.25,Kilogramos (kg),3400.0,8.5,kg,1,Pulverizadora,P.A.,0,0,0,2025-11-04,21.0,8.0,40.0,15.0,CEREZOS CORTE 1
+2025-11-03,48,Cerezos,Santina,Control de enfermedades fungosas,Indar,3 de 4,Fenbuconazole,0.05,Litros (L),3400.0,1.7,L,1,Pulverizadora,P.A.,0,0,0,2025-11-04,21.0,8.0,40.0,15.0,CEREZOS CORTE 1
+2025-11-09,49,Cerezos,Santina,Fertilizacion foliar,Macroquel potasio,No aplica,Potasio,0.25,Litros (L),3400.0,8.5,L,1,Pulverizadora,P.A.,0,0,0,2025-11-10,21.0,11.0,39.0,16.0,CEREZOS CORTE 1
+2025-12-18,50,Cerezos,Santina,Coniza,Fascinate,1 de 3,fosinato de amó,2.0,Litros (L),170.0,3.4,L,1,Nebulizadora,P.A.,0,0,0,2025-12-19,23.0,11.0,35.0,16.0,CEREZOS CORTE 1
+2025-12-26,51,Cerezos,Santina,Fertilizante,Urea,No aplica,Urea,1.2,Kilogramos (kg),2550.0,30.6,kg,1,Nebulizadora,P.A.,0,0,0,2025-12-27,25.0,15.0,34.0,16.0,CEREZOS CORTE 1
+2026-01-06,52,Cerezos,Santina,Arañita,Espirodiclofeno,1 de 1,Espirodiclofeno,0.08,Litros (L),2550.0,2.04,L,1,Nebulizadora,P.A.,7,10,10,2026-01-17,22.0,13.0,41.0,18.0,CEREZOS CORTE 1
+2026-02-16,53,Cerezos,Santina,Arañita,Espirodiclofeno,1 de 1,Espirodiclofeno,0.06,Litros (L),2550.0,1.53,L,1,Nebulizadora,P.A.,7,10,10,2026-02-27,25.0,15.0,37.0,15.0,CEREZOS CORTE 1
+2026-05-08,54,Cerezos,Santina,Fertilizante,Urea,No aplica,Urea,2.0,Kilogramos (kg),2550.0,51.0,kg,1,Nebulizadora,P.A.,0,0,0,2026-05-09,18.0,6.0,52.0,12.0,CEREZOS CORTE 1
+2026-05-08,55,Cerezos,Santina,Fertilizante,Sulfato de Zinc,No aplica,Zinc,2.0,Kilogramos (kg),2550.0,51.0,kg,1,Nebulizadora,P.A.,0,0,0,2026-05-09,18.0,6.0,52.0,12.0,CEREZOS CORTE 1
+2026-06-03,56,Cerezos,Santina,Cancer Bacteria,Nordox 75 WG,1 de 5,Cobre,0.15,Kilogramos (kg),1700.0,2.55,kg,1,Nebulizadora,P.A.,0,0,0,2026-06-04,22.0,9.0,72.0,10.0,CEREZOS CORTE 1
+2026-06-12,57,Cerezos,Santina,Protegen cultivos a bajas temperaturas,Biolife psychro 250,No aplica,Trichoderma atroviride y Bacillus,0.025,Kilogramos (kg),1700.0,0.425,kg,1,Nebulizadora,P.A.,0,0,0,2026-06-13,,,,,CEREZOS CORTE 1
+2026-06-19,58,Cerezos,Santina,Protegen cultivos a bajas temperaturas,Biolife psychro 250,No aplica,Trichoderma atroviride y Bacillus,0.025,Kilogramos (kg),1700.0,0.425,kg,1,Nebulizadora,P.A.,0,0,0,2026-06-20,,,,,CEREZOS CORTE 1
