@@ -849,14 +849,35 @@ def _ensure_libro_campo_planilla(conn) -> None:
         pass
 
 
-def _planilla_csv_paths() -> list[Path]:
+_PLANILLA_CSV_BY_CUARTEL = {
+    "CEREZOS CORTE 1": "planilla_cerezos_corte1.csv",
+    "CIRUELOS": "planilla_ciruelos.csv",
+}
+
+
+def _planilla_csv_paths(cuartel: str | None = None) -> list[Path]:
     here = Path(__file__).resolve()
-    candidates = [
-        here.parents[2] / "static" / "globalgap" / "planilla_cerezos_corte1.csv",
-        Path("/root/demo-web/demo_web/static/globalgap/planilla_cerezos_corte1.csv"),
-        Path("/root/static/globalgap/planilla_cerezos_corte1.csv"),
+    bases = [
+        here.parents[2] / "static" / "globalgap",
+        Path("/root/demo-web/demo_web/static/globalgap"),
+        Path("/root/static/globalgap"),
     ]
-    return [p for p in candidates if p.is_file()]
+    cu = (cuartel or "").strip().upper()
+    filenames = (
+        [_PLANILLA_CSV_BY_CUARTEL[cu]]
+        if cu in _PLANILLA_CSV_BY_CUARTEL
+        else list(_PLANILLA_CSV_BY_CUARTEL.values())
+    )
+    out: list[Path] = []
+    seen: set[str] = set()
+    for base in bases:
+        for name in filenames:
+            p = base / name
+            key = str(p.resolve()) if p.is_file() else ""
+            if p.is_file() and key not in seen:
+                seen.add(key)
+                out.append(p)
+    return out
 
 
 def _fmt_num(val, decimals=3):
@@ -1135,8 +1156,15 @@ def _section_planilla(demo, conn, especie: str) -> dict:
             "productos": int(df["producto"].nunique()) if not df.empty else 0,
         },
         "plan_unidades": _UNIDADES_DOSIS_PLANILLA,
-        "plan_import_disponible": bool(_planilla_csv_paths()) and (
-            cc_sel in ("TODOS", "CEREZOS CORTE 1")
+        "plan_import_disponible": bool(
+            _planilla_csv_paths(None if cc_sel == "TODOS" else cc_sel)
+        ) and (cc_sel in ("TODOS", "CEREZOS CORTE 1", "CIRUELOS")),
+        "plan_import_cuartel": (
+            "CEREZOS CORTE 1"
+            if cc_sel in ("TODOS", "CEREZOS CORTE 1")
+            else "CIRUELOS"
+            if cc_sel == "CIRUELOS"
+            else cc_sel
         ),
         "plan_ingreso_filas": ingreso_filas,
         "plan_maq_opts": _MAQ_OPTS,
@@ -1825,16 +1853,24 @@ def _post_planilla_delete_evento(demo, conn, especie: str) -> dict:
 
 def _post_planilla_import(demo, conn, especie: str) -> dict:
     _ensure_libro_campo_planilla(conn)
-    paths = _planilla_csv_paths()
+    cuartel = (request.form.get("cuartel") or "").strip().upper()
+    if cuartel not in _PLANILLA_CSV_BY_CUARTEL:
+        cuartel = _cuartel_default_planilla(especie)
+        if cuartel not in _PLANILLA_CSV_BY_CUARTEL:
+            cuartel = "CEREZOS CORTE 1"
+    paths = _planilla_csv_paths(cuartel)
     if not paths:
-        return {"ok": False, "msg": "No se encontró el archivo de planilla para importar."}
+        return {"ok": False, "msg": f"No se encontró el archivo de planilla para {cuartel}."}
     path = paths[0]
     inserted = 0
     skipped = 0
     with path.open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for raw in reader:
-            sector = (raw.get("sector") or "CEREZOS CORTE 1").strip().upper()
+            sector = (raw.get("sector") or cuartel).strip().upper()
+            if sector != cuartel:
+                skipped += 1
+                continue
             producto = (raw.get("producto") or "").strip()
             fecha = (raw.get("fecha") or "").strip()[:10]
             if not producto or not fecha:
@@ -1854,12 +1890,26 @@ def _post_planilla_import(demo, conn, especie: str) -> dict:
             if exists:
                 skipped += 1
                 continue
+            n_orden = (raw.get("n_orden") or "").strip()
+            if n_orden != "":
+                exists_ord = conn.execute(
+                    """SELECT id FROM libro_campo
+                       WHERE UPPER(sector)=? AND TRIM(COALESCE(n_orden,''))=?
+                         AND UPPER(TRIM(producto))=UPPER(TRIM(?))
+                       LIMIT 1""",
+                    (sector, n_orden, producto),
+                ).fetchone()
+                if exists_ord:
+                    skipped += 1
+                    continue
             n_app = _siguiente_n_aplicacion(conn)
             row = dict(raw)
             row["sector"] = sector
             row["producto"] = producto
             row["fecha"] = fecha
-            row["especie"] = (raw.get("especie") or especie or "Cerezos").strip()
+            row["especie"] = (
+                raw.get("especie") or _especie_desde_cuartel(cuartel, especie) or especie or "Cerezos"
+            ).strip()
             try:
                 row["dosis"] = dosis
                 row["gasto_total"] = gasto
@@ -1882,8 +1932,8 @@ def _post_planilla_import(demo, conn, especie: str) -> dict:
         demo.registrar_accion("GLOBALGAP PLANILLA IMPORT", f"{inserted} líneas desde {path.name}")
     return {
         "ok": True,
-        "msg": f"Importación listada: {inserted} nuevas · {skipped} omitidas (ya existían o inválidas).",
-        "extra": {"cuartel": "CEREZOS CORTE 1"},
+        "msg": f"Importación {cuartel}: {inserted} nuevas · {skipped} omitidas (ya existían o inválidas).",
+        "extra": {"cuartel": cuartel},
     }
 
 

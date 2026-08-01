@@ -314,8 +314,10 @@
       <input type="hidden" name="action" value="planilla_import">
       <input type="hidden" name="sec" value="planilla">
       <input type="hidden" name="especie" value="{{ especie_sel }}">
-      <input type="hidden" name="cuartel" value="CEREZOS CORTE 1">
-      <button type="submit" class="btn btn-outline-primary btn-sm">Cargar historial CEREZOS CORTE 1</button>
+      <input type="hidden" name="cuartel" value="{{ plan_import_cuartel }}">
+      <button type="submit" class="btn btn-outline-primary btn-sm">
+        Cargar historial {{ plan_sector_labels.get(plan_import_cuartel, plan_import_cuartel) }}
+      </button>
     </form>
     {% endif %}
     {% if plan_lineas %}
