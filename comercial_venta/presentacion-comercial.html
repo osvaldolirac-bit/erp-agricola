@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ERP Master Comercial · Presentación</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #12263f;
+    --teal: #0f8fa8;
+    --teal-deep: #0b6a7c;
+    --mist: #eef6f7;
+    --line: #d7e0ea;
+    --ok: #1f8a65;
+    --paper: #f7fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Manrope, system-ui, sans-serif;
+    color: var(--ink);
+    background: #0e1a2b;
+  }
+  .deck { max-width: 980px; margin: 0 auto; padding: 1.25rem; }
+  .slide {
+    min-height: 70vh;
+    background:
+      radial-gradient(700px 320px at 8% 0%, rgba(15,143,168,.16), transparent 55%),
+      linear-gradient(165deg, #f7fafc 0%, #eef6f7 55%, #e8f0f2 100%);
+    border-radius: 18px;
+    padding: 2.2rem 2.4rem;
+    margin: 0 0 1rem;
+    box-shadow: 0 18px 50px rgba(0,0,0,.28);
+    border-top: 5px solid var(--teal);
+    page-break-after: always;
+  }
+  .kicker {
+    font-size: .72rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--teal-deep); font-weight: 800; margin-bottom: .6rem;
+  }
+  h1 { font-size: clamp(1.8rem, 4vw, 2.55rem); margin: 0 0 .6rem; line-height: 1.15; }
+  h2 { font-size: 1.5rem; margin: 0 0 .8rem; }
+  p, li { font-size: 1.02rem; line-height: 1.45; }
+  .lead { font-size: 1.12rem; max-width: 38rem; opacity: .92; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .85rem; margin-top: 1.2rem; }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem;
+  }
+  .card strong { display: block; margin-bottom: .25rem; }
+  .card .sec {
+    display: inline-block; font-size: .68rem; font-weight: 800; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--teal-deep); margin-bottom: .35rem;
+  }
+  .fee { color: var(--teal-deep); font-weight: 800; font-size: 1.15rem; }
+  .pack {
+    background: linear-gradient(135deg, var(--teal), var(--ink)); color: #fff;
+    border-radius: 14px; padding: 1.2rem 1.35rem; margin-top: 1rem;
+  }
+  .pack .big { font-size: 2rem; font-weight: 800; }
+  .packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .85rem; margin-top: 1rem; }
+  .pack-card {
+    background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 1.15rem 1.2rem;
+    position: relative;
+  }
+  .pack-card.featured {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 2px rgba(15,143,168,.25);
+  }
+  .pack-card .price { font-size: 1.55rem; font-weight: 800; color: var(--teal-deep); margin: .35rem 0; }
+  .pack-card ul { margin: .6rem 0 0; padding-left: 1.1rem; }
+  .pack-card li { font-size: .92rem; margin: .2rem 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; background: #fff; border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: .65rem .85rem; border-bottom: 1px solid var(--line); font-size: .92rem; }
+  th { background: #e8f4f6; }
+  .muted { opacity: .75; font-size: .92rem; }
+  .badge {
+    display: inline-block; background: #e0f7fa; color: var(--teal-deep);
+    font-size: .7rem; font-weight: 800; letter-spacing: .08em; padding: .25rem .55rem; border-radius: 999px;
+  }
+  .badge-hot { background: #ffe8a3; color: #5a3d00; }
+  .flow {
+    display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .85rem;
+    font-weight: 700; font-size: .95rem;
+  }
+  .flow span {
+    background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: .35rem .75rem;
+  }
+  .flow i { opacity: .45; font-style: normal; }
+  @media print {
+    body { background: #fff; }
+    .deck { max-width: none; padding: 0; }
+    .slide { box-shadow: none; min-height: auto; margin: 0 0 1.5rem; }
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+
+<section class="slide">
+  <div class="kicker">ERP Master · Producto Comercial</div>
+  <h1>Ventas y compras<br>en la misma pantalla</h1>
+  <p class="lead">Lo que ves en <b>erpmaster.cl/comercial</b>: menú real con Ventas, Compras, Tesorería y Bodega — más Planes con precios al lado.</p>
+  <div class="grid grid-3">
+    <div class="card">
+      <span class="sec">Ventas</span>
+      <strong>Clientes · Cotizaciones · CxC</strong>
+      Cotiza en PDF, cobra y recibe alerta al abonar.
+    </div>
+    <div class="card">
+      <span class="sec">Compras</span>
+      <strong>OC · Compras · Tesorería · Bodega</strong>
+      Del pedido al pago del proveedor, con stock.
+    </div>
+    <div class="card">
+      <span class="sec">Sistema</span>
+      <strong>Admin · Soporte · Planes</strong>
+      Incluidos. Prueba gratis 30 días en DEMO.
+    </div>
+  </div>
+  <p class="muted" style="margin-top:1.4rem">Demo viva → tenant <b>DEMO</b> · misma UI que usa el cliente</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">Como está el menú hoy</div>
+  <h2>Misma estructura que la app</h2>
+  <div class="grid">
+    <div class="card">
+      <span class="sec">Ventas</span>
+      <strong>Clientes</strong><span class="fee">$12.900/mes</span>
+      <strong style="margin-top:.7rem">Cotizaciones</strong><span class="fee">$19.900/mes</span>
+      <strong style="margin-top:.7rem">Cuentas por cobrar</strong><span class="fee">$19.900/mes</span>
+    </div>
+    <div class="card">
+      <span class="sec">Compras</span>
+      <strong>Órdenes de compra</strong><span class="fee">$9.900/mes</span>
+      <strong style="margin-top:.7rem">Compras</strong><span class="fee">$14.900/mes</span>
+      <strong style="margin-top:.7rem">Tesorería</strong><span class="fee">$12.900/mes</span>
+      <strong style="margin-top:.7rem">Bodega</strong><span class="fee">$12.900/mes</span>
+    </div>
+    <div class="card">
+      <span class="sec">Siempre incluidos</span>
+      <strong>Dashboard</strong><span class="fee">Incluido</span>
+      <strong style="margin-top:.7rem">Administración</strong><span class="fee">Incluido</span>
+      <strong style="margin-top:.7rem">Soporte</strong><span class="fee">Incluido</span>
+      <p class="muted" style="margin:.8rem 0 0">Add-on: Mercado Libre $29.900/mes + setup</p>
+    </div>
+  </div>
+  <div class="flow">
+    <span>Cliente</span><i>→</i><span>Cotización PDF</span><i>→</i><span>CxC / abono</span>
+    <span style="margin-left:.4rem">OC</span><i>→</i><span>Compra</span><i>→</i><span>Tesorería</span><i>→</i><span>Bodega</span>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Pantalla Planes · CLP / mes</div>
+  <h2>Por módulo o packs (como en la UI)</h2>
+  <div class="packs">
+    <div class="pack-card">
+      <span class="badge">POR MÓDULO</span>
+      <div class="price">desde $9.900</div>
+      <p class="muted">Pagas solo lo que activas. Dashboard, Admin y Soporte incluidos.</p>
+      <ul>
+        <li>Suma suelta: <b>$103.300</b>/mes</li>
+        <li>Ideal para partir con 1 módulo</li>
+      </ul>
+    </div>
+    <div class="pack-card">
+      <span class="badge">PACK VENTAS</span>
+      <div class="price">$42.900</div>
+      <p class="muted">Ahorro $9.800 vs sueltos · setup $29.900</p>
+      <ul>
+        <li>Clientes + Cotizaciones + CxC</li>
+        <li>Flujo Cliente → Cotización → CxC</li>
+      </ul>
+    </div>
+    <div class="pack-card">
+      <span class="badge">PACK COMPRAS</span>
+      <div class="price">$39.900</div>
+      <p class="muted">Ahorro $10.700 vs sueltos · setup $29.900</p>
+      <ul>
+        <li>OC + Compras + Tesorería + Bodega</li>
+        <li>Flujo OC → Compra → Tesorería</li>
+      </ul>
+    </div>
+    <div class="pack-card featured">
+      <span class="badge badge-hot">RECOMENDADO</span>
+      <div style="margin-top:.45rem;font-weight:800">PACK COMERCIAL</div>
+      <div class="price">$69.900</div>
+      <p class="muted">Ahorro $33.400 vs sueltos · setup $49.900</p>
+      <ul>
+        <li>Ventas + Compras completas</li>
+        <li>Misma pantalla que DEMO</li>
+      </ul>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:1rem">IVA no incluido. Precios de lanzamiento en tenant DEMO.</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">Dashboard real</div>
+  <h2>Gestión en un vistazo</h2>
+  <p class="lead">La home muestra embudo comercial y deuda: cotizaciones, CxC y vencimientos de Tesorería (CxP).</p>
+  <div class="grid">
+    <div class="card"><strong>Cotizaciones</strong>Cantidad, aprobadas y conversión</div>
+    <div class="card"><strong>Cartera CxC</strong>Saldo y clientes en mora</div>
+    <div class="card"><strong>Tesorería</strong>Saldos por pagar y vencidos</div>
+    <div class="card"><strong>Top deuda</strong>Clientes y proveedores</div>
+  </div>
+  <table>
+    <thead><tr><th>Módulo</th><th>Fee</th><th>Para qué</th></tr></thead>
+    <tbody>
+      <tr><td>Clientes</td><td><b>$12.900</b></td><td>Cartera y contactos</td></tr>
+      <tr><td>Cotizaciones</td><td><b>$19.900</b></td><td>Propuestas + PDF</td></tr>
+      <tr><td>Cuentas por cobrar</td><td><b>$19.900</b></td><td>Abonos + mail de alerta</td></tr>
+      <tr><td>Órdenes de compra</td><td><b>$9.900</b></td><td>Paso previo a factura proveedor</td></tr>
+      <tr><td>Compras</td><td><b>$14.900</b></td><td>Facturas desde OC</td></tr>
+      <tr><td>Tesorería</td><td><b>$12.900</b></td><td>Único lugar para pagar</td></tr>
+      <tr><td>Bodega</td><td><b>$12.900</b></td><td>Stock e inventario</td></tr>
+      <tr><td>Mercado Libre</td><td><b>$29.900</b></td><td>Add-on (no va en packs)</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="slide">
+  <div class="kicker">Cómo vender</div>
+  <h2>Esquema simple (3 pasos)</h2>
+  <div class="grid">
+    <div class="card"><strong>1. Captar</strong>Hook: “ventas y compras en una sola pantalla”</div>
+    <div class="card"><strong>2. Demo 15 min</strong>Tenant DEMO · menú real · Planes con fees</div>
+    <div class="card"><strong>3. Cerrar</strong>Pack Comercial $69.900 o Ventas/Compras · prueba 30 días</div>
+  </div>
+  <h2 style="margin-top:1.5rem">Canales</h2>
+  <div class="grid">
+    <div class="card"><strong>Instagram</strong>Posts de packs + stories con menú real</div>
+    <div class="card"><strong>Facebook</strong>Pymes / constructoras + lead a Probar gratis</div>
+    <div class="card"><strong>TikTok</strong>Hooks “OC → pago” y “cotización → abono” en 30s</div>
+    <div class="card"><strong>WhatsApp</strong>Cierre 1:1 con link a /comercial/probar</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Próximo</div>
+  <h2>Roadmap comercial</h2>
+  <ol>
+    <li><b>Ahora:</b> DEMO con menú completo + Planes (4 tarjetas) + prueba 30 días</li>
+    <li><b>Venta:</b> Pack Comercial $69.900 · Pack Ventas / Compras · contenido redes</li>
+    <li><b>Upsell:</b> add-on Mercado Libre $29.900</li>
+  </ol>
+  <div class="pack">
+    <div>Probar gratis 30 días</div>
+    <div class="big" style="font-size:1.55rem">erpmaster.cl/comercial → Probar gratis</div>
+    <div style="opacity:.9;margin-top:.35rem">Presentación: erpmaster.cl/comercial/presentacion</div>
+  </div>
+  <p class="muted" style="margin-top:1.2rem">ERP Master · Integración &amp; control inteligente</p>
+</section>
+
+</div>
+</body>
+</html>
