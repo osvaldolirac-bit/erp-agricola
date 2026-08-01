@@ -46,6 +46,40 @@ _UNIDADES_DOSIS_PLANILLA = [
     "Litros (L)",
 ]
 
+# Cuarteles activos para la planilla GlobalGAP (ingreso + consulta).
+PLANILLA_CUARTELES_ACTIVOS = ["CEREZOS CORTE 1", "CIRUELOS"]
+PLANILLA_INGRESO_FILAS = 6
+
+_PLANILLA_ESPECIE_POR_CUARTEL = {
+    "CEREZOS CORTE 1": "Cerezos",
+    "CIRUELOS": "Ciruelos",
+}
+
+_PLANILLA_SECTOR_LABEL = {
+    "CEREZOS CORTE 1": "Cerezos Corte 1",
+    "CIRUELOS": "Ciruelas",
+}
+
+_MAQ_OPTS = [
+    ("tractor", "Tractor"),
+    ("pulverizadora", "Pulverizadora"),
+    ("nebulizadora", "Nebulizadora"),
+    ("espalda", "Máquina espalda"),
+]
+_MET_OPTS = [
+    ("pulverizacion", "Pulverización"),
+    ("via_riego", "Vía riego"),
+    ("nebulizacion", "Nebulización"),
+    ("drenching", "Drenching"),
+]
+_EPP_OPTS = [
+    ("traje", "Traje"),
+    ("botas", "Botas"),
+    ("guantes", "Guantes"),
+    ("mascarilla", "Mascarilla y filtros"),
+    ("antiparras", "Antiparras"),
+]
+
 _ESTADO_PPPL_CSS = {
     "AUTORIZADO": "success",
     "PENDIENTE": "warning",
@@ -825,21 +859,42 @@ def _fmt_num(val, decimals=3):
     return f"{f:.{decimals}f}".rstrip("0").rstrip(".")
 
 
+def _planilla_cuarteles_activos() -> list[str]:
+    return list(PLANILLA_CUARTELES_ACTIVOS)
+
+
+def _especie_desde_cuartel(cuartel: str, fallback: str = "Cerezos") -> str:
+    return _PLANILLA_ESPECIE_POR_CUARTEL.get((cuartel or "").strip().upper(), fallback)
+
+
+def _cuartel_default_planilla(especie: str) -> str:
+    esp = (especie or "").strip().lower()
+    if esp.startswith("ciruel"):
+        return "CIRUELOS"
+    if esp.startswith("cerez"):
+        return "CEREZOS CORTE 1"
+    return "TODOS"
+
+
 def _section_planilla(demo, conn, especie: str) -> dict:
     _ensure_libro_campo_planilla(conn)
-    cuarteles = demo.cuarteles_gap_especie(especie)
-    cc_sel = (request.args.get("cuartel") or "").strip().upper()
-    if not cc_sel or cc_sel == "TODOS":
+    _ensure_gap_orden_aplicacion(conn)
+    cuarteles = _planilla_cuarteles_activos()
+    cc_arg = (request.args.get("cuartel") or "").strip().upper()
+    if not cc_arg:
+        cc_sel = _cuartel_default_planilla(especie)
+    elif cc_arg == "TODOS":
         cc_sel = "TODOS"
-    elif cc_sel not in [c.upper() for c in cuarteles]:
-        cc_sel = cuarteles[0].upper() if cuarteles else "TODOS"
+    elif cc_arg in [c.upper() for c in cuarteles]:
+        cc_sel = cc_arg
+    else:
+        cc_sel = _cuartel_default_planilla(especie)
 
-    filtros = ["UPPER(TRIM(COALESCE(especie,''))) LIKE ?"]
-    params: list = [f"%{(especie or '').upper()}%"]
-    if cuarteles:
-        placeholders = ",".join("?" for _ in cuarteles)
-        filtros.append(f"UPPER(sector) IN ({placeholders})")
-        params.extend(c.upper() for c in cuarteles)
+    filtros = []
+    params: list = []
+    placeholders = ",".join("?" for _ in cuarteles)
+    filtros.append(f"UPPER(sector) IN ({placeholders})")
+    params.extend(c.upper() for c in cuarteles)
     if cc_sel != "TODOS":
         filtros.append("UPPER(sector) = ?")
         params.append(cc_sel)
@@ -897,33 +952,56 @@ def _section_planilla(demo, conn, especie: str) -> dict:
         })
 
     cols, rows = df_to_records(show, set(), demo) if not show.empty else ([], [])
-    pref = especie.lower().replace(" ", "_")[:12] or "gap"
+    pref = (cc_sel if cc_sel != "TODOS" else "activos").lower().replace(" ", "_")[:18]
     pdf = _pdf_url(
         demo,
         show,
-        f"GLOBALGAP — {especie.upper()} — Planilla de aplicaciones",
+        f"GLOBALGAP — Planilla aplicaciones — {cc_sel if cc_sel != 'TODOS' else 'CEREZOS CORTE 1 / CIRUELOS'}",
         f"globalgap_{pref}_planilla.pdf",
     )
-    csv_ok = bool(_planilla_csv_paths())
-    import_disponible = csv_ok and any("CORTE 1" in c.upper() for c in cuarteles)
+    cuartel_ingreso = cc_sel if cc_sel != "TODOS" else _cuartel_default_planilla(especie)
+    if cuartel_ingreso == "TODOS":
+        cuartel_ingreso = cuarteles[0]
+    ingreso_filas = [
+        {
+            "idx": i,
+            "fecha": hoy_demo(demo).isoformat(),
+            "cuartel": cuartel_ingreso,
+            "especie": _especie_desde_cuartel(cuartel_ingreso, especie),
+            "variedad": "Santina" if "CEREZOS" in cuartel_ingreso else "",
+            "n_app_txt": "No aplica",
+            "unidad_dosis": "Litros (L)",
+            "maquina": "Pulverizadora",
+        }
+        for i in range(PLANILLA_INGRESO_FILAS)
+    ]
 
     return {
         "plan_cols": cols,
         "plan_rows": rows,
         "pdf_plan_url": pdf,
         "plan_cuarteles": ["TODOS"] + cuarteles,
-        "plan_cuartel_sel": cc_sel if cc_sel != "TODOS" else "TODOS",
+        "plan_cuarteles_activos": cuarteles,
+        "plan_cuartel_sel": cc_sel,
+        "plan_cuartel_ingreso": cuartel_ingreso,
         "plan_stats": {
             "lineas": len(df),
             "ordenes": int(df["n_orden"].astype(str).nunique()) if not df.empty else 0,
             "productos": int(df["producto"].nunique()) if not df.empty else 0,
         },
         "plan_unidades": _UNIDADES_DOSIS_PLANILLA,
-        "plan_import_disponible": import_disponible,
+        "plan_import_disponible": bool(_planilla_csv_paths()) and (
+            cc_sel in ("TODOS", "CEREZOS CORTE 1")
+        ),
+        "plan_ingreso_filas": ingreso_filas,
+        "plan_maq_opts": _MAQ_OPTS,
+        "plan_met_opts": _MET_OPTS,
+        "plan_epp_opts": _EPP_OPTS,
+        "plan_sector_labels": _PLANILLA_SECTOR_LABEL,
+        "plan_para_def": "Jefe de Campo",
         "hoy": hoy_demo(demo).isoformat(),
         "lc_url": url_for("modules.libro_campo", sec="historial"),
     }
-
 
 def _siguiente_n_aplicacion(conn) -> int:
     res = conn.execute("SELECT MAX(n_aplicacion) FROM libro_campo").fetchone()[0]
@@ -1015,73 +1093,450 @@ def _insert_planilla_row(conn, row: dict, n_app: int) -> None:
     )
 
 
-def _post_planilla_add(demo, conn, especie: str) -> dict:
-    _ensure_libro_campo_planilla(conn)
-    producto = (request.form.get("producto") or "").strip()
-    cuartel = (request.form.get("cuartel") or "").strip().upper()
-    aplicador = (request.form.get("aplicador") or "").strip()
-    maquina = (request.form.get("maquina") or "").strip()
+def _form_float_idx(idx: int, name: str, default=0.0):
+    raw = (request.form.get(f"r{idx}_{name}") or "").strip().replace(",", ".")
+    if raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _form_opt_float_idx(idx: int, name: str):
+    raw = (request.form.get(f"r{idx}_{name}") or "").strip().replace(",", ".")
+    if raw == "":
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _form_int_idx(idx: int, name: str, default=0) -> int:
+    raw = (request.form.get(f"r{idx}_{name}") or "").strip().replace(",", ".")
+    if raw == "":
+        return default
+    try:
+        return int(float(raw))
+    except ValueError:
+        return default
+
+
+def _siguiente_n_orden(conn, cuartel: str) -> str:
+    res = conn.execute(
+        "SELECT MAX(CAST(n_orden AS INTEGER)) FROM libro_campo WHERE UPPER(sector)=? AND n_orden GLOB '[0-9]*'",
+        (cuartel.upper(),),
+    ).fetchone()[0]
+    return str(int(res) + 1 if res is not None else 0)
+
+
+def _guardar_fila_planilla(demo, conn, especie: str, payload: dict) -> tuple[bool, str, str]:
+    producto = (payload.get("producto") or "").strip()
+    cuartel = (payload.get("cuartel") or "").strip().upper()
+    aplicador = (payload.get("aplicador") or "").strip()
+    maquina = (payload.get("maquina") or "").strip()
     if not producto:
-        return {"ok": False, "msg": "Ingrese el producto utilizado."}
-    if not cuartel:
-        return {"ok": False, "msg": "Seleccione el cuartel."}
+        return False, "Producto vacío.", cuartel
+    if cuartel not in [c.upper() for c in PLANILLA_CUARTELES_ACTIVOS]:
+        return False, f"Cuartel no activo: {cuartel or '—'}.", cuartel
     if not aplicador:
-        return {"ok": False, "msg": "Ingrese el aplicador."}
+        return False, f"{producto}: falta aplicador.", cuartel
     if not maquina:
-        return {"ok": False, "msg": "Ingrese la máquina / pulverizadora."}
+        return False, f"{producto}: falta máquina.", cuartel
 
-    fe = parse_date(request.form.get("fecha"), hoy_demo(demo))
-    car_e = _parse_int_form("car_etiqueta")
-    car_a = _parse_int_form("car_agenda")
-    car_m = _parse_int_form("car_mayor", max(car_e, car_a))
-    if request.form.get("car_mayor") in (None, ""):
+    fe = parse_date(payload.get("fecha"), hoy_demo(demo))
+    car_e = int(payload.get("car_etiqueta") or 0)
+    car_a = int(payload.get("car_agenda") or 0)
+    car_m = payload.get("car_mayor")
+    if car_m in (None, ""):
         car_m = max(car_e, car_a)
-    fv = parse_date(request.form.get("fecha_viable"), fe + timedelta(days=car_m))
-    n_orden = (request.form.get("n_orden") or "").strip()
-    if not n_orden:
-        res = conn.execute(
-            "SELECT MAX(CAST(n_orden AS INTEGER)) FROM libro_campo WHERE UPPER(sector)=? AND n_orden GLOB '[0-9]*'",
-            (cuartel,),
-        ).fetchone()[0]
-        n_orden = str(int(res) + 1 if res is not None else 0)
-
+    else:
+        car_m = int(car_m)
+    fv_raw = payload.get("fecha_viable")
+    fv = parse_date(fv_raw, fe + timedelta(days=car_m)) if fv_raw else fe + timedelta(days=car_m)
+    n_orden = str(payload.get("n_orden") or "").strip() or _siguiente_n_orden(conn, cuartel)
     n_app = _siguiente_n_aplicacion(conn)
     row = {
         "fecha": fe.isoformat(),
         "n_orden": n_orden,
         "sector": cuartel,
-        "especie": (request.form.get("especie_cultivo") or especie).strip(),
-        "variedad": (request.form.get("variedad") or "").strip(),
-        "motivo": (request.form.get("motivo") or "").strip(),
+        "especie": (payload.get("especie") or _especie_desde_cuartel(cuartel, especie)).strip(),
+        "variedad": (payload.get("variedad") or "").strip(),
+        "motivo": (payload.get("motivo") or "").strip(),
         "producto": producto,
-        "n_app_txt": (request.form.get("n_app_txt") or "").strip() or "No aplica",
-        "ingrediente": (request.form.get("ingrediente") or "").strip(),
-        "dosis": _parse_float_form("dosis"),
-        "unidad_dosis": request.form.get("unidad_dosis") or _UNIDADES_DOSIS_PLANILLA[0],
-        "vol_total": _parse_float_form("vol_agua"),
-        "gasto_total": _parse_float_form("gasto_total"),
-        "unidad_gasto": (request.form.get("unidad_gasto") or "").strip(),
-        "tractor": (request.form.get("tractor") or "").strip(),
+        "n_app_txt": (payload.get("n_app_txt") or "").strip() or "No aplica",
+        "ingrediente": (payload.get("ingrediente") or "").strip(),
+        "dosis": float(payload.get("dosis") or 0),
+        "unidad_dosis": payload.get("unidad_dosis") or _UNIDADES_DOSIS_PLANILLA[0],
+        "vol_total": float(payload.get("vol_agua") or 0),
+        "gasto_total": float(payload.get("gasto_total") or 0),
+        "unidad_gasto": (payload.get("unidad_gasto") or "").strip(),
+        "tractor": (payload.get("tractor") or "").strip(),
         "maquina": maquina,
         "aplicadores": aplicador,
         "car_etiqueta": car_e,
         "car_agenda": car_a,
         "car_mayor": car_m,
         "fecha_viable": fv.isoformat(),
-        "t_max": _parse_optional_float_form("t_max"),
-        "t_min": _parse_optional_float_form("t_min"),
-        "hr_pct": _parse_optional_float_form("hr_pct"),
-        "viento_kmh": _parse_optional_float_form("viento_kmh"),
-        "lote_producto": (request.form.get("lote") or "").strip(),
-        "operador_certificado": request.form.get("op_cert") == "1",
+        "t_max": payload.get("t_max"),
+        "t_min": payload.get("t_min"),
+        "hr_pct": payload.get("hr_pct"),
+        "viento_kmh": payload.get("viento_kmh"),
+        "lote_producto": (payload.get("lote") or "").strip(),
+        "operador_certificado": bool(payload.get("op_cert")),
     }
     _insert_planilla_row(conn, row, n_app)
+    return True, f"N°{n_app:05d} {producto}", cuartel
+
+
+def _post_planilla_add(demo, conn, especie: str) -> dict:
+    """Compatibilidad: una sola línea (formulario clásico)."""
+    _ensure_libro_campo_planilla(conn)
+    car_m_raw = request.form.get("car_mayor")
+    ok, msg, cuartel = _guardar_fila_planilla(
+        demo,
+        conn,
+        especie,
+        {
+            "fecha": request.form.get("fecha"),
+            "n_orden": request.form.get("n_orden"),
+            "cuartel": request.form.get("cuartel"),
+            "especie": request.form.get("especie_cultivo") or especie,
+            "variedad": request.form.get("variedad"),
+            "motivo": request.form.get("motivo"),
+            "producto": request.form.get("producto"),
+            "n_app_txt": request.form.get("n_app_txt"),
+            "ingrediente": request.form.get("ingrediente"),
+            "dosis": _parse_float_form("dosis"),
+            "unidad_dosis": request.form.get("unidad_dosis"),
+            "vol_agua": _parse_float_form("vol_agua"),
+            "gasto_total": _parse_float_form("gasto_total"),
+            "unidad_gasto": request.form.get("unidad_gasto"),
+            "tractor": request.form.get("tractor"),
+            "maquina": request.form.get("maquina"),
+            "aplicador": request.form.get("aplicador"),
+            "car_etiqueta": _parse_int_form("car_etiqueta"),
+            "car_agenda": _parse_int_form("car_agenda"),
+            "car_mayor": None if car_m_raw in (None, "") else _parse_int_form("car_mayor"),
+            "fecha_viable": request.form.get("fecha_viable"),
+            "t_max": _parse_optional_float_form("t_max"),
+            "t_min": _parse_optional_float_form("t_min"),
+            "hr_pct": _parse_optional_float_form("hr_pct"),
+            "viento_kmh": _parse_optional_float_form("viento_kmh"),
+            "lote": request.form.get("lote"),
+            "op_cert": request.form.get("op_cert") == "1",
+        },
+    )
+    if not ok:
+        return {"ok": False, "msg": msg, "extra": {"cuartel": cuartel}}
     conn.commit()
-    demo.registrar_accion("GLOBALGAP PLANILLA", f"App N°{n_app} {producto} · {cuartel}")
+    demo.registrar_accion("GLOBALGAP PLANILLA", msg)
+    return {"ok": True, "msg": f"Aplicación registrada en planilla y Libro de Campo ({msg}).", "extra": {"cuartel": cuartel}}
+
+
+def _post_planilla_matriz(demo, conn, especie: str) -> dict:
+    """Guarda varias líneas desde la matriz de ingreso de la misma pestaña."""
+    _ensure_libro_campo_planilla(conn)
+    try:
+        n_rows = int(request.form.get("n_rows") or PLANILLA_INGRESO_FILAS)
+    except ValueError:
+        n_rows = PLANILLA_INGRESO_FILAS
+    n_rows = max(1, min(n_rows, 40))
+
+    guardadas = []
+    errores = []
+    last_cc = ""
+    for i in range(n_rows):
+        producto = (request.form.get(f"r{i}_producto") or "").strip()
+        if not producto:
+            continue
+        car_m_raw = request.form.get(f"r{i}_car_mayor")
+        ok, msg, cuartel = _guardar_fila_planilla(
+            demo,
+            conn,
+            especie,
+            {
+                "fecha": request.form.get(f"r{i}_fecha"),
+                "n_orden": request.form.get(f"r{i}_n_orden"),
+                "cuartel": request.form.get(f"r{i}_cuartel"),
+                "especie": request.form.get(f"r{i}_especie") or especie,
+                "variedad": request.form.get(f"r{i}_variedad"),
+                "motivo": request.form.get(f"r{i}_motivo"),
+                "producto": producto,
+                "n_app_txt": request.form.get(f"r{i}_n_app_txt"),
+                "ingrediente": request.form.get(f"r{i}_ingrediente"),
+                "dosis": _form_float_idx(i, "dosis"),
+                "unidad_dosis": request.form.get(f"r{i}_unidad_dosis"),
+                "vol_agua": _form_float_idx(i, "vol_agua"),
+                "gasto_total": _form_float_idx(i, "gasto_total"),
+                "unidad_gasto": request.form.get(f"r{i}_unidad_gasto"),
+                "tractor": request.form.get(f"r{i}_tractor"),
+                "maquina": request.form.get(f"r{i}_maquina"),
+                "aplicador": request.form.get(f"r{i}_aplicador"),
+                "car_etiqueta": _form_int_idx(i, "car_etiqueta"),
+                "car_agenda": _form_int_idx(i, "car_agenda"),
+                "car_mayor": None if car_m_raw in (None, "") else _form_int_idx(i, "car_mayor"),
+                "fecha_viable": request.form.get(f"r{i}_fecha_viable"),
+                "t_max": _form_opt_float_idx(i, "t_max"),
+                "t_min": _form_opt_float_idx(i, "t_min"),
+                "hr_pct": _form_opt_float_idx(i, "hr_pct"),
+                "viento_kmh": _form_opt_float_idx(i, "viento_kmh"),
+                "lote": request.form.get(f"r{i}_lote"),
+                "op_cert": request.form.get(f"r{i}_op_cert") == "1",
+            },
+        )
+        if ok:
+            guardadas.append(msg)
+            last_cc = cuartel or last_cc
+        else:
+            errores.append(msg)
+
+    if not guardadas and not errores:
+        return {"ok": False, "msg": "Complete al menos una fila con producto, aplicador y máquina."}
+    if not guardadas and errores:
+        return {"ok": False, "msg": "No se guardó ninguna fila. " + " · ".join(errores[:3])}
+
+    conn.commit()
+    demo.registrar_accion("GLOBALGAP PLANILLA MATRIZ", f"{len(guardadas)} línea(s)")
+    msg = f"Se guardaron {len(guardadas)} aplicación(es) en planilla / Libro de Campo."
+    if errores:
+        msg += " Omitidas: " + " · ".join(errores[:3])
+    return {"ok": True, "msg": msg, "extra": {"cuartel": last_cc or "TODOS"}}
+
+
+
+def _ensure_gap_orden_aplicacion(conn) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS gap_orden_aplicacion (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            n_aplicacion INTEGER,
+            para TEXT,
+            fecha DATE,
+            sector TEXT,
+            especie TEXT,
+            maq_tractor INTEGER DEFAULT 0,
+            maq_pulverizadora INTEGER DEFAULT 0,
+            maq_nebulizadora INTEGER DEFAULT 0,
+            maq_espalda INTEGER DEFAULT 0,
+            met_pulverizacion INTEGER DEFAULT 0,
+            met_via_riego INTEGER DEFAULT 0,
+            met_nebulizacion INTEGER DEFAULT 0,
+            met_drenching INTEGER DEFAULT 0,
+            epp_traje INTEGER DEFAULT 0,
+            epp_botas INTEGER DEFAULT 0,
+            epp_guantes INTEGER DEFAULT 0,
+            epp_mascarilla INTEGER DEFAULT 0,
+            epp_antiparras INTEGER DEFAULT 0,
+            observaciones TEXT,
+            mojamiento_l_ha REAL,
+            reingreso_hrs REAL,
+            emite TEXT,
+            conf_fecha DATE,
+            conf_hr_inicio TEXT,
+            conf_hr_termino TEXT,
+            conf_firma TEXT,
+            t_c REAL,
+            hr_pct REAL,
+            viento_kmh REAL,
+            lavado_maquinaria TEXT,
+            lavado_volumen REAL,
+            lavado_responsable TEXT,
+            creado_en TEXT
+        )"""
+    )
+    try:
+        conn.commit()
+    except Exception:
+        pass
+
+
+def _flag(name: str) -> int:
+    return 1 if request.form.get(name) in ("1", "on", "true", "x", "X") else 0
+
+
+def _parse_dosis_txt(raw: str, unidad_default: str = "Litros (L)") -> tuple[float, str]:
+    raw = (raw or "").strip().replace(",", ".")
+    if not raw:
+        return 0.0, unidad_default
+    unidad = unidad_default
+    low = raw.lower()
+    if "kg" in low:
+        unidad = "Kilogramos (kg)"
+    elif "g/" in low or low.endswith("g") or " gr" in low:
+        unidad = "Gramos (g)"
+    elif "lt" in low or "l/" in low or low.endswith("l"):
+        unidad = "Litros (L)"
+    nums = "".join(ch if (ch.isdigit() or ch == ".") else " " for ch in raw).split()
+    try:
+        return float(nums[0]), unidad
+    except (ValueError, IndexError):
+        return 0.0, unidad
+
+
+def _post_planilla_orden(demo, conn, especie: str) -> dict:
+    """Matriz de ingreso GlobalGAP (orden de aplicación) → Libro de Campo + cabecera."""
+    from datetime import datetime as _dt
+
+    _ensure_libro_campo_planilla(conn)
+    _ensure_gap_orden_aplicacion(conn)
+
+    sector = (request.form.get("sector") or "").strip().upper()
+    if sector not in [c.upper() for c in PLANILLA_CUARTELES_ACTIVOS]:
+        return {"ok": False, "msg": "Seleccione un cuartel activo (Cerezos Corte 1 o Ciruelos)."}
+    fecha = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    especie_ord = (request.form.get("especie_cultivo") or _especie_desde_cuartel(sector, especie)).strip()
+    para = (request.form.get("para") or "Jefe de Campo").strip()
+    aplicador = (request.form.get("lavado_responsable") or request.form.get("aplicador") or "").strip()
+    if not aplicador:
+        return {"ok": False, "msg": "Indique el responsable de aplicación / lavado."}
+
+    maqs = [label for key, label in _MAQ_OPTS if _flag(f"maq_{key}")]
+    maquina = " / ".join(maqs) if maqs else (request.form.get("maquina_texto") or "").strip()
+    if not maquina:
+        return {"ok": False, "msg": "Marque al menos una maquinaria."}
+    tractor = "SI" if _flag("maq_tractor") else ""
+
+    def _fnum(name, default=None):
+        raw = (request.form.get(name) or "").strip().replace(",", ".")
+        if raw == "":
+            return default
+        try:
+            return float(raw)
+        except ValueError:
+            return default
+
+    vol_agua = _fnum("lavado_volumen", 0.0) or 0.0
+    mojamiento = _fnum("mojamiento_l_ha")
+    if vol_agua <= 0 and mojamiento:
+        vol_agua = float(mojamiento)
+    t_c = _fnum("t_c")
+    hr = _fnum("hr_pct")
+    viento = _fnum("viento_kmh")
+    reingreso = _fnum("reingreso_hrs")
+
+    try:
+        n_rows = int(request.form.get("n_rows") or PLANILLA_INGRESO_FILAS)
+    except ValueError:
+        n_rows = PLANILLA_INGRESO_FILAS
+    n_rows = max(1, min(n_rows, 20))
+
+    variedad = (request.form.get("variedad") or "").strip()
+    productos = []
+    for i in range(n_rows):
+        prod = (request.form.get(f"r{i}_producto") or "").strip()
+        if not prod:
+            continue
+        car_e = _form_int_idx(i, "car_etiqueta")
+        car_a = _form_int_idx(i, "car_agenda")
+        car_o = _form_int_idx(i, "car_otro")
+        car_m = max(car_e, car_a, car_o)
+        dosis, unidad = _parse_dosis_txt(request.form.get(f"r{i}_dosis") or "")
+        if request.form.get(f"r{i}_unidad_dosis"):
+            unidad = request.form.get(f"r{i}_unidad_dosis")
+        gasto = _form_float_idx(i, "gasto_total")
+        if gasto <= 0 and vol_agua > 0 and dosis > 0:
+            gasto = round(dosis * (vol_agua / 100.0), 4)
+        productos.append(
+            {
+                "producto": prod,
+                "ingrediente": (request.form.get(f"r{i}_ingrediente") or "").strip(),
+                "motivo": (request.form.get(f"r{i}_objetivo") or "").strip(),
+                "dosis": dosis,
+                "unidad_dosis": unidad,
+                "gasto_total": gasto,
+                "unidad_gasto": "L" if "Litros" in unidad else ("kg" if "Kilogramos" in unidad else ""),
+                "car_etiqueta": car_e,
+                "car_agenda": car_a,
+                "car_mayor": car_m,
+                "n_app_txt": (request.form.get(f"r{i}_n_app_txt") or "").strip() or "1 de 1",
+                "variedad": variedad,
+            }
+        )
+
+    if not productos:
+        return {"ok": False, "msg": "Ingrese al menos un producto en la matriz."}
+
+    n_app = _siguiente_n_aplicacion(conn)
+    n_orden = _siguiente_n_orden(conn, sector)
+    conf_fecha = parse_date(request.form.get("conf_fecha"), fecha)
+
+    for p in productos:
+        car_m = int(p["car_mayor"])
+        fv = (fecha + timedelta(days=car_m)).isoformat()
+        _insert_planilla_row(
+            conn,
+            {
+                "fecha": fecha.isoformat(),
+                "n_orden": n_orden,
+                "sector": sector,
+                "especie": especie_ord,
+                "variedad": p.get("variedad") or "",
+                "motivo": p["motivo"],
+                "producto": p["producto"],
+                "n_app_txt": p["n_app_txt"],
+                "ingrediente": p["ingrediente"],
+                "dosis": p["dosis"],
+                "unidad_dosis": p["unidad_dosis"],
+                "vol_total": vol_agua,
+                "gasto_total": p["gasto_total"],
+                "unidad_gasto": p["unidad_gasto"],
+                "tractor": tractor,
+                "maquina": maquina,
+                "aplicadores": aplicador,
+                "car_etiqueta": p["car_etiqueta"],
+                "car_agenda": p["car_agenda"],
+                "car_mayor": car_m,
+                "fecha_viable": fv,
+                "t_max": t_c,
+                "t_min": None,
+                "hr_pct": hr,
+                "viento_kmh": viento,
+                "lote_producto": "",
+                "operador_certificado": 0,
+            },
+            n_app,
+        )
+
+    obs = (request.form.get("observaciones") or "").strip()
+    if not obs:
+        obs = "Lea la etiqueta del producto | Use su Equipo de Protección Personal"
+
+    conn.execute(
+        """INSERT INTO gap_orden_aplicacion
+           (n_aplicacion, para, fecha, sector, especie,
+            maq_tractor, maq_pulverizadora, maq_nebulizadora, maq_espalda,
+            met_pulverizacion, met_via_riego, met_nebulizacion, met_drenching,
+            epp_traje, epp_botas, epp_guantes, epp_mascarilla, epp_antiparras,
+            observaciones, mojamiento_l_ha, reingreso_hrs, emite,
+            conf_fecha, conf_hr_inicio, conf_hr_termino, conf_firma,
+            t_c, hr_pct, viento_kmh, lavado_maquinaria, lavado_volumen, lavado_responsable,
+            creado_en)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            n_app, para, fecha.isoformat(), sector, especie_ord,
+            _flag("maq_tractor"), _flag("maq_pulverizadora"), _flag("maq_nebulizadora"), _flag("maq_espalda"),
+            _flag("met_pulverizacion"), _flag("met_via_riego"), _flag("met_nebulizacion"), _flag("met_drenching"),
+            _flag("epp_traje"), _flag("epp_botas"), _flag("epp_guantes"), _flag("epp_mascarilla"), _flag("epp_antiparras"),
+            obs, mojamiento, reingreso, (request.form.get("emite") or "").strip(),
+            conf_fecha.isoformat(),
+            (request.form.get("conf_hr_inicio") or "").strip(),
+            (request.form.get("conf_hr_termino") or "").strip(),
+            (request.form.get("conf_firma") or "").strip(),
+            t_c, hr, viento,
+            (request.form.get("lavado_maquinaria") or "").strip(),
+            vol_agua if vol_agua else None,
+            aplicador,
+            _dt.utcnow().isoformat(timespec="seconds"),
+        ),
+    )
+    conn.commit()
+    prods = ", ".join(p["producto"] for p in productos)
+    demo.registrar_accion("GLOBALGAP ORDEN APP", f"N°{n_app} {sector} · {prods}")
     return {
         "ok": True,
-        "msg": f"Aplicación registrada en planilla y Libro de Campo (N° {n_app:05d}).",
-        "extra": {"cuartel": cuartel},
+        "msg": f"Orden de aplicación N° {n_app:05d} guardada ({len(productos)} producto(s)) en planilla y Libro de Campo.",
+        "extra": {"cuartel": sector},
     }
 
 
@@ -1233,6 +1688,8 @@ def view(user_email: str, user_rol: str):
                 "cap_add": _post_cap_add,
                 "cosecha_add": lambda d, c: _post_cosecha_add(d, c, especie),
                 "planilla_add": lambda d, c: _post_planilla_add(d, c, especie),
+                "planilla_matriz": lambda d, c: _post_planilla_orden(d, c, especie),
+                "planilla_orden": lambda d, c: _post_planilla_orden(d, c, especie),
                 "planilla_import": lambda d, c: _post_planilla_import(d, c, especie),
                 "agua_add": _post_agua_add,
                 "cal_add": _post_cal_add,

@@ -287,8 +287,8 @@
   <div class="panel-card mb-3">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
       <div>
-        <h2 class="h6 panel-title mb-1">Planilla / matriz de aplicaciones</h2>
-        <p class="small text-muted mb-0">Misma fuente que Libro de Campo · {{ plan_stats.lineas }} línea(s) · {{ plan_stats.ordenes }} orden(es) · {{ plan_stats.productos }} producto(s)</p>
+        <h2 class="h6 panel-title mb-1">Planilla aplicaciones</h2>
+        <p class="small text-muted mb-0">Cuarteles activos: Cerezos Corte 1 y Ciruelos · {{ plan_stats.lineas }} línea(s) en consulta</p>
       </div>
       <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-outline-secondary btn-sm" href="{{ lc_url }}">Ver en Libro de Campo</a>
@@ -299,10 +299,12 @@
       <input type="hidden" name="sec" value="planilla">
       <input type="hidden" name="especie" value="{{ especie_sel }}">
       <div class="col-md-4">
-        <label class="form-label small">Cuartel</label>
+        <label class="form-label small">Filtrar consulta</label>
         <select name="cuartel" class="form-select form-select-sm" onchange="this.form.submit()">
           {% for c in plan_cuarteles %}
-          <option value="{{ c }}" {% if c == plan_cuartel_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == plan_cuartel_sel %}selected{% endif %}>
+            {% if c == 'TODOS' %}TODOS{% else %}{{ plan_sector_labels.get(c, c) }}{% endif %}
+          </option>
           {% endfor %}
         </select>
       </div>
@@ -313,8 +315,7 @@
       <input type="hidden" name="sec" value="planilla">
       <input type="hidden" name="especie" value="{{ especie_sel }}">
       <input type="hidden" name="cuartel" value="CEREZOS CORTE 1">
-      <button type="submit" class="btn btn-outline-primary btn-sm">Cargar planilla CEREZOS CORTE 1</button>
-      <span class="small text-muted ms-2">Importa el historial de campo a Libro de Campo (omite duplicados).</span>
+      <button type="submit" class="btn btn-outline-primary btn-sm">Cargar historial CEREZOS CORTE 1</button>
     </form>
     {% endif %}
     {% if plan_rows %}
@@ -325,57 +326,153 @@
       </table>
     </div>
     {% else %}
-    <div class="alert alert-info mb-0">Sin aplicaciones en la planilla para este filtro. Use el botón de carga o registre una línea abajo.</div>
+    <div class="alert alert-info mb-0">Sin aplicaciones registradas para este filtro.</div>
     {% endif %}
   </div>
+
   <div class="panel-card mb-3">
-    <h2 class="h6">Registrar línea en planilla</h2>
-    <p class="small text-muted">Queda guardada en Libro de Campo (trazabilidad GlobalGAP).</p>
-    <form method="post" class="row g-2">
-      <input type="hidden" name="action" value="planilla_add">
+    <h2 class="h6 panel-title mb-1">Matriz de ingreso de aplicaciones</h2>
+    <p class="small text-muted mb-3">Orden GlobalGAP · se guarda en Libro de Campo (misma pestaña).</p>
+    <form method="post" id="gapOrdenForm">
+      <input type="hidden" name="action" value="planilla_orden">
       <input type="hidden" name="sec" value="planilla">
       <input type="hidden" name="especie" value="{{ especie_sel }}">
-      <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}" required></div>
-      <div class="col-md-2"><label class="form-label small">N° orden</label><input type="text" name="n_orden" class="form-control form-control-sm" placeholder="auto"></div>
-      <div class="col-md-3"><label class="form-label small">Cuartel</label>
-        <select name="cuartel" class="form-select form-select-sm" required>
-          {% for c in plan_cuarteles if c != 'TODOS' %}
-          <option value="{{ c }}" {% if c == plan_cuartel_sel or (plan_cuartel_sel == 'TODOS' and loop.first) %}selected{% endif %}>{{ c }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2"><label class="form-label small">Especie</label><input type="text" name="especie_cultivo" class="form-control form-control-sm" value="{{ especie_sel }}"></div>
-      <div class="col-md-3"><label class="form-label small">Variedad</label><input type="text" name="variedad" class="form-control form-control-sm" placeholder="Ej. Santina"></div>
-      <div class="col-md-3"><label class="form-label small">Motivo</label><input type="text" name="motivo" class="form-control form-control-sm" placeholder="Motivo aplicación"></div>
-      <div class="col-md-3"><label class="form-label small">Producto</label><input type="text" name="producto" class="form-control form-control-sm" required></div>
-      <div class="col-md-2"><label class="form-label small">N° aplicación</label><input type="text" name="n_app_txt" class="form-control form-control-sm" placeholder="1 de 3 / No aplica"></div>
-      <div class="col-md-4"><label class="form-label small">Ingrediente activo</label><input type="text" name="ingrediente" class="form-control form-control-sm"></div>
-      <div class="col-md-2"><label class="form-label small">Dosis /100</label><input type="number" name="dosis" class="form-control form-control-sm" min="0" step="any" value="0"></div>
-      <div class="col-md-2"><label class="form-label small">Unidad dosis</label>
-        <select name="unidad_dosis" class="form-select form-select-sm">{% for u in plan_unidades %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select>
-      </div>
-      <div class="col-md-2"><label class="form-label small">Vol. agua (L)</label><input type="number" name="vol_agua" class="form-control form-control-sm" min="0" step="any" value="0"></div>
-      <div class="col-md-2"><label class="form-label small">Gasto prod.</label><input type="number" name="gasto_total" class="form-control form-control-sm" min="0" step="any" value="0"></div>
-      <div class="col-md-2"><label class="form-label small">U. gasto</label><input type="text" name="unidad_gasto" class="form-control form-control-sm" placeholder="kg / L"></div>
-      <div class="col-md-2"><label class="form-label small">Tractor</label><input type="text" name="tractor" class="form-control form-control-sm"></div>
-      <div class="col-md-3"><label class="form-label small">Máquina</label><input type="text" name="maquina" class="form-control form-control-sm" placeholder="Pulverizadora / Nebulizadora" required></div>
-      <div class="col-md-3"><label class="form-label small">Aplicador</label><input type="text" name="aplicador" class="form-control form-control-sm" required></div>
-      <div class="col-md-2"><label class="form-label small">Car. etiqueta</label><input type="number" name="car_etiqueta" class="form-control form-control-sm" min="0" step="1" value="0"></div>
-      <div class="col-md-2"><label class="form-label small">Car. agenda</label><input type="number" name="car_agenda" class="form-control form-control-sm" min="0" step="1" value="0"></div>
-      <div class="col-md-2"><label class="form-label small">Car. mayor</label><input type="number" name="car_mayor" class="form-control form-control-sm" min="0" step="1" placeholder="auto"></div>
-      <div class="col-md-2"><label class="form-label small">Fecha viable</label><input type="date" name="fecha_viable" class="form-control form-control-sm"></div>
-      <div class="col-md-2"><label class="form-label small">T° máx</label><input type="number" name="t_max" class="form-control form-control-sm" step="any"></div>
-      <div class="col-md-2"><label class="form-label small">T° mín</label><input type="number" name="t_min" class="form-control form-control-sm" step="any"></div>
-      <div class="col-md-2"><label class="form-label small">HR %</label><input type="number" name="hr_pct" class="form-control form-control-sm" step="any"></div>
-      <div class="col-md-2"><label class="form-label small">Viento km/h</label><input type="number" name="viento_kmh" class="form-control form-control-sm" step="any"></div>
-      <div class="col-md-3"><label class="form-label small">Lote producto</label><input type="text" name="lote" class="form-control form-control-sm"></div>
-      <div class="col-md-3 d-flex align-items-end">
-        <div class="form-check mb-2">
-          <input class="form-check-input" type="checkbox" name="op_cert" value="1" id="planOpCert">
-          <label class="form-check-label small" for="planOpCert">Operador certificado</label>
+      <input type="hidden" name="n_rows" value="{{ plan_ingreso_filas|length }}">
+
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">
+          <label class="form-label small">Para</label>
+          <input type="text" name="para" class="form-control form-control-sm" value="{{ plan_para_def }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Fecha</label>
+          <input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Sector</label>
+          <select name="sector" id="gapSector" class="form-select form-select-sm" required>
+            {% for c in plan_cuarteles_activos %}
+            <option value="{{ c }}" {% if c == plan_cuartel_ingreso %}selected{% endif %}>{{ plan_sector_labels.get(c, c) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Variedad</label>
+          <input type="text" name="variedad" class="form-control form-control-sm" placeholder="Ej. Santina / D’Agen">
         </div>
       </div>
-      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Registrar línea</button></div>
+
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:140px">Producto (s)</th>
+              <th style="min-width:130px">Ingrediente activo</th>
+              <th style="min-width:110px">Dosis</th>
+              <th colspan="3" class="text-center">Carencia</th>
+              <th style="min-width:140px">Objetivo</th>
+            </tr>
+            <tr>
+              <th></th><th></th><th></th>
+              <th class="text-center">Etiqueta</th>
+              <th class="text-center">Agenda pesticida</th>
+              <th class="text-center">Otro</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in plan_ingreso_filas %}
+            <tr>
+              <td><input type="text" name="r{{ f.idx }}_producto" class="form-control form-control-sm" placeholder="{% if f.idx == 0 %}Ej. Nordox{% endif %}"></td>
+              <td><input type="text" name="r{{ f.idx }}_ingrediente" class="form-control form-control-sm" placeholder="{% if f.idx == 0 %}Ej. Cobre{% endif %}"></td>
+              <td><input type="text" name="r{{ f.idx }}_dosis" class="form-control form-control-sm" placeholder="0,2 lt/100 lt"></td>
+              <td><input type="number" name="r{{ f.idx }}_car_etiqueta" class="form-control form-control-sm" min="0" step="1" value="0"></td>
+              <td><input type="number" name="r{{ f.idx }}_car_agenda" class="form-control form-control-sm" min="0" step="1" value="0"></td>
+              <td><input type="number" name="r{{ f.idx }}_car_otro" class="form-control form-control-sm" min="0" step="1" value="0"></td>
+              <td><input type="text" name="r{{ f.idx }}_objetivo" class="form-control form-control-sm" placeholder="Control enfermedades"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small fw-semibold mb-2">Maquinaria</div>
+            {% for key, label in plan_maq_opts %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="maq_{{ key }}" value="1" id="maq_{{ key }}" {% if key in ('tractor','nebulizadora') %}checked{% endif %}>
+              <label class="form-check-label small" for="maq_{{ key }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small fw-semibold mb-2">Método</div>
+            {% for key, label in plan_met_opts %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="met_{{ key }}" value="1" id="met_{{ key }}" {% if key == 'pulverizacion' %}checked{% endif %}>
+              <label class="form-check-label small" for="met_{{ key }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small fw-semibold mb-2">Equipo protección personal</div>
+            {% for key, label in plan_epp_opts %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="epp_{{ key }}" value="1" id="epp_{{ key }}" checked>
+              <label class="form-check-label small" for="epp_{{ key }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small fw-semibold mb-2">Observaciones</div>
+            <textarea name="observaciones" class="form-control form-control-sm" rows="5" placeholder="Lea la etiqueta del producto&#10;Use su Equipo de Protección Personal"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-2 mb-3">
+        <div class="col-md-2">
+          <label class="form-label small">Mojamiento (lt/há)</label>
+          <input type="number" name="mojamiento_l_ha" class="form-control form-control-sm" min="0" step="any" placeholder="1000">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">T° reingreso (hrs)</label>
+          <input type="number" name="reingreso_hrs" class="form-control form-control-sm" min="0" step="any" value="24">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Emite</label>
+          <input type="text" name="emite" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label small">Nombre y firma</label>
+          <input type="text" name="conf_firma" class="form-control form-control-sm" placeholder="Nombre quien emite / firma">
+        </div>
+      </div>
+
+      <div class="border rounded p-2 mb-3">
+        <div class="row g-2">
+          <div class="col-12"><div class="small fw-semibold">Confirmación aplicación · Condiciones atmosféricas · Lavado maquinaria</div></div>
+          <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="conf_fecha" class="form-control form-control-sm" value="{{ hoy }}"></div>
+          <div class="col-md-2"><label class="form-label small">Hr inicio</label><input type="time" name="conf_hr_inicio" class="form-control form-control-sm"></div>
+          <div class="col-md-2"><label class="form-label small">Hr término</label><input type="time" name="conf_hr_termino" class="form-control form-control-sm"></div>
+          <div class="col-md-1"><label class="form-label small">T (°C)</label><input type="number" name="t_c" class="form-control form-control-sm" step="any"></div>
+          <div class="col-md-1"><label class="form-label small">HR %</label><input type="number" name="hr_pct" class="form-control form-control-sm" step="any"></div>
+          <div class="col-md-1"><label class="form-label small">Viento</label><input type="number" name="viento_kmh" class="form-control form-control-sm" step="any"></div>
+          <div class="col-md-1"><label class="form-label small">Volumen</label><input type="number" name="lavado_volumen" class="form-control form-control-sm" min="0" step="any" placeholder="lt"></div>
+          <div class="col-md-2"><label class="form-label small">Maquinaria lavado</label><input type="text" name="lavado_maquinaria" class="form-control form-control-sm" placeholder="Ej. Lévera"></div>
+          <div class="col-md-3"><label class="form-label small">Responsable</label><input type="text" name="lavado_responsable" class="form-control form-control-sm" placeholder="Aplicador / responsable" required></div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-sm">Guardar orden de aplicación</button>
     </form>
   </div>
 
