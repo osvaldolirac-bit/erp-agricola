@@ -10,6 +10,15 @@
   --white: #ffffff;
   --shadow: 0 18px 50px rgba(16, 36, 51, 0.18);
   --font: Manrope, system-ui, sans-serif;
+  /* Identidad por producto */
+  --agri: #1b6b3a;
+  --agri-deep: #14532d;
+  --agri-soft: #e6f4eb;
+  --agri-mid: #c6e5d1;
+  --com: #0b5cad;
+  --com-deep: #084785;
+  --com-soft: #e7f0fa;
+  --com-mid: #c5d9f0;
 }
 
 * { box-sizing: border-box; }
@@ -136,10 +145,41 @@ img { max-width: 100%; display: block; }
   color: rgba(255,255,255,0.88);
 }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.hero .btn-solid { background: var(--white); color: var(--forest); border-color: var(--white); }
-.hero .btn-solid:hover { background: var(--mist); }
-.hero .btn-ghost { color: var(--white); border-color: rgba(255,255,255,0.4); }
-.hero .btn-ghost:hover { border-color: var(--white); color: var(--white); }
+.hero .btn-solid {
+  background: var(--com);
+  color: var(--white);
+  border-color: var(--com);
+}
+.hero .btn-solid:hover {
+  background: var(--com-deep);
+  border-color: var(--com-deep);
+}
+.hero .btn-ghost {
+  color: var(--white);
+  border-color: rgba(198, 229, 209, 0.7);
+  background: rgba(27, 107, 58, 0.35);
+}
+.hero .btn-ghost:hover {
+  border-color: var(--agri-mid);
+  color: var(--white);
+  background: rgba(27, 107, 58, 0.55);
+}
+.cta-box .btn-solid {
+  background: var(--com);
+  border-color: var(--com);
+}
+.cta-box .btn-solid:hover {
+  background: var(--com-deep);
+  border-color: var(--com-deep);
+}
+.cta-box .btn-ghost {
+  color: var(--agri-deep);
+  border-color: rgba(27, 107, 58, 0.4);
+}
+.cta-box .btn-ghost:hover {
+  color: var(--agri);
+  border-color: var(--agri);
+}
 
 .section { padding: 4.5rem 0; }
 .kicker {
@@ -224,11 +264,27 @@ img { max-width: 100%; display: block; }
 .product-cta { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 
 .section-planes { background: var(--paper); }
-.planes-sub {
-  margin: 2rem 0 0.9rem;
-  font-size: 1.15rem;
-  color: var(--forest);
+.planes-block {
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.2rem 1.35rem;
+  border-radius: 18px;
+  border: 1px solid transparent;
 }
+.planes-agricola {
+  background: linear-gradient(180deg, var(--agri-soft), #f7fcf8);
+  border-color: var(--agri-mid);
+}
+.planes-comercial {
+  background: linear-gradient(180deg, var(--com-soft), #f7faff);
+  border-color: var(--com-mid);
+  margin-top: 1.1rem;
+}
+.planes-sub {
+  margin: 0 0 0.9rem;
+  font-size: 1.15rem;
+}
+.planes-agricola .planes-sub { color: var(--agri-deep); }
+.planes-comercial .planes-sub { color: var(--com-deep); }
 .plan-grid {
   display: grid;
   gap: 0.85rem;
@@ -241,9 +297,13 @@ img { max-width: 100%; display: block; }
   border-radius: 16px;
   padding: 1.15rem 1.2rem;
 }
-.plan-featured {
-  border-color: var(--teal);
-  box-shadow: 0 0 0 2px rgba(15, 143, 168, 0.18);
+.planes-agricola .plan-featured {
+  border-color: var(--agri);
+  box-shadow: 0 0 0 2px rgba(27, 107, 58, 0.18);
+}
+.planes-comercial .plan-featured {
+  border-color: var(--com);
+  box-shadow: 0 0 0 2px rgba(11, 92, 173, 0.18);
 }
 .plan h4 { margin: 0 0 0.35rem; font-size: 1rem; }
 .price {
@@ -252,6 +312,8 @@ img { max-width: 100%; display: block; }
   font-weight: 800;
   color: var(--forest);
 }
+.planes-agricola .price { color: var(--agri-deep); }
+.planes-comercial .price { color: var(--com-deep); }
 .price span { font-size: 0.85rem; font-weight: 700; color: var(--ink-soft); }
 .plan > p:last-child { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
 .planes-foot {
@@ -435,11 +497,10 @@ a.top-mail, a.foot-mail {
   margin-top: 1.5rem;
 }
 .flyer-card {
-  background: var(--white);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 18px;
   padding: 1.45rem 1.4rem 1.35rem;
-  box-shadow: 0 10px 32px rgba(16, 36, 51, 0.06);
+  box-shadow: 0 10px 32px rgba(16, 36, 51, 0.08);
 }
 .flyer-card h3 {
   margin: 0.15rem 0 0.65rem;
@@ -459,13 +520,66 @@ a.top-mail, a.foot-mail {
 .flyer-packs {
   margin: 0 0 1.1rem;
   padding: 0.7rem 0.85rem;
-  background: var(--mist);
   border-radius: 12px;
   font-size: 0.95rem;
-  color: var(--forest);
 }
-.flyer-agricola { border-top: 4px solid #1b6b4a; }
-.flyer-comercial { border-top: 4px solid var(--teal); }
+.flyer-agricola {
+  background:
+    linear-gradient(165deg, #f3faf5 0%, var(--agri-soft) 55%, #d9efe2 100%);
+  border-color: var(--agri-mid);
+  border-top: 5px solid var(--agri);
+}
+.flyer-agricola .product-tag { color: var(--agri-deep); }
+.flyer-agricola h3 { color: var(--agri-deep); }
+.flyer-agricola .flyer-packs {
+  background: rgba(27, 107, 58, 0.1);
+  color: var(--agri-deep);
+}
+.flyer-agricola .btn-solid {
+  background: var(--agri);
+  border-color: var(--agri);
+}
+.flyer-agricola .btn-solid:hover {
+  background: var(--agri-deep);
+  border-color: var(--agri-deep);
+}
+.flyer-agricola .btn-ghost {
+  color: var(--agri-deep);
+  border-color: rgba(27, 107, 58, 0.35);
+}
+.flyer-agricola .btn-ghost:hover {
+  color: var(--agri);
+  border-color: var(--agri);
+}
+
+.flyer-comercial {
+  background:
+    linear-gradient(165deg, #f3f7fc 0%, var(--com-soft) 55%, #d6e6f7 100%);
+  border-color: var(--com-mid);
+  border-top: 5px solid var(--com);
+}
+.flyer-comercial .product-tag { color: var(--com-deep); }
+.flyer-comercial h3 { color: var(--com-deep); }
+.flyer-comercial .flyer-packs {
+  background: rgba(11, 92, 173, 0.1);
+  color: var(--com-deep);
+}
+.flyer-comercial .btn-solid {
+  background: var(--com);
+  border-color: var(--com);
+}
+.flyer-comercial .btn-solid:hover {
+  background: var(--com-deep);
+  border-color: var(--com-deep);
+}
+.flyer-comercial .btn-ghost {
+  color: var(--com-deep);
+  border-color: rgba(11, 92, 173, 0.35);
+}
+.flyer-comercial .btn-ghost:hover {
+  color: var(--com);
+  border-color: var(--com);
+}
 
 .section-mapa { background: var(--white); }
 .map-block {
@@ -473,13 +587,29 @@ a.top-mail, a.foot-mail {
   padding: 1.25rem 1.2rem;
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: var(--paper);
 }
 .map-block h3 {
   margin: 0 0 0.9rem;
   font-size: 1.2rem;
-  color: var(--forest);
 }
+.map-agricola {
+  background: linear-gradient(180deg, var(--agri-soft), #f4fbf6);
+  border-color: var(--agri-mid);
+}
+.map-agricola h3 { color: var(--agri-deep); }
+.map-agricola .flow-map > li span { background: var(--agri); }
+.map-agricola .flow-arrow,
+.map-agricola .flow-sep { color: var(--agri); }
+
+.map-comercial {
+  background: linear-gradient(180deg, var(--com-soft), #f4f8fc);
+  border-color: var(--com-mid);
+}
+.map-comercial h3 { color: var(--com-deep); }
+.map-comercial .flow-map > li span { background: var(--com); }
+.map-comercial .flow-arrow,
+.map-comercial .flow-sep { color: var(--com); }
+
 .flow-map {
   list-style: none;
   margin: 0;
@@ -567,18 +697,18 @@ a.top-mail, a.foot-mail {
   align-items: center;
   padding: 1.1rem 1.2rem;
   border-radius: 16px;
-  border: 1px dashed var(--teal);
-  background: rgba(15, 143, 168, 0.06);
+  border: 1px dashed var(--com);
+  background: rgba(11, 92, 173, 0.08);
 }
-.plan-addon h4 { margin: 0 0 0.3rem; font-size: 1.1rem; }
+.plan-addon h4 { margin: 0 0 0.3rem; font-size: 1.1rem; color: var(--com-deep); }
 .plan-addon p { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
-.plan-addon .price { margin: 0; font-size: 1.55rem; font-weight: 800; color: var(--forest); }
+.plan-addon .price { margin: 0; font-size: 1.55rem; font-weight: 800; color: var(--com-deep); }
 .plan-addon .price span { font-size: 0.9rem; font-weight: 700; color: var(--ink-soft); }
 .plan-addon-setup {
   grid-column: 1 / -1;
   font-size: 0.88rem !important;
   font-weight: 700;
-  color: var(--teal-deep) !important;
+  color: var(--com-deep) !important;
 }
 
 @media (max-width: 860px) {

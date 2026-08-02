@@ -8,7 +8,7 @@
   <meta name="description" content="ERP Master: Agrícola y Comercial. El completo es el mapa entero; los packs son caminos; los módulos son casillas. Prueba gratis. Hecho en Chile.">
   <link rel="icon" type="image/png" href="/assets/favicon-32x32.png">
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/site.css?v=oferta2">
+  <link rel="stylesheet" href="/assets/site.css?v=oferta3">
 </head>
 <body>
   <header class="top">
@@ -97,7 +97,7 @@
         <h2>Así fluye cada ERP</h2>
         <p class="lead">El ERP completo es el mapa entero. Los packs son caminos. Los módulos son casillas.</p>
 
-        <div class="map-block" id="mapa-agricola">
+        <div class="map-block map-agricola" id="mapa-agricola">
           <h3>Mapa · Agrícola</h3>
           <ol class="flow-map" aria-label="Flujo ERP Agrícola">
             <li><span>1</span> Costos / centros de costo</li>
@@ -111,7 +111,7 @@
           <p class="map-note"><strong>Pack Agrícola</strong> = todo el mapa. Pack Campo / Patio / Oficina = un tramo.</p>
         </div>
 
-        <div class="map-block" id="mapa-comercial">
+        <div class="map-block map-comercial" id="mapa-comercial">
           <h3>Mapa · Comercial</h3>
           <ol class="flow-map" aria-label="Flujo ERP Comercial">
             <li><span>1</span> Cliente</li>
@@ -178,56 +178,60 @@
         <h2>Precios claros, IVA incluido</h2>
         <p class="lead">CLP / mes. Sin “+ IVA” escondido.</p>
 
-        <h3 id="planes-agricola" class="planes-sub">Agrícola</h3>
-        <div class="plan-grid plan-grid-4">
-          <article class="plan">
-            <h4>Pack Campo</h4>
-            <p class="price">$55.900<span>/mes</span></p>
-            <p>Labores, GlobalGAP y maquinaria</p>
-          </article>
-          <article class="plan">
-            <h4>Pack Patio</h4>
-            <p class="price">$53.900<span>/mes</span></p>
-            <p>Compras, bodega, petróleo y tesorería</p>
-          </article>
-          <article class="plan">
-            <h4>Pack Oficina</h4>
-            <p class="price">$84.900<span>/mes</span></p>
-            <p>RRHH, costos, flujo, compras y tesorería</p>
-          </article>
-          <article class="plan plan-featured">
-            <h4>Pack Agrícola</h4>
-            <p class="price">$119.990<span>/mes</span></p>
-            <p>Campo + Patio + Oficina · mapa completo</p>
-          </article>
-        </div>
-
-        <h3 id="planes-comercial" class="planes-sub">Comercial</h3>
-        <div class="plan-grid plan-grid-3">
-          <article class="plan">
-            <h4>Pack Ventas</h4>
-            <p class="price">$42.900<span>/mes</span></p>
-            <p>Clientes, cotizaciones y CxC</p>
-          </article>
-          <article class="plan">
-            <h4>Pack Compras</h4>
-            <p class="price">$39.900<span>/mes</span></p>
-            <p>OC, compras, tesorería y bodega</p>
-          </article>
-          <article class="plan plan-featured">
-            <h4>Pack Comercial</h4>
-            <p class="price">$69.900<span>/mes</span></p>
-            <p>Ventas + compras · mapa completo</p>
-          </article>
-        </div>
-
-        <div class="plan-addon">
-          <div>
-            <h4>Add-on · Integración Mercado Libre</h4>
-            <p>Stock, ventas, boletas/datos de pedido y pagos ML ↔ Bodega y CxC. No viene dentro de los packs.</p>
+        <div class="planes-block planes-agricola" id="planes-agricola">
+          <h3 class="planes-sub">Agrícola</h3>
+          <div class="plan-grid plan-grid-4">
+            <article class="plan">
+              <h4>Pack Campo</h4>
+              <p class="price">$55.900<span>/mes</span></p>
+              <p>Labores, GlobalGAP y maquinaria</p>
+            </article>
+            <article class="plan">
+              <h4>Pack Patio</h4>
+              <p class="price">$53.900<span>/mes</span></p>
+              <p>Compras, bodega, petróleo y tesorería</p>
+            </article>
+            <article class="plan">
+              <h4>Pack Oficina</h4>
+              <p class="price">$84.900<span>/mes</span></p>
+              <p>RRHH, costos, flujo, compras y tesorería</p>
+            </article>
+            <article class="plan plan-featured">
+              <h4>Pack Agrícola</h4>
+              <p class="price">$119.990<span>/mes</span></p>
+              <p>Campo + Patio + Oficina · mapa completo</p>
+            </article>
           </div>
-          <p class="price">$29.900<span>/mes</span></p>
-          <p class="plan-addon-setup">Setup 1ª cuenta ML $49.900</p>
+        </div>
+
+        <div class="planes-block planes-comercial" id="planes-comercial">
+          <h3 class="planes-sub">Comercial</h3>
+          <div class="plan-grid plan-grid-3">
+            <article class="plan">
+              <h4>Pack Ventas</h4>
+              <p class="price">$42.900<span>/mes</span></p>
+              <p>Clientes, cotizaciones y CxC</p>
+            </article>
+            <article class="plan">
+              <h4>Pack Compras</h4>
+              <p class="price">$39.900<span>/mes</span></p>
+              <p>OC, compras, tesorería y bodega</p>
+            </article>
+            <article class="plan plan-featured">
+              <h4>Pack Comercial</h4>
+              <p class="price">$69.900<span>/mes</span></p>
+              <p>Ventas + compras · mapa completo</p>
+            </article>
+          </div>
+
+          <div class="plan-addon">
+            <div>
+              <h4>Add-on · Integración Mercado Libre</h4>
+              <p>Stock, ventas, boletas/datos de pedido y pagos ML ↔ Bodega y CxC. No viene dentro de los packs.</p>
+            </div>
+            <p class="price">$29.900<span>/mes</span></p>
+            <p class="plan-addon-setup">Setup 1ª cuenta ML $49.900</p>
+          </div>
         </div>
 
         <p class="planes-foot">IVA incluido. Setup de onboarding según pack.</p>
