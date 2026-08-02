@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="format-detection" content="email=no, telephone=no">
   <title>ERP Master · Agrícola y Comercial</title>
-  <meta name="description" content="ERP Master: Agrícola y Comercial. El completo es el mapa entero; los packs son caminos; los módulos son casillas. Prueba gratis. Hecho en Chile.">
+  <meta name="description" content="ERP Master: Agrícola y Comercial. Integración Mercado Libre + Mercado Pago en Comercial. Completo, packs o módulos. Prueba gratis. Hecho en Chile.">
   <link rel="icon" type="image/png" href="/assets/favicon-32x32.png">
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/site.css?v=oferta3">
+  <link rel="stylesheet" href="/assets/site.css?v=oferta4">
 </head>
 <body>
   <header class="top">
@@ -18,6 +18,7 @@
     <nav class="top-nav" aria-label="Principal">
       <a href="#productos">Productos</a>
       <a href="#mapa">Mapa</a>
+      <a href="#integraciones">ML + MP</a>
       <a href="#oferta">Cómo contratar</a>
       <a href="#planes">Planes</a>
       <a class="btn-ghost" href="/agricola/probar" target="_blank" rel="noopener noreferrer">Demo Agrícola</a>
@@ -78,12 +79,13 @@
               <li>Clientes · cotizaciones PDF</li>
               <li>Cuentas por cobrar y abonos</li>
               <li>OC · compras · tesorería · bodega</li>
-              <li>Add-on: integración Mercado Libre</li>
+              <li><strong>Add-on:</strong> Mercado Libre + Mercado Pago</li>
             </ul>
+            <p class="flyer-highlight">ML trae ventas y stock al ERP. MP genera links de pago y registra cobros en CxC.</p>
             <p class="flyer-packs"><strong>Packs:</strong> Ventas · Compras · Comercial (completo)</p>
             <div class="product-cta">
               <a class="btn-solid" href="/comercial/probar" target="_blank" rel="noopener noreferrer">Probar 30 días</a>
-              <a class="btn-ghost" href="#mapa-comercial">Ver mapa</a>
+              <a class="btn-ghost" href="#integraciones">Ver ML + MP</a>
               <a class="btn-ghost" href="#planes-comercial">Ver precios</a>
             </div>
           </article>
@@ -126,7 +128,57 @@
             <li class="flow-arrow" aria-hidden="true">→</li>
             <li><span>6</span> Tesorería · Bodega</li>
           </ol>
-          <p class="map-note"><strong>Pack Comercial</strong> = todo el mapa. <strong>Ventas</strong> = 1→3. <strong>Compras</strong> = 4→6. <strong>Mercado Libre</strong> = add-on que entra al mapa (stock/ventas/pagos).</p>
+          <ol class="flow-map flow-map-addon" aria-label="Add-on ML y MP">
+            <li class="flow-addon"><span>ML</span> Ventas · stock</li>
+            <li class="flow-arrow" aria-hidden="true">→</li>
+            <li class="flow-addon"><span>MP</span> Links · pagos</li>
+            <li class="flow-arrow" aria-hidden="true">→</li>
+            <li><span>+</span> Entra a CxC y Bodega</li>
+          </ol>
+          <p class="map-note"><strong>Pack Comercial</strong> = todo el mapa. <strong>Ventas</strong> = 1→3. <strong>Compras</strong> = 4→6. <strong>ML + MP</strong> = add-on que conecta marketplace y cobros al mismo flujo.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="integraciones" class="section section-integraciones">
+      <div class="wrap">
+        <p class="kicker">Comercial · Add-on</p>
+        <h2>Mercado Libre + Mercado Pago en tu ERP</h2>
+        <p class="lead">Un solo módulo de integración: vendes en ML, cobras con MP, y el movimiento queda en Bodega y Cuentas por cobrar.</p>
+
+        <div class="integ-grid">
+          <article class="integ-card integ-ml">
+            <p class="integ-badge">Mercado Libre</p>
+            <h3>Ventas y stock conectados</h3>
+            <ul>
+              <li>Publicaciones / stock ↔ Bodega</li>
+              <li>Órdenes ML → venta o cotización aprobada</li>
+              <li>Boletas / datos de pedido → CxC + registro</li>
+              <li>Envíos (opcional) con estado en la venta</li>
+            </ul>
+          </article>
+          <article class="integ-card integ-mp">
+            <p class="integ-badge">Mercado Pago</p>
+            <h3>Cobros sin planilla suelta</h3>
+            <ul>
+              <li>Links de pago desde Cuentas por cobrar</li>
+              <li>Pagos aprobados → abonos en CxC</li>
+              <li>Misma cuenta que factura, sincronizada</li>
+              <li>Ideal si cobras online o por link</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="integ-price">
+          <div>
+            <p class="integ-price-tag">Add-on premium · no va dentro de los packs</p>
+            <p class="price">$29.900<span>/mes</span></p>
+            <p class="integ-setup">Setup 1ª cuenta $49.900</p>
+          </div>
+          <div class="integ-cta">
+            <a class="btn-solid btn-lg" href="/comercial/probar" target="_blank" rel="noopener noreferrer">Probar Comercial</a>
+            <a class="btn-ghost btn-lg" href="#planes-comercial">Ver con los packs</a>
+          </div>
         </div>
       </div>
     </section>
@@ -163,7 +215,7 @@
             <p>Activás solo lo que usas. Ideal para partir chico o complementar un pack.</p>
             <ul>
               <li>Dashboard / Admin / Soporte incluidos</li>
-              <li>Add-on ML se suma aparte</li>
+              <li>Add-on ML + MP se suma aparte</li>
               <li>Puedes crecer sin cambiar de sistema</li>
             </ul>
           </article>
@@ -224,13 +276,13 @@
             </article>
           </div>
 
-          <div class="plan-addon">
+          <div class="plan-addon plan-addon-featured">
             <div>
-              <h4>Add-on · Integración Mercado Libre</h4>
-              <p>Stock, ventas, boletas/datos de pedido y pagos ML ↔ Bodega y CxC. No viene dentro de los packs.</p>
+              <h4>Add-on · Mercado Libre + Mercado Pago</h4>
+              <p><strong>ML:</strong> stock, órdenes y boletas → Bodega y CxC. <strong>MP:</strong> links de pago y abonos automáticos. No viene dentro de los packs.</p>
             </div>
             <p class="price">$29.900<span>/mes</span></p>
-            <p class="plan-addon-setup">Setup 1ª cuenta ML $49.900</p>
+            <p class="plan-addon-setup">Setup 1ª cuenta $49.900 · <a href="#integraciones">Ver detalle</a></p>
           </div>
         </div>
 

@@ -564,6 +564,16 @@ a.top-mail, a.foot-mail {
   background: rgba(11, 92, 173, 0.1);
   color: var(--com-deep);
 }
+.flyer-highlight {
+  margin: 0 0 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 4px solid var(--com);
+  background: rgba(11, 92, 173, 0.12);
+  border-radius: 0 10px 10px 0;
+  color: var(--com-deep);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
 .flyer-comercial .btn-solid {
   background: var(--com);
   border-color: var(--com);
@@ -609,6 +619,21 @@ a.top-mail, a.foot-mail {
 .map-comercial .flow-map > li span { background: var(--com); }
 .map-comercial .flow-arrow,
 .map-comercial .flow-sep { color: var(--com); }
+.flow-map-addon {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed rgba(11, 92, 173, 0.35);
+}
+.flow-map .flow-addon {
+  border-color: var(--com-mid);
+  background: rgba(11, 92, 173, 0.08);
+  color: var(--com-deep);
+}
+.flow-map .flow-addon span {
+  background: var(--com-deep);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
 
 .flow-map {
   list-style: none;
@@ -700,6 +725,11 @@ a.top-mail, a.foot-mail {
   border: 1px dashed var(--com);
   background: rgba(11, 92, 173, 0.08);
 }
+.plan-addon-featured {
+  border-style: solid;
+  border-width: 2px;
+  box-shadow: 0 10px 28px rgba(11, 92, 173, 0.12);
+}
 .plan-addon h4 { margin: 0 0 0.3rem; font-size: 1.1rem; color: var(--com-deep); }
 .plan-addon p { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
 .plan-addon .price { margin: 0; font-size: 1.55rem; font-weight: 800; color: var(--com-deep); }
@@ -710,9 +740,111 @@ a.top-mail, a.foot-mail {
   font-weight: 700;
   color: var(--com-deep) !important;
 }
+.plan-addon-setup a {
+  color: var(--com-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.section-integraciones {
+  background:
+    radial-gradient(700px 320px at 10% 0%, rgba(11, 92, 173, 0.14), transparent 55%),
+    linear-gradient(180deg, #eef5fc, #f7faff 70%, #ffffff);
+}
+.section-integraciones .kicker { color: var(--com-deep); }
+.integ-grid {
+  margin-top: 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.1rem;
+}
+.integ-card {
+  background: var(--white);
+  border: 1px solid var(--com-mid);
+  border-radius: 18px;
+  padding: 1.35rem 1.3rem;
+  box-shadow: 0 12px 30px rgba(11, 92, 173, 0.08);
+}
+.integ-badge {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--com);
+}
+.integ-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+  color: var(--com-deep);
+}
+.integ-card ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--ink);
+}
+.integ-card li { margin: 0.28rem 0; }
+.integ-ml { border-top: 5px solid #ffe600; }
+.integ-mp { border-top: 5px solid var(--com); }
+.integ-price {
+  margin-top: 1.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.2rem 1.3rem;
+  border-radius: 18px;
+  background: var(--com-deep);
+  color: #fff;
+}
+.integ-price-tag {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 800;
+  opacity: 0.9;
+}
+.integ-price .price {
+  margin: 0;
+  color: #fff;
+  font-size: 2rem;
+}
+.integ-price .price span {
+  color: rgba(255,255,255,0.8);
+}
+.integ-setup {
+  margin: 0.25rem 0 0;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+}
+.integ-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+.integ-price .btn-solid {
+  background: #fff;
+  color: var(--com-deep);
+  border-color: #fff;
+}
+.integ-price .btn-solid:hover {
+  background: var(--com-soft);
+  border-color: var(--com-soft);
+}
+.integ-price .btn-ghost {
+  color: #fff;
+  border-color: rgba(255,255,255,0.45);
+}
+.integ-price .btn-ghost:hover {
+  color: #fff;
+  border-color: #fff;
+}
 
 @media (max-width: 860px) {
-  .flyer-grid, .offer-grid { grid-template-columns: 1fr; }
+  .flyer-grid, .offer-grid, .integ-grid { grid-template-columns: 1fr; }
   .plan-addon { grid-template-columns: 1fr; }
   .flow-map > li:not(.flow-arrow):not(.flow-sep) { font-size: 0.84rem; }
+  .integ-price { align-items: flex-start; }
 }
