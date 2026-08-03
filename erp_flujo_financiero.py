@@ -373,6 +373,14 @@ def guardar_egresos_teso_mes(conn, temporada, datos, notas=None):
     conn.commit()
 
 
+def _saldo_por_gastar_cc(resumen_costos, cuarteles):
+    """Saldo de presupuesto por CC (Costos): lo que aún falta por gastar/imputar."""
+    out = {}
+    for cc in cuarteles:
+        out[cc] = max(0.0, float(resumen_costos.get("saldo", {}).get(cc, 0.0) or 0.0))
+    return out
+
+
 def _armar_resumen_egresos_cc(cuarteles, resumen_costos, teso_por_cc):
     filas = []
     for cc in cuarteles:
@@ -380,13 +388,15 @@ def _armar_resumen_egresos_cc(cuarteles, resumen_costos, teso_por_cc):
         gastado = resumen_costos["gastado"].get(cc, 0.0)
         saldo = resumen_costos["saldo"].get(cc, 0.0)
         teso_cc = teso_por_cc.get(cc, 0.0)
+        saldo_gastar = max(0.0, float(saldo or 0.0))
         filas.append({
             "CENTRO_COSTO": cc,
             "PRESUPUESTO": ppto,
             "GASTADO": gastado,
             "SALDO": saldo,
             "TESO_PROGRAMADA": teso_cc,
-            "A_PROYECTAR": max(0.0, saldo - teso_cc),
+            # Saldo por gastar del ppto (base del egreso proyectado en Flujo).
+            "A_PROYECTAR": saldo_gastar,
         })
     df = pd.DataFrame(filas)
     fila_t = {
@@ -450,9 +460,6 @@ def armar_flujo_financiero(
     teso_programada_flujo = sum(teso_map.get(m, 0.0) for m in meses_futuros)
     teso_cxp_total = teso_atrasado + teso_programada_flujo
     teso_proy_plan = cargar_egresos_teso_mes(conn, temporada)
-    saldo_presupuesto_sin_cxp = max(
-        0.0, saldo_total - teso_programada_flujo - teso_atrasado,
-    )
     teso_proy_plan_total = sum(
         float(teso_proy_plan.get(m, 0.0) or 0.0) for m in meses_futuros
     )
@@ -461,83 +468,80 @@ def armar_flujo_financiero(
     ]
     meses_sin_teso = [m for m in meses_futuros if teso_map.get(m, 0.0) < 0.01]
 
-    # TESO PROY automático desde mes actual + 2 (ej. si hoy es ago → desde oct):
-    # valor asumido (cuota del saldo tras CxP cercana, o plan manual) − TESO REAL del mes.
+    # Egreso proyectado = SALDO de presupuesto por CC (módulo Costos).
+    # A medida que se imputa gasto real (RRHH/Tesorería), ese saldo baja solo.
+    saldo_cc = _saldo_por_gastar_cc(resumen_costos, cuarteles)
+    saldo_por_gastar = sum(saldo_cc.values())
+
+    # Horizonte: mes actual y +1 = solo real (CxP/RRHH); desde hoy+2 = proyectar saldo.
     anio_corte, mes_corte_n = _mes_mas_n(hoy.year, hoy.month, 2)
     mes_corte = date(anio_corte, mes_corte_n, 1)
-    meses_cerca = [m for m in meses_futuros if date(m[0], m[1], 1) < mes_corte]
     meses_lejos = [m for m in meses_futuros if date(m[0], m[1], 1) >= mes_corte]
-    cxp_cerca = sum(teso_map.get(m, 0.0) for m in meses_cerca)
-    if (
-        teso_atrasado > 0.01
-        and mes_inicio_eerr is not None
-        and date(mes_inicio_eerr[0], mes_inicio_eerr[1], 1) < mes_corte
-    ):
-        cxp_cerca += teso_atrasado
-    disponible_lejos = max(0.0, saldo_total - cxp_cerca)
-    cuota_teso_lejos = (
-        disponible_lejos / len(meses_lejos) if meses_lejos else 0.0
-    )
     meses_lejos_set = set(meses_lejos)
-    meses_residual = list(meses_lejos)
-    residual_teso = disponible_lejos
-    proy_residual_mensual = cuota_teso_lejos
 
     pre = []
     for anio, mes in meses:
         d_mes = date(anio, mes, 1)
         es_futuro = d_mes >= mes_hoy
         en_eerr = d_mes >= inicio_eerr_date
-        # Antes del inicio EERR: solo RRHH/ingresos informativos (CxP se consolida al inicio EERR).
         teso_real = teso_map.get((anio, mes), 0.0) if en_eerr else 0.0
         rrhh_real = rrhh_map.get((anio, mes), 0.0)
         if es_futuro:
-            plan_mes = float(teso_proy_plan.get((anio, mes), 0.0) or 0.0)
-            if (anio, mes) in meses_lejos_set:
-                # Desde hoy+2: asumir valor (plan o cuota) menos lo ya imputado real (CxP).
-                valor = plan_mes if plan_mes > 0.01 else cuota_teso_lejos
-                teso_proy = max(0.0, valor - teso_real)
-            else:
-                # Mes actual y +1: solo plan manual; la CxP cercana manda.
-                teso_proy = plan_mes
             rrhh_proy = 0.0 if rrhh_real > 0.01 else rrhh_base_proy
         else:
-            teso_proy = 0.0
             rrhh_proy = 0.0
         pre.append({
             "anio": anio,
             "mes": mes,
             "teso_real": teso_real,
-            "teso_proy": teso_proy,
+            "teso_proy": 0.0,
             "rrhh_real": rrhh_real,
             "rrhh_proy": rrhh_proy,
             "es_futuro": es_futuro,
             "en_eerr": en_eerr,
+            "plan_mes": float(teso_proy_plan.get((anio, mes), 0.0) or 0.0),
         })
 
-    total_real = (
-        sum(r["teso_real"] + r["rrhh_real"] for r in pre if r.get("es_futuro"))
-        + teso_atrasado
-    )
-    teso_proy_necesario = sum(r["teso_proy"] for r in pre)
+    # 1) RRHH proy se financia con el saldo de ppto.
     rrhh_proy_necesario = sum(r["rrhh_proy"] for r in pre)
-
-    # Tope al saldo de ppto: primero RRHH proy, luego TESO proy (misma lógica previa).
-    pool = max(0.0, saldo_total - total_real)
-    rrhh_proy_asignado = min(rrhh_proy_necesario, pool)
+    rrhh_proy_asignado = min(rrhh_proy_necesario, saldo_por_gastar)
     factor_rrhh = (
         rrhh_proy_asignado / rrhh_proy_necesario if rrhh_proy_necesario > 0.01 else 1.0
     )
-    pool -= rrhh_proy_asignado
-    teso_proy_asignado = min(teso_proy_necesario, pool)
-    factor_teso = (
-        teso_proy_asignado / teso_proy_necesario if teso_proy_necesario > 0.01 else 0.0
+    # 2) El resto del saldo por CC es TESO PROY (compras/otros del ppto).
+    teso_proy_pool = max(0.0, saldo_por_gastar - rrhh_proy_asignado)
+
+    # Reparto desde hoy+2. Si hay plan manual en un mes, pesa ese mes.
+    pesos = []
+    for r in pre:
+        key = (r["anio"], r["mes"])
+        if key not in meses_lejos_set:
+            pesos.append(0.0)
+            continue
+        if r["plan_mes"] > 0.01:
+            pesos.append(r["plan_mes"])
+        else:
+            pesos.append(1.0)
+    suma_pesos = sum(pesos)
+    if suma_pesos < 0.01 and meses_lejos:
+        pesos = [
+            1.0 if (r["anio"], r["mes"]) in meses_lejos_set else 0.0
+            for r in pre
+        ]
+        suma_pesos = sum(pesos)
+    for r, w in zip(pre, pesos):
+        r["teso_proy"] = (teso_proy_pool * (w / suma_pesos)) if suma_pesos > 0.01 else 0.0
+
+    teso_proy_asignado = teso_proy_pool
+    factor_teso = 1.0
+    factor_proy = factor_rrhh
+    pool = 0.0
+    cuota_teso_lejos = (
+        teso_proy_pool / len(meses_lejos) if meses_lejos else 0.0
     )
-    factor_proy = (
-        min(factor_teso, factor_rrhh)
-        if factor_teso and factor_rrhh
-        else max(factor_teso, factor_rrhh)
-    )
+    residual_teso = teso_proy_pool
+    meses_residual = list(meses_lejos)
+    saldo_presupuesto_sin_cxp = max(0.0, saldo_por_gastar - teso_cxp_total)
 
     saldo_caja_inicial = cargar_saldo_caja_inicial(conn, temporada)
     # Caja inicial de temporada al primer mes del EERR (mismo criterio que cuando
@@ -619,13 +623,15 @@ def armar_flujo_financiero(
         "teso_cxp_total": teso_cxp_total,
         "saldo_a_proyectar": teso_proy_asignado,
         "saldo_a_proyectar_teso_bruto": teso_proy_asignado,
+        "saldo_por_gastar_ppto": saldo_por_gastar,
         "teso_proy_plan_total": teso_proy_plan_total,
         "teso_proy_residual": residual_teso,
-        "teso_proy_cuota_lejos": cuota_teso_lejos * factor_teso if meses_lejos else 0.0,
+        "teso_proy_cuota_lejos": cuota_teso_lejos,
         "saldo_presupuesto_sin_cxp": saldo_presupuesto_sin_cxp,
         "teso_proy_manual": bool(meses_con_proy_teso),
         "rrhh_base_proy": rrhh_base_proy * factor_rrhh,
         "rrhh_base_proy_bruto": rrhh_base_proy,
+        "rrhh_proy_asignado": rrhh_proy_asignado,
         "meses_sin_teso": len(meses_sin_teso),
         "meses_con_proy_teso": len(meses_con_proy_teso),
         "meses_residual_teso": len(meses_residual),
@@ -634,7 +640,7 @@ def armar_flujo_financiero(
         "factor_proy": factor_proy,
         "factor_teso": factor_teso,
         "factor_rrhh": factor_rrhh,
-        "egresos_tope": saldo_total,
+        "egresos_tope": saldo_por_gastar,
         "saldo_caja_inicial": saldo_caja_inicial,
         "mes_caja_aplicada": _mes_label(*mes_caja_aplicada) if mes_caja_aplicada else "",
         "ingresos_flujo_mes_caja": ingresos.get(mes_caja_aplicada, 0.0) if mes_caja_aplicada else 0.0,

@@ -365,7 +365,7 @@
   </form>
 
   {% elif sec_activa == 'flujo' %}
-  <p class="small text-muted">Carga ingresos por CC y, opcionalmente, egresos de tesorería por mes. En el Flujo, desde el mes actual + 2, <strong>TESO PROY</strong> = valor asumido (plan o cuota de saldo) − lo ya imputado real (CxP).</p>
+  <p class="small text-muted">Carga ingresos por CC. El egreso proyectado del Flujo se toma del <strong>saldo de presupuesto por CC</strong> en Costos (no de esta pantalla). Opcional: plan de egresos por mes solo para repartir ese saldo en el calendario.</p>
   {{ nav_temporada('modules.admin', temporadas, temp_sel, {'sec': 'flujo'}) }}
   <p class="small mb-2">
     Período: <strong>{{ temp_fi }}</strong> → <strong>{{ temp_ff }}</strong>
@@ -407,7 +407,7 @@
 
   <hr class="my-4">
   <h2 class="h6">Egresos tesorería / compras proyectados</h2>
-  <p class="small text-muted mb-2">Opcional: si cargas un monto en un mes lejano (hoy+2 o más), ese valor reemplaza la cuota automática; <em>TESO PROY</em> = ese valor − TESO REAL del mes.</p>
+  <p class="small text-muted mb-2">Opcional: pesos de calendario para repartir el saldo de presupuesto (hoy+2 en adelante). El monto total proyectado sigue siendo el saldo por gastar de Costos.</p>
   <form method="post" class="mb-4">
     <input type="hidden" name="action" value="guardar_egresos_flujo">
     <input type="hidden" name="temporada" value="{{ temp_sel }}">

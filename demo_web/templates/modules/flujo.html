@@ -50,7 +50,7 @@
     </div>
   </div>
 
-  <p class="small text-muted">Gastado imputado = Costos. <strong>TESO PROY</strong> desde el mes actual + 2 = cuota de saldo − TESO REAL (CxP). Mes actual y +1: solo CxP real (y plan manual si hay). EGRESOS PROY = TESO PROY + RRHH proy.</p>
+  <p class="small text-muted">El egreso proyectado sale del <strong>saldo de presupuesto por CC</strong> (Costos). Mes a mes se imputa el gasto real de RRHH y Tesorería; el saldo por gastar baja solo. Desde hoy+2 ese saldo (menos RRHH proy) va a <strong>TESO PROY</strong>. Mes actual y +1: solo real.</p>
   <div class="mb-3">
     <span class="flujo-legend flujo-legend-real">■ Real</span>
     <span class="flujo-legend flujo-legend-proy">■ Proyectado</span>
@@ -111,7 +111,7 @@
   {% if eg_cc_rows %}
   <div class="panel-card mb-3">
     <h2 class="h6 panel-title">Presupuesto y proyección por CC</h2>
-    <p class="small text-muted">GASTADO y SALDO = mismos totales que Costos. A proyectar = saldo menos lo programado en Tesorería.</p>
+    <p class="small text-muted">PRESUPUESTO / GASTADO / SALDO = mismos totales que Costos. <strong>A proyectar</strong> = saldo por gastar de cada CC (base del egreso proyectado del Flujo).</p>
     <div class="table-responsive">
       <table class="table table-sm table-striped w-100">
         <thead><tr>{% for c in eg_cc_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
