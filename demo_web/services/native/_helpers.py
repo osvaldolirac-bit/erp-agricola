@@ -140,7 +140,6 @@ def flujo_cell_classes(
 
     col_map = {
         "RRHH SUELDOS": ("RRHH", "RRHH_PROY"),
-        "TESORERÍA": ("TESORERIA", "TESO_PROY"),
     }
     try:
         monto = float(raw_val or 0)
@@ -182,7 +181,7 @@ def flujo_th_class(col: str) -> str:
     if col == "INGRESOS":
         return "flujo-th-ing"
     if col in (
-        "RRHH SUELDOS", "TESO REAL", "TESO PROY", "TESORERÍA",
+        "RRHH SUELDOS", "TESO REAL", "TESO PROY",
         "EGRESOS REAL", "EGRESOS PROY", "EGRESOS TOTAL",
     ):
         return "flujo-th-eg"

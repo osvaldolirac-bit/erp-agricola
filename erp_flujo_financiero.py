@@ -669,7 +669,7 @@ def fila_total_flujo_mensual(df_flujo):
         return {}
     tot = {"MES": "TOTAL", "EERR_ACUM": float(df_flujo["EERR_ACUM"].iloc[-1])}
     for col in (
-        "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY", "TESORERIA",
+        "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY",
         "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES",
     ):
         if col in df_flujo.columns:
@@ -681,7 +681,7 @@ def df_flujo_para_pdf(df_flujo):
     if df_flujo.empty:
         return df_flujo
     cols = [
-        "MES", "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY", "TESORERIA",
+        "MES", "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY",
         "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES", "EERR_ACUM",
     ]
     cols = [c for c in cols if c in df_flujo.columns]
@@ -692,7 +692,6 @@ def df_flujo_para_pdf(df_flujo):
             "RRHH": "RRHH SUELDOS",
             "TESO_REAL": "TESO REAL",
             "TESO_PROY": "TESO PROY",
-            "TESORERIA": "TESORERÍA",
             "EGRESOS_REAL": "EGRESOS REAL",
             "EGRESOS_PROY": "EGRESOS PROY",
             "EGRESOS_TOTAL": "EGRESOS TOTAL",

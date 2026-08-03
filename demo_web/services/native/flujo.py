@@ -60,11 +60,11 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             }
 
             display_cols = [
-                "MES", "INGRESOS", "RRHH SUELDOS", "TESO REAL", "TESO PROY", "TESORERÍA",
+                "MES", "INGRESOS", "RRHH SUELDOS", "TESO REAL", "TESO PROY",
                 "EGRESOS REAL", "EGRESOS PROY", "EGRESOS TOTAL", "RESULTADO MES", "EERR ACUM",
             ]
             base_cols = [
-                "MES", "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY", "TESORERIA",
+                "MES", "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY",
                 "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES", "EERR_ACUM",
             ]
             n_meses = len(df_flujo)
