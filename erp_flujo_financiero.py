@@ -76,6 +76,13 @@ def _mes_siguiente(anio, mes):
     return anio, mes + 1
 
 
+def _mes_mas_n(anio, mes, n):
+    anio, mes = int(anio), int(mes)
+    for _ in range(int(n)):
+        anio, mes = _mes_siguiente(anio, mes)
+    return anio, mes
+
+
 def iter_meses_rango(desde: date, hasta: date):
     cur = date(desde.year, desde.month, 1)
     fin = date(hasta.year, hasta.month, 1)
@@ -442,9 +449,6 @@ def armar_flujo_financiero(
     saldo_total = float(resumen_costos.get("total_saldo") or 0.0)
     teso_programada_flujo = sum(teso_map.get(m, 0.0) for m in meses_futuros)
     teso_cxp_total = teso_atrasado + teso_programada_flujo
-    # Plan mensual (Administración → Flujo caja) + residual de presupuesto para
-    # proyectar EERR final. El plan fija el calendario; lo no cargado se reparte
-    # en meses futuros sin CxP (como antes), para no inflar la utilidad.
     teso_proy_plan = cargar_egresos_teso_mes(conn, temporada)
     saldo_presupuesto_sin_cxp = max(
         0.0, saldo_total - teso_programada_flujo - teso_atrasado,
@@ -456,30 +460,28 @@ def armar_flujo_financiero(
         m for m in meses_futuros if float(teso_proy_plan.get(m, 0.0) or 0.0) > 0.01
     ]
     meses_sin_teso = [m for m in meses_futuros if teso_map.get(m, 0.0) < 0.01]
-    residual_teso = max(0.0, saldo_presupuesto_sin_cxp - teso_proy_plan_total)
-    meses_residual = [
-        m for m in meses_futuros
-        if teso_map.get(m, 0.0) < 0.01
-        and float(teso_proy_plan.get(m, 0.0) or 0.0) < 0.01
-    ]
-    # El mes donde se consolida CxP atrasada ya tiene TESO REAL: no cargar residual ahí
-    # (evita bajar el EERR de ese mes respecto a la vista con $1M atrasado).
-    if teso_atrasado > 0.01 and mes_inicio_eerr in meses_residual:
-        meses_residual = [m for m in meses_residual if m != mes_inicio_eerr]
-    if residual_teso > 0.01 and not meses_residual:
-        meses_residual = [
-            m for m in meses_futuros
-            if float(teso_proy_plan.get(m, 0.0) or 0.0) < 0.01
-            and m != mes_inicio_eerr
-        ]
-    if residual_teso > 0.01 and not meses_residual:
-        meses_residual = [
-            m for m in (meses_sin_teso or meses_futuros) if m != mes_inicio_eerr
-        ] or list(meses_futuros)
-    proy_residual_mensual = (
-        residual_teso / len(meses_residual) if meses_residual else 0.0
+
+    # TESO PROY automático desde mes actual + 2 (ej. si hoy es ago → desde oct):
+    # valor asumido (cuota del saldo tras CxP cercana, o plan manual) − TESO REAL del mes.
+    anio_corte, mes_corte_n = _mes_mas_n(hoy.year, hoy.month, 2)
+    mes_corte = date(anio_corte, mes_corte_n, 1)
+    meses_cerca = [m for m in meses_futuros if date(m[0], m[1], 1) < mes_corte]
+    meses_lejos = [m for m in meses_futuros if date(m[0], m[1], 1) >= mes_corte]
+    cxp_cerca = sum(teso_map.get(m, 0.0) for m in meses_cerca)
+    if (
+        teso_atrasado > 0.01
+        and mes_inicio_eerr is not None
+        and date(mes_inicio_eerr[0], mes_inicio_eerr[1], 1) < mes_corte
+    ):
+        cxp_cerca += teso_atrasado
+    disponible_lejos = max(0.0, saldo_total - cxp_cerca)
+    cuota_teso_lejos = (
+        disponible_lejos / len(meses_lejos) if meses_lejos else 0.0
     )
-    meses_residual_set = set(meses_residual)
+    meses_lejos_set = set(meses_lejos)
+    meses_residual = list(meses_lejos)
+    residual_teso = disponible_lejos
+    proy_residual_mensual = cuota_teso_lejos
 
     pre = []
     for anio, mes in meses:
@@ -490,9 +492,14 @@ def armar_flujo_financiero(
         teso_real = teso_map.get((anio, mes), 0.0) if en_eerr else 0.0
         rrhh_real = rrhh_map.get((anio, mes), 0.0)
         if es_futuro:
-            teso_proy = float(teso_proy_plan.get((anio, mes), 0.0) or 0.0)
-            if (anio, mes) in meses_residual_set:
-                teso_proy += proy_residual_mensual
+            plan_mes = float(teso_proy_plan.get((anio, mes), 0.0) or 0.0)
+            if (anio, mes) in meses_lejos_set:
+                # Desde hoy+2: asumir valor (plan o cuota) menos lo ya imputado real (CxP).
+                valor = plan_mes if plan_mes > 0.01 else cuota_teso_lejos
+                teso_proy = max(0.0, valor - teso_real)
+            else:
+                # Mes actual y +1: solo plan manual; la CxP cercana manda.
+                teso_proy = plan_mes
             rrhh_proy = 0.0 if rrhh_real > 0.01 else rrhh_base_proy
         else:
             teso_proy = 0.0
@@ -613,7 +620,8 @@ def armar_flujo_financiero(
         "saldo_a_proyectar": teso_proy_asignado,
         "saldo_a_proyectar_teso_bruto": teso_proy_asignado,
         "teso_proy_plan_total": teso_proy_plan_total,
-        "teso_proy_residual": residual_teso * factor_teso if residual_teso else 0.0,
+        "teso_proy_residual": residual_teso,
+        "teso_proy_cuota_lejos": cuota_teso_lejos * factor_teso if meses_lejos else 0.0,
         "saldo_presupuesto_sin_cxp": saldo_presupuesto_sin_cxp,
         "teso_proy_manual": bool(meses_con_proy_teso),
         "rrhh_base_proy": rrhh_base_proy * factor_rrhh,
@@ -621,6 +629,7 @@ def armar_flujo_financiero(
         "meses_sin_teso": len(meses_sin_teso),
         "meses_con_proy_teso": len(meses_con_proy_teso),
         "meses_residual_teso": len(meses_residual),
+        "mes_inicio_teso_proy_auto": _mes_label(anio_corte, mes_corte_n),
         "pool_proy": pool,
         "factor_proy": factor_proy,
         "factor_teso": factor_teso,

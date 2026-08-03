@@ -129,16 +129,10 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 f"Gastado imputado: {demo.f_peso(meta.get('total_gastado', 0))} · "
                 f"Saldo restante: {demo.f_peso(meta.get('total_saldo_ppto', 0))} · "
                 f"Tesorería CxP: {demo.f_peso(meta.get('teso_cxp_total', 0))} · "
-                f"TESO PROY (para EERR): {demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))} "
-                f"(plan {demo.f_peso(meta.get('teso_proy_plan_total', 0))} + "
-                f"residual {demo.f_peso(meta.get('teso_proy_residual', 0))} "
-                f"en {meta.get('meses_residual_teso', 0)} mes(es) sin CxP/plan)."
+                f"TESO PROY desde {meta.get('mes_inicio_teso_proy_auto', 'hoy+2')}: "
+                f"cuota {demo.f_peso(meta.get('teso_proy_cuota_lejos', 0))} − TESO REAL "
+                f"(total proy {demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))})."
             )
-            if meta.get("meses_con_proy_teso", 0) == 0:
-                meta_info += (
-                    " Opcional: carga egresos por mes en Administración → Flujo caja "
-                    "para fijar el calendario de compras (si no, el residual se reparte)."
-                )
 
         eg_cc_cols, eg_cc_rows = [], []
         if df_eg_cc is not None and not df_eg_cc.empty:
