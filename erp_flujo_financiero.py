@@ -442,8 +442,9 @@ def armar_flujo_financiero(
     saldo_total = float(resumen_costos.get("total_saldo") or 0.0)
     teso_programada_flujo = sum(teso_map.get(m, 0.0) for m in meses_futuros)
     teso_cxp_total = teso_atrasado + teso_programada_flujo
-    # Plan de compras/tesorería cargado en Administración → Flujo (por mes).
-    # Ya no se prorratea el saldo residual de Costos en meses sin CxP.
+    # Plan mensual (Administración → Flujo caja) + residual de presupuesto para
+    # proyectar EERR final. El plan fija el calendario; lo no cargado se reparte
+    # en meses futuros sin CxP (como antes), para no inflar la utilidad.
     teso_proy_plan = cargar_egresos_teso_mes(conn, temporada)
     saldo_presupuesto_sin_cxp = max(
         0.0, saldo_total - teso_programada_flujo - teso_atrasado,
@@ -455,6 +456,30 @@ def armar_flujo_financiero(
         m for m in meses_futuros if float(teso_proy_plan.get(m, 0.0) or 0.0) > 0.01
     ]
     meses_sin_teso = [m for m in meses_futuros if teso_map.get(m, 0.0) < 0.01]
+    residual_teso = max(0.0, saldo_presupuesto_sin_cxp - teso_proy_plan_total)
+    meses_residual = [
+        m for m in meses_futuros
+        if teso_map.get(m, 0.0) < 0.01
+        and float(teso_proy_plan.get(m, 0.0) or 0.0) < 0.01
+    ]
+    # El mes donde se consolida CxP atrasada ya tiene TESO REAL: no cargar residual ahí
+    # (evita bajar el EERR de ese mes respecto a la vista con $1M atrasado).
+    if teso_atrasado > 0.01 and mes_inicio_eerr in meses_residual:
+        meses_residual = [m for m in meses_residual if m != mes_inicio_eerr]
+    if residual_teso > 0.01 and not meses_residual:
+        meses_residual = [
+            m for m in meses_futuros
+            if float(teso_proy_plan.get(m, 0.0) or 0.0) < 0.01
+            and m != mes_inicio_eerr
+        ]
+    if residual_teso > 0.01 and not meses_residual:
+        meses_residual = [
+            m for m in (meses_sin_teso or meses_futuros) if m != mes_inicio_eerr
+        ] or list(meses_futuros)
+    proy_residual_mensual = (
+        residual_teso / len(meses_residual) if meses_residual else 0.0
+    )
+    meses_residual_set = set(meses_residual)
 
     pre = []
     for anio, mes in meses:
@@ -466,6 +491,8 @@ def armar_flujo_financiero(
         rrhh_real = rrhh_map.get((anio, mes), 0.0)
         if es_futuro:
             teso_proy = float(teso_proy_plan.get((anio, mes), 0.0) or 0.0)
+            if (anio, mes) in meses_residual_set:
+                teso_proy += proy_residual_mensual
             rrhh_proy = 0.0 if rrhh_real > 0.01 else rrhh_base_proy
         else:
             teso_proy = 0.0
@@ -488,16 +515,22 @@ def armar_flujo_financiero(
     teso_proy_necesario = sum(r["teso_proy"] for r in pre)
     rrhh_proy_necesario = sum(r["rrhh_proy"] for r in pre)
 
-    # Tesorería proy = plan manual (sin factor). RRHH proy sigue topeado al saldo de ppto.
-    factor_teso = 1.0
-    teso_proy_asignado = teso_proy_necesario
-    pool = max(0.0, saldo_total - total_real - teso_proy_asignado)
+    # Tope al saldo de ppto: primero RRHH proy, luego TESO proy (misma lógica previa).
+    pool = max(0.0, saldo_total - total_real)
     rrhh_proy_asignado = min(rrhh_proy_necesario, pool)
     factor_rrhh = (
         rrhh_proy_asignado / rrhh_proy_necesario if rrhh_proy_necesario > 0.01 else 1.0
     )
     pool -= rrhh_proy_asignado
-    factor_proy = factor_rrhh
+    teso_proy_asignado = min(teso_proy_necesario, pool)
+    factor_teso = (
+        teso_proy_asignado / teso_proy_necesario if teso_proy_necesario > 0.01 else 0.0
+    )
+    factor_proy = (
+        min(factor_teso, factor_rrhh)
+        if factor_teso and factor_rrhh
+        else max(factor_teso, factor_rrhh)
+    )
 
     saldo_caja_inicial = cargar_saldo_caja_inicial(conn, temporada)
     # Caja inicial de temporada al primer mes del EERR (mismo criterio que cuando
@@ -578,13 +611,16 @@ def armar_flujo_financiero(
         "teso_meses_anteriores": teso_atrasado,
         "teso_cxp_total": teso_cxp_total,
         "saldo_a_proyectar": teso_proy_asignado,
-        "saldo_a_proyectar_teso_bruto": teso_proy_plan_total,
+        "saldo_a_proyectar_teso_bruto": teso_proy_asignado,
+        "teso_proy_plan_total": teso_proy_plan_total,
+        "teso_proy_residual": residual_teso * factor_teso if residual_teso else 0.0,
         "saldo_presupuesto_sin_cxp": saldo_presupuesto_sin_cxp,
-        "teso_proy_manual": True,
+        "teso_proy_manual": bool(meses_con_proy_teso),
         "rrhh_base_proy": rrhh_base_proy * factor_rrhh,
         "rrhh_base_proy_bruto": rrhh_base_proy,
         "meses_sin_teso": len(meses_sin_teso),
         "meses_con_proy_teso": len(meses_con_proy_teso),
+        "meses_residual_teso": len(meses_residual),
         "pool_proy": pool,
         "factor_proy": factor_proy,
         "factor_teso": factor_teso,
@@ -633,10 +669,11 @@ def fila_total_flujo_mensual(df_flujo):
         return {}
     tot = {"MES": "TOTAL", "EERR_ACUM": float(df_flujo["EERR_ACUM"].iloc[-1])}
     for col in (
-        "INGRESOS", "RRHH", "TESORERIA",
+        "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY", "TESORERIA",
         "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES",
     ):
-        tot[col] = float(df_flujo[col].sum())
+        if col in df_flujo.columns:
+            tot[col] = float(df_flujo[col].sum())
     return tot
 
 
@@ -644,14 +681,17 @@ def df_flujo_para_pdf(df_flujo):
     if df_flujo.empty:
         return df_flujo
     cols = [
-        "MES", "INGRESOS", "RRHH", "TESORERIA",
+        "MES", "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY", "TESORERIA",
         "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES", "EERR_ACUM",
     ]
+    cols = [c for c in cols if c in df_flujo.columns]
     df_out = df_flujo[cols].copy()
     df_out = pd.concat([df_out, pd.DataFrame([fila_total_flujo_mensual(df_flujo)])], ignore_index=True)
     return df_out.rename(
         columns={
             "RRHH": "RRHH SUELDOS",
+            "TESO_REAL": "TESO REAL",
+            "TESO_PROY": "TESO PROY",
             "TESORERIA": "TESORERÍA",
             "EGRESOS_REAL": "EGRESOS REAL",
             "EGRESOS_PROY": "EGRESOS PROY",

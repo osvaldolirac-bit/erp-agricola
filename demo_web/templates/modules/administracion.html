@@ -365,7 +365,7 @@
   </form>
 
   {% elif sec_activa == 'flujo' %}
-  <p class="small text-muted">Carga el plan de caja: ingresos por centro de costo y egresos de tesorería/compras por mes. El Flujo financiero usa estos montos como proyección (ya no reparte el saldo de Costos en meses sin CxP).</p>
+  <p class="small text-muted">Carga el plan de caja: ingresos por CC y, opcionalmente, egresos de tesorería/compras por mes. El Flujo usa el plan para el calendario de <strong>TESO PROY</strong>; el saldo de Costos no cubierto por CxP ni por el plan se reparte en meses vacíos para proyectar el EERR final.</p>
   {{ nav_temporada('modules.admin', temporadas, temp_sel, {'sec': 'flujo'}) }}
   <p class="small mb-2">
     Período: <strong>{{ temp_fi }}</strong> → <strong>{{ temp_ff }}</strong>
@@ -407,7 +407,7 @@
 
   <hr class="my-4">
   <h2 class="h6">Egresos tesorería / compras proyectados</h2>
-  <p class="small text-muted mb-2">Indica cuánto esperas gastar en compras/tesorería cada mes (además de las CxP ya cargadas). Eso alimenta la columna <em>Teso. proy.</em> del Flujo financiero.</p>
+  <p class="small text-muted mb-2">Opcional: fija cuánto esperas gastar en compras/tesorería cada mes (además de las CxP). Alimenta la columna <em>TESO PROY</em> del Flujo. Si dejas meses en cero, el residual de presupuesto se reparte ahí para no inflar el EERR.</p>
   <form method="post" class="mb-4">
     <input type="hidden" name="action" value="guardar_egresos_flujo">
     <input type="hidden" name="temporada" value="{{ temp_sel }}">

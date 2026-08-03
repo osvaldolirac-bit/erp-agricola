@@ -42,7 +42,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         kpis = {}
         pdf_flujo_url = None
         flujo_detalle_rows = []
-        flujo_detalle_cols = ["MES", "Teso. real", "Teso. proy.", "RRHH real", "RRHH proy."]
+        flujo_detalle_cols = ["MES", "Teso. real", "Teso. proy. (EERR)", "RRHH real", "RRHH proy."]
         meta_info = ""
         caja_info = ""
 
@@ -60,11 +60,11 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             }
 
             display_cols = [
-                "MES", "INGRESOS", "RRHH SUELDOS", "TESORERÍA",
+                "MES", "INGRESOS", "RRHH SUELDOS", "TESO REAL", "TESO PROY", "TESORERÍA",
                 "EGRESOS REAL", "EGRESOS PROY", "EGRESOS TOTAL", "RESULTADO MES", "EERR ACUM",
             ]
             base_cols = [
-                "MES", "INGRESOS", "RRHH", "TESORERIA",
+                "MES", "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY", "TESORERIA",
                 "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES", "EERR_ACUM",
             ]
             n_meses = len(df_flujo)
@@ -92,7 +92,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 flujo_detalle_rows.append({
                     "MES": row["MES"],
                     "Teso. real": demo.f_peso(row["TESO_REAL"]),
-                    "Teso. proy.": demo.f_peso(row["TESO_PROY"]),
+                    "Teso. proy. (EERR)": demo.f_peso(row["TESO_PROY"]),
                     "RRHH real": demo.f_peso(row["RRHH_REAL"]),
                     "RRHH proy.": demo.f_peso(row["RRHH_PROY"]),
                     "_cls_teso_proy": "flujo-cell-proy" if float(row["TESO_PROY"] or 0) > 0.01 else "",
@@ -129,14 +129,15 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 f"Gastado imputado: {demo.f_peso(meta.get('total_gastado', 0))} · "
                 f"Saldo restante: {demo.f_peso(meta.get('total_saldo_ppto', 0))} · "
                 f"Tesorería CxP: {demo.f_peso(meta.get('teso_cxp_total', 0))} · "
-                f"Teso. proy. (plan cargado): {demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))} "
-                f"en {meta.get('meses_con_proy_teso', 0)} mes(es) · "
-                f"Saldo ppto sin CxP: {demo.f_peso(meta.get('saldo_presupuesto_sin_cxp', 0))} "
-                f"(referencia; ya no se prorratea)."
+                f"TESO PROY (para EERR): {demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))} "
+                f"(plan {demo.f_peso(meta.get('teso_proy_plan_total', 0))} + "
+                f"residual {demo.f_peso(meta.get('teso_proy_residual', 0))} "
+                f"en {meta.get('meses_residual_teso', 0)} mes(es) sin CxP/plan)."
             )
-            if float(meta.get("saldo_a_proyectar_teso_bruto", 0) or 0) < 0.01:
+            if meta.get("meses_con_proy_teso", 0) == 0:
                 meta_info += (
-                    " Carga egresos por mes en Administración → Flujo caja para proyectar compras/tesorería."
+                    " Opcional: carga egresos por mes en Administración → Flujo caja "
+                    "para fijar el calendario de compras (si no, el residual se reparte)."
                 )
 
         eg_cc_cols, eg_cc_rows = [], []

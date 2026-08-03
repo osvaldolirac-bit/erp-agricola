@@ -50,7 +50,7 @@
     </div>
   </div>
 
-  <p class="small text-muted">Gastado imputado = acumulado del módulo Costos. Egresos caja = Tesorería (CxP + plan de egresos en Administración → Flujo caja) + RRHH.</p>
+  <p class="small text-muted">Gastado imputado = Costos. <strong>TESO PROY</strong> = egresos de tesorería proyectados (plan cargado + residual de presupuesto) para el EERR final. EGRESOS PROY = TESO PROY + RRHH proy.</p>
   <div class="mb-3">
     <span class="flujo-legend flujo-legend-real">■ Real</span>
     <span class="flujo-legend flujo-legend-proy">■ Proyectado</span>
@@ -97,7 +97,7 @@
           <tr>
             <td>{{ row.MES }}</td>
             <td>{{ row['Teso. real'] }}</td>
-            <td class="{{ row._cls_teso_proy }}">{{ row['Teso. proy.'] }}</td>
+            <td class="{{ row._cls_teso_proy }}">{{ row['Teso. proy. (EERR)'] }}</td>
             <td>{{ row['RRHH real'] }}</td>
             <td class="{{ row._cls_rrhh_proy }}">{{ row['RRHH proy.'] }}</td>
           </tr>
