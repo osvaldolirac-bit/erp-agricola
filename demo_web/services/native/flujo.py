@@ -125,13 +125,14 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 caja_info = f"{caja_info} {_extra}".strip() if caja_info else _extra
 
             meta_info = (
-                f"Presupuesto (Costos): {demo.f_peso(meta.get('total_ppto', 0))} · "
-                f"Gastado imputado: {demo.f_peso(meta.get('total_gastado', 0))} · "
-                f"Saldo por gastar (suma CC): {demo.f_peso(meta.get('saldo_por_gastar_ppto', 0))} · "
-                f"RRHH proy: {demo.f_peso(meta.get('rrhh_proy_asignado', 0))} · "
-                f"TESO PROY (resto del saldo, desde {meta.get('mes_inicio_teso_proy_auto', 'hoy+2')}): "
+                f"Presupuesto CC: {demo.f_peso(meta.get('total_ppto', 0))} · "
+                f"Gastado Costos: {demo.f_peso(meta.get('total_gastado', 0))} "
+                f"(en flujo: {demo.f_peso(meta.get('costos_imputado_en_flujo', 0))} "
+                f"+ RRHH real del EERR) · "
+                f"Saldo: {demo.f_peso(meta.get('saldo_por_gastar_ppto', 0))} · "
+                f"TESO PROY desde {meta.get('mes_inicio_teso_proy_auto', 'hoy+2')}: "
                 f"{demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))} · "
-                f"CxP (TESO REAL): {demo.f_peso(meta.get('teso_cxp_total', 0))}."
+                f"Margen teórico ingresos − ppto ≈ EERR si el gasto sigue el presupuesto."
             )
 
         eg_cc_cols, eg_cc_rows = [], []
