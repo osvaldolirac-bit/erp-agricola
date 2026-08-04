@@ -126,10 +126,11 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
 
             meta_info = (
                 f"Presupuesto CC: {demo.f_peso(meta.get('total_ppto', 0))} · "
-                f"Gastado Costos: {demo.f_peso(meta.get('total_gastado', 0))} "
+                f"Gastado temporada (fi–ff, sin pre-temporada): "
+                f"{demo.f_peso(meta.get('total_gastado', 0))} "
                 f"(en flujo: {demo.f_peso(meta.get('costos_imputado_en_flujo', 0))} "
                 f"+ RRHH real del EERR) · "
-                f"Saldo: {demo.f_peso(meta.get('saldo_por_gastar_ppto', 0))} · "
+                f"Saldo temporada: {demo.f_peso(meta.get('saldo_por_gastar_ppto', 0))} · "
                 f"TESO PROY desde {meta.get('mes_inicio_teso_proy_auto', 'hoy+2')}: "
                 f"{demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))} · "
                 f"Margen teórico ingresos − ppto ≈ EERR si el gasto sigue el presupuesto."
