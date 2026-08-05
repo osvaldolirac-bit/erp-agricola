@@ -1,0 +1,654 @@
+{% extends "_base_app.html" %}
+{% set nav_active = 'consola' %}
+{% block title %}{{ brand }} — Super Consola{% endblock %}
+{% block breadcrumb %}
+<span><a href="{{ url_for('home') }}">Admin. tenants</a></span><span>›</span>
+<span>{{ tenant.nombre }}</span><span>›</span>
+<span class="current">{{ sec|capitalize }}</span>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Super Consola</h1>
+    <p>
+      {% if tenant.producto == 'comercial' %}
+      Gestión de usuarios y bitácora del producto <strong>Comercial</strong>. No mezcla módulos del ERP agrícola.
+      {% else %}
+      Poderes de plataforma sobre el <strong>ERP Agrícola</strong> del cliente (usuarios, módulos, respaldos).
+      {% endif %}
+    </p>
+  </div>
+  <span class="product-badge product-badge-{{ tenant.producto }}">{{ tenant.producto_label }}</span>
+</div>
+
+<div class="context-bar context-{{ tenant.producto }}" aria-label="Cliente en gestión">
+  <div class="context-label">{{ tenant.producto_label }} · cliente</div>
+  <form method="get" class="context-switch" action="{{ url_for('super_consola', slug=tenant.slug) }}">
+    <input type="hidden" name="sec" value="{{ sec }}">
+    {% if user.is_super and admin_tenants|length > 1 %}
+    <select name="slug" id="switchTenant" aria-label="Cambiar cliente">
+      <optgroup label="ERP Agrícola">
+        {% for t in admin_tenants if t.producto == 'agricola' %}
+        <option value="{{ t.slug }}" {% if t.slug == tenant.slug %}selected{% endif %}>{{ t.nombre }}</option>
+        {% endfor %}
+      </optgroup>
+      <optgroup label="Comercial">
+        {% for t in admin_tenants if t.producto == 'comercial' %}
+        <option value="{{ t.slug }}" {% if t.slug == tenant.slug %}selected{% endif %}>{{ t.nombre }}</option>
+        {% endfor %}
+      </optgroup>
+    </select>
+    {% else %}
+    <strong class="context-name">{{ tenant.nombre }}</strong>
+    {% endif %}
+  </form>
+  {% if tenant.url_dashboard or tenant.url %}
+  <a class="context-open" href="{{ url_for('entrar_erp', slug=tenant.slug) }}" target="_blank" rel="noopener">
+    {{ tenant.abrir_label }} →
+  </a>
+  {% endif %}
+</div>
+
+{% if msg %}
+<p class="banner banner-{{ msg_type }}" role="alert">{{ msg }}</p>
+{% endif %}
+
+      {% if sec == 'usuarios' %}
+      <section class="admin-block">
+        <h3>Usuarios</h3>
+        {% if tenant.slug == 'comercial-demo' %}
+        <p class="help">Un solo listado con <strong>estado</strong>: Alta/permanente, En prueba o Prueba vencida (y si pidió contratar). El ciclo del tenant (prueba↔alta / Mercado Pago) está en <strong>Clientes suscriptores</strong>.</p>
+        {% elif tenant.kind == 'comercial' %}
+        <p class="help">Usuarios del tenant con estado de vigencia. La suscripción del cliente (alta/prueba, plan, pago) se gestiona en <strong>Clientes suscriptores</strong>.</p>
+        {% else %}
+        <p class="help">Alta y control de cuentas del cliente seleccionado. Operas desde Master.</p>
+        {% endif %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="crear_usuario">
+          <input type="hidden" name="sec" value="usuarios">
+          <label>Correo
+            <input type="email" name="email" required>
+          </label>
+          <label>Clave
+            <input type="text" name="password" required minlength="4" autocomplete="off">
+          </label>
+          {% if tenant.kind == 'comercial' %}
+          <label>Nombre
+            <input type="text" name="nombre" placeholder="Nombre visible" autocomplete="off">
+          </label>
+          {% endif %}
+          <label>Rol
+            <select name="rol">
+              {% for r in roles %}
+              <option value="{{ r }}" {% if (tenant.kind == 'comercial' and r == 'Operador') or (tenant.kind != 'comercial' and r == 'operador') %}selected{% endif %}>{{ r }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% if tenant.kind == 'demo' or tenant.slug == 'comercial-demo' %}
+          <label>Días demo
+            <input type="number" name="dias_demo" value="30" min="1" max="365">
+          </label>
+          {% endif %}
+          {% if tenant.kind != 'comercial' or tenant.slug == 'comercial-demo' %}
+          <label class="check-inline">
+            <input type="checkbox" name="enviar_invitacion" value="1" checked>
+            Enviar invitación por correo
+          </label>
+          {% endif %}
+          {% if tenant.kind != 'comercial' %}
+          <label class="check-inline">
+            <input type="checkbox" name="mail_tesoreria" value="1">
+            Mail tesorería
+          </label>
+          {% endif %}
+          {% if tenant.kind == 'lc' %}
+          <label class="check-inline">
+            <input type="checkbox" name="mail_petroleo" value="1">
+            Mail petróleo (QR)
+          </label>
+          <label class="check-inline">
+            <input type="checkbox" name="solo_lectura" value="1">
+            Solo lectura
+          </label>
+          {% endif %}
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Crear</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="admin-block">
+        <h3>Cuentas ({% if users_view is defined %}{{ users_view|length }}{% else %}{{ users|length }}{% endif %})</h3>
+        {% if tenant.kind == 'demo' or tenant.kind == 'comercial' %}
+        <p class="help" style="margin-bottom:.75rem">
+          Filtrar:
+          <a href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios') }}">Todos</a> ·
+          <a href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios', estado='prueba') }}">En prueba</a> ·
+          <a href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios', estado='vencido') }}">Vencidos</a> ·
+          <a href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios', estado='alta') }}">Alta / permanente</a> ·
+          <a href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios', estado='contratar') }}">Quiere contratar</a>
+        </p>
+        {% endif %}
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Correo</th>
+                <th>Rol</th>
+                {% if tenant.kind != 'comercial' %}
+                <th>Opciones</th>
+                <th>Módulos</th>
+                {% endif %}
+                {% if tenant.kind == 'demo' or tenant.kind == 'comercial' %}<th>Estado</th><th>Expira</th><th>Origen</th>{% endif %}
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users_view|default(users) %}
+              <tr>
+                <td>
+                  <div class="cell-strong">{{ u.email }}</div>
+                </td>
+                <td>
+                  <form method="post" class="inline-form">
+                    <input type="hidden" name="action" value="cambiar_rol">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <select name="rol" onchange="this.form.submit()">
+                      {% for r in roles %}
+                      <option value="{{ r }}" {% if r == u.rol %}selected{% endif %}>{{ r }}</option>
+                      {% endfor %}
+                    </select>
+                  </form>
+                </td>
+                {% if tenant.kind != 'comercial' %}
+                <td>
+                  <form method="post" class="flags-grid">
+                    <input type="hidden" name="action" value="flags_usuario">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <label><input type="checkbox" name="mail_tesoreria" value="1" {% if u.mail_tesoreria %}checked{% endif %}> Mail tesorería</label>
+                    {% if tenant.kind == 'lc' %}
+                    <label><input type="checkbox" name="mail_petroleo" value="1" {% if u.mail_petroleo_bitacora %}checked{% endif %}> Mail petróleo</label>
+                    <label><input type="checkbox" name="solo_lectura" value="1" {% if u.solo_lectura %}checked{% endif %}> Solo lectura</label>
+                    {% endif %}
+                    <button class="btn btn-ghost" type="submit">Guardar</button>
+                  </form>
+                </td>
+                <td class="cell-muted">{{ u.modulos_txt }}</td>
+                {% endif %}
+                {% if tenant.kind == 'demo' or tenant.kind == 'comercial' %}
+                <td>
+                  <span class="role-badge role-{{ u.status_tone|default('ok') }}">{{ u.status_label|default('—') }}</span>
+                </td>
+                <td class="cell-muted">{% if u.fecha_expira %}{{ u.fecha_expira }}{% else %}—{% endif %}</td>
+                <td class="cell-muted">{{ u.invitado_por or '—' }}{% if u.plan_interes and 'contratar' not in (u.status_label|default(''))|lower %}<div>{{ u.plan_interes }}</div>{% endif %}</td>
+                {% endif %}
+                <td class="actions">
+                  <form method="post" class="inline-form">
+                    <input type="hidden" name="action" value="cambiar_clave">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <input type="text" name="password" placeholder="Nueva clave" minlength="4" required>
+                    <button class="btn btn-ghost" type="submit">Clave</button>
+                  </form>
+                  {% if tenant.kind != 'comercial' or tenant.slug == 'comercial-demo' %}
+                  <form method="post" class="inline-form">
+                    <input type="hidden" name="action" value="reenviar_invitacion">
+                    <input type="hidden" name="sec" value="usuarios">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <input type="text" name="password" placeholder="Clave p/ invitación" minlength="4" required>
+                    <button class="btn btn-ghost" type="submit">Reenviar mail</button>
+                  </form>
+                  {% endif %}
+                  {% if tenant.kind == 'demo' %}
+                  <form method="post" class="inline-form" onsubmit="return confirm('¿Extender la prueba de {{ u.email }}?');">
+                    <input type="hidden" name="action" value="extender_prueba">
+                    <input type="hidden" name="sec" value="usuarios">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <input type="number" name="dias_demo" value="30" min="1" max="365" title="Días a sumar" style="width:4.5rem">
+                    <label class="check-inline" title="Envía aviso al usuario y copia al mail de respaldo">
+                      <input type="checkbox" name="enviar_aviso" value="1" checked>
+                      Aviso mail
+                    </label>
+                    <button class="btn btn-ghost" type="submit">Extender prueba</button>
+                  </form>
+                  {% endif %}
+                  {% if tenant.kind != 'comercial' %}
+                  {% if u.es_operador %}
+                  <a class="btn btn-ghost" href="{{ url_for('super_consola', slug=tenant.slug, sec='modulos', uid=u.id) }}">Módulos</a>
+                  {% endif %}
+                  {% endif %}
+                  <form method="post" class="inline-form" onsubmit="return confirm('¿Eliminar {{ u.email }}?');">
+                    <input type="hidden" name="action" value="eliminar_usuario">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <button class="btn btn-danger" type="submit">Eliminar</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endif %}
+
+      {% if sec == 'modulos' %}
+      <section class="admin-block">
+        <h3>Módulos</h3>
+        <p class="help">Permisos de operador/lector del cliente en gestión.</p>
+        <form method="get" class="form-grid narrow">
+          <input type="hidden" name="sec" value="modulos">
+          <label>Usuario
+            <select name="uid" onchange="this.form.submit()">
+              <option value="">— elegir —</option>
+              {% for u in operadores %}
+              <option value="{{ u.id }}" {% if mod_user_id == u.id %}selected{% endif %}>{{ u.email }} ({{ u.rol }})</option>
+              {% endfor %}
+            </select>
+          </label>
+        </form>
+
+        {% if mod_user_id %}
+        <form method="post" class="modulos-form">
+          <input type="hidden" name="action" value="modulos_guardar">
+          <input type="hidden" name="sec" value="modulos">
+          <input type="hidden" name="user_id" value="{{ mod_user_id }}">
+          <p class="help">Editando: <strong>{{ mod_email }}</strong></p>
+          <label class="check-all">
+            <input type="checkbox" name="todos" value="1" {% if mod_all %}checked{% endif %} id="chkTodos">
+            Todos los módulos
+          </label>
+          <div class="modulos-grid" id="modulosGrid">
+            {% for key, label in menu %}
+            <label class="modulos-item">
+              <input type="checkbox" name="modulos" value="{{ key }}"
+                {% if mod_all or key in mod_keys %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <button class="btn btn-primary" type="submit">Guardar módulos</button>
+        </form>
+        <script>
+          (function () {
+            const all = document.getElementById('chkTodos');
+            const grid = document.getElementById('modulosGrid');
+            if (!all || !grid) return;
+            const boxes = () => grid.querySelectorAll('input[type=checkbox]');
+            all.addEventListener('change', () => {
+              boxes().forEach(b => { b.checked = all.checked; });
+            });
+            grid.addEventListener('change', () => {
+              const list = [...boxes()];
+              all.checked = list.length > 0 && list.every(b => b.checked);
+            });
+          })();
+        </script>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if sec == 'prorrateo' and prorrateo %}
+      <section class="admin-block">
+        <h3>Prorrateo CC</h3>
+        <p class="help">
+          Porcentajes de imputación de <strong>costos fijos</strong> (sueldos / RRHH y otros gastos prorrateados del campo).
+          Deben sumar <strong>100 %</strong>.
+          {% if prorrateo.directos %}
+          Fuera de este reparto (imputación directa): <strong>{{ prorrateo.directos|join(', ') }}</strong>.
+          {% endif %}
+          Aplica a movimientos nuevos; no recalcula históricos.
+        </p>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="prorrateo_guardar">
+          <input type="hidden" name="sec" value="prorrateo">
+          {% for r in prorrateo.rows %}
+          <label>{{ r.nombre }} (%)
+            <input type="number" name="pct_{{ r.cc|replace(' ', '_') }}" value="{{ '%.4f'|format(r.porcentaje) }}" min="0" max="100" step="0.0001" required>
+          </label>
+          {% endfor %}
+          <p class="help">
+            Suma actual:
+            <strong style="color:{% if prorrateo.ok %}#1b5e20{% else %}#b71c1c{% endif %}">
+              {{ '%.2f'|format(prorrateo.suma) }} %
+            </strong>
+          </p>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Guardar prorrateo</button>
+          </div>
+        </form>
+      </section>
+      {% endif %}
+
+      {% if sec == 'alertas' %}
+      <section class="admin-block">
+        <h3>Mail de alertas</h3>
+        {% if tenant.kind == 'comercial' %}
+        <p class="help">
+          Configure el correo receptor y active por separado cada tipo de alerta
+          (mismo criterio que los mails operativos en LC → Usuarios).
+        </p>
+        {% else %}
+        <p class="help">
+          Correo que recibe las <strong>alertas de acceso</strong> (login exitoso / fallido) y copias de
+          administración (invitaciones, avisos). Antes vivía solo en secrets; ahora se gestiona aquí por cliente.
+        </p>
+        {% endif %}
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="alertas_guardar">
+          <input type="hidden" name="sec" value="alertas">
+          <label>Correo receptor de alertas
+            <input type="text" name="correo_receptor" value="{{ alertas.correo_receptor }}" placeholder="correo@dominio.cl" required>
+          </label>
+          {% if tenant.kind == 'comercial' %}
+          <div class="flags-grid" style="grid-column:1/-1;margin-top:0.25rem;">
+            <label class="check-inline">
+              <input type="checkbox" name="alerta_acceso" value="1" {% if alertas.alerta_acceso == '1' %}checked{% endif %}>
+              Alertas de acceso (login exitoso / fallido)
+            </label>
+            <label class="check-inline">
+              <input type="checkbox" name="alerta_pago" value="1" {% if alertas.alerta_pago == '1' %}checked{% endif %}>
+              Alertas de pago / abono (documentos CxC)
+            </label>
+          </div>
+          {% endif %}
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Guardar</button>
+          </div>
+        </form>
+        <dl class="status-dl">
+          <div><dt>Emisor SMTP</dt><dd>{{ alertas.correo_emisor or '—' }}</dd></div>
+          <div><dt>Secrets</dt><dd><code>{{ alertas.secrets_path or '—' }}</code></dd></div>
+          <div><dt>Estado</dt><dd>{% if alertas.ok == '1' %}OK{% else %}No legible{% endif %}</dd></div>
+          {% if tenant.kind == 'comercial' %}
+          <div><dt>Acceso</dt><dd>{% if alertas.alerta_acceso == '1' %}Activo{% else %}Off{% endif %}</dd></div>
+          <div><dt>Pago / abono</dt><dd>{% if alertas.alerta_pago == '1' %}Activo{% else %}Off{% endif %}</dd></div>
+          {% endif %}
+        </dl>
+        {% if tenant.kind != 'comercial' %}
+        <p class="help">
+          Los mails operativos por usuario (tesorería / petróleo) se marcan en la pestaña <strong>Usuarios</strong>.
+        </p>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if sec == 'respaldo' %}
+      <section class="admin-block">
+        <h3>Respaldos</h3>
+        <p class="help">
+          <strong>Datos</strong>: por este cliente.
+          <strong>Código</strong>: una sola vez por rubro
+          ({{ 'Agrícola' if tenant.producto == 'agricola' else ('Comercial' if tenant.producto == 'comercial' else '—') }}),
+          compartido por todos los clientes del rubro.
+        </p>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="respaldo_guardar">
+          <input type="hidden" name="sec" value="respaldo">
+          <label>Correo destino
+            <input type="text" name="email" value="{{ respaldo.email }}" placeholder="correo@dominio.cl">
+          </label>
+          <label>Frecuencia datos
+            <select name="freq_datos">
+              {% for f in frecuencias %}
+              <option value="{{ f }}" {% if respaldo.frecuencia == f %}selected{% endif %}>{{ f }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% if respaldo_edita_codigo %}
+          <label>Frecuencia código (rubro)
+            <select name="freq_codigo">
+              {% for f in frecuencias %}
+              <option value="{{ f }}" {% if respaldo.codigo_frecuencia == f %}selected{% endif %}>{{ f }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% endif %}
+          <label class="check-inline">
+            <input type="checkbox" name="activo_datos" value="1" {% if respaldo.activo_datos == '1' or respaldo.activo == '1' %}checked{% endif %}>
+            Datos (este cliente)
+          </label>
+          {% if respaldo_edita_codigo %}
+          <label class="check-inline">
+            <input type="checkbox" name="activo_codigo" value="1" {% if respaldo.activo_codigo == '1' %}checked{% endif %}>
+            Código (rubro {{ 'agrícola' if tenant.producto == 'agricola' else 'comercial' }})
+          </label>
+          {% else %}
+          <p class="help" style="grid-column:1/-1">
+            Código del rubro:
+            <strong>{% if respaldo.activo_codigo == '1' %}activo{% else %}inactivo{% endif %}</strong>
+            · se configura solo en <strong>{{ respaldo_codigo_owner_label }}</strong>
+            (no se guarda desde este cliente).
+          </p>
+          {% endif %}
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Guardar</button>
+          </div>
+        </form>
+        <dl class="status-dl">
+          <div><dt>Último datos</dt><dd>{{ respaldo.ultimo_envio or '—' }}</dd></div>
+          <div><dt>Error datos</dt><dd>{{ respaldo.ultimo_error or '—' }}</dd></div>
+          <div><dt>Último código (rubro)</dt><dd>{{ respaldo.codigo_ultimo_envio or '—' }}</dd></div>
+          <div><dt>Error código (rubro)</dt><dd>{{ respaldo.codigo_ultimo_error or '—' }}</dd></div>
+        </dl>
+      </section>
+      <section class="admin-block">
+        <h3>Acciones inmediatas</h3>
+        <p class="help">Equivalente a lo que estaba en Administración ERP (super admin).</p>
+        <div class="form-actions" style="display:flex;flex-wrap:wrap;gap:0.6rem">
+          <form method="post">
+            <input type="hidden" name="action" value="respaldo_enviar_datos">
+            <input type="hidden" name="sec" value="respaldo">
+            <button class="btn btn-primary" type="submit">Enviar datos ahora</button>
+          </form>
+          {% if respaldo_edita_codigo %}
+          <form method="post">
+            <input type="hidden" name="action" value="respaldo_enviar_codigo">
+            <input type="hidden" name="sec" value="respaldo">
+            <button class="btn btn-ghost" type="submit">Enviar código del rubro ahora</button>
+          </form>
+          {% endif %}
+          <form method="post">
+            <input type="hidden" name="action" value="respaldo_download_db">
+            <input type="hidden" name="sec" value="respaldo">
+            <button class="btn btn-ghost" type="submit">Descargar .db.gz</button>
+          </form>
+        </div>
+      </section>
+      {% endif %}
+
+      {% if sec == 'plataforma' and tenant.kind == 'demo' and plataforma %}
+      <section class="admin-block">
+        <h3>Plataforma DEMO</h3>
+        <p class="help">Gestión de invitaciones y datos ficticios del entorno demo. Usuarios se crean en la pestaña Usuarios.</p>
+        <div class="kpi-row">
+          <div class="kpi"><span class="kpi-label">Super admin</span><strong>{{ plataforma.n_super }}</strong></div>
+          <div class="kpi"><span class="kpi-label">Admins campo</span><strong>{{ plataforma.n_cliente }}</strong></div>
+          <div class="kpi"><span class="kpi-label">Días de prueba</span><strong>{{ plataforma.dias_prueba }}</strong></div>
+        </div>
+        <p class="help">
+          Seed: <strong>{{ plataforma.seed_version }}</strong> ·
+          Estado: <strong>{% if plataforma.seed_ok %}sembrado{% else %}pendiente{% endif %}</strong> ·
+          Acceso: <a href="{{ plataforma.login_url }}" target="_blank" rel="noopener">{{ plataforma.login_url }}</a><br>
+          Base: <code>{{ plataforma.nombre_db }}</code>
+        </p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Perfil</th>
+                <th>Vigencia</th>
+                <th>Invitado por</th>
+                <th>Interés plan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in plataforma.usuarios_plat %}
+              <tr>
+                <td>{{ u.email }}</td>
+                <td>{{ u.perfil }}</td>
+                <td class="cell-muted">{{ u.vigencia }}</td>
+                <td class="cell-muted">{{ u.invitado_por or '—' }}</td>
+                <td class="cell-muted">{{ u.plan_interes or '—' }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="cell-muted">Sin usuarios.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="admin-block">
+        <h3>Re-sembrar datos ficticios</h3>
+        <p class="help">Borra movimientos operativos y vuelve a cargar datos ficticios. <strong>No elimina usuarios.</strong></p>
+        <form method="post" class="form-grid" onsubmit="return confirm('¿Re-sembrar todos los datos operativos del DEMO?');">
+          <input type="hidden" name="action" value="reseed_demo">
+          <input type="hidden" name="sec" value="plataforma">
+          <label class="check-inline">
+            <input type="checkbox" name="confirm" value="1" required>
+            Confirmo re-sembrar todos los datos operativos
+          </label>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Ejecutar re-seed</button>
+          </div>
+        </form>
+      </section>
+      <section class="admin-block">
+        <h3>Bitácora del ERP (DEMO)</h3>
+        <p class="help">
+          Registro operativo dentro del ERP (ingresos, módulos). Ahora:
+          <strong>{% if bitacora_erp_activa %}activa{% else %}desactivada / en cero{% endif %}</strong>
+          · {{ bitacora_erp_n }} registros.
+        </p>
+        <form method="post" class="inline-form" style="margin-bottom:0.75rem">
+          <input type="hidden" name="action" value="bitacora_erp_toggle">
+          <input type="hidden" name="sec" value="plataforma">
+          {% if bitacora_erp_activa %}
+          <input type="hidden" name="activo" value="0">
+          <button class="btn btn-ghost" type="submit">Desactivar bitácora ERP</button>
+          {% else %}
+          <input type="hidden" name="activo" value="1">
+          <button class="btn btn-primary" type="submit">Activar bitácora ERP</button>
+          {% endif %}
+        </form>
+        <form method="post" class="inline-form" onsubmit="return confirm('¿Vaciar toda la bitácora del ERP DEMO?');">
+          <input type="hidden" name="action" value="bitacora_erp_vaciar">
+          <input type="hidden" name="sec" value="plataforma">
+          <input type="hidden" name="confirm" value="1">
+          <button class="btn btn-danger" type="submit">Vaciar bitácora ERP</button>
+        </form>
+      </section>
+      {% endif %}
+
+
+      {% if sec == 'plataforma' and tenant.slug == 'comercial-demo' %}
+      <section class="admin-block">
+        <h3>Plataforma DEMO Comercial</h3>
+        <p class="help">
+          Datos ficticios para demos de venta. Los usuarios se gestionan en la pestaña
+          <strong>Usuarios</strong>. El re-seed no toca usuarios ni datos de empresa.
+        </p>
+        <p class="help">
+          Acceso:
+          <a href="{{ tenant.url_dashboard or tenant.url }}" target="_blank" rel="noopener">
+            {{ tenant.url_dashboard or tenant.url }}
+          </a><br>
+          Base: <code>{{ tenant.db }}</code>
+        </p>
+      </section>
+      <section class="admin-block">
+        <h3>Re-sembrar datos ficticios</h3>
+        <p class="help">
+          Borra clientes, productos, cotizaciones, CxC y abonos, y vuelve a cargar la semilla DEMO.
+          <strong>No elimina usuarios ni empresa.</strong>
+        </p>
+        <form method="post" class="form-grid" onsubmit="return confirm('¿Re-sembrar todos los datos operativos del DEMO Comercial?');">
+          <input type="hidden" name="action" value="reseed_demo">
+          <input type="hidden" name="sec" value="plataforma">
+          <label class="check-inline">
+            <input type="checkbox" name="confirm" value="1" required>
+            Confirmo re-sembrar todos los datos operativos
+          </label>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Ejecutar re-seed</button>
+          </div>
+        </form>
+      </section>
+      {% endif %}
+
+      {% if sec == 'bitacora' %}
+      {% if tenant.kind != 'comercial' %}
+      <section class="admin-block">
+        <h3>Bitácora ERP del cliente</h3>
+        <p class="help">
+          Estado:
+          <strong>{% if bitacora_erp_activa %}activa{% else %}desactivada{% endif %}</strong>
+          · {{ bitacora_erp_n }} registros en el ERP.
+          {% if tenant.kind == 'demo' %}Se gestiona también en Plataforma.{% endif %}
+        </p>
+        <form method="post" class="inline-form">
+          <input type="hidden" name="action" value="bitacora_erp_toggle">
+          <input type="hidden" name="sec" value="bitacora">
+          {% if bitacora_erp_activa %}
+          <input type="hidden" name="activo" value="0">
+          <button class="btn btn-ghost" type="submit">Desactivar</button>
+          {% else %}
+          <input type="hidden" name="activo" value="1">
+          <button class="btn btn-primary" type="submit">Activar</button>
+          {% endif %}
+        </form>
+        {% if not bitacora_erp_activa %}
+        <form method="post" class="inline-form" style="margin-top:0.55rem" onsubmit="return confirm('¿Vaciar bitácora del ERP?');">
+          <input type="hidden" name="action" value="bitacora_erp_vaciar">
+          <input type="hidden" name="sec" value="bitacora">
+          <input type="hidden" name="confirm" value="1">
+          <button class="btn btn-danger" type="submit">Vaciar ahora</button>
+        </form>
+        {% endif %}
+      </section>
+      {% endif %}
+      <section class="admin-block">
+        <h3>Bitácora de consola</h3>
+        <p class="help">Movimientos hechos desde la Super Consola sobre <strong>{{ tenant.nombre }}</strong>. No se mezcla con la bitácora del ERP.</p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Usuario consola</th>
+                <th>Acción</th>
+                <th>Detalle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in bitacora_rows %}
+              <tr>
+                <td class="cell-muted">{{ r.fecha_hora }}</td>
+                <td>{{ r.usuario }}</td>
+                <td><span class="status">{{ r.accion }}</span></td>
+                <td>{{ r.detalle or '—' }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="4" class="cell-muted">Sin movimientos aún.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endif %}
+{% endblock %}
+{% block scripts %}
+{% if user.is_super and admin_tenants|length > 1 %}
+<script>
+  (function () {
+    const sel = document.getElementById('switchTenant');
+    if (!sel) return;
+    sel.addEventListener('change', function () {
+      const sec = new URLSearchParams(window.location.search).get('sec') || 'usuarios';
+      window.location = '{{ request.script_root }}/cliente/' + encodeURIComponent(sel.value) + '?sec=' + encodeURIComponent(sec);
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}
