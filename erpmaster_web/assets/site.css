@@ -146,14 +146,14 @@ img { max-width: 100%; display: block; }
 }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 
-/* Widget informativo (ni Agrícola ni Comercial) — SW 0064 Blue Peacock */
+/* Widget informativo (ni Agrícola ni Comercial) — SW 0068 Copen Blue */
 .hero-medida {
   margin-top: 1.35rem;
   max-width: 34rem;
   padding: 1rem 1.15rem;
-  background: #014e4c;
-  color: #f4f7f6;
-  border-left: 5px solid #0a7a76;
+  background: #c2ccc4;
+  color: #1f2a26;
+  border-left: 5px solid #8a968e;
   border-radius: 4px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
 }
@@ -163,7 +163,7 @@ img { max-width: 100%; display: block; }
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(244, 247, 246, 0.78);
+  color: #4a5750;
 }
 .hero-medida-text {
   margin: 0;
