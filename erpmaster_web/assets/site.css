@@ -146,14 +146,14 @@ img { max-width: 100%; display: block; }
 }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 
-/* Widget informativo (ni Agrícola ni Comercial) */
+/* Widget informativo (ni Agrícola ni Comercial) — SW 7015 Repose Gray */
 .hero-medida {
   margin-top: 1.35rem;
   max-width: 34rem;
   padding: 1rem 1.15rem;
-  background: #f0b429;
-  color: #1a1408;
-  border-left: 5px solid #c4890a;
+  background: #ccc5b8;
+  color: #2a2a28;
+  border-left: 5px solid #9e978a;
   border-radius: 4px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
 }
@@ -163,7 +163,7 @@ img { max-width: 100%; display: block; }
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6a4a08;
+  color: #5c574e;
 }
 .hero-medida-text {
   margin: 0;
