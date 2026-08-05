@@ -1037,6 +1037,7 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
             uid,
             dias=dias_demo,
             admin_email=master_email,
+            enviar_aviso=request.form.get("enviar_aviso") == "1",
         )
 
     if action == "alertas_guardar":

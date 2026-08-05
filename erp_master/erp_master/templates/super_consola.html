@@ -204,6 +204,10 @@
                     <input type="hidden" name="sec" value="usuarios">
                     <input type="hidden" name="user_id" value="{{ u.id }}">
                     <input type="number" name="dias_demo" value="30" min="1" max="365" title="Días a sumar" style="width:4.5rem">
+                    <label class="check-inline" title="Envía aviso al usuario y copia al mail de respaldo">
+                      <input type="checkbox" name="enviar_aviso" value="1" checked>
+                      Aviso mail
+                    </label>
                     <button class="btn btn-ghost" type="submit">Extender prueba</button>
                   </form>
                   {% endif %}

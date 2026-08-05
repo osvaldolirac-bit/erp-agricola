@@ -289,6 +289,15 @@ def _ensure_demo_web_runtime() -> None:
     ):
         if os.path.isdir(cand) and cand not in sys.path:
             sys.path.insert(0, cand)
+    # Módulos legacy (p.ej. soporte_pelao) viven en /root/demo; al final del path
+    # para no tapar app_demo de demo-web.
+    for legacy in (
+        os.environ.get("ERP_DEMO_LEGACY_ROOT", "").strip(),
+        "/root/demo",
+        os.path.join(os.path.dirname(root.rstrip("/")), "demo"),
+    ):
+        if legacy and os.path.isdir(legacy) and legacy not in sys.path:
+            sys.path.append(legacy)
     try:
         from demo_web.services.streamlit_mock import (  # noqa: WPS433
             install_streamlit_mock,
@@ -493,17 +502,93 @@ def reenviar_invitacion(
     return send_lc_invitation(db_path, email, password_plain, rol, admin_email)
 
 
+def _load_app_demo_module():
+    """Carga app_demo desde DEMO_WEB_ROOT (evita sombra de /root/app_demo.py)."""
+    import importlib
+    import importlib.util
+
+    _ensure_demo_web_runtime()
+    root = (DEMO_WEB_ROOT or "").strip() or "/root/demo-web"
+    target = os.path.join(root, "app_demo.py")
+    if os.path.isfile(target):
+        # Si ya hay un app_demo cargado desde otra ruta, forzar el de demo-web.
+        existing = sys.modules.get("app_demo")
+        if existing is not None and os.path.abspath(getattr(existing, "__file__", "") or "") != os.path.abspath(target):
+            del sys.modules["app_demo"]
+        spec = importlib.util.spec_from_file_location("app_demo", target)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["app_demo"] = mod
+            spec.loader.exec_module(mod)
+            return mod
+    import app_demo as demo  # noqa: WPS433
+
+    return demo
+
+
+def send_demo_extension_notice(
+    db_path: str,
+    email: str,
+    rol: str,
+    admin_email: str,
+    fecha_expira: str,
+    dias_agregados: int,
+    fecha_anterior: str = "",
+) -> tuple[bool, str]:
+    """Envía aviso de extensión al usuario y copia al correo_receptor (mail respaldo)."""
+    try:
+        demo = _load_app_demo_module()
+        try:
+            from demo_web.services.streamlit_mock import set_secrets_path  # noqa: WPS433
+
+            secrets = (
+                os.environ.get("ERP_DEMO_SECRETS")
+                or "/root/demo/.streamlit/secrets.toml"
+            )
+            if secrets:
+                set_secrets_path(secrets)
+        except Exception:
+            pass
+
+        demo.NOMBRE_DB = db_path
+        demo.DEMO_URL = DEMO_LOGIN_URL
+        send_fn = getattr(demo, "enviar_correo_extension_prueba_demo", None)
+        if not callable(send_fn):
+            return False, "Aviso no enviado: falta función de correo de extensión en DEMO."
+        res = send_fn(
+            email,
+            rol,
+            admin_email,
+            fecha_expira,
+            dias_agregados,
+            fecha_anterior or "",
+        )
+        ok_u = bool(res.get("usuario")) if isinstance(res, dict) else bool(res)
+        ok_c = bool(res.get("copia", True)) if isinstance(res, dict) else True
+        if ok_u and ok_c:
+            return True, f"Aviso enviado a {email} (con copia de respaldo)."
+        if ok_u and not ok_c:
+            return True, f"Aviso enviado a {email}, pero falló la copia de respaldo."
+        if (not ok_u) and ok_c:
+            return False, "Falló el envío al usuario; se envió la copia de respaldo."
+        return False, "No se pudo enviar el aviso de extensión (revise SMTP)."
+    except Exception as exc:
+        return False, f"Aviso de extensión no enviado: {exc}"
+
+
 def extender_prueba(
     db_path: str,
     kind: str,
     user_id: int,
     dias: int = 30,
     admin_email: str = "",
+    enviar_aviso: bool = True,
 ) -> tuple[bool, str]:
     """Suma días al plazo de prueba de un usuario DEMO Agrícola.
 
     Si la fecha actual aún está vigente, suma desde esa fecha.
     Si ya venció o no hay fecha, suma desde hoy.
+    Por defecto envía correo al usuario y copia al mail de respaldo (correo_receptor).
     """
     if kind != "demo":
         return False, "Extender prueba solo aplica al DEMO Agrícola."
@@ -525,12 +610,15 @@ def extender_prueba(
                 conn.execute(f"ALTER TABLE usuarios ADD COLUMN {col} {decl}")
                 cols.add(col)
         row = conn.execute(
-            "SELECT email, COALESCE(fecha_expira, '') AS fecha_expira FROM usuarios WHERE id = ?",
+            """SELECT email, COALESCE(rol, '') AS rol,
+                      COALESCE(fecha_expira, '') AS fecha_expira
+               FROM usuarios WHERE id = ?""",
             (int(user_id),),
         ).fetchone()
         if not row:
             return False, "Usuario no encontrado."
         email = str(row["email"] or "")
+        rol = str(row["rol"] or "operador")
         hoy = hoy_chile()
         base = hoy
         raw = str(row["fecha_expira"] or "").strip()[:10]
@@ -554,10 +642,25 @@ def extender_prueba(
             params,
         )
     prev = raw or "sin fecha"
-    return True, (
+    msg = (
         f"Prueba de {email} extendida {d} día{'s' if d != 1 else ''} "
         f"(era {prev} → hasta {nueva})."
     )
+    if enviar_aviso:
+        ok_mail, mail_txt = send_demo_extension_notice(
+            db_path,
+            email,
+            rol,
+            admin_email or "",
+            nueva,
+            d,
+            fecha_anterior=raw,
+        )
+        msg = f"{msg} {mail_txt}"
+        if not ok_mail:
+            # La extensión ya quedó guardada; avisamos el fallo de correo.
+            return True, msg
+    return True, msg
 
 
 def get_plataforma_demo(db_path: str) -> dict[str, Any]:
