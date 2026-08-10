@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Obras{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Obras</h1>
+    <p>Cada obra es un centro de costo (tipo obra). Compras y salidas de bodega se imputan aquí.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('constructora_home') }}">Constructora</a>
+</div>
+
+<div class="panel mb-3">
+  <h2 class="h6">Nueva obra</h2>
+  <form method="post" action="{{ url_for('constructora_obra_nueva') }}" class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label small fw-bold">Nombre obra</label>
+      <input class="form-control" name="nombre" required maxlength="80" placeholder="Ej. Fray Montalva — alcantarillado">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-bold">Cliente</label>
+      <select class="form-select" name="cliente_id">
+        <option value="">— opcional —</option>
+        {% for c in clientes %}
+        <option value="{{ c.id }}">{{ c.razon_social }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-bold">Inicio</label>
+      <input type="date" class="form-control" name="fecha_inicio" value="{{ hoy }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-bold">Ppto inicial (opcional)</label>
+      <input class="form-control" name="presupuesto" type="number" min="0" step="1" placeholder="0">
+      <div class="form-text">Obras menores. El ppto formal viene de la cotización APU.</div>
+    </div>
+    <div class="col-md-1">
+      <button class="btn btn-primary w-100" type="submit">Crear</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <h2 class="h6">Listado</h2>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle datatable">
+      <thead>
+        <tr>
+          <th>Obra / CC</th>
+          <th>Cliente</th>
+          <th>Estado</th>
+          <th>Inicio</th>
+          <th class="text-end">Presupuesto</th>
+          <th>Activo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in obras %}
+        <tr>
+          <td><strong>{{ o.nombre }}</strong></td>
+          <td>{{ o.cliente_nombre or '—' }}</td>
+          <td>{{ o.estado_obra or 'activa' }}</td>
+          <td>{{ fmt_dmy(o.fecha_inicio) if o.fecha_inicio else '—' }}</td>
+          <td class="text-end">{{ clp(o.presupuesto) }}</td>
+          <td>{{ 'Sí' if o.activo else 'No' }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('constructora_obra_detalle', obra_id=o.id) }}">Detalle</a>
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('centros_costo', tab='cc-' ~ o.id) }}">CC</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-muted">Sin obras todavía.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

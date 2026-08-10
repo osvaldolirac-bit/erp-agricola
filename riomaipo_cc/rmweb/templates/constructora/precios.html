@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Maestra de precios{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Maestra de precios</h1>
+    <p>Productos e insumos de obra. El APU toma estos precios para armar el PU neto de la partida.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-primary" href="{{ url_for('constructora_precio_form') }}"><i class="bi bi-plus-lg"></i> Nuevo precio</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('constructora_home') }}">Constructora</a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle datatable">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Tipo</th>
+          <th>Unidad</th>
+          <th class="text-end">Precio</th>
+          <th>Stock</th>
+          <th>Activo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><strong>{{ r.codigo or '—' }}</strong></td>
+          <td>{{ r.nombre }}</td>
+          <td>
+            {% if r.tipo_recurso == 'mano_obra' %}
+            <span class="badge text-bg-secondary">Mano de obra</span>
+            {% elif r.tipo_recurso == 'otro' %}
+            <span class="badge text-bg-light text-dark border">Otro</span>
+            {% else %}
+            <span class="badge text-bg-primary">Insumo</span>
+            {% endif %}
+          </td>
+          <td>{{ r.unidad }}</td>
+          <td class="text-end fw-bold">{{ clp(r.precio) }}</td>
+          <td>{{ 'Sí' if r.maneja_stock else 'No' }}</td>
+          <td>{{ 'Sí' if r.activo else 'No' }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('constructora_precio_form', pid=r.id) }}">Editar</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-muted">Sin precios. Cree insumos y mano de obra para usarlos en los APU.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

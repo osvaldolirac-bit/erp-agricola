@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Cotizaciones{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Cotizaciones</h1>
+    <p>Listado con acciones rápidas Ver / PDF / Edit / Del.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary fw-bold" href="{{ url_for('constructora_cotizacion_form') }}"><i class="bi bi-building"></i> Cotización obra</a>
+    <a class="btn btn-primary fw-bold" href="{{ url_for('cotizaciones_form') }}"><i class="bi bi-plus-lg"></i> Cotización normal</a>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi blue"><div class="label">Total</div><div class="value">{{ kpis.n_total }} Cotizaciones</div><div class="hint">{{ clp(kpis.sum_total) }}</div></div>
+  <div class="kpi cyan"><div class="label">Aprobadas</div><div class="value">{{ kpis.n_apr }} Cotizaciones</div><div class="hint">{{ clp(kpis.sum_apr) }}</div></div>
+  <div class="kpi pink"><div class="label">Rechazadas</div><div class="value">{{ kpis.n_rec }} Cotizaciones</div><div class="hint">{{ clp(kpis.sum_rec) }}</div></div>
+  <div class="kpi green"><div class="label">Conversión</div><div class="value">{{ '%.1f'|format(kpis.conv) }} %</div><div class="hint">{{ kpis.n_apr }} de {{ kpis.n_total }}</div></div>
+</div>
+
+<div class="panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle datatable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Número</th>
+          <th>Fecha</th>
+          <th>Cliente</th>
+          <th>Monto</th>
+          <th>Tipo</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        {% set label = estado_label_cot(r.estado) %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><span class="cot-num">{{ r.folio }}</span></td>
+          <td>{{ fmt_dmy(r.fecha) }}</td>
+          <td>
+            <strong>{{ r.cliente or '—' }}</strong>
+            <div class="small text-muted">{{ r.titulo or r.asunto or r.proyecto or '—' }}</div>
+          </td>
+          <td><strong>{{ clp(r.total) }}</strong></td>
+          <td>
+            {% if (r.tipo_cotizacion or 'normal') == 'obra' %}
+            <span class="badge text-bg-warning text-dark">Obra</span>
+            {% elif (r.tipo_venta or 'servicio') == 'producto' %}
+            <span class="badge text-bg-primary">Producto</span>
+            {% else %}
+            <span class="badge text-bg-secondary">Normal</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="estado {{ r.estado }}">
+              <span class="dot {% if r.estado=='aprobada' %}ok{% elif r.estado=='rechazada' %}danger{% elif r.estado=='enviada' %}warn{% else %}muted{% endif %}"></span>
+              {{ label }}
+            </span>
+          </td>
+          <td class="actions-cell">
+            <a class="btn-act ver" href="{{ url_for('cotizaciones_detalle', cot_id=r.id) }}" title="Visualizar"><i class="bi bi-eye"></i></a>
+            <a class="btn-act pdf" href="{{ url_for('cotizaciones_pdf', cot_id=r.id) }}" title="PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+            {% if (r.tipo_cotizacion or 'normal') == 'obra' %}
+            <a class="btn-act edit" href="{{ url_for('constructora_cotizacion_form', cot_id=r.id) }}" title="Modificar obra"><i class="bi bi-pencil-square"></i></a>
+            {% else %}
+            <a class="btn-act edit" href="{{ url_for('cotizaciones_form', cot_id=r.id) }}" title="Modificar"><i class="bi bi-pencil-square"></i></a>
+            {% endif %}
+            <form class="d-inline" method="post" action="{{ url_for('cotizaciones_borrar', cot_id=r.id) }}" onsubmit="return confirm('¿Eliminar {{ r.folio }}?');">
+              <button class="btn-act del" type="submit" title="Eliminar"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Maestra APU{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Maestra APU</h1>
+    <p>Análisis de precios unitarios: insumos, mano de obra, leyes sociales y pérdidas.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-primary" href="{{ url_for('constructora_apu_form') }}"><i class="bi bi-plus-lg"></i> Nuevo APU</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('constructora_home') }}">Constructora</a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle datatable">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Unidad</th>
+          <th class="text-end">PU neto</th>
+          <th>Leyes %</th>
+          <th>Pérdidas %</th>
+          <th>Activo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><strong>{{ r.codigo }}</strong></td>
+          <td>{{ r.nombre }}</td>
+          <td>{{ r.unidad }}</td>
+          <td class="text-end fw-bold">{{ clp(r.pu_neto) }}</td>
+          <td>{{ '%.1f'|format(r.leyes_pct or 0) }}%</td>
+          <td>{{ '%.1f'|format(r.perdidas_pct or 0) }}%</td>
+          <td>{{ 'Sí' if r.activo else 'No' }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('constructora_apu_form', apu_id=r.id) }}">Editar</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-muted">Sin APU. Cree el primero para cotizar partidas de obra.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

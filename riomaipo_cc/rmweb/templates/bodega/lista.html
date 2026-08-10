@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Bodega{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Bodega</h1>
+    <p>Stock físico. Los servicios no pasan por aquí.</p>
+  </div>
+</div>
+
+
+<div class="panel mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="h6 mb-0">Maestra de productos</h2>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('bodega_producto_form') }}"><i class="bi bi-plus-lg"></i> Nuevo producto</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle datatable">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Unidad</th>
+          <th>Precio</th>
+          <th>Tipo</th>
+          <th>Stock</th>
+          <th>Activo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in catalogo %}
+        <tr>
+          <td>{{ p.codigo or '—' }}</td>
+          <td><strong>{{ p.nombre }}</strong></td>
+          <td>{{ p.unidad }}</td>
+          <td>{{ clp(p.precio) }}</td>
+          <td>
+            {% if p.es_servicio %}
+            <span class="badge text-bg-secondary">Servicio</span>
+            {% else %}
+            <span class="badge text-bg-primary">Producto</span>
+            {% endif %}
+          </td>
+          <td>{{ 'Sí' if p.maneja_stock else 'No' }}</td>
+          <td>{{ 'Sí' if p.activo else 'No' }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('bodega_producto_form', pid=p.id) }}">Editar</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not catalogo %}<p class="text-muted small mb-0 mt-2">Sin productos. Cree la maestra para usar en compras y ventas de producto.</p>{% endif %}
+</div>
+
+<div class="panel mb-3">
+  <h2 class="h6">Inventario</h2>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle datatable">
+      <thead><tr><th>Código</th><th>Nombre</th><th>Unidad</th><th>Stock</th><th>Costo PMP</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.prod_codigo or r.codigo or '—' }}</td>
+          <td><strong>{{ r.nombre }}</strong></td>
+          <td>{{ r.unidad }}</td>
+          <td><strong>{{ '%.2f'|format(r.stock or 0) }}</strong></td>
+          <td>{{ clp(r.costo_pmp) }}</td>
+        </tr>
+                {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not rows %}<p class="text-muted small mb-0 mt-2">Sin stock. Ingrese por compras con “entrar a bodega” o un movimiento manual.</p>{% endif %}
+</div>
+
+<div class="panel mb-3">
+  <h2 class="h6">Movimiento manual</h2>
+  <form method="post" action="{{ url_for('bodega_movimiento') }}" class="row g-2">
+    <div class="col-md-2">
+      <label class="form-label small fw-bold">Tipo</label>
+      <select class="form-select" name="tipo">
+        <option value="entrada">Entrada</option>
+        <option value="salida">Salida</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-bold">Producto catálogo</label>
+      <select class="form-select" name="producto_id" id="bodProd" onchange="fillBod()">
+        <option value="">— libre —</option>
+        {% for p in productos %}
+        <option value="{{ p.id }}" data-nombre="{{ p.nombre }}" data-unidad="{{ p.unidad }}">{{ p.codigo or '' }} {{ p.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3"><label class="form-label small fw-bold">Nombre</label><input class="form-control" name="nombre" id="bodNom"></div>
+    <div class="col-md-1"><label class="form-label small fw-bold">Un</label><input class="form-control" name="unidad" id="bodUn" value="un"></div>
+    <div class="col-md-1"><label class="form-label small fw-bold">Cant</label><input class="form-control" type="number" step="0.01" name="cantidad" value="1" required></div>
+    <div class="col-md-2"><label class="form-label small fw-bold">Costo u.</label><input class="form-control" type="number" step="1" name="costo" value="0"></div>
+    <div class="col-md-2"><label class="form-label small fw-bold">Fecha</label><input type="date" class="form-control" name="fecha" value="{{ hoy }}"></div>
+    <div class="col-md-4">
+      <label class="form-label small fw-bold">CC / Obra <span class="text-muted">(obligatorio en salida)</span></label>
+      <select class="form-select" name="centro_costo_id" id="bodCc">
+        <option value="">— seleccionar —</option>
+        {% for cc in centros or [] %}
+        <option value="{{ cc.id }}">{% if cc.tipo == 'obra' %}[Obra] {% endif %}{{ cc.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4"><label class="form-label small fw-bold">Nota</label><input class="form-control" name="nota"></div>
+    <div class="col-md-2 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit">Registrar</button></div>
+  </form>
+</div>
+
+<div class="panel">
+  <h2 class="h6">Últimos movimientos</h2>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cant</th><th>CC / Obra</th><th>Origen</th><th>Nota</th></tr></thead>
+      <tbody>
+        {% for m in movs %}
+        <tr>
+          <td>{{ fmt_dmy(m.fecha) }}</td>
+          <td>{{ m.tipo }}</td>
+          <td>{{ m.nombre }}</td>
+          <td>{{ m.cantidad }}</td>
+          <td>{{ m.cc_nombre or '—' }}</td>
+          <td>{{ m.origen or '—' }}</td>
+          <td>{{ m.nota or '—' }}</td>
+        </tr>
+                {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not movs %}<p class="text-muted small mb-0 mt-2">Sin movimientos.</p>{% endif %}
+</div>
+<script>
+function fillBod(){
+  const s=document.getElementById('bodProd');
+  const o=s.selectedOptions[0];
+  if(!o||!o.value) return;
+  document.getElementById('bodNom').value=o.dataset.nombre||'';
+  document.getElementById('bodUn').value=o.dataset.unidad||'un';
+}
+</script>
+{% endblock %}
