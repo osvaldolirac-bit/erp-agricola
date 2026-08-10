@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Elegir empresa · Constructora · ERP Master</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=1785084882" sizes="32x32">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v=1785084882">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}?v=1785084882" sizes="any">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=1785084882">
+  <link rel="shortcut icon" href="{{ url_for('favicon') }}?v=1785084882">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
+</head>
+<body class="login-page">
+  <div class="login-stage login-stage-select">
+    <main class="login-select-panel">
+      <h1>Elegir empresa</h1>
+      <p class="login-select-lead">
+        <strong>{{ email }}</strong> tiene acceso a más de un ERP Constructora.
+        ¿A cuál quieres entrar?
+      </p>
+      <form method="post" class="tenant-pick">
+        {% for o in options %}
+        <button class="tenant-pick-item" type="submit" name="tenant_slug" value="{{ o.slug }}">
+          <strong>{{ o.nombre }}</strong>
+          <span>{{ o.descripcion or o.tipo }}</span>
+        </button>
+        {% endfor %}
+      </form>
+      <p class="login-select-back"><a href="{{ url_for('login') }}">Volver al acceso</a></p>
+    </main>
+    <footer class="login-foot">
+      <img class="login-erpmaster" src="{{ url_for('static', filename='logo_erpmaster.png') }}" alt="ERP Master">
+    </footer>
+  </div>
+</body>
+</html>

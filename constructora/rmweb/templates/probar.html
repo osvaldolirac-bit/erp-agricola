@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Probar gratis — ERP Constructora · ERP Master</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=1785543581" sizes="32x32">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/app.css') }}?v=probar3" rel="stylesheet">
+  <style>
+    .probar-public { min-height: 100vh; display:flex; flex-direction:column;
+      background: radial-gradient(900px 480px at 15% 0%, rgba(15,143,168,.14), transparent 55%),
+                  linear-gradient(180deg, #f4f7f8 0%, #e8eef0 100%); }
+    .probar-public-top { display:flex; justify-content:space-between; align-items:center;
+      padding:1rem 1.25rem; }
+    .probar-public-brand img { height:42px; width:auto; }
+    .probar-public-main { flex:1; display:flex; align-items:flex-start; justify-content:center;
+      padding:0.5rem 1rem 2.5rem; }
+    .probar-public-card { width:min(520px,100%); background:rgba(255,255,255,.92);
+      border:1px solid rgba(31,42,36,.10); border-radius:18px;
+      box-shadow:0 16px 40px rgba(31,42,36,.08); padding:1.5rem 1.35rem 1.35rem; }
+    .probar-public-card h1 { font-size:clamp(1.45rem,4vw,1.85rem); font-weight:800;
+      color:#0F4C5C; margin:0 0 .55rem; letter-spacing:-.01em; }
+    .probar-public-card .lead-txt { color:#5F6B7A; margin:0 0 1.1rem; line-height:1.45; }
+    .probar-public-card .form-control-lg { font-size:1.35rem; }
+    .probar-public-foot { text-align:center; padding:0 1rem 1.5rem; color:#7a7468; font-size:.85rem; }
+    .probar-public-card .planes-probar-cta { min-width:100%; width:100%; border:0; cursor:pointer; }
+
+    .probar-trust {
+      margin: 0.85rem 0 0;
+      padding: 0.7rem 0.85rem;
+      background: rgba(15, 76, 92, 0.07);
+      border-left: 4px solid #0F4C5C;
+      border-radius: 10px;
+      color: #0F4C5C;
+      font-weight: 700;
+      font-size: 1rem;
+      line-height: 1.35;
+    }
+  </style>
+</head>
+<body class="probar-public">
+  <header class="probar-public-top">
+    <a class="probar-public-brand" href="{{ url_for('probar') }}">
+      <img src="{{ url_for('static', filename='logo_erpmaster.png') }}" alt="ERP Master">
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('login') }}">Ya tengo acceso</a>
+  </header>
+
+  <main class="probar-public-main">
+    <section class="probar-public-card">
+      <h1>Probar gratis por {{ dias_prueba }} días</h1>
+      <p class="lead-txt">
+        {% if ok %}
+          Tu acceso quedó listo. Entra con tu correo y la clave que te enviamos.
+        {% elif paso == 'codigo' %}
+          Te enviamos un código a tu correo para confirmar y crear tu acceso.
+        {% else %}
+          Completa tus datos. Te enviaremos un código por correo para activar el acceso (2 pasos).
+        {% endif %}
+      </p>
+      <p class="probar-trust">Sin letra chica. Sin contratos. Date de baja cuando quieras.</p>
+
+      {% if error %}
+      <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
+      {% if info and not ok %}
+      <div class="alert alert-success">{{ info }}</div>
+      {% endif %}
+
+      {% if ok %}
+      <div class="mb-3">
+        <p class="mb-2">Usuario: <strong>{{ usuario_demo }}</strong></p>
+        <p class="mb-2">Clave: <strong>{{ clave_demo }}</strong></p>
+        {% if fecha_expira_txt %}
+        <p class="mb-3">Vigente hasta el <strong>{{ fecha_expira_txt }}</strong> ({{ dias_prueba }} días).</p>
+        {% endif %}
+        <p class="text-muted small mb-3">También te enviamos estos datos por correo.</p>
+        <a class="planes-probar-cta" href="{{ login_url }}">Entrar a Constructora</a>
+      </div>
+
+      {% elif paso == 'codigo' %}
+      <form method="post" class="mb-2">
+        <input type="hidden" name="action" value="validar">
+        <input type="hidden" name="nombre" value="{{ pending_nombre }}">
+        <input type="hidden" name="telefono" value="{{ pending_telefono }}">
+        <input type="hidden" name="email" value="{{ pending_email }}">
+        <p class="mb-3">Código enviado a <strong>{{ pending_email }}</strong></p>
+        <div class="mb-3">
+          <label class="form-label" for="codigo">Código de 6 dígitos</label>
+          <input class="form-control form-control-lg text-center" id="codigo" name="codigo"
+                 inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6"
+                 required autocomplete="one-time-code" placeholder="••••••"
+                 style="letter-spacing:.35em;font-weight:700;">
+        </div>
+        <button type="submit" class="planes-probar-cta">Validar y crear acceso</button>
+      </form>
+      <form method="post" class="text-center">
+        <input type="hidden" name="action" value="reenviar">
+        <input type="hidden" name="nombre" value="{{ pending_nombre }}">
+        <input type="hidden" name="telefono" value="{{ pending_telefono }}">
+        <input type="hidden" name="email" value="{{ pending_email }}">
+        <button type="submit" class="btn btn-link" {% if resend_wait and resend_wait > 0 %}disabled{% endif %}>
+          {% if resend_wait and resend_wait > 0 %}Reenviar código ({{ resend_wait }}s){% else %}Reenviar código{% endif %}
+        </button>
+      </form>
+      <p class="text-center mt-2 mb-0"><a href="{{ url_for('probar') }}" class="small text-muted">← Cambiar correo o datos</a></p>
+
+      {% else %}
+      <form method="post">
+        <input type="hidden" name="action" value="enviar_codigo">
+        <div class="mb-3">
+          <label class="form-label" for="nombre">Nombre</label>
+          <input class="form-control" id="nombre" name="nombre" required maxlength="120" autocomplete="name" value="{{ pending_nombre }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="telefono">Teléfono</label>
+          <input class="form-control" id="telefono" name="telefono" required maxlength="40" autocomplete="tel" placeholder="+56 9 ..." value="{{ pending_telefono }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="email">Correo</label>
+          <input class="form-control" id="email" name="email" type="email" required maxlength="160" autocomplete="email" value="{{ pending_email }}">
+        </div>
+        <button type="submit" class="planes-probar-cta">Enviar código a mi correo</button>
+      </form>
+      {% endif %}
+    </section>
+  </main>
+
+  <footer class="probar-public-foot">ERP Master · Constructora DEMO · Acceso personal tras verificar tu correo</footer>
+</body>
+</html>

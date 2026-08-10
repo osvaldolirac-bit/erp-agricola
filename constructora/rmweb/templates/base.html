@@ -105,13 +105,13 @@
     <main class="main">
       <div class="breadcrumb-bar">
         <div class="breadcrumb-left">
-          <span>{{ app_name }}</span><span>›</span><span>Dashboard</span>
+          <span>{{ app_name }}</span><span>›</span><span>Inicio</span>
           {% if active %}<span>›</span><span class="current">{{ self.title() }}</span>{% endif %}
         </div>
         <div class="breadcrumb-right">
           {% if demo_prueba_activa %}
           <div class="demo-prueba-widget{% if demo_prueba_alerta %} demo-prueba-alerta{% endif %}"
-               title="Periodo de prueba DEMO Comercial">
+               title="Periodo de prueba DEMO Constructora">
             <div class="demo-prueba-kicker">Periodo de prueba</div>
             <div class="demo-prueba-valor">
               {% if demo_dias_restantes == 0 %}Hoy{% else %}{{ demo_dias_restantes }}{% endif %}
