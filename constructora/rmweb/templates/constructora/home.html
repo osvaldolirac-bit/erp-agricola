@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Constructora{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Constructora</h1>
+    <p>Obras (CC), maestra de precios, APU y cotizaciones por partidas.</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-primary" href="{{ url_for('constructora_obras') }}"><i class="bi bi-building"></i> Obras</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('constructora_apu_list') }}"><i class="bi bi-calculator"></i> APU</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('constructora_cotizacion_form') }}"><i class="bi bi-file-earmark-plus"></i> Cotización obra</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="panel h-100">
+      <h2 class="h6">Obras activas</h2>
+      <p class="display-6 fw-bold mb-0">{{ obras|length }}</p>
+      <a class="small" href="{{ url_for('constructora_obras') }}">Ver obras →</a>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="panel h-100">
+      <h2 class="h6">APU activos</h2>
+      <p class="display-6 fw-bold mb-0">{{ apus|length }}</p>
+      <a class="small" href="{{ url_for('constructora_apu_list') }}">Maestra APU →</a>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="panel h-100">
+      <h2 class="h6">Cotizaciones obra</h2>
+      <p class="display-6 fw-bold mb-0">{{ cots|length }}</p>
+      <a class="small" href="{{ url_for('constructora_cotizacion_form') }}">Nueva cotización obra →</a>
+    </div>
+  </div>
+</div>
+
+<div class="panel mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="h6 mb-0">Obras recientes</h2>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('constructora_obras') }}">Todas</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Obra / CC</th><th>Cliente</th><th>Estado</th><th class="text-end">Ppto</th><th></th></tr></thead>
+      <tbody>
+        {% for o in obras[:8] %}
+        <tr>
+          <td><strong>{{ o.nombre }}</strong></td>
+          <td>{{ o.cliente_nombre or '—' }}</td>
+          <td>{{ o.estado_obra or 'activa' }}</td>
+          <td class="text-end">{{ clp(o.presupuesto) }}</td>
+          <td class="text-end"><a href="{{ url_for('constructora_obra_detalle', obra_id=o.id) }}">Abrir</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Sin obras. Cree la primera en Obras.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 class="h6">Últimas cotizaciones de obra</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Folio</th><th>Obra</th><th>Estado</th><th class="text-end">Subtotal partidas</th><th class="text-end">Total</th></tr></thead>
+      <tbody>
+        {% for c in cots %}
+        <tr>
+          <td><a href="{{ url_for('cotizaciones_detalle', cot_id=c.id) }}">{{ c.folio }}</a></td>
+          <td>{{ c.obra_nombre or c.proyecto or '—' }}</td>
+          <td>{{ c.estado }}</td>
+          <td class="text-end">{{ clp(c.subtotal) }}</td>
+          <td class="text-end">{{ clp(c.total) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Aún no hay cotizaciones de obra.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
