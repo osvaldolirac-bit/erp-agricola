@@ -77,6 +77,9 @@
         <a class="nav-link {% if request.path.startswith('/constructora/obras') %}active{% endif %}" href="{{ url_for('constructora_obras') }}">
           <span class="nav-link-main"><i class="bi bi-signpost-2"></i> Obras</span>
         </a>
+        <a class="nav-link {% if request.path.startswith('/constructora/precios') %}active{% endif %}" href="{{ url_for('constructora_precios') }}">
+          <span class="nav-link-main"><i class="bi bi-tags"></i> Precios</span>
+        </a>
         <a class="nav-link {% if request.path.startswith('/constructora/apu') %}active{% endif %}" href="{{ url_for('constructora_apu_list') }}">
           <span class="nav-link-main"><i class="bi bi-calculator"></i> APU</span>
         </a>

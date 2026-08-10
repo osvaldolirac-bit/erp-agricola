@@ -15,6 +15,7 @@ def register_constructora_routes(app, login_required):
         cst.ensure_constructora_schema(db)
         obras = cst.list_obras(db)
         apus = cst.list_apu(db, solo_activos=True)
+        precios = cst.list_precios_obra(db, solo_activos=True)
         cots = db.execute(
             """
             SELECT c.id, c.folio, c.estado, c.total, c.proyecto, c.subtotal,
@@ -31,6 +32,7 @@ def register_constructora_routes(app, login_required):
             active="constructora",
             obras=obras,
             apus=apus,
+            precios=precios,
             cots=cots,
         )
 
@@ -136,6 +138,73 @@ def register_constructora_routes(app, login_required):
             cots=cots,
         )
 
+    # ── Maestra de precios (productos/insumos de obra) ────────────
+    @app.route("/constructora/precios/")
+    @login_required
+    def constructora_precios():
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        rows = cst.list_precios_obra(db, solo_activos=False)
+        db.close()
+        return render_template(
+            "constructora/precios.html",
+            active="constructora",
+            rows=rows,
+        )
+
+    @app.route("/constructora/precios/nuevo", methods=["GET", "POST"])
+    @app.route("/constructora/precios/<int:pid>", methods=["GET", "POST"])
+    @login_required
+    def constructora_precio_form(pid: int | None = None):
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        edit = cst.get_precio(db, pid) if pid else None
+        if pid and not edit:
+            flash("Producto no encontrado.", "danger")
+            db.close()
+            return redirect(url_for("constructora_precios"))
+
+        if request.method == "POST":
+            ok, msg, new_id = cst.guardar_precio(
+                db,
+                producto_id=pid,
+                codigo=request.form.get("codigo") or "",
+                nombre=request.form.get("nombre") or "",
+                unidad=request.form.get("unidad") or "un",
+                precio=request.form.get("precio") or 0,
+                tipo_recurso=request.form.get("tipo_recurso") or "insumo",
+                activo=1 if request.form.get("activo") == "1" else 0,
+                maneja_stock=1 if request.form.get("maneja_stock") == "1" else 0,
+            )
+            if ok:
+                db.commit()
+                flash(msg, "ok")
+                db.close()
+                return redirect(url_for("constructora_precios"))
+            db.rollback()
+            flash(msg, "danger")
+            edit = {
+                "id": pid,
+                "codigo": request.form.get("codigo"),
+                "nombre": request.form.get("nombre"),
+                "unidad": request.form.get("unidad") or "un",
+                "precio": request.form.get("precio") or 0,
+                "tipo_recurso": request.form.get("tipo_recurso") or "insumo",
+                "activo": 1 if request.form.get("activo") == "1" else 0,
+            }
+
+        tipo_def = (edit["tipo_recurso"] if edit else "insumo") or "insumo"
+        codigo_def = (edit["codigo"] if edit and edit["codigo"] else None) or cst.next_precio_codigo(
+            db, tipo_def
+        )
+        db.close()
+        return render_template(
+            "constructora/precio_form.html",
+            active="constructora",
+            edit=edit,
+            codigo_def=codigo_def,
+        )
+
     # ── Maestra APU ───────────────────────────────────────────────
     @app.route("/constructora/apu/")
     @login_required
@@ -158,24 +227,37 @@ def register_constructora_routes(app, login_required):
         cst.ensure_constructora_schema(db)
         edit = cst.get_apu(db, apu_id) if apu_id else None
         items = cst.list_apu_items(db, apu_id) if apu_id else []
+        precios = cst.list_precios_obra(db, solo_activos=True)
+
+        if request.method == "POST" and request.form.get("action") == "recalcular":
+            if not apu_id:
+                flash("Guarde el APU antes de recalcular.", "danger")
+            else:
+                ok, msg = cst.recalcular_apu_desde_maestra(db, apu_id)
+                if ok:
+                    db.commit()
+                    flash(msg, "ok")
+                else:
+                    db.rollback()
+                    flash(msg, "danger")
+            db.close()
+            return redirect(url_for("constructora_apu_form", apu_id=apu_id))
 
         if request.method == "POST":
-            tipos = request.form.getlist("item_tipo")
-            descs = request.form.getlist("item_desc")
-            unds = request.form.getlist("item_und")
+            pids = request.form.getlist("item_producto_id")
             cants = request.form.getlist("item_cant")
-            pus = request.form.getlist("item_pu")
             parsed = []
-            for i, desc in enumerate(descs):
-                if not str(desc).strip():
+            for i, raw_pid in enumerate(pids):
+                try:
+                    pid = int(raw_pid or 0) or None
+                except ValueError:
+                    pid = None
+                if not pid:
                     continue
                 parsed.append(
                     {
-                        "tipo": tipos[i] if i < len(tipos) else "insumo",
-                        "descripcion": desc,
-                        "unidad": unds[i] if i < len(unds) else "un",
+                        "producto_id": pid,
                         "cantidad": cants[i] if i < len(cants) else 0,
-                        "precio_unitario": pus[i] if i < len(pus) else 0,
                     }
                 )
             ok, msg, new_id = cst.guardar_apu(
@@ -197,7 +279,6 @@ def register_constructora_routes(app, login_required):
                 return redirect(url_for("constructora_apu_form", apu_id=new_id))
             db.rollback()
             flash(msg, "danger")
-            # re-render with posted values
             edit = {
                 "id": apu_id,
                 "codigo": request.form.get("codigo"),
@@ -212,30 +293,42 @@ def register_constructora_routes(app, login_required):
             items = parsed
 
         codigo_def = (edit["codigo"] if edit else None) or cst.next_apu_codigo(db)
+        items_view: list[dict] = []
         items_norm = []
         for it in items:
             if isinstance(it, dict):
+                pid = it.get("producto_id")
                 cant = float(it.get("cantidad") or 0)
-                pu = float(it.get("precio_unitario") or 0)
-                items_norm.append(
-                    {
-                        "tipo": it.get("tipo") or "insumo",
-                        "cantidad": cant,
-                        "precio_unitario": pu,
-                        "total": cant * pu,
-                    }
-                )
             else:
+                pid = it["producto_id"] if "producto_id" in it.keys() else None
                 cant = float(it["cantidad"] or 0)
-                pu = float(it["precio_unitario"] or 0)
-                items_norm.append(
-                    {
-                        "tipo": it["tipo"] or "insumo",
-                        "cantidad": cant,
-                        "precio_unitario": pu,
-                        "total": float(it["total"] or cant * pu),
-                    }
+            master = cst.precio_desde_maestra(db, pid) if pid else None
+            pu = float(
+                master["precio_unitario"]
+                if master
+                else (
+                    it.get("precio_unitario")
+                    if isinstance(it, dict)
+                    else (it["precio_unitario"] or 0)
                 )
+                or 0
+            )
+            tipo = (
+                master["tipo"]
+                if master
+                else (
+                    (it.get("tipo") if isinstance(it, dict) else it["tipo"]) or "insumo"
+                )
+            )
+            items_view.append({"producto_id": pid, "cantidad": cant})
+            items_norm.append(
+                {
+                    "tipo": tipo,
+                    "cantidad": cant,
+                    "precio_unitario": pu,
+                    "total": cant * pu,
+                }
+            )
         breakdown = cst.calc_apu_desde_items(
             items_norm,
             leyes_pct=float(edit["leyes_pct"] or 0) if edit else 0,
@@ -246,10 +339,11 @@ def register_constructora_routes(app, login_required):
             "constructora/apu_form.html",
             active="constructora",
             edit=edit,
-            items=items,
+            items=items_view,
+            precios=precios,
             codigo_def=codigo_def,
             breakdown=breakdown,
-            slots=max(12, len(items) + 4),
+            slots=max(12, len(items_view) + 4),
         )
 
     @app.route("/constructora/api/apu/<int:apu_id>.json")

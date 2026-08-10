@@ -71,6 +71,20 @@ def ensure_constructora_schema(c) -> None:
         "inventario_movimientos",
         [("centro_costo_id", "INTEGER")],
     )
+    # Maestra de precios (productos/insumos de obra) → fuente de PU del APU
+    core._ensure_columns(
+        c,
+        "productos",
+        [
+            ("tipo_recurso", "TEXT DEFAULT 'insumo'"),
+            ("uso_obra", "INTEGER DEFAULT 0"),
+        ],
+    )
+    core._ensure_columns(
+        c,
+        "apu_items",
+        [("producto_id", "INTEGER")],
+    )
 
 
 def _f(v, default: float = 0.0) -> float:
@@ -78,6 +92,167 @@ def _f(v, default: float = 0.0) -> float:
         return float(str(v if v is not None else default).replace(",", "."))
     except (TypeError, ValueError):
         return float(default)
+
+
+def list_precios_obra(c, *, solo_activos: bool = True) -> list[Any]:
+    """Maestra de precios de productos/insumos usados en obras."""
+    sql = """
+        SELECT id, codigo, nombre, unidad, precio,
+               COALESCE(tipo_recurso, 'insumo') AS tipo_recurso,
+               COALESCE(uso_obra, 0) AS uso_obra,
+               COALESCE(es_servicio, 0) AS es_servicio,
+               COALESCE(maneja_stock, 0) AS maneja_stock,
+               COALESCE(activo, 1) AS activo
+        FROM productos
+        WHERE COALESCE(uso_obra, 0) = 1
+    """
+    if solo_activos:
+        sql += " AND COALESCE(activo,1)=1"
+    sql += " ORDER BY COALESCE(tipo_recurso,'insumo'), lower(nombre), id"
+    return c.execute(sql).fetchall()
+
+
+def get_precio(c, producto_id: int) -> Any | None:
+    return c.execute(
+        """
+        SELECT id, codigo, nombre, unidad, precio,
+               COALESCE(tipo_recurso, 'insumo') AS tipo_recurso,
+               COALESCE(uso_obra, 0) AS uso_obra,
+               COALESCE(es_servicio, 0) AS es_servicio,
+               COALESCE(maneja_stock, 0) AS maneja_stock,
+               COALESCE(activo, 1) AS activo
+        FROM productos WHERE id=?
+        """,
+        (int(producto_id),),
+    ).fetchone()
+
+
+def next_precio_codigo(c, tipo: str = "insumo") -> str:
+    pref = {
+        "insumo": "INS",
+        "mano_obra": "MO",
+        "otro": "OTR",
+    }.get((tipo or "insumo").strip().lower(), "INS")
+    rows = c.execute(
+        "SELECT codigo FROM productos WHERE codigo IS NOT NULL AND codigo != ''"
+    ).fetchall()
+    max_n = 0
+    for r in rows:
+        cod = str(r["codigo"] or "")
+        if cod.upper().startswith(pref + "-"):
+            try:
+                max_n = max(max_n, int(cod.split("-", 1)[1]))
+            except (IndexError, ValueError):
+                pass
+    return f"{pref}-{max_n + 1:03d}"
+
+
+def guardar_precio(
+    c,
+    *,
+    producto_id: int | None,
+    codigo: str,
+    nombre: str,
+    unidad: str,
+    precio: float,
+    tipo_recurso: str,
+    activo: int = 1,
+    maneja_stock: int = 0,
+) -> tuple[bool, str, int | None]:
+    nom = (nombre or "").strip()
+    if not nom:
+        return False, "Indique el nombre del producto/insumo.", None
+    tipo = (tipo_recurso or "insumo").strip().lower()
+    if tipo not in APU_ITEM_TIPOS:
+        tipo = "insumo"
+    und = (unidad or "un").strip() or "un"
+    cod = (codigo or "").strip().upper() or next_precio_codigo(c, tipo)
+    p = max(0.0, _f(precio))
+    es_servicio = 1 if tipo == "mano_obra" else 0
+    stock = 0 if es_servicio else (1 if maneja_stock else 0)
+    if producto_id:
+        row = get_precio(c, producto_id)
+        if not row:
+            return False, "Producto no encontrado.", None
+        dup = c.execute(
+            "SELECT id FROM productos WHERE upper(COALESCE(codigo,''))=upper(?) AND id<>?",
+            (cod, int(producto_id)),
+        ).fetchone()
+        if dup:
+            return False, "Ya existe un producto con ese código.", None
+        c.execute(
+            """
+            UPDATE productos SET
+              codigo=?, nombre=?, unidad=?, precio=?,
+              tipo_recurso=?, uso_obra=1, es_servicio=?, maneja_stock=?, activo=?
+            WHERE id=?
+            """,
+            (
+                cod,
+                nom,
+                und,
+                p,
+                tipo,
+                es_servicio,
+                stock,
+                1 if activo else 0,
+                int(producto_id),
+            ),
+        )
+        return True, f"Precio «{nom}» actualizado.", int(producto_id)
+    dup = c.execute(
+        "SELECT id FROM productos WHERE upper(COALESCE(codigo,''))=upper(?)",
+        (cod,),
+    ).fetchone()
+    if dup:
+        # Reutilizar: marcar uso_obra
+        c.execute(
+            """
+            UPDATE productos SET
+              nombre=?, unidad=?, precio=?, tipo_recurso=?, uso_obra=1,
+              es_servicio=?, maneja_stock=?, activo=?
+            WHERE id=?
+            """,
+            (
+                nom,
+                und,
+                p,
+                tipo,
+                es_servicio,
+                stock,
+                1 if activo else 0,
+                int(dup["id"]),
+            ),
+        )
+        return True, f"Producto existente marcado en maestra de obra: {cod}.", int(dup["id"])
+    cur = c.execute(
+        """
+        INSERT INTO productos
+        (codigo, nombre, unidad, precio, es_servicio, maneja_stock, activo, tipo_recurso, uso_obra)
+        VALUES (?,?,?,?,?,?,?,?,1)
+        """,
+        (cod, nom, und, p, es_servicio, stock, 1 if activo else 0, tipo),
+    )
+    return True, f"Producto «{nom}» agregado a la maestra.", int(cur.lastrowid)
+
+
+def precio_desde_maestra(c, producto_id: int | None) -> dict[str, Any] | None:
+    if not producto_id:
+        return None
+    row = get_precio(c, int(producto_id))
+    if not row or not int(row["activo"] or 0):
+        return None
+    tipo = (row["tipo_recurso"] or "insumo").strip().lower()
+    if tipo not in APU_ITEM_TIPOS:
+        tipo = "insumo"
+    return {
+        "producto_id": int(row["id"]),
+        "codigo": row["codigo"] or "",
+        "descripcion": row["nombre"],
+        "unidad": row["unidad"] or "un",
+        "precio_unitario": _f(row["precio"]),
+        "tipo": tipo,
+    }
 
 
 def next_apu_codigo(c) -> str:
@@ -228,56 +403,120 @@ def guardar_apu(
         cid = int(cur.lastrowid)
 
     orden = 0
+    resolved_items: list[dict[str, Any]] = []
     for it in items:
-        desc = (it.get("descripcion") or "").strip()
+        try:
+            pid = int(it.get("producto_id") or 0) or None
+        except (TypeError, ValueError):
+            pid = None
+        master = precio_desde_maestra(c, pid) if pid else None
+        if pid and not master:
+            return False, "Hay ítems con producto inválido o inactivo en la maestra.", None
+        if master:
+            desc = master["descripcion"]
+            tipo = master["tipo"]
+            und = master["unidad"]
+            pu = master["precio_unitario"]
+        else:
+            # Compat: ítems legacy sin producto (no recomendado)
+            desc = (it.get("descripcion") or "").strip()
+            tipo = (it.get("tipo") or "insumo").strip().lower()
+            if tipo not in APU_ITEM_TIPOS:
+                tipo = "insumo"
+            und = (it.get("unidad") or "un").strip() or "un"
+            pu = _f(it.get("precio_unitario"))
         if not desc:
             continue
-        tipo = (it.get("tipo") or "insumo").strip().lower()
-        if tipo not in APU_ITEM_TIPOS:
-            tipo = "insumo"
         cant = _f(it.get("cantidad"))
-        pu = _f(it.get("precio_unitario"))
-        if cant < 0 or pu < 0:
+        if cant <= 0:
+            continue
+        if pu < 0:
             continue
         total = round(cant * pu, 2)
         orden += 1
+        resolved_items.append(
+            {
+                "producto_id": pid,
+                "tipo": tipo,
+                "descripcion": desc,
+                "unidad": und,
+                "cantidad": cant,
+                "precio_unitario": pu,
+                "total": total,
+            }
+        )
         c.execute(
             """
             INSERT INTO apu_items
-            (apu_id, tipo, descripcion, unidad, cantidad, precio_unitario, total, orden)
-            VALUES (?,?,?,?,?,?,?,?)
+            (apu_id, tipo, descripcion, unidad, cantidad, precio_unitario, total, orden, producto_id)
+            VALUES (?,?,?,?,?,?,?,?,?)
             """,
-            (
-                cid,
-                tipo,
-                desc,
-                (it.get("unidad") or "un").strip() or "un",
-                cant,
-                pu,
-                total,
-                orden,
-            ),
+            (cid, tipo, desc, und, cant, pu, total, orden, pid),
         )
     if orden == 0:
-        return False, "Agregue al menos un ítem (insumo, MO u otro).", None
-    # Recalcular con ítems persistidos
-    persisted = [
-        {
-            "tipo": r["tipo"],
-            "cantidad": r["cantidad"],
-            "precio_unitario": r["precio_unitario"],
-            "total": r["total"],
-        }
-        for r in list_apu_items(c, cid)
-    ]
+        return False, "Agregue al menos un producto de la maestra de precios (con cantidad > 0).", None
+    items = resolved_items
     breakdown = calc_apu_desde_items(
-        persisted, leyes_pct=leyes_pct, perdidas_pct=perdidas_pct
+        resolved_items, leyes_pct=leyes_pct, perdidas_pct=perdidas_pct
     )
     c.execute(
         "UPDATE apu SET pu_neto=? WHERE id=?", (breakdown["pu_neto"], cid)
     )
     pu_txt = f"{breakdown['pu_neto']:,.0f}".replace(",", ".")
     return True, f"APU {cod} guardado (PU neto ${pu_txt}).", cid
+
+
+def recalcular_apu_desde_maestra(c, apu_id: int) -> tuple[bool, str]:
+    """Actualiza PU de ítems del APU con precios vigentes de la maestra."""
+    row = get_apu(c, apu_id)
+    if not row:
+        return False, "APU no encontrado."
+    items = list_apu_items(c, apu_id)
+    if not items:
+        return False, "APU sin ítems."
+    updated = 0
+    for it in items:
+        pid = it["producto_id"] if "producto_id" in it.keys() else None
+        if not pid:
+            continue
+        master = precio_desde_maestra(c, int(pid))
+        if not master:
+            continue
+        cant = _f(it["cantidad"])
+        pu = master["precio_unitario"]
+        c.execute(
+            """
+            UPDATE apu_items
+            SET descripcion=?, unidad=?, tipo=?, precio_unitario=?, total=?
+            WHERE id=?
+            """,
+            (
+                master["descripcion"],
+                master["unidad"],
+                master["tipo"],
+                pu,
+                round(cant * pu, 2),
+                int(it["id"]),
+            ),
+        )
+        updated += 1
+    fresh = list_apu_items(c, apu_id)
+    breakdown = calc_apu_desde_items(
+        [
+            {
+                "tipo": r["tipo"],
+                "cantidad": r["cantidad"],
+                "precio_unitario": r["precio_unitario"],
+                "total": r["total"],
+            }
+            for r in fresh
+        ],
+        leyes_pct=_f(row["leyes_pct"]),
+        perdidas_pct=_f(row["perdidas_pct"]),
+    )
+    c.execute("UPDATE apu SET pu_neto=? WHERE id=?", (breakdown["pu_neto"], int(apu_id)))
+    pu_txt = f"{breakdown['pu_neto']:,.0f}".replace(",", ".")
+    return True, f"APU actualizado desde maestra ({updated} ítem(s)). PU neto ${pu_txt}."
 
 
 def list_obras(c, *, solo_activas: bool = False) -> list[Any]:
