@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Obra {{ obra.nombre }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ obra.nombre }}</h1>
+    <p>Obra = centro de costo · ppto APU vs gasto (compras + materiales).</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-primary" href="{{ url_for('constructora_apu_form', obra_id=obra.id) }}">APU</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('constructora_cotizacion_form') }}?obra={{ obra.id }}">Cotizar obra</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('centros_costo', tab='cc-' ~ obra.id) }}">Ver en CC</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('constructora_obras') }}">Volver</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="panel"><div class="small text-muted">Presupuesto obra</div><div class="fs-4 fw-bold">{{ clp(resumen.ppto) }}</div></div></div>
+  <div class="col-md-3"><div class="panel"><div class="small text-muted">Compras</div><div class="fs-4 fw-bold">{{ clp(resumen.gasto_compras) }}</div></div></div>
+  <div class="col-md-3"><div class="panel"><div class="small text-muted">Materiales (bodega)</div><div class="fs-4 fw-bold">{{ clp(resumen.gasto_materiales) }}</div></div></div>
+  <div class="col-md-3"><div class="panel"><div class="small text-muted">Avance gasto</div><div class="fs-4 fw-bold">{{ '%.1f'|format(resumen.avance_pct) }}%</div></div></div>
+</div>
+
+<div class="panel mb-3">
+  <h2 class="h6">Datos</h2>
+  <form method="post" class="row g-2">
+    <div class="col-md-4">
+      <label class="form-label small fw-bold">Nombre</label>
+      <input class="form-control" name="nombre" value="{{ obra.nombre }}" required>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-bold">Cliente</label>
+      <select class="form-select" name="cliente_id">
+        <option value="">—</option>
+        {% for c in clientes %}
+        <option value="{{ c.id }}" {% if obra.cliente_id==c.id %}selected{% endif %}>{{ c.razon_social }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-bold">Estado</label>
+      <select class="form-select" name="estado_obra">
+        {% for e in ['activa','pausada','cerrada'] %}
+        <option value="{{ e }}" {% if (obra.estado_obra or 'activa')==e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-bold">Ppto (CLP)</label>
+      <input class="form-control" name="presupuesto" type="number" min="0" step="1" value="{{ (obra.presupuesto or 0)|int }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-bold">Inicio</label>
+      <input type="date" class="form-control" name="fecha_inicio" value="{{ obra.fecha_inicio or '' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-bold">Fin</label>
+      <input type="date" class="form-control" name="fecha_fin" value="{{ obra.fecha_fin or '' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-bold">Activo</label>
+      <select class="form-select" name="activo">
+        <option value="1" {% if obra.activo %}selected{% endif %}>Sí</option>
+        <option value="0" {% if not obra.activo %}selected{% endif %}>No</option>
+      </select>
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+      <button class="btn btn-primary w-100" type="submit">Guardar</button>
+    </div>
+  </form>
+</div>
+
+
+<div class="panel mb-3" id="apu">
+  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+    <h2 class="h6 mb-0">APU de esta obra</h2>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('constructora_apu_form', obra_id=obra.id) }}">
+      <i class="bi bi-plus-lg"></i> Nuevo APU
+    </a>
+  </div>
+  <p class="small text-muted mb-2">Cada APU pertenece solo a esta obra. El PU usa PMP de bodega.</p>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Und</th>
+          <th class="text-end">PU neto</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in apus %}
+        <tr>
+          <td><strong>{{ r.codigo }}</strong></td>
+          <td>{{ r.nombre }}</td>
+          <td>{{ r.unidad }}</td>
+          <td class="text-end fw-bold">{{ clp(r.pu_neto) }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('constructora_apu_form', obra_id=obra.id, apu_id=r.id) }}">Editar</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Sin APU en esta obra.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 class="h6">Cotizaciones de esta obra</h2>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Folio</th><th>Fecha</th><th>Estado</th><th class="text-end">Partidas</th><th class="text-end">Total</th></tr></thead>
+      <tbody>
+        {% for c in cots %}
+        <tr>
+          <td><a href="{{ url_for('cotizaciones_detalle', cot_id=c.id) }}">{{ c.folio }}</a></td>
+          <td>{{ fmt_dmy(c.fecha) }}</td>
+          <td>{{ c.estado }}</td>
+          <td class="text-end">{{ clp(c.subtotal) }}</td>
+          <td class="text-end">{{ clp(c.total) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Sin cotizaciones vinculadas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
