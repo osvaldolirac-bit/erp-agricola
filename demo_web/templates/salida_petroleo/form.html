@@ -98,7 +98,7 @@
       {% endif %}
 
       <label class="form-label d-block mt-3">Equipo / maquinaria</label>
-      <p class="small text-muted mb-2">Seleccione un tractor, camión o vehículo (solo uno).</p>
+      <p class="small text-muted mb-2">Seleccione un equipo de la maestra (solo uno).</p>
       {% if maquinaria %}
       <div class="salida-petroleo-cuarteles mb-1" id="salidaPetroleoMaquinaria">
         {% for m in maquinaria %}
@@ -111,7 +111,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <p class="small text-danger">No hay equipos activos en la maestra (tractores, camiones o vehículos).</p>
+      <p class="small text-danger">No hay equipos activos en la maestra de maquinaria.</p>
       {% endif %}
 
       <button type="submit" id="btnRegistrarSalida" class="btn btn-success btn-lg w-100 salida-petroleo-submit" disabled>

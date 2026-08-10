@@ -68,18 +68,31 @@ def normalizar_cuarteles(cuarteles: list[str]) -> str:
     return ", ".join(canon.get(v, v) for v in ordenados)
 
 
-TIPOS_MAQUINARIA_BITACORA = ("Tractor", "Camión", "Vehículo")
+# Misma maestra / mismos tipos que el módulo Petróleo (incluye Otro, Motobomba, etc.).
+# Antes solo Tractor/Camión/Vehículo: equipos nuevos (p.ej. sala de riego) no aparecían en el QR.
 
 
 def maquinaria_para_formulario() -> list[dict[str, str]]:
-    """Equipos activos de la maestra: tractores, camiones y vehículos."""
-    from erp_maquinaria import etiqueta_maquinaria, listar_maquinaria
+    """Equipos activos de la maestra (todos los tipos usados en Petróleo)."""
+    from erp_maquinaria import (
+        TIPOS_MAQUINARIA_PETROLEO,
+        etiqueta_maquinaria,
+        listar_maquinaria,
+    )
 
-    orden_tipo = {"Tractor": 0, "Camión": 1, "Vehículo": 2}
+    orden_tipo = {t: i for i, t in enumerate(TIPOS_MAQUINARIA_PETROLEO)}
     conn = _conn()
     try:
-        items = listar_maquinaria(conn, solo_activos=True, tipos=TIPOS_MAQUINARIA_BITACORA)
-        items.sort(key=lambda m: (orden_tipo.get(m["tipo"], 9), m.get("orden", 0), m["codigo"]))
+        items = listar_maquinaria(
+            conn, solo_activos=True, tipos=list(TIPOS_MAQUINARIA_PETROLEO)
+        )
+        items.sort(
+            key=lambda m: (
+                orden_tipo.get(m["tipo"], 99),
+                m.get("orden", 0),
+                m["codigo"],
+            )
+        )
         return [
             {
                 "codigo": m["codigo"],
