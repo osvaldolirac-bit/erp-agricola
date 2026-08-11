@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}APU{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>APU por obra</h1>
+    <p>El APU ya no es global: ábralo dentro de cada obra.</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('constructora_obras') }}">Ir a Obras</a>
+</div>
+{% endblock %}
