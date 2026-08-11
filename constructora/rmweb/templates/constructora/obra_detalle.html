@@ -207,10 +207,15 @@
   {% set pt = ppto_totales or {} %}
 
   {% if not avance.aprobada %}
-  <div class="alert alert-light border small mb-3">
-    <strong>Modo borrador:</strong> use <em>Agregar línea</em> para capítulos y partidas.
-    En partidas valorizables pulse <em>Armar precio unitario</em> para ingresar materiales, MO y equipos (el PU sale del APU).
-    Luego <em>Aprobar presupuesto</em> congela la foto.
+  <div class="alert alert-light border small mb-3 d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <div>
+      <strong>Modo borrador:</strong> títulos = <strong>1.0, 2.0…</strong>; partidas bajo el título = <strong>1.1, 1.2…</strong> / <strong>2.1, 2.2…</strong> (se asignan solos).
+      En partidas valorizables pulse <em>Armar precio unitario</em>. Luego <em>Aprobar presupuesto</em> congela la foto.
+    </div>
+    <form method="post" action="{{ url_for('constructora_obra_partidas_renumerar', obra_id=obra.id) }}"
+          onsubmit="return confirm('¿Renumerar todos los ITEM (1.0 / 1.1 / 2.0…)?');">
+      <button class="btn btn-sm btn-outline-secondary" type="submit">Renumerar ITEM</button>
+    </form>
   </div>
   {% else %}
   <div class="alert alert-light border small mb-3">
@@ -271,17 +276,19 @@
   </form>
 
   {% if not avance.aprobada %}
-  <form method="post" action="{{ url_for('constructora_obra_partida_nueva', obra_id=obra.id) }}" class="row g-2 align-items-end mb-3 ppto-add">
-    <div class="col-md-1">
+  <form method="post" action="{{ url_for('constructora_obra_partida_nueva', obra_id=obra.id) }}" class="row g-2 align-items-end mb-3 ppto-add" id="pptoAddForm">
+    <div class="col-md-2">
       <label class="form-label small fw-bold">Tipo</label>
       <select class="form-select form-select-sm" name="tipo_linea" id="tipoLinea">
-        <option value="partida">Partida</option>
-        <option value="capitulo">Capítulo / título</option>
+        <option value="partida">Partida ({{ sugerido_partida or '1.1' }})</option>
+        <option value="capitulo">Título / capítulo ({{ sugerido_capitulo or '1.0' }})</option>
       </select>
     </div>
     <div class="col-md-1">
       <label class="form-label small fw-bold">ITEM</label>
-      <input class="form-control form-control-sm" name="codigo" placeholder="3.2.1">
+      <input class="form-control form-control-sm" name="codigo" id="codigoItem"
+             value="{{ sugerido_partida or '1.1' }}" readonly
+             title="Se asigna solo: títulos N.0 · partidas N.1, N.2…">
     </div>
     <div class="col-md-3">
       <label class="form-label small fw-bold">PARTIDA</label>
@@ -289,15 +296,15 @@
     </div>
     <div class="col-md-1">
       <label class="form-label small fw-bold">UND</label>
-      <input class="form-control form-control-sm" name="unidad" value="gl">
+      <input class="form-control form-control-sm" name="unidad" id="undLinea" value="gl">
     </div>
     <div class="col-md-1">
       <label class="form-label small fw-bold">CANT</label>
-      <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="cantidad" value="1">
+      <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="cantidad" id="cantLinea" value="1">
     </div>
     <div class="col-md-2">
       <label class="form-label small fw-bold">Marca</label>
-      <select class="form-select form-select-sm" name="marca">
+      <select class="form-select form-select-sm" name="marca" id="marcaLinea">
         <option value="">— (valorizar con APU) —</option>
         {% for k,v in marca_labels.items() %}
         <option value="{{ k }}">{{ v }}</option>
@@ -308,6 +315,32 @@
       <button class="btn btn-sm btn-outline-primary w-100" type="submit">Agregar línea</button>
     </div>
   </form>
+  <script>
+  (function(){
+    var tipo=document.getElementById('tipoLinea');
+    var cod=document.getElementById('codigoItem');
+    if(!tipo||!cod) return;
+    var sug={partida:{{ (sugerido_partida or '1.1')|tojson }}, capitulo:{{ (sugerido_capitulo or '1.0')|tojson }}};
+    function sync(){
+      var t=tipo.value||'partida';
+      cod.value=sug[t]||sug.partida;
+      var und=document.getElementById('undLinea');
+      var cant=document.getElementById('cantLinea');
+      var marca=document.getElementById('marcaLinea');
+      if(t==='capitulo'){
+        if(und) und.value='';
+        if(cant){ cant.value='0'; cant.readOnly=true; }
+        if(marca){ marca.value=''; marca.disabled=true; }
+      } else {
+        if(und && !und.value) und.value='gl';
+        if(cant){ if(cant.value==='0') cant.value='1'; cant.readOnly=false; }
+        if(marca) marca.disabled=false;
+      }
+    }
+    tipo.addEventListener('change', sync);
+    sync();
+  })();
+  </script>
   {% endif %}
 
   <div class="table-responsive">

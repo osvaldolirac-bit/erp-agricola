@@ -27,17 +27,50 @@ def register_constructora_routes(app, login_required):
     def constructora_obras():
         db = core.conn()
         cst.ensure_constructora_schema(db)
+        obractx.ensure_obra_contrato_schema(db)
         obras = cst.list_obras(db)
         clientes = db.execute(
             "SELECT id, razon_social FROM clientes WHERE activo=1 ORDER BY razon_social"
         ).fetchall()
+        obras_view = []
+        ppto_total = 0.0
+        avance_sum = 0.0
+        n_activas = 0
+        for o in obras:
+            av = obractx.resumen_avance_obra(db, int(o["id"]))
+            ppto = float(av.get("ppto") or o["presupuesto"] or 0)
+            pct = float(av.get("avance_pct_pond") or 0)
+            ppto_total += ppto
+            avance_sum += pct
+            if int(o["activo"] or 0) and (o["estado_obra"] or "activa") == "activa":
+                n_activas += 1
+            obras_view.append(
+                {
+                    "id": int(o["id"]),
+                    "nombre": o["nombre"],
+                    "cliente_nombre": o["cliente_nombre"],
+                    "estado_obra": o["estado_obra"] or "activa",
+                    "fecha_inicio": o["fecha_inicio"],
+                    "activo": int(o["activo"] or 0),
+                    "ppto": ppto,
+                    "avance_pct": pct,
+                    "avanzado_clp": float(av.get("avanzado_clp") or 0),
+                    "cot_estado": (o["cotizacion_obra_estado"] if "cotizacion_obra_estado" in o.keys() else None)
+                    or ("aprobada" if av.get("aprobada") else "borrador"),
+                }
+            )
+        n = len(obras_view) or 1
         db.close()
         return render_template(
             "constructora/obras.html",
             active="constructora",
             obras=obras,
+            obras_view=obras_view,
             clientes=clientes,
             hoy=core.hoy_chile().isoformat(),
+            n_activas=n_activas,
+            ppto_total=ppto_total,
+            avance_medio=avance_sum / n if obras_view else 0.0,
         )
 
     @app.route("/obras/nueva", methods=["POST"])
@@ -53,7 +86,7 @@ def register_constructora_routes(app, login_required):
             db,
             nombre=request.form.get("nombre") or "",
             cliente_id=cli,
-            presupuesto=request.form.get("presupuesto") or 0,
+            presupuesto=0,
             fecha_inicio=request.form.get("fecha_inicio") or None,
             notas_estado=request.form.get("estado_obra") or "activa",
         )
@@ -64,6 +97,8 @@ def register_constructora_routes(app, login_required):
             db.rollback()
             flash(msg, "danger")
         db.close()
+        if ok and _oid:
+            return redirect(url_for("constructora_obra_detalle", obra_id=int(_oid), sec="cotizacion"))
         return redirect(url_for("constructora_obras"))
 
     @app.route("/obras/<int:obra_id>", methods=["GET", "POST"])
@@ -73,7 +108,7 @@ def register_constructora_routes(app, login_required):
         cst.ensure_constructora_schema(db)
         obractx.ensure_obra_contrato_schema(db)
         sec = (request.args.get("sec") or request.form.get("sec") or "cotizacion").strip().lower()
-        if sec not in ("cotizacion", "apu", "gantt", "eepp", "datos"):
+        if sec not in ("cotizacion", "apu", "gantt", "eepp", "datos", "subcontratos"):
             sec = "cotizacion"
 
         if request.method == "POST" and sec == "datos":
@@ -112,6 +147,16 @@ def register_constructora_routes(app, login_required):
         partidas = obractx.list_partidas(db, obra_id)
         eepps = obractx.list_eepp(db, obra_id)
         avance = obractx.resumen_avance_obra(db, obra_id)
+        ppto_totales = obractx.totales_cotizacion_obra(db, obra_id)
+        sugerido_capitulo = obractx.next_partida_codigo(db, obra_id, "capitulo")
+        sugerido_partida = obractx.next_partida_codigo(db, obra_id, "partida")
+        try:
+            from rmweb import subcontratos as _sc
+            _sc.ensure_subcontratos_schema(db)
+            subs_obra = _sc.list_subcontratos_enriquecidos(db, obra_id=obra_id)
+            subs_resumen = _sc.resumen_subcontratos_obra(db, obra_id)
+        except Exception:
+            subs_obra, subs_resumen = [], {'n':0,'monto_contrato':0,'monto_pagado':0,'saldo':0}
         db.close()
         return render_template(
             "constructora/obra_detalle.html",
@@ -123,6 +168,13 @@ def register_constructora_routes(app, login_required):
             eepps=eepps,
             avance=avance,
             sec=sec,
+            subcontratos=subs_obra,
+            subs_resumen=subs_resumen,
+            ppto_totales=ppto_totales,
+            marca_labels=obractx.MARCA_LABELS,
+            partidas_gantt=[p for p in partidas if obractx.linea_requiere_apu(p)],
+            sugerido_capitulo=sugerido_capitulo,
+            sugerido_partida=sugerido_partida,
         )
 
     @app.route("/obras/<int:obra_id>/partidas/nueva", methods=["POST"])
@@ -136,8 +188,11 @@ def register_constructora_routes(app, login_required):
             partida_id=None,
             codigo=request.form.get("codigo") or "",
             detalle=request.form.get("detalle") or "",
-            unidad=request.form.get("unidad") or "un",
-            cantidad=request.form.get("cantidad") or 0,
+            unidad=request.form.get("unidad") or "gl",
+            cantidad=request.form.get("cantidad") or 1,
+            notas=request.form.get("notas") or "",
+            tipo_linea=request.form.get("tipo_linea") or "partida",
+            marca=request.form.get("marca") or "",
         )
         if ok:
             db.commit()
@@ -163,6 +218,80 @@ def register_constructora_routes(app, login_required):
         db.close()
         return redirect(url_for("constructora_obra_detalle", obra_id=obra_id, sec="cotizacion"))
 
+    @app.route("/obras/<int:obra_id>/partidas/renumerar", methods=["POST"])
+    @login_required
+    def constructora_obra_partidas_renumerar(obra_id: int):
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        obractx.ensure_obra_contrato_schema(db)
+        ok, msg, _n = obractx.renumerar_codigos_itemizados(db, obra_id)
+        if ok:
+            db.commit()
+            flash(msg, "ok")
+        else:
+            db.rollback()
+            flash(msg, "danger")
+        db.close()
+        return redirect(url_for("constructora_obra_detalle", obra_id=obra_id, sec="cotizacion"))
+
+    @app.route("/obras/<int:obra_id>/presupuesto/params", methods=["POST"])
+    @login_required
+    def constructora_obra_ppto_params(obra_id: int):
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        obractx.ensure_obra_contrato_schema(db)
+        ok, msg = obractx.guardar_parametros_presupuesto(
+            db,
+            obra_id,
+            ubicacion=request.form.get("ubicacion") or "",
+            propietario=request.form.get("propietario") or "",
+            documento_cot=request.form.get("documento_cot") or "",
+            duracion_meses=request.form.get("duracion_meses") or 0,
+            gg_pct=request.form.get("gg_pct") or 0,
+            utilidades_pct=request.form.get("utilidades_pct") or 0,
+            descuento_clp=request.form.get("descuento_clp") or 0,
+            iva_pct=request.form.get("iva_pct") or 19,
+            valor_uf=request.form.get("valor_uf") or 0,
+        )
+        if ok:
+            db.commit()
+            flash(msg, "ok")
+        else:
+            db.rollback()
+            flash(msg, "danger")
+        db.close()
+        return redirect(url_for("constructora_obra_detalle", obra_id=obra_id, sec="cotizacion"))
+
+    @app.route("/obras/<int:obra_id>/partidas/<int:partida_id>/editar", methods=["POST"])
+    @login_required
+    def constructora_obra_partida_editar(obra_id: int, partida_id: int):
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        ok, msg, _ = obractx.guardar_partida(
+            db,
+            obra_id=obra_id,
+            partida_id=partida_id,
+            codigo=request.form.get("codigo") or "",
+            detalle=request.form.get("detalle") or "",
+            unidad=request.form.get("unidad") or "gl",
+            cantidad=request.form.get("cantidad") or 0,
+            notas=request.form.get("notas") or "",
+            tipo_linea=request.form.get("tipo_linea") or "partida",
+            marca=request.form.get("marca") or "",
+        )
+        if ok:
+            # Re-sync total from APU if linked
+            row = obractx.get_partida(db, partida_id, obra_id)
+            if row and row["apu_id"]:
+                obractx.sync_partida_desde_apu(db, int(row["apu_id"]))
+            db.commit()
+            flash(msg, "ok")
+        else:
+            db.rollback()
+            flash(msg, "danger")
+        db.close()
+        return redirect(url_for("constructora_obra_detalle", obra_id=obra_id, sec="cotizacion"))
+
     @app.route("/obras/<int:obra_id>/aprobar", methods=["POST"])
     @login_required
     def constructora_obra_aprobar(obra_id: int):
@@ -177,6 +306,24 @@ def register_constructora_routes(app, login_required):
             flash(msg, "danger")
         db.close()
         return redirect(url_for("constructora_obra_detalle", obra_id=obra_id, sec="cotizacion"))
+
+
+    @app.route("/obras/<int:obra_id>/reabrir", methods=["POST"])
+    @login_required
+    def constructora_obra_reabrir(obra_id: int):
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        obractx.ensure_obra_contrato_schema(db)
+        ok, msg = obractx.reabrir_cotizacion_obra(db, obra_id)
+        if ok:
+            db.commit()
+            flash(msg, "ok")
+        else:
+            db.rollback()
+            flash(msg, "danger")
+        db.close()
+        return redirect(url_for("constructora_obra_detalle", obra_id=obra_id, sec="cotizacion"))
+
 
     @app.route("/obras/<int:obra_id>/gantt", methods=["POST"])
     @login_required
@@ -202,6 +349,35 @@ def register_constructora_routes(app, login_required):
             flash(msg, "danger")
         db.close()
         return redirect(url_for("constructora_obra_detalle", obra_id=obra_id, sec="gantt"))
+
+
+    @app.route("/obras/<int:obra_id>/subcontratos/avances", methods=["POST"])
+    @login_required
+    def constructora_obra_subcontratos_avances(obra_id: int):
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        from rmweb import subcontratos as _sc
+        _sc.ensure_subcontratos_schema(db)
+        sids = request.form.getlist("subcontrato_id")
+        pcts = request.form.getlist("avance_trabajos_pct")
+        avances = []
+        for i, raw in enumerate(sids):
+            avances.append(
+                {
+                    "subcontrato_id": raw,
+                    "avance_trabajos_pct": pcts[i] if i < len(pcts) else 0,
+                }
+            )
+        ok, msg = _sc.guardar_avances_trabajos(db, obra_id, avances)
+        if ok:
+            db.commit()
+            flash(msg, "ok")
+        else:
+            db.rollback()
+            flash(msg, "danger")
+        db.close()
+        return redirect(url_for("constructora_obra_detalle", obra_id=obra_id, sec="subcontratos"))
+
 
     @app.route("/obras/<int:obra_id>/eepp/nuevo", methods=["POST"])
     @login_required
@@ -481,6 +657,10 @@ def register_constructora_routes(app, login_required):
     @app.route("/cotizaciones-obra/<int:cot_id>/editar", methods=["GET", "POST"])
     @login_required
     def constructora_cotizacion_form(cot_id: int | None = None):
+        # LEGACY_COT_OBRA_REDIRECT: el ppto vive en Obras
+        flash('El presupuesto ítemizado se arma dentro de cada Obra (pestaña Presupuesto).', 'ok')
+        return redirect(url_for('constructora_obras'))
+
         db = core.conn()
         cst.ensure_constructora_schema(db)
         clientes = db.execute(

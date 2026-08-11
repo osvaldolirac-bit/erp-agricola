@@ -1,11 +1,23 @@
 """Contrato de obra: partidas (cotización), APU foto, Gantt % y EEPP $."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from rmweb import core
 
+_RE_ITEM = re.compile(r"^(\d+)\.(\d+)$")
+
 ESTADOS_COT_OBRA = ("borrador", "aprobada")
+TIPOS_LINEA = ("capitulo", "partida")
+MARCAS_SIN_PRECIO = ("en_gg", "mandante", "a_definir")
+MARCA_LABELS = {
+    "en_gg": "En gastos generales",
+    "mandante": "Por parte del mandante",
+    "a_definir": "A DEFINIR IN SITU",
+    "proforma": "Valor proforma",
+    "subcontrato": "Sub-contrato",
+}
 
 
 def _f(v, default: float = 0.0) -> float:
@@ -15,6 +27,26 @@ def _f(v, default: float = 0.0) -> float:
         return float(default)
 
 
+def linea_requiere_apu(p: Any) -> bool:
+    """Capítulos y marcas especiales no exigen APU/precio."""
+    try:
+        tipo = (p["tipo_linea"] if "tipo_linea" in p.keys() else "partida") or "partida"
+    except Exception:
+        tipo = (getattr(p, "tipo_linea", None) or "partida")
+    if str(tipo).lower() == "capitulo":
+        return False
+    try:
+        marca = (p["marca"] if "marca" in p.keys() else "") or ""
+    except Exception:
+        marca = getattr(p, "marca", "") or ""
+    return str(marca).strip().lower() not in MARCAS_SIN_PRECIO
+
+
+def marca_label(marca: str | None) -> str:
+    m = (marca or "").strip().lower()
+    return MARCA_LABELS.get(m, marca or "")
+
+
 def ensure_obra_contrato_schema(c) -> None:
     core._ensure_columns(
         c,
@@ -22,6 +54,15 @@ def ensure_obra_contrato_schema(c) -> None:
         [
             ("cotizacion_obra_estado", "TEXT DEFAULT 'borrador'"),
             ("cotizacion_obra_aprobada_en", "TEXT"),
+            ("ubicacion", "TEXT"),
+            ("propietario", "TEXT"),
+            ("documento_cot", "TEXT"),
+            ("duracion_meses", "REAL DEFAULT 0"),
+            ("gg_pct", "REAL DEFAULT 0"),
+            ("utilidades_pct", "REAL DEFAULT 0"),
+            ("descuento_clp", "REAL DEFAULT 0"),
+            ("iva_pct", "REAL DEFAULT 19"),
+            ("valor_uf", "REAL DEFAULT 0"),
         ],
     )
     core._ensure_columns(
@@ -70,6 +111,18 @@ def ensure_obra_contrato_schema(c) -> None:
         );
         """
     )
+    _ensure_partida_columns(c)
+
+
+def _ensure_partida_columns(c) -> None:
+    core._ensure_columns(
+        c,
+        "obra_partidas",
+        [
+            ("tipo_linea", "TEXT DEFAULT 'partida'"),
+            ("marca", "TEXT"),
+        ],
+    )
 
 
 def obra_cotizacion_aprobada(c, obra_id: int) -> bool:
@@ -86,7 +139,13 @@ def list_partidas(c, obra_id: int) -> list[Any]:
     return c.execute(
         """
         SELECT p.*, a.codigo AS apu_codigo, a.congelado AS apu_congelado,
-               a.pu_neto AS apu_pu
+               a.pu_neto AS apu_pu,
+               COALESCE(a.pu_neto, p.pu_neto, 0) AS pu_precio,
+               CASE
+                 WHEN COALESCE(p.tipo_linea,'partida')='capitulo' THEN 0
+                 WHEN COALESCE(p.marca,'') IN ('en_gg','mandante','a_definir') THEN 0
+                 ELSE ROUND(COALESCE(p.cantidad,0) * COALESCE(a.pu_neto, p.pu_neto, 0), 2)
+               END AS total_calc
         FROM obra_partidas p
         LEFT JOIN apu a ON a.id = p.apu_id
         WHERE p.centro_costo_id=? AND COALESCE(p.activo,1)=1
@@ -107,12 +166,83 @@ def get_partida(c, partida_id: int, obra_id: int | None = None) -> Any | None:
     ).fetchone()
 
 
-def next_partida_codigo(c, obra_id: int) -> str:
-    n = c.execute(
-        "SELECT COUNT(*) n FROM obra_partidas WHERE centro_costo_id=?",
+def _lineas_activas_ordenadas(c, obra_id: int):
+    return c.execute(
+        """
+        SELECT id, codigo, tipo_linea, orden
+        FROM obra_partidas
+        WHERE centro_costo_id=? AND COALESCE(activo,1)=1
+        ORDER BY COALESCE(orden,0), id
+        """,
         (int(obra_id),),
-    ).fetchone()["n"]
-    return f"P-{int(obra_id)}-{int(n) + 1:02d}"
+    ).fetchall()
+
+
+def next_partida_codigo(c, obra_id: int, tipo_linea: str = "partida") -> str:
+    """Correlativo ítemizado: títulos 1.0, 2.0…; partidas 1.1, 1.2… / 2.1, 2.2…"""
+    tipo = (tipo_linea or "partida").strip().lower()
+    if tipo not in TIPOS_LINEA:
+        tipo = "partida"
+    cap_n = 0
+    part_n = 0
+    for r in _lineas_activas_ordenadas(c, obra_id):
+        es_cap = ((r["tipo_linea"] or "partida").strip().lower() == "capitulo")
+        cod = (r["codigo"] or "").strip()
+        m = _RE_ITEM.match(cod)
+        if m:
+            major, minor = int(m.group(1)), int(m.group(2))
+            if es_cap or minor == 0:
+                if major >= cap_n:
+                    cap_n = major
+                    part_n = 0
+            elif major == cap_n:
+                part_n = max(part_n, minor)
+            elif major > cap_n:
+                cap_n = major
+                part_n = minor
+            continue
+        m2 = re.match(r"^(\d+)$", cod)
+        if m2 and es_cap:
+            major = int(m2.group(1))
+            if major >= cap_n:
+                cap_n = major
+                part_n = 0
+    if tipo == "capitulo":
+        return f"{cap_n + 1}.0"
+    if cap_n <= 0:
+        # Partida sin título previo: asume capítulo 1
+        return "1.1"
+    return f"{cap_n}.{part_n + 1}"
+
+
+def renumerar_codigos_itemizados(c, obra_id: int) -> tuple[bool, str, int]:
+    """Reasigna ITEM según orden: capítulos N.0 y partidas N.1, N.2…"""
+    if obra_cotizacion_aprobada(c, obra_id):
+        return False, "Presupuesto aprobado: no se renumeran ítems.", 0
+    rows = _lineas_activas_ordenadas(c, obra_id)
+    if not rows:
+        return True, "Sin líneas para renumerar.", 0
+    cap_n = 0
+    part_n = 0
+    n = 0
+    for r in rows:
+        es_cap = ((r["tipo_linea"] or "partida").strip().lower() == "capitulo")
+        if es_cap:
+            cap_n += 1
+            part_n = 0
+            cod = f"{cap_n}.0"
+        else:
+            if cap_n <= 0:
+                cap_n = 1
+            part_n += 1
+            cod = f"{cap_n}.{part_n}"
+        if (r["codigo"] or "").strip() != cod:
+            c.execute(
+                "UPDATE obra_partidas SET codigo=? WHERE id=? AND centro_costo_id=?",
+                (cod, int(r["id"]), int(obra_id)),
+            )
+            n += 1
+    return True, f"Ítems renumerados ({len(rows)} líneas).", n
 
 
 def guardar_partida(
@@ -122,46 +252,60 @@ def guardar_partida(
     partida_id: int | None,
     codigo: str,
     detalle: str,
-    unidad: str,
-    cantidad: float,
+    unidad: str = "gl",
+    cantidad: float = 1.0,
     notas: str = "",
     orden: int | None = None,
+    tipo_linea: str = "partida",
+    marca: str = "",
 ) -> tuple[bool, str, int | None]:
     if obra_cotizacion_aprobada(c, obra_id):
         return False, "Cotización de obra aprobada: partidas congeladas.", None
     det = (detalle or "").strip()
     if not det:
-        return False, "Indique el detalle de la partida.", None
-    und = (unidad or "un").strip() or "un"
+        return False, "Indique el detalle / nombre de la partida.", None
+    tipo = (tipo_linea or "partida").strip().lower()
+    if tipo not in TIPOS_LINEA:
+        tipo = "partida"
+    marca_v = (marca or "").strip().lower() or None
+    if marca_v and marca_v not in MARCA_LABELS:
+        marca_v = marca_v  # allow free text stored lower
+    und = (unidad or "gl").strip() or "gl"
     cant = max(0.0, _f(cantidad))
-    cod = (codigo or "").strip().upper() or next_partida_codigo(c, obra_id)
+    if tipo == "capitulo":
+        und = und if und else ""
+        cant = 0.0
+        marca_v = None
+    cod_in = (codigo or "").strip()
+    # Autocorrelativo: vacío o formato viejo P-obra-nn → sugerido
+    if (not cod_in) or re.match(r"^P-\d+-\d+$", cod_in, re.I):
+        cod = next_partida_codigo(c, obra_id, tipo)
+    else:
+        cod = cod_in
     hoy = core.hoy_chile().isoformat()
     if partida_id:
         row = get_partida(c, partida_id, obra_id)
         if not row:
             return False, "Partida no encontrada.", None
         pu = _f(row["pu_neto"])
-        total = round(cant * pu, 2)
+        if tipo == "capitulo" or (marca_v in MARCAS_SIN_PRECIO):
+            pu, total = 0.0, 0.0
+        else:
+            total = round(cant * pu, 2)
         c.execute(
             """
             UPDATE obra_partidas
             SET codigo=?, detalle=?, unidad=?, cantidad=?, total=?, notas=?,
-                orden=COALESCE(?, orden)
+                orden=COALESCE(?, orden), tipo_linea=?, marca=?
             WHERE id=? AND centro_costo_id=?
             """,
             (
-                cod,
-                det,
-                und,
-                cant,
-                total,
-                (notas or "").strip() or None,
-                orden,
-                int(partida_id),
-                int(obra_id),
+                cod, det, und, cant, total, (notas or "").strip() or None,
+                orden, tipo, marca_v, int(partida_id), int(obra_id),
             ),
         )
-        return True, "Partida actualizada.", int(partida_id)
+        renumerar_codigos_itemizados(c, obra_id)
+        return True, "Línea actualizada.", int(partida_id)
     if orden is None:
         orden = int(
             c.execute(
@@ -173,21 +317,17 @@ def guardar_partida(
         """
         INSERT INTO obra_partidas
         (centro_costo_id, codigo, detalle, unidad, cantidad, pu_neto, total,
-         avance_pct, orden, notas, activo, creado_en)
-        VALUES (?,?,?,?,?,0,0,0,?,?,1,?)
+         avance_pct, orden, notas, activo, creado_en, tipo_linea, marca)
+        VALUES (?,?,?,?,?,0,0,0,?,?,1,?,?,?)
         """,
         (
-            int(obra_id),
-            cod,
-            det,
-            und,
-            cant,
-            int(orden),
-            (notas or "").strip() or None,
-            hoy,
+            int(obra_id), cod, det, und, cant, int(orden),
+            (notas or "").strip() or None, hoy, tipo, marca_v,
         ),
     )
-    return True, "Partida creada.", int(cur.lastrowid)
+    new_id = int(cur.lastrowid)
+    renumerar_codigos_itemizados(c, obra_id)
+    return True, ("Capítulo creado." if tipo == "capitulo" else "Partida creada."), new_id
 
 
 def eliminar_partida(c, obra_id: int, partida_id: int) -> tuple[bool, str]:
@@ -205,6 +345,7 @@ def eliminar_partida(c, obra_id: int, partida_id: int) -> tuple[bool, str]:
         "UPDATE obra_partidas SET activo=0 WHERE id=? AND centro_costo_id=?",
         (int(partida_id), int(obra_id)),
     )
+    renumerar_codigos_itemizados(c, obra_id)
     return True, "Partida eliminada."
 
 
@@ -261,21 +402,103 @@ def sync_partida_desde_apu(c, apu_id: int) -> None:
     )
 
 
-def totales_cotizacion_obra(c, obra_id: int) -> dict[str, float]:
+def totales_cotizacion_obra(c, obra_id: int) -> dict[str, Any]:
+    """Subtotal de partidas valorizadas + GG / utilidades / IVA (estilo presupuesto)."""
+    ensure_obra_contrato_schema(c)
+    parts = list_partidas(c, obra_id)
+    n_part = 0
+    subtotal = 0.0
+    for p in parts:
+        if not linea_requiere_apu(p) and (p["tipo_linea"] or "partida") == "capitulo":
+            continue
+        if not linea_requiere_apu(p):
+            continue
+        n_part += 1
+        # Preferir PU del APU linkeado
+        pu = _f(p["apu_pu"] if p["apu_pu"] is not None else p["pu_neto"])
+        cant = _f(p["cantidad"])
+        subtotal += round(cant * pu, 2) if pu > 0 else _f(p["total"])
+    obra = c.execute(
+        "SELECT * FROM centros_costo WHERE id=?", (int(obra_id),)
+    ).fetchone()
+    gg_pct = _f(obra["gg_pct"] if obra and "gg_pct" in obra.keys() else 0)
+    util_pct = _f(obra["utilidades_pct"] if obra and "utilidades_pct" in obra.keys() else 0)
+    desc = _f(obra["descuento_clp"] if obra and "descuento_clp" in obra.keys() else 0)
+    iva_pct = _f(obra["iva_pct"] if obra and "iva_pct" in obra.keys() else 19)
+    valor_uf = _f(obra["valor_uf"] if obra and "valor_uf" in obra.keys() else 0)
+    gg = round(subtotal * gg_pct / 100.0, 0)
+    util = round(subtotal * util_pct / 100.0, 0)
+    neto = round(subtotal + gg + util, 0)
+    total_neto = round(neto - desc, 0)
+    iva = round(total_neto * iva_pct / 100.0, 0)
+    total = round(total_neto + iva, 0)
+    monto_uf = round(total_neto / valor_uf, 2) if valor_uf > 0 else 0.0
+    return {
+        "n_partidas": n_part,
+        "n_lineas": len(parts),
+        "subtotal": subtotal,
+        "gg_pct": gg_pct,
+        "gg": gg,
+        "utilidades_pct": util_pct,
+        "utilidades": util,
+        "neto": neto,
+        "descuento_clp": desc,
+        "total_neto": total_neto,
+        "iva_pct": iva_pct,
+        "iva": iva,
+        "total": total,
+        "valor_uf": valor_uf,
+        "monto_uf": monto_uf,
+        # compat
+        "total_directo": subtotal,
+    }
+
+
+def guardar_parametros_presupuesto(
+    c,
+    obra_id: int,
+    *,
+    ubicacion: str = "",
+    propietario: str = "",
+    documento_cot: str = "",
+    duracion_meses: float = 0,
+    gg_pct: float = 0,
+    utilidades_pct: float = 0,
+    descuento_clp: float = 0,
+    iva_pct: float = 19,
+    valor_uf: float = 0,
+) -> tuple[bool, str]:
+    ensure_obra_contrato_schema(c)
     row = c.execute(
-        """
-        SELECT COALESCE(SUM(total),0) AS total,
-               COALESCE(SUM(cantidad * pu_neto),0) AS calc,
-               COUNT(*) AS n
-        FROM obra_partidas
-        WHERE centro_costo_id=? AND COALESCE(activo,1)=1
-        """,
+        "SELECT id FROM centros_costo WHERE id=? AND COALESCE(tipo,'general')='obra'",
         (int(obra_id),),
     ).fetchone()
-    return {
-        "n_partidas": int(row["n"] or 0),
-        "total": _f(row["total"]),
-    }
+    if not row:
+        return False, "Obra no encontrada."
+    if obra_cotizacion_aprobada(c, obra_id):
+        # permitir editar cabecera informativa, no % si aprobada? permitir todo cabecera
+        pass
+    c.execute(
+        """
+        UPDATE centros_costo SET
+          ubicacion=?, propietario=?, documento_cot=?, duracion_meses=?,
+          gg_pct=?, utilidades_pct=?, descuento_clp=?, iva_pct=?, valor_uf=?
+        WHERE id=?
+        """,
+        (
+            (ubicacion or "").strip() or None,
+            (propietario or "").strip() or None,
+            (documento_cot or "").strip() or None,
+            max(0.0, _f(duracion_meses)),
+            max(0.0, _f(gg_pct)),
+            max(0.0, _f(utilidades_pct)),
+            max(0.0, _f(descuento_clp)),
+            max(0.0, _f(iva_pct)),
+            max(0.0, _f(valor_uf)),
+            int(obra_id),
+        ),
+    )
+    return True, "Parámetros del presupuesto actualizados."
 
 
 def aprobar_cotizacion_obra(c, obra_id: int) -> tuple[bool, str]:
@@ -283,22 +506,27 @@ def aprobar_cotizacion_obra(c, obra_id: int) -> tuple[bool, str]:
     if obra_cotizacion_aprobada(c, obra_id):
         return False, "La cotización de obra ya está aprobada."
     parts = list_partidas(c, obra_id)
-    if not parts:
-        return False, "Agregue al menos una partida antes de aprobar."
-    sin_apu = [p for p in parts if not p["apu_id"] or _f(p["pu_neto"]) <= 0]
+    valorizables = [p for p in parts if linea_requiere_apu(p)]
+    if not valorizables:
+        return False, "Agregue al menos una partida valorizable (con APU) antes de aprobar."
+    sin_apu = [p for p in valorizables if not p["apu_id"] or _f(p["apu_pu"] or p["pu_neto"]) <= 0]
     if sin_apu:
         return (
             False,
-            f"Hay {len(sin_apu)} partida(s) sin APU valorizado. Complete el APU antes de aprobar.",
+            f"Hay {len(sin_apu)} partida(s) sin APU valorizado. El precio unitario debe venir del APU.",
         )
     hoy = core.hoy_chile().isoformat()
-    total = 0.0
     for p in parts:
+        if not linea_requiere_apu(p):
+            c.execute(
+                "UPDATE obra_partidas SET pu_neto=0, total=0 WHERE id=?",
+                (int(p["id"]),),
+            )
+            continue
         apu = c.execute("SELECT * FROM apu WHERE id=?", (int(p["apu_id"]),)).fetchone()
         pu = _f(apu["pu_neto"]) if apu else _f(p["pu_neto"])
         cant = _f(p["cantidad"])
         tot = round(cant * pu, 2)
-        total += tot
         c.execute(
             """
             UPDATE obra_partidas SET pu_neto=?, total=?, avance_pct=COALESCE(avance_pct,0)
@@ -311,6 +539,8 @@ def aprobar_cotizacion_obra(c, obra_id: int) -> tuple[bool, str]:
                 "UPDATE apu SET congelado=1, partida_id=?, pu_neto=? WHERE id=?",
                 (int(p["id"]), pu, int(apu["id"])),
             )
+    tot_p = totales_cotizacion_obra(c, obra_id)
+    total = _f(tot_p["total_neto"] or tot_p["subtotal"])
     c.execute(
         """
         UPDATE centros_costo
@@ -322,13 +552,43 @@ def aprobar_cotizacion_obra(c, obra_id: int) -> tuple[bool, str]:
         """,
         (hoy, total, int(obra_id)),
     )
-    # congelar todos los APU de la obra
     c.execute(
         "UPDATE apu SET congelado=1 WHERE centro_costo_id=?",
         (int(obra_id),),
     )
     tot_txt = f"{total:,.0f}".replace(",", ".")
-    return True, f"Cotización de obra aprobada. Foto congelada · ppto ${tot_txt}."
+    return True, f"Presupuesto de obra aprobado. Foto congelada · neto ${tot_txt}."
+
+
+
+def reabrir_cotizacion_obra(c, obra_id: int) -> tuple[bool, str]:
+    """Vuelve el presupuesto a borrador para editar líneas y APU."""
+    ensure_obra_contrato_schema(c)
+    row = c.execute(
+        """
+        SELECT id, cotizacion_obra_estado FROM centros_costo
+        WHERE id=? AND COALESCE(tipo,'general')='obra'
+        """,
+        (int(obra_id),),
+    ).fetchone()
+    if not row:
+        return False, "Obra no encontrada."
+    if (row["cotizacion_obra_estado"] or "borrador") != "aprobada":
+        return False, "El presupuesto ya está en borrador."
+    c.execute(
+        """
+        UPDATE centros_costo
+        SET cotizacion_obra_estado='borrador',
+            cotizacion_obra_aprobada_en=NULL
+        WHERE id=?
+        """,
+        (int(obra_id),),
+    )
+    c.execute(
+        "UPDATE apu SET congelado=0 WHERE centro_costo_id=?",
+        (int(obra_id),),
+    )
+    return True, "Presupuesto reabierto en borrador. Ya puede agregar o editar líneas y APU."
 
 
 def guardar_avances_gantt(
@@ -349,6 +609,7 @@ def guardar_avances_gantt(
             """
             UPDATE obra_partidas SET avance_pct=?
             WHERE id=? AND centro_costo_id=? AND COALESCE(activo,1)=1
+              AND COALESCE(tipo_linea,'partida')='partida'
             """,
             (pct, pid, int(obra_id)),
         )
@@ -448,7 +709,10 @@ def eepp_detalle(c, eepp_id: int, obra_id: int) -> dict[str, Any] | None:
 
 
 def resumen_avance_obra(c, obra_id: int) -> dict[str, Any]:
-    parts = list_partidas(c, obra_id)
+    parts_all = list_partidas(c, obra_id)
+    parts = [p for p in parts_all if linea_requiere_apu(p) and _f(p["total"]) > 0]
+    if not parts:
+        parts = [p for p in parts_all if linea_requiere_apu(p)]
     ppto = sum(_f(p["total"]) for p in parts)
     avanzado = sum(monto_eepp_partida(p) for p in parts)
     if parts:
@@ -459,10 +723,13 @@ def resumen_avance_obra(c, obra_id: int) -> dict[str, Any]:
         )
     else:
         pct_pond = 0.0
+    tot = totales_cotizacion_obra(c, obra_id)
     return {
         "n_partidas": len(parts),
         "ppto": ppto,
+        "ppto_neto": tot.get("total_neto", ppto),
         "avanzado_clp": avanzado,
         "avance_pct_pond": round(pct_pond, 1),
         "aprobada": obra_cotizacion_aprobada(c, obra_id),
+        "presupuesto": tot,
     }
