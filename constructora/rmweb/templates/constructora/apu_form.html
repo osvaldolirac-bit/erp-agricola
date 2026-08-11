@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if edit and edit.id else 'Nuevo' }} APU{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if edit and edit.id %}APU {{ edit.codigo }}{% else %}Nuevo APU{% endif %}</h1>
+    <p>
+      Obra <strong>{{ obra.nombre }}</strong>
+      {% if partida %} · Partida <strong>{{ partida.codigo }}</strong> {{ partida.detalle }}{% endif %}.
+      Precios de cotización (foto al aprobar). PMP de bodega solo referencia.
+      {% if congelado %}<span class="badge text-bg-secondary">Congelado</span>{% endif %}
+    </p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('constructora_obra_detalle', obra_id=obra_id, sec='apu') }}">Volver a la obra</a>
+</div>
+
+{% if not precios %}
+<div class="alert alert-warning">
+  No hay productos en catálogo/bodega para elegir. Puede tipar descripción y precio manualmente en cada fila.
+</div>
+{% endif %}
+
+<div class="panel">
+  <form method="post" id="apuForm" {% if congelado %}onsubmit="return false;"{% endif %}
+        action="{{ url_for('constructora_apu_form', obra_id=obra_id, apu_id=edit.id, partida=partida_id) if edit and edit.id else url_for('constructora_apu_form', obra_id=obra_id, partida=partida_id) }}">
+    {% if partida_id %}<input type="hidden" name="partida_id" value="{{ partida_id }}">{% endif %}
+    <fieldset {% if congelado %}disabled{% endif %}>
+    <div class="row g-3 mb-3">
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Código</label>
+        <input class="form-control" name="codigo" value="{{ edit.codigo if edit and edit.codigo else codigo_def }}" required>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label fw-bold">Nombre / partida</label>
+        <input class="form-control" name="nombre" value="{{ edit.nombre if edit else (partida.detalle if partida else '') }}" required>
+      </div>
+      <div class="col-md-1">
+        <label class="form-label fw-bold">Unidad</label>
+        <input class="form-control" name="unidad" value="{{ edit.unidad if edit else (partida.unidad if partida else 'un') }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Leyes sociales %</label>
+        <input class="form-control" type="number" step="0.1" min="0" name="leyes_pct" id="leyes_pct"
+               value="{{ edit.leyes_pct if edit else 30 }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Pérdidas %</label>
+        <input class="form-control" type="number" step="0.1" min="0" name="perdidas_pct" id="perdidas_pct"
+               value="{{ edit.perdidas_pct if edit else 5 }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Activo</label>
+        <select class="form-select" name="activo">
+          <option value="1" {% if not edit or edit.activo %}selected{% endif %}>Sí</option>
+          <option value="0" {% if edit and not edit.activo %}selected{% endif %}>No</option>
+        </select>
+      </div>
+      <div class="col-md-10">
+        <label class="form-label fw-bold">Notas</label>
+        <input class="form-control" name="notas" value="{{ edit.notas if edit and edit.notas else '' }}">
+      </div>
+    </div>
+
+    <h6 class="fw-bold mb-2">Composición (precios de cotización)</h6>
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle" id="apuItems">
+        <thead>
+          <tr>
+            <th style="width:34%">Producto / descripción</th>
+            <th style="width:100px">Tipo</th>
+            <th style="width:70px">Und</th>
+            <th style="width:90px">Cant</th>
+            <th style="width:120px">P. unit.</th>
+            <th style="width:100px">PMP ref.</th>
+            <th style="width:110px" class="text-end">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in range(slots) %}
+          {% set it = items[i] if i < items|length else None %}
+          <tr class="apu-row">
+            <td>
+              <select class="form-select form-select-sm js-prod mb-1" name="item_producto_id">
+                <option value="">— catálogo (opcional) —</option>
+                {% for p in precios %}
+                <option value="{{ p.id }}"
+                        data-tipo="{{ p.tipo_recurso }}"
+                        data-unidad="{{ p.unidad }}"
+                        data-pmp="{{ p.pmp or p.precio or 0 }}"
+                        data-nombre="{{ p.nombre }}"
+                        {% if it and it.producto_id == p.id %}selected{% endif %}>
+                  {{ p.codigo or '' }} · {{ p.nombre }}
+                </option>
+                {% endfor %}
+              </select>
+              <input class="form-control form-control-sm js-desc" name="item_desc" placeholder="Descripción"
+                     value="{{ it.descripcion if it and it.descripcion is defined else '' }}">
+            </td>
+            <td>
+              <select class="form-select form-select-sm js-tipo" name="item_tipo">
+                {% for t in ['insumo','mano_obra','otro'] %}
+                <option value="{{ t }}" {% if it and it.tipo==t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input class="form-control form-control-sm js-und" name="item_und" value="{{ it.unidad if it and it.unidad is defined else 'un' }}"></td>
+            <td><input class="form-control form-control-sm js-cant" type="number" step="0.01" name="item_cant" value="{{ it.cantidad if it else 0 }}"></td>
+            <td><input class="form-control form-control-sm js-pu" type="number" step="1" name="item_pu" value="{{ it.precio_unitario if it and it.precio_unitario is defined else 0 }}"></td>
+            <td class="small text-muted js-pmp">—</td>
+            <td class="text-end fw-bold js-line text-muted">$0</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="cot-totals-box">
+          <div class="cot-tot-row"><span>Insumos</span><strong id="bInsumos">$0</strong></div>
+          <div class="cot-tot-row"><span>Mano de obra</span><strong id="bMo">$0</strong></div>
+          <div class="cot-tot-row"><span>Otro</span><strong id="bOtro">$0</strong></div>
+          <div class="cot-tot-row"><span>Leyes sociales</span><strong id="bLeyes">$0</strong></div>
+          <div class="cot-tot-row"><span>Pérdidas</span><strong id="bPerd">$0</strong></div>
+          <div class="cot-tot-row cot-tot-final"><span>PU neto</span><strong id="bPu">$0</strong></div>
+        </div>
+      </div>
+      <div class="col-md-6 d-flex align-items-end justify-content-end gap-2 flex-wrap">
+        {% if not congelado %}
+        <button class="btn btn-primary fw-bold" type="submit">Guardar APU</button>
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="{{ url_for('constructora_obra_detalle', obra_id=obra_id, sec='apu') }}">Cancelar</a>
+      </div>
+    </div>
+    </fieldset>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  function clp(n){
+    const v=Math.round(Number(n)||0);
+    return '$'+v.toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  }
+  function fillMeta(row){
+    const sel=row.querySelector('.js-prod');
+    const opt=sel.selectedOptions[0];
+    const pmpEl=row.querySelector('.js-pmp');
+    const desc=row.querySelector('.js-desc');
+    const tipo=row.querySelector('.js-tipo');
+    const und=row.querySelector('.js-und');
+    const pu=row.querySelector('.js-pu');
+    if(!opt||!opt.value){
+      pmpEl.textContent='—';
+      return;
+    }
+    const pmp=Number(opt.getAttribute('data-pmp')||0);
+    pmpEl.textContent=clp(pmp);
+    if(desc && !desc.value) desc.value=opt.getAttribute('data-nombre')||'';
+    if(tipo) tipo.value=opt.getAttribute('data-tipo')||'insumo';
+    if(und && (!und.value || und.value==='un')) und.value=opt.getAttribute('data-unidad')||'un';
+    // no pisar PU si el usuario ya tipó; solo sugerir si está en 0
+    if(pu && Number(pu.value||0)<=0 && pmp>0) pu.value=pmp;
+  }
+  function recalc(){
+    let insumos=0, mo=0, otro=0;
+    document.querySelectorAll('#apuItems .apu-row').forEach(function(row){
+      fillMeta(row);
+      const cant=Number(row.querySelector('.js-cant').value||0);
+      const pu=Number(row.querySelector('.js-pu').value||0);
+      const tipo=(row.querySelector('.js-tipo').value||'insumo');
+      const line=(cant>0 && pu>0)? cant*pu : 0;
+      row.querySelector('.js-line').textContent=clp(line);
+      row.querySelector('.js-line').classList.toggle('text-muted', line<=0);
+      if(line<=0) return;
+      if(tipo==='mano_obra') mo+=line;
+      else if(tipo==='otro') otro+=line;
+      else insumos+=line;
+    });
+    const leyesPct=Number(document.getElementById('leyes_pct').value||0);
+    const perdPct=Number(document.getElementById('perdidas_pct').value||0);
+    const leyes=mo*leyesPct/100;
+    const perd=insumos*perdPct/100;
+    const pu=insumos+mo+otro+leyes+perd;
+    document.getElementById('bInsumos').textContent=clp(insumos);
+    document.getElementById('bMo').textContent=clp(mo);
+    document.getElementById('bOtro').textContent=clp(otro);
+    document.getElementById('bLeyes').textContent=clp(leyes);
+    document.getElementById('bPerd').textContent=clp(perd);
+    document.getElementById('bPu').textContent=clp(pu);
+  }
+  const form=document.getElementById('apuForm');
+  if(form){
+    form.addEventListener('input', recalc);
+    form.addEventListener('change', recalc);
+    recalc();
+  }
+})();
+</script>
+{% endblock %}
