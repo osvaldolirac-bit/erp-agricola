@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}EEPP {{ eepp.numero }} · {{ obra.nombre }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>EEPP N° {{ eepp.numero }}</h1>
+    <p>Obra {{ obra.nombre }} · {{ fmt_dmy(eepp.fecha) if eepp.fecha else '—' }} · {{ eepp.estado }}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('constructora_obra_detalle', obra_id=obra.id, sec='eepp') }}">Volver</a>
+</div>
+<div class="panel">
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Partida</th><th>Und</th><th class="text-end">Cant</th>
+          <th class="text-end">Total foto</th><th class="text-end">% avance</th><th class="text-end">Monto EEPP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in items %}
+        <tr>
+          <td><strong>{{ i.codigo }}</strong> · {{ i.detalle }}</td>
+          <td>{{ i.unidad }}</td>
+          <td class="text-end">{{ '%.2f'|format(i.cantidad or 0) }}</td>
+          <td class="text-end">{{ clp(i.partida_total) }}</td>
+          <td class="text-end">{{ '%.1f'|format(i.avance_pct or 0) }}%</td>
+          <td class="text-end fw-bold">{{ clp(i.monto) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr><th colspan="5" class="text-end">Total EEPP</th><th class="text-end">{{ clp(eepp.monto_total) }}</th></tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endblock %}
