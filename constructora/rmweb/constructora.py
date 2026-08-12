@@ -1,6 +1,9 @@
 """Módulo Constructora: obras (CC), maestra APU y cotización por partidas."""
 from __future__ import annotations
 
+import csv
+import io
+import re
 from typing import Any
 
 from rmweb import core
@@ -8,6 +11,7 @@ from rmweb import ops_cc
 from rmweb import obra_contrato as obractx
 
 APU_ITEM_TIPOS = ("insumo", "mano_obra", "otro")
+PRECIOS_CSV_HEADERS = ("codigo", "nombre", "unidad", "tipo", "precio")
 CC_TIPO_OBRA = "obra"
 CC_TIPO_GENERAL = "general"
 
@@ -118,7 +122,8 @@ def list_precios_obra(c, *, solo_activos: bool = True) -> list[Any]:
                COALESCE(p.maneja_stock, 0) AS maneja_stock,
                COALESCE(p.activo, 1) AS activo
         FROM productos p
-        LEFT JOIN inventario i ON i.producto_id = p.id
+        LEFT JOIN bodegas bg ON bg.tipo='general' AND COALESCE(bg.activo,1)=1
+        LEFT JOIN inventario i ON i.producto_id = p.id AND i.bodega_id = bg.id
         WHERE 1=1
     """
     if solo_activos:
@@ -144,7 +149,8 @@ def get_precio(c, producto_id: int) -> Any | None:
                COALESCE(p.maneja_stock, 0) AS maneja_stock,
                COALESCE(p.activo, 1) AS activo
         FROM productos p
-        LEFT JOIN inventario i ON i.producto_id = p.id
+        LEFT JOIN bodegas bg ON bg.tipo='general' AND COALESCE(bg.activo,1)=1
+        LEFT JOIN inventario i ON i.producto_id = p.id AND i.bodega_id = bg.id
         WHERE p.id=?
         """,
         (int(producto_id),),
@@ -308,6 +314,181 @@ def precio_desde_maestra(c, producto_id: int | None) -> dict[str, Any] | None:
         "precio_unitario": _f(row["precio"]),
         "tipo": tipo,
     }
+
+
+def plantilla_precios_csv() -> str:
+    """CSV de ejemplo para que el tenant complete/suba su maestra."""
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";", lineterminator="\n")
+    w.writerow(PRECIOS_CSV_HEADERS)
+    w.writerow(["CEM-25", "Cemento Portland 25 kg", "sc", "insumo", "5200"])
+    w.writerow(["H25", "Hormigón H25", "m3", "insumo", "95000"])
+    w.writerow(["FIERRO", "Enfierradura A63-42H", "kg", "insumo", "1200"])
+    w.writerow(["MO-ALB", "Mano de obra albañilería", "jh", "mano_obra", "45000"])
+    w.writerow(["ANDAMIO", "Arriendo andamio", "día", "otro", "12000"])
+    return buf.getvalue()
+
+
+def _norm_header(h: str) -> str:
+    s = (h or "").strip().lower()
+    s = s.replace("\ufeff", "")
+    s = re.sub(r"\s+", "_", s)
+    aliases = {
+        "código": "codigo",
+        "code": "codigo",
+        "cod": "codigo",
+        "descripcion": "nombre",
+        "descripción": "nombre",
+        "producto": "nombre",
+        "insumo": "nombre",
+        "und": "unidad",
+        "unit": "unidad",
+        "tipo_recurso": "tipo",
+        "tipo_de_recurso": "tipo",
+        "precio_unitario": "precio",
+        "p_unitario": "precio",
+        "costo": "precio",
+        "valor": "precio",
+        "pu": "precio",
+    }
+    return aliases.get(s, s)
+
+
+def _norm_tipo(v: str) -> str:
+    t = (v or "insumo").strip().lower()
+    t = t.replace(" ", "_")
+    aliases = {
+        "mo": "mano_obra",
+        "manoobra": "mano_obra",
+        "mano-de-obra": "mano_obra",
+        "mano_de_obra": "mano_obra",
+        "jornal": "mano_obra",
+        "material": "insumo",
+        "materiales": "insumo",
+        "equipo": "otro",
+        "equipos": "otro",
+        "arriendo": "otro",
+        "subcontrato": "otro",
+        "sub_contrato": "otro",
+    }
+    t = aliases.get(t, t)
+    return t if t in APU_ITEM_TIPOS else "insumo"
+
+
+def parse_precios_upload(file_storage) -> tuple[bool, str, list[dict[str, Any]]]:
+    """Lee CSV (o Excel si openpyxl está disponible) → filas normalizadas."""
+    if not file_storage or not getattr(file_storage, "filename", None):
+        return False, "Seleccione un archivo CSV o Excel.", []
+    name = (file_storage.filename or "").strip().lower()
+    raw = file_storage.read() or b""
+    if not raw:
+        return False, "El archivo está vacío.", []
+
+    rows_raw: list[list[str]] = []
+    if name.endswith((".xlsx", ".xlsm")):
+        try:
+            import openpyxl  # type: ignore
+        except ImportError:
+            return (
+                False,
+                "Para Excel (.xlsx) instale openpyxl, o guarde/exporte como CSV (;).",
+                [],
+            )
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(values_only=True):
+                rows_raw.append([("" if v is None else str(v)).strip() for v in row])
+            wb.close()
+        except Exception as exc:  # noqa: BLE001
+            return False, f"No se pudo leer el Excel: {exc}", []
+    else:
+        # CSV / texto (Excel Chile suele usar ;)
+        text = raw.decode("utf-8-sig", errors="replace")
+        if not text.strip():
+            return False, "El archivo está vacío.", []
+        sample = text[:2048]
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=";,\t")
+        except csv.Error:
+            dialect = csv.excel
+            dialect.delimiter = ";" if sample.count(";") >= sample.count(",") else ","
+        reader = csv.reader(io.StringIO(text), dialect)
+        rows_raw = [[(c or "").strip() for c in row] for row in reader]
+
+    # quitar filas totalmente vacías
+    rows_raw = [r for r in rows_raw if any((c or "").strip() for c in r)]
+    if not rows_raw:
+        return False, "Sin filas de datos.", []
+
+    headers = [_norm_header(h) for h in rows_raw[0]]
+    if "nombre" not in headers and "codigo" not in headers:
+        return (
+            False,
+            "Faltan columnas. Use la plantilla: codigo;nombre;unidad;tipo;precio",
+            [],
+        )
+
+    out: list[dict[str, Any]] = []
+    for i, row in enumerate(rows_raw[1:], start=2):
+        data = {headers[j]: (row[j] if j < len(row) else "") for j in range(len(headers))}
+        codigo = (data.get("codigo") or "").strip()
+        nombre = (data.get("nombre") or "").strip()
+        if not codigo and not nombre:
+            continue
+        if not nombre:
+            nombre = codigo
+        out.append(
+            {
+                "linea": i,
+                "codigo": codigo.upper(),
+                "nombre": nombre,
+                "unidad": (data.get("unidad") or "un").strip() or "un",
+                "tipo": _norm_tipo(str(data.get("tipo") or "insumo")),
+                "precio": _f(data.get("precio")),
+            }
+        )
+    if not out:
+        return False, "No hay filas válidas (necesita nombre o código).", []
+    return True, f"{len(out)} filas leídas.", out
+
+
+def importar_precios_maestra(
+    c, filas: list[dict[str, Any]]
+) -> tuple[bool, str, dict[str, int]]:
+    """Upsert por código (si no hay código, crea con correlativo)."""
+    stats = {"creados": 0, "actualizados": 0, "errores": 0}
+    msgs: list[str] = []
+    for f in filas:
+        ok, msg, _pid = guardar_precio(
+            c,
+            producto_id=None,
+            codigo=f.get("codigo") or "",
+            nombre=f.get("nombre") or "",
+            unidad=f.get("unidad") or "un",
+            precio=f.get("precio") or 0,
+            tipo_recurso=f.get("tipo") or "insumo",
+            activo=1,
+            maneja_stock=0,
+        )
+        if ok:
+            if "actualizado" in (msg or "").lower() or "existente" in (msg or "").lower():
+                stats["actualizados"] += 1
+            else:
+                stats["creados"] += 1
+        else:
+            stats["errores"] += 1
+            if len(msgs) < 8:
+                msgs.append(f"Línea {f.get('linea')}: {msg}")
+    resumen = (
+        f"Importación: {stats['creados']} nuevos, "
+        f"{stats['actualizados']} actualizados"
+        + (f", {stats['errores']} con error" if stats["errores"] else "")
+        + "."
+    )
+    if msgs:
+        resumen += " " + " · ".join(msgs)
+    return stats["errores"] == 0 or (stats["creados"] + stats["actualizados"]) > 0, resumen, stats
 
 
 def next_apu_codigo(c, obra_id: int | None = None) -> str:
@@ -700,7 +881,14 @@ def crear_obra(
             (fecha_inicio or "").strip() or None,
         ),
     )
-    return True, f"Obra «{nom}» creada (CC).", int(cur.lastrowid)
+    oid = int(cur.lastrowid)
+    try:
+        from rmweb import bodega_multi as _bm
+        _bm.ensure_bodega_multi_schema(c)
+        _bm.ensure_bodega_obra(c, oid, nom)
+    except Exception:
+        pass
+    return True, f"Obra «{nom}» creada (CC).", oid
 
 
 def actualizar_obra(

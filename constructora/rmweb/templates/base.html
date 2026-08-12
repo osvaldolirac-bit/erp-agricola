@@ -42,7 +42,7 @@
           <span class="nav-link-main"><i class="bi bi-people"></i> Clientes</span>
         </a>
         <a class="nav-link {% if active=='cotizaciones' %}active{% endif %}" href="{{ url_for('cotizaciones_list') }}">
-          <span class="nav-link-main"><i class="bi bi-file-earmark-text"></i> Cotizaciones</span>
+          <span class="nav-link-main"><i class="bi bi-file-earmark-text"></i> Cotiz. comerciales</span>
         </a>
         <a class="nav-link {% if active=='cuentas' %}active{% endif %}" href="{{ url_for('cuentas_list') }}">
           <span class="nav-link-main"><i class="bi bi-cash-stack"></i> Cuentas por cobrar</span>
@@ -56,7 +56,7 @@
           <span class="nav-link-main"><i class="bi bi-cart3"></i> Compras</span>
         </a>
         <a class="nav-link {% if active=='centros' %}active{% endif %}" href="{{ url_for('centros_costo') }}">
-          <span class="nav-link-main"><i class="bi bi-diagram-3"></i> Centro de costo</span>
+          <span class="nav-link-main"><i class="bi bi-diagram-3"></i> Gastos por obra/CC</span>
         </a>
         <a class="nav-link {% if active=='tesoreria' %}active{% endif %}" href="{{ url_for('tesoreria_list') }}">
           <span class="nav-link-main"><i class="bi bi-bank"></i> Tesorería</span>
@@ -66,8 +66,14 @@
         </a>
 
         <div class="nav-section">Obras</div>
-        <a class="nav-link {% if active=='constructora' and (request.path.rstrip('/') in ('/hub', '/obras', '/obra') or request.path.startswith('/obras') or request.path.startswith('/apu')) %}active{% endif %}" href="{{ url_for('constructora_obras') }}">
+        <a class="nav-link {% if active=='constructora' and (request.path.rstrip('/') in ('/hub', '/obras', '/obra') or request.path.startswith('/obras') or request.path.startswith('/apu')) and not request.path.startswith('/precios') %}active{% endif %}" href="{{ url_for('constructora_obras') }}">
           <span class="nav-link-main"><i class="bi bi-building"></i> Obras</span>
+        </a>
+        <a class="nav-link {% if request.path.startswith('/precios') %}active{% endif %}" href="{{ url_for('constructora_precios') }}">
+          <span class="nav-link-main"><i class="bi bi-tags"></i> Maestra de precios</span>
+        </a>
+        <a class="nav-link {% if active=='rrhh' %}active{% endif %}" href="{{ url_for('rrhh_personal') }}">
+          <span class="nav-link-main"><i class="bi bi-person-badge"></i> Personal / SC</span>
         </a>
 
         <div class="nav-section">Sistema</div>

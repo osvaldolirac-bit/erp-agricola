@@ -1,7 +1,7 @@
 """Rutas Flask del módulo Constructora."""
 from __future__ import annotations
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import Response, flash, redirect, render_template, request, url_for
 
 from rmweb import constructora as cst
 from rmweb import core
@@ -934,3 +934,144 @@ def register_constructora_routes(app, login_required):
             obra_prefill=obra_prefill
             or (edit["centro_costo_id"] if edit else None),
         )
+
+    # ── Maestra de precios (tenant) ───────────────────────────────
+    @app.route("/precios/")
+    @login_required
+    def constructora_precios():
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        q = (request.args.get("q") or "").strip().lower()
+        tipo = (request.args.get("tipo") or "").strip().lower()
+        rows = cst.list_precios_obra(db, solo_activos=False)
+        if q:
+            rows = [
+                r
+                for r in rows
+                if q in (r["nombre"] or "").lower()
+                or q in (r["codigo"] or "").lower()
+            ]
+        if tipo in cst.APU_ITEM_TIPOS:
+            rows = [r for r in rows if (r["tipo_recurso"] or "") == tipo]
+        db.close()
+        return render_template(
+            "constructora/precios.html",
+            active="constructora",
+            rows=rows,
+            q=q,
+            tipo_filtro=tipo,
+        )
+
+    @app.route("/precios/nuevo", methods=["GET", "POST"])
+    @app.route("/precios/<int:pid>", methods=["GET", "POST"])
+    @login_required
+    def constructora_precio_form(pid: int | None = None):
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        edit = cst.get_precio(db, pid) if pid else None
+        if pid and not edit:
+            flash("Producto no encontrado.", "danger")
+            db.close()
+            return redirect(url_for("constructora_precios"))
+        if request.method == "POST":
+            ok, msg, _nid = cst.guardar_precio(
+                db,
+                producto_id=pid,
+                codigo=request.form.get("codigo") or "",
+                nombre=request.form.get("nombre") or "",
+                unidad=request.form.get("unidad") or "un",
+                precio=request.form.get("precio") or 0,
+                tipo_recurso=request.form.get("tipo_recurso") or "insumo",
+                activo=1 if request.form.get("activo") == "1" else 0,
+                maneja_stock=1 if request.form.get("maneja_stock") == "1" else 0,
+            )
+            if ok:
+                db.commit()
+                flash(msg, "ok")
+                db.close()
+                return redirect(url_for("constructora_precios"))
+            db.rollback()
+            flash(msg, "danger")
+            edit = {
+                "id": pid,
+                "codigo": request.form.get("codigo"),
+                "nombre": request.form.get("nombre"),
+                "unidad": request.form.get("unidad") or "un",
+                "precio": request.form.get("precio") or 0,
+                "tipo_recurso": request.form.get("tipo_recurso") or "insumo",
+                "activo": 1 if request.form.get("activo") == "1" else 0,
+                "maneja_stock": 1 if request.form.get("maneja_stock") == "1" else 0,
+            }
+        codigo_def = (edit["codigo"] if edit and edit["codigo"] else None) or cst.next_precio_codigo(
+            db, (edit["tipo_recurso"] if edit else "insumo") or "insumo"
+        )
+        db.close()
+        return render_template(
+            "constructora/precio_form.html",
+            active="constructora",
+            edit=edit,
+            codigo_def=codigo_def,
+        )
+
+    @app.route("/precios/plantilla.csv")
+    @login_required
+    def constructora_precios_plantilla():
+        body = cst.plantilla_precios_csv()
+        return Response(
+            "\ufeff" + body,
+            mimetype="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": "attachment; filename=maestra_precios_plantilla.csv"
+            },
+        )
+
+    @app.route("/precios/export.csv")
+    @login_required
+    def constructora_precios_export():
+        import csv
+        import io
+
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        rows = cst.list_precios_obra(db, solo_activos=False)
+        db.close()
+        buf = io.StringIO()
+        w = csv.writer(buf, delimiter=";", lineterminator="\n")
+        w.writerow(cst.PRECIOS_CSV_HEADERS)
+        for r in rows:
+            w.writerow(
+                [
+                    r["codigo"] or "",
+                    r["nombre"] or "",
+                    r["unidad"] or "un",
+                    r["tipo_recurso"] or "insumo",
+                    int(round(float(r["precio"] or 0))),
+                ]
+            )
+        return Response(
+            "\ufeff" + buf.getvalue(),
+            mimetype="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": "attachment; filename=maestra_precios_export.csv"
+            },
+        )
+
+    @app.route("/precios/importar", methods=["POST"])
+    @login_required
+    def constructora_precios_importar():
+        f = request.files.get("archivo")
+        ok, msg, filas = cst.parse_precios_upload(f)
+        if not ok:
+            flash(msg, "danger")
+            return redirect(url_for("constructora_precios"))
+        db = core.conn()
+        cst.ensure_constructora_schema(db)
+        ok2, resumen, _stats = cst.importar_precios_maestra(db, filas)
+        if ok2:
+            db.commit()
+            flash(resumen, "ok")
+        else:
+            db.rollback()
+            flash(resumen or msg, "danger")
+        db.close()
+        return redirect(url_for("constructora_precios"))
