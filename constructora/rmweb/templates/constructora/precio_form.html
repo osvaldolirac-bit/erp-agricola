@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if edit and edit.id else 'Nuevo' }} precio{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if edit and edit.id %}Editar precio{% else %}Nuevo producto / insumo{% endif %}</h1>
+    <p>Queda disponible para componer APU (el PU de la partida sale de aquí).</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('constructora_precios') }}">Volver</a>
+</div>
+
+<div class="panel">
+  <form method="post" class="row g-3">
+    <div class="col-md-2">
+      <label class="form-label fw-bold">Código</label>
+      <input class="form-control" name="codigo" value="{{ edit.codigo if edit and edit.codigo else codigo_def }}" required>
+    </div>
+    <div class="col-md-5">
+      <label class="form-label fw-bold">Nombre</label>
+      <input class="form-control" name="nombre" value="{{ edit.nombre if edit else '' }}" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label fw-bold">Tipo</label>
+      {% set t = (edit.tipo_recurso if edit else 'insumo') %}
+      <select class="form-select" name="tipo_recurso">
+        <option value="insumo" {% if t=='insumo' %}selected{% endif %}>Insumo</option>
+        <option value="mano_obra" {% if t=='mano_obra' %}selected{% endif %}>Mano de obra</option>
+        <option value="otro" {% if t=='otro' %}selected{% endif %}>Otro</option>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label fw-bold">Unidad</label>
+      <input class="form-control" name="unidad" value="{{ edit.unidad if edit else 'un' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label fw-bold">Precio unitario</label>
+      <input class="form-control" type="number" step="1" min="0" name="precio" required
+             value="{{ edit.precio if edit else 0 }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label fw-bold">Maneja stock</label>
+      <select class="form-select" name="maneja_stock">
+        <option value="0" {% if not edit or not edit.maneja_stock %}selected{% endif %}>No</option>
+        <option value="1" {% if edit and edit.maneja_stock %}selected{% endif %}>Sí (bodega)</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label fw-bold">Activo</label>
+      <select class="form-select" name="activo">
+        <option value="1" {% if not edit or edit.activo %}selected{% endif %}>Sí</option>
+        <option value="0" {% if edit and not edit.activo %}selected{% endif %}>No</option>
+      </select>
+    </div>
+    <div class="col-12 d-flex gap-2">
+      <button class="btn btn-primary fw-bold" type="submit">Guardar</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('constructora_precios') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
