@@ -19,6 +19,10 @@
   --com-deep: #084785;
   --com-soft: #e7f0fa;
   --com-mid: #c5d9f0;
+  --cst: #c45c26;
+  --cst-deep: #9a3412;
+  --cst-soft: #fff7ed;
+  --cst-mid: #f0c7ae;
 }
 
 * { box-sizing: border-box; }
@@ -221,6 +225,8 @@ img { max-width: 100%; display: block; }
 .zona-link-agri:hover { background: var(--agri-soft); }
 .zona-link-com { color: var(--com-deep); }
 .zona-link-com:hover { background: var(--com-soft); }
+.zona-link-cst { color: var(--cst-deep); }
+.zona-link-cst:hover { background: var(--cst-soft); }
 .hero .btn-solid {
   background: var(--com);
   color: var(--white);
@@ -926,4 +932,279 @@ a.top-mail, a.foot-mail {
   .plan-addon { grid-template-columns: 1fr; }
   .flow-map > li:not(.flow-arrow):not(.flow-sep) { font-size: 0.84rem; }
   .integ-price { align-items: flex-start; }
+}
+
+/* --- oferta13: módulos claros + cupos usuarios --- */
+.section-modulos {
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--mist) 100%);
+}
+.mod-compare {
+  margin-top: 1.6rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.15rem;
+}
+.mod-col {
+  border-radius: 18px;
+  padding: 1.35rem 1.3rem 1.4rem;
+  border: 1px solid transparent;
+}
+.mod-col h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
+}
+.mod-col-lead {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+.mod-col-agri {
+  background: linear-gradient(165deg, #f3faf5, var(--agri-soft));
+  border-color: var(--agri-mid);
+  border-top: 5px solid var(--agri);
+}
+.mod-col-agri h3 { color: var(--agri-deep); }
+.mod-col-com {
+  background: linear-gradient(165deg, #f3f7fc, var(--com-soft));
+  border-color: var(--com-mid);
+  border-top: 5px solid var(--com);
+}
+.mod-col-com h3 { color: var(--com-deep); }
+.mod-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.mod-chips li {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.mod-col-agri .mod-chips li { border-color: var(--agri-mid); color: var(--agri-deep); }
+.mod-col-com .mod-chips li { border-color: var(--com-mid); color: var(--com-deep); }
+.mod-chip-eje {
+  background: var(--agri) !important;
+  border-color: var(--agri) !important;
+  color: #fff !important;
+}
+.mod-chip-addon {
+  background: var(--com-deep) !important;
+  border-color: var(--com-deep) !important;
+  color: #fff !important;
+}
+.mod-chip-inc {
+  background: transparent !important;
+  border-style: dashed !important;
+  opacity: 0.9;
+}
+.mod-foot {
+  margin: 1.25rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+
+.planes-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.35rem;
+}
+.planes-head-row .planes-sub { margin: 0; }
+.planes-demo-link {
+  font-weight: 800;
+  font-size: 0.92rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.planes-agricola .planes-demo-link { color: var(--agri-deep); }
+.planes-comercial .planes-demo-link { color: var(--com-deep); }
+.planes-intro {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+.plan-mods {
+  margin: 0.35rem 0 0.65rem;
+  padding-left: 1.05rem;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+.plan-mods li { margin: 0.18rem 0; }
+.plan-seats {
+  margin: 0.55rem 0 0.15rem;
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: var(--com-deep);
+}
+.plan-seats-extra {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.section-usuarios {
+  background:
+    radial-gradient(700px 280px at 80% 0%, rgba(11, 92, 173, 0.12), transparent 55%),
+    var(--white);
+}
+.section-usuarios .kicker { color: var(--com-deep); }
+.seats-grid {
+  margin-top: 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.seats-card {
+  border-radius: 16px;
+  padding: 1.25rem 1.3rem;
+  border: 1px solid var(--com-mid);
+  background: var(--com-soft);
+}
+.seats-card h3 {
+  margin: 0 0 0.65rem;
+  font-size: 1.05rem;
+  color: var(--com-deep);
+}
+.seats-main {
+  margin: 0 0 0.4rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.seats-extra {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+.seats-card-total {
+  background: linear-gradient(165deg, #e7f0fa, #d6e6f7);
+  border-color: var(--com);
+  box-shadow: 0 0 0 2px rgba(11, 92, 173, 0.12);
+}
+.seats-note {
+  margin: 1.15rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+  max-width: 46rem;
+}
+
+@media (max-width: 860px) {
+  .mod-compare, .seats-grid { grid-template-columns: 1fr; }
+}
+
+/* --- oferta14: cupos agrícola + sección usuarios ambos ERP --- */
+.plan-seats-agri { color: var(--agri-deep); }
+.seats-erp-block { margin-top: 1.4rem; }
+.seats-erp-block h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.2rem;
+  letter-spacing: -0.01em;
+}
+.seats-erp-agri h3 { color: var(--agri-deep); }
+.seats-erp-com h3 { color: var(--com-deep); }
+.seats-card h4 {
+  margin: 0 0 0.65rem;
+  font-size: 1.02rem;
+}
+.seats-card-agri-std {
+  background: var(--agri-soft);
+  border-color: var(--agri-mid);
+}
+.seats-card-agri-std h4 { color: var(--agri-deep); }
+.seats-card-agri-full {
+  background: linear-gradient(165deg, #e6f4eb, #c6e5d1);
+  border-color: var(--agri);
+  box-shadow: 0 0 0 2px rgba(27, 107, 58, 0.12);
+}
+.seats-card-agri-full h4 { color: var(--agri-deep); }
+.seats-card-std h4,
+.seats-card-total h4 { color: var(--com-deep); }
+
+
+/* --- Constructora product --- */
+.flyer-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.flyer-constructora {
+  background:
+    linear-gradient(165deg, #fffaf5 0%, var(--cst-soft) 55%, #fde8d8 100%);
+  border-color: var(--cst-mid);
+  border-top: 5px solid var(--cst);
+}
+.flyer-constructora .product-tag { color: var(--cst-deep); }
+.flyer-constructora h3 { color: var(--cst-deep); }
+.flyer-constructora .flyer-packs {
+  background: rgba(196, 92, 38, 0.12);
+  color: var(--cst-deep);
+}
+.flyer-constructora .btn-solid {
+  background: var(--cst);
+  border-color: var(--cst);
+}
+.flyer-constructora .btn-solid:hover {
+  background: var(--cst-deep);
+  border-color: var(--cst-deep);
+}
+.flyer-constructora .btn-ghost {
+  color: var(--cst-deep);
+  border-color: rgba(196, 92, 38, 0.35);
+}
+.flyer-constructora .btn-ghost:hover {
+  color: var(--cst);
+  border-color: var(--cst);
+}
+
+.mod-compare {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.mod-col-cst {
+  background: linear-gradient(180deg, var(--cst-soft), #fffaf5);
+  border-color: var(--cst-mid);
+}
+.mod-col-cst h3 { color: var(--cst-deep); }
+.mod-col-cst .mod-chips li { border-color: var(--cst-mid); color: var(--cst-deep); }
+.mod-col-cst .mod-chip-eje {
+  background: rgba(196, 92, 38, 0.14);
+  border-color: var(--cst);
+  font-weight: 800;
+}
+
+.planes-constructora {
+  background: linear-gradient(180deg, var(--cst-soft), #fffaf5);
+  border-color: var(--cst-mid);
+}
+.planes-constructora .planes-sub { color: var(--cst-deep); }
+.planes-constructora .planes-demo-link { color: var(--cst-deep); }
+.planes-constructora .plan-featured {
+  border-color: var(--cst);
+  box-shadow: 0 12px 30px rgba(196, 92, 38, 0.14);
+}
+.planes-constructora .price { color: var(--cst-deep); }
+
+.seats-erp-cst h3 { color: var(--cst-deep); }
+.seats-card-cst-std {
+  border-color: var(--cst-mid);
+  background: var(--cst-soft);
+}
+.seats-card-cst-full {
+  border-color: var(--cst);
+  background: linear-gradient(180deg, #fff, var(--cst-soft));
+}
+
+@media (max-width: 980px) {
+  .flyer-grid, .mod-compare { grid-template-columns: 1fr; }
 }
