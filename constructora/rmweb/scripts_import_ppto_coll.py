@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""Importa ppto+APU Excel a obra demo ficticia; borra otras obras."""
+"""Importa ppto+APU Excel a una obra demo (nombres ficticios).
+
+Soporta dos layouts de presupuesto:
+  A) ITEM | PARTIDA | NOTAS | UNIDAD | CANTIDAD | PRECIO | TOTAL
+  B) Ítem | Partida | Unidad | Cantidad | Precio | Total
+"""
 from __future__ import annotations
 
+import argparse
 import re
 import sqlite3
 import unicodedata
@@ -15,13 +21,7 @@ from rmweb import constructora as cst
 from rmweb import core
 from rmweb import obra_contrato as obractx
 
-XLSX = Path("/tmp/ppto_casa_coll.xlsx")
-DB = "/root/constructora/data/constructora_demo.db"
-NOMBRE_FICTICIO = "Residencia Los Arrayanes — Demo Ppto/APU"
-XLSX_URL = (
-    "https://docs.google.com/spreadsheets/d/"
-    "1E3LfjBs9Oa46gq_I1bhOAyxQGpgTugkI/export?format=xlsx"
-)
+DB_DEFAULT = "/root/constructora/data/constructora_demo.db"
 
 
 def _f(v, default=0.0):
@@ -45,20 +45,63 @@ def norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def pick_ppto_sheet(wb):
+    for name in ("Ppto", "Casa A", "Presupuesto", "Cotizacion", "Cotización"):
+        if name in wb.sheetnames:
+            return wb[name]
+    # first sheet that looks like ppto
+    for name in wb.sheetnames:
+        ws = wb[name]
+        for row in ws.iter_rows(min_row=1, max_row=15, values_only=True):
+            joined = " ".join(str(v).lower() for v in row if v is not None)
+            if "partida" in joined and ("ítem" in joined or "item" in joined):
+                return ws
+    return wb[wb.sheetnames[0]]
+
+
+def pick_apu_sheet(wb):
+    for name in wb.sheetnames:
+        if "apu" in name.lower().replace(".", ""):
+            return wb[name]
+    return None
+
+
+def detect_layout(ws):
+    """Return 'A' (con notas) o 'B' (sin notas)."""
+    for row in ws.iter_rows(values_only=True):
+        cells = [("" if v is None else str(v)).strip().lower() for v in list(row)[:7]]
+        if not cells:
+            continue
+        if cells[0] in ("item", "ítem", "ìtem") or cells[0].startswith("ítem") or cells[0].startswith("item"):
+            # B: item, partida, unidad...
+            if len(cells) > 2 and cells[2] in ("unidad", "und", "un"):
+                return "B"
+            # A: item, partida, notas, unidad
+            if len(cells) > 3 and cells[3] in ("unidad", "und", "un"):
+                return "A"
+            if "partida" in cells[1]:
+                # heuristic: if col2 looks like unidad header
+                if "unidad" in cells[2]:
+                    return "B"
+                return "A"
+    return "B"
+
+
 def parse_ppto(ws):
+    layout = detect_layout(ws)
     header = {
         "ubicacion": None,
         "propietario": None,
         "documento_cot": None,
         "duracion_meses": 10.0,
-        "valor_uf": 36076.99,
+        "valor_uf": 0.0,
         "gg_pct": 5.0,
         "utilidades_pct": 21.0,
         "iva_pct": 19.0,
     }
     for row in ws.iter_rows(values_only=True):
         a = ("" if row[0] is None else str(row[0])).strip().lower()
-        b = row[1]
+        b = row[1] if len(row) > 1 else None
         if a.startswith("ubic"):
             header["ubicacion"] = ("" if b is None else str(b)).strip()
         elif a.startswith("mandant") or a.startswith("propiet"):
@@ -69,28 +112,74 @@ def parse_ppto(ws):
             m = re.search(r"([\d.,]+)", str(b or ""))
             if m:
                 header["duracion_meses"] = _f(m.group(1))
-            for v in row[2:]:
-                if isinstance(v, (int, float)) and float(v) > 1000:
-                    header["valor_uf"] = float(v)
+        # UF value often near footer label
+        for idx, v in enumerate(row):
+            if v is None:
+                continue
+            s = str(v).lower()
+            if "valor u.f" in s or "valor uf" in s:
+                for vv in row[idx + 1 :]:
+                    if isinstance(vv, (int, float)) and float(vv) > 1000:
+                        header["valor_uf"] = float(vv)
+                        break
+                    fv = _f(vv)
+                    if fv > 1000:
+                        header["valor_uf"] = fv
+                        break
+        # footer GG/util/IVA — label may be col B or C
+        for idx in (2, 3, 1):
+            if len(row) <= idx or row[idx] is None:
+                continue
+            lab = str(row[idx]).strip().lower()
+            if lab == "gastos generales":
+                # pct usually next numeric after label
+                for vv in row[idx + 1 :]:
+                    if vv is None or vv == "":
+                        continue
+                    header["gg_pct"] = _f(vv) * (100.0 if _f(vv) <= 1 else 1.0)
                     break
-        lab = ("" if row[3] is None else str(row[3])).strip().lower()
-        if lab == "gastos generales":
-            header["gg_pct"] = _f(row[5]) * (100.0 if _f(row[5]) <= 1 else 1.0)
-        elif lab == "utilidades":
-            header["utilidades_pct"] = _f(row[5]) * (100.0 if _f(row[5]) <= 1 else 1.0)
+            elif lab == "utilidades":
+                for vv in row[idx + 1 :]:
+                    if vv is None or vv == "":
+                        continue
+                    header["utilidades_pct"] = _f(vv) * (100.0 if _f(vv) <= 1 else 1.0)
+                    break
+            elif lab == "iva":
+                for vv in row[idx + 1 :]:
+                    if vv is None or vv == "":
+                        continue
+                    header["iva_pct"] = _f(vv) * (100.0 if _f(vv) <= 1 else 1.0)
+                    break
 
     lines = []
     started = False
     for row in ws.iter_rows(values_only=True):
-        item, partida, notas, und, cant, pu, total = (list(row) + [None] * 7)[:7]
-        if str(item).strip().upper() == "ITEM" if item is not None else False:
+        cells = list(row) + [None] * 8
+        item = cells[0]
+        if item is not None and str(item).strip().lower() in ("item", "ítem", "ìtem"):
             started = True
             continue
         if not started or item is None or str(item).strip() == "":
             continue
+        if layout == "A":
+            partida, notas, und, cant, pu = cells[1], cells[2], cells[3], cells[4], cells[5]
+        else:
+            partida, notas, und, cant, pu = cells[1], "", cells[2], cells[3], cells[4]
+
         lab = ("" if und is None else str(und)).strip().lower()
         if lab in ("sub total", "gastos generales", "utilidades", "neto", "iva", "total"):
             continue
+        # footer sometimes puts label in partida/unidad cols
+        if str(partida or "").strip().lower() in (
+            "sub total",
+            "gastos generales",
+            "utilidades",
+            "neto",
+            "iva",
+            "total",
+        ):
+            continue
+
         codigo = str(item).strip()
         detalle = ("" if partida is None else str(partida)).strip()
         if not detalle:
@@ -99,18 +188,18 @@ def parse_ppto(ws):
         und_s = ("" if und is None else str(und)).strip()
         cant_f = _f(cant)
         pu_f = _f(pu)
+
         marca = ""
-        nl = notas_s.lower()
-        ul = und_s.lower()
-        if "gastos generales" in nl:
+        blob = f"{notas_s} {detalle}".lower()
+        if "gastos generales" in blob:
             marca = "en_gg"
-        elif "mandante" in nl:
+        elif "mandante" in blob:
             marca = "mandante"
-        elif "a definir" in nl or nl == "n/a":
+        elif "a definir" in blob or notas_s.lower() == "n/a":
             marca = "a_definir"
-        elif "proforma" in nl:
+        elif "proforma" in blob:
             marca = "proforma"
-        elif "sub-contrato" in ul or "subcontrato" in ul:
+        elif "sub-contrato" in und_s.lower() or "subcontrato" in und_s.lower():
             marca = "subcontrato"
             und_s = "gl"
 
@@ -120,28 +209,41 @@ def parse_ppto(ws):
         elif not und_s and pu_f <= 0 and not marca:
             es_cap = True
 
+        # normalizar unidad
+        und_map = {"unidad": "uni", "mt2": "m2", "mt3": "m3", "m²": "m2", "m³": "m3"}
+        und_s = und_map.get(und_s.lower(), und_s) if und_s else und_s
+
         lines.append(
             {
                 "codigo": codigo,
                 "detalle": detalle,
                 "notas": notas_s,
                 "unidad": "" if es_cap else (und_s or "gl"),
-                "cantidad": 0.0 if es_cap else (cant_f if cant_f > 0 else (1.0 if pu_f > 0 else 0.0)),
-                "pu": 0.0 if es_cap or marca in ("en_gg", "mandante", "a_definir") else pu_f,
+                "cantidad": 0.0
+                if es_cap
+                else (cant_f if cant_f > 0 else (1.0 if pu_f > 0 else 0.0)),
+                "pu": 0.0
+                if es_cap or marca in ("en_gg", "mandante", "a_definir")
+                else pu_f,
                 "tipo_linea": "capitulo" if es_cap else "partida",
                 "marca": marca,
             }
         )
-    return header, lines
+    return header, lines, layout
 
 
 def parse_apu_blocks(ws):
+    if ws is None:
+        return []
     blocks = []
     current = None
     for row in ws.iter_rows(values_only=True):
         vals = [("" if v is None else str(v).strip()) for v in list(row)[:6]]
         a, b, c, d, e, f = (vals + [""] * 6)[:6]
         if a and not b and not c and a.lower() not in ("nº", "n°", "no"):
+            # skip banner
+            if "detalle de la actividad" in a.lower():
+                continue
             if current and current["items"]:
                 blocks.append(current)
             current = {
@@ -160,7 +262,10 @@ def parse_apu_blocks(ws):
         if "total general" in label:
             current["pu"] = _f(f or e)
             continue
-        if "materiales" in label or "mano de obra" in label:
+        if any(
+            k in label
+            for k in ("materiales", "mano de obra", "sub contrato", "subcontrato")
+        ):
             continue
         if not a or not b:
             continue
@@ -186,12 +291,13 @@ def parse_apu_blocks(ws):
                 "jornal",
                 "soldador",
                 "mano de obra",
+                "personas",
                 "direccion",
                 "dirección",
             )
         ) or und.lower() in ("jh", "hh"):
             tipo = "mano_obra"
-        elif any(k in bl for k in ("arriendo", "flete", "excavadora", "rodillo")):
+        elif any(k in bl for k in ("arriendo", "flete", "excavadora", "rodillo", "camión", "camion")):
             tipo = "otro"
         current["items"].append(
             {
@@ -224,7 +330,7 @@ def best_apu(partida_nombre: str, blocks, used: set[int]):
             score = max(score, len(ta & tb) / max(len(ta), len(tb)))
         if score > best_s:
             best_s, best_i = score, i
-    if best_i is not None and best_s >= 0.58:
+    if best_i is not None and best_s >= 0.55:
         return best_i, best_s
     return None, 0.0
 
@@ -270,26 +376,47 @@ def wipe_obras(c):
     return ids
 
 
-def main():
-    if not XLSX.exists() or XLSX.stat().st_size < 1000:
-        urllib.request.urlretrieve(XLSX_URL, XLSX)
+def import_obra(
+    *,
+    xlsx: Path,
+    nombre: str,
+    ubicacion: str,
+    propietario: str,
+    wipe: bool,
+    db_path: str,
+    url: str | None = None,
+):
+    if (not xlsx.exists() or xlsx.stat().st_size < 1000) and url:
+        urllib.request.urlretrieve(url, xlsx)
 
-    wb = openpyxl.load_workbook(XLSX, data_only=True)
-    header, lines = parse_ppto(wb["Casa A"])
-    blocks = parse_apu_blocks(wb["A.P.U."])
-    print(f"Ppto líneas: {len(lines)} | APU blocks: {len(blocks)}")
+    wb = openpyxl.load_workbook(xlsx, data_only=True)
+    ws_ppto = pick_ppto_sheet(wb)
+    ws_apu = pick_apu_sheet(wb)
+    header, lines, layout = parse_ppto(ws_ppto)
+    blocks = parse_apu_blocks(ws_apu)
+    print(
+        f"Sheet ppto={ws_ppto.title} layout={layout} líneas={len(lines)} | "
+        f"APU={ws_apu.title if ws_apu else '-'} blocks={len(blocks)}"
+    )
 
-    c = sqlite3.connect(DB)
+    c = sqlite3.connect(db_path)
     c.row_factory = sqlite3.Row
     cst.ensure_constructora_schema(c)
     obractx.ensure_obra_contrato_schema(c)
 
-    deleted = wipe_obras(c)
-    print("Obras eliminadas:", deleted)
+    if wipe:
+        deleted = wipe_obras(c)
+        print("Obras eliminadas:", deleted)
 
-    ok, msg, oid = cst.crear_obra(
-        c, nombre=NOMBRE_FICTICIO, presupuesto=0, notas_estado="activa"
-    )
+    # si ya existe el nombre, agregar sufijo
+    nom = nombre
+    exists = c.execute(
+        "SELECT id FROM centros_costo WHERE lower(nombre)=lower(?)", (nom,)
+    ).fetchone()
+    if exists:
+        nom = f"{nombre} ({core.hoy_chile().isoformat()})"
+
+    ok, msg, oid = cst.crear_obra(c, nombre=nom, presupuesto=0, notas_estado="activa")
     if not ok:
         raise SystemExit(msg)
     print(msg, "id=", oid)
@@ -297,22 +424,21 @@ def main():
     obractx.guardar_parametros_presupuesto(
         c,
         oid,
-        ubicacion="Parcelación Los Arrayanes, sector Demo",
-        propietario="Familia Sepúlveda (demo)",
+        ubicacion=ubicacion,
+        propietario=propietario,
         documento_cot=header.get("documento_cot") or "Presupuesto preliminar",
         duracion_meses=header.get("duracion_meses") or 10,
         gg_pct=header.get("gg_pct") or 5,
         utilidades_pct=header.get("utilidades_pct") or 21,
         descuento_clp=0,
-        iva_pct=19.0,
-        valor_uf=header.get("valor_uf") or 36076.99,
+        iva_pct=header.get("iva_pct") or 19,
+        valor_uf=header.get("valor_uf") or 0,
     )
     c.execute(
         "UPDATE centros_costo SET cotizacion_obra_estado='borrador' WHERE id=?",
         (oid,),
     )
 
-    # Insert partidas preservando código/orden del Excel (sin renumerar)
     hoy = core.hoy_chile().isoformat()
     pid_by_orden = {}
     n_cap = n_part = 0
@@ -395,7 +521,6 @@ def main():
         if not ok:
             print("APU fail", ln["codigo"], ln["detalle"][:40], msg)
             continue
-        # Foto del ppto: el PU del Excel manda (partida + APU) para totales
         if ln["pu"] > 0:
             c.execute(
                 """
@@ -417,10 +542,8 @@ def main():
                 (ln["pu"], int(apu_id), oid),
             )
         else:
-            # sin precio en ppto: no valorizar
             c.execute(
-                "UPDATE obra_partidas SET pu_neto=0, total=0 WHERE id=?",
-                (pid,),
+                "UPDATE obra_partidas SET pu_neto=0, total=0 WHERE id=?", (pid,)
             )
             c.execute(
                 "UPDATE apu SET pu_neto=0 WHERE id=? AND centro_costo_id=?",
@@ -444,21 +567,32 @@ def main():
         },
     )
     print(
-        "Partidas activas:",
-        c.execute(
-            "select count(*) from obra_partidas where centro_costo_id=? and coalesce(activo,1)=1",
-            (oid,),
-        ).fetchone()[0],
-    )
-    print(
-        "APUs:",
-        c.execute("select count(*) from apu where centro_costo_id=?", (oid,)).fetchone()[0],
-    )
-    print(
-        "Obras restantes:",
-        [dict(r) for r in c.execute("select id,nombre from centros_costo where tipo='obra'")],
+        "Obras:",
+        [dict(r) for r in c.execute("select id,nombre from centros_costo where tipo='obra' order by id")],
     )
     c.close()
+    return oid
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--xlsx", required=True)
+    ap.add_argument("--url", default="")
+    ap.add_argument("--nombre", required=True)
+    ap.add_argument("--ubicacion", default="Ubicación demo")
+    ap.add_argument("--propietario", default="Propietario demo")
+    ap.add_argument("--wipe", action="store_true", help="Elimina todas las obras antes")
+    ap.add_argument("--db", default=DB_DEFAULT)
+    args = ap.parse_args()
+    import_obra(
+        xlsx=Path(args.xlsx),
+        nombre=args.nombre,
+        ubicacion=args.ubicacion,
+        propietario=args.propietario,
+        wipe=bool(args.wipe),
+        db_path=args.db,
+        url=args.url or None,
+    )
 
 
 if __name__ == "__main__":
