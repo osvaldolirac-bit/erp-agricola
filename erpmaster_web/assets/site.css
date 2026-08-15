@@ -1208,3 +1208,30 @@ a.top-mail, a.foot-mail {
 @media (max-width: 980px) {
   .flyer-grid, .mod-compare { grid-template-columns: 1fr; }
 }
+
+
+/* oferta19: precios ocultos en landing */
+.price-soft {
+  font-size: 1.15rem !important;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.plan-price-cta {
+  margin: -0.35rem 0 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.plan-price-cta a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.9;
+}
+.plan-price-cta a:hover { opacity: 1; }
+.planes-agricola .price-soft { color: var(--agri-deep); }
+.planes-comercial .price-soft { color: var(--com-deep); }
+.planes-constructora .price-soft { color: var(--cst-deep); }
+.integ-price .price-soft {
+  color: #fff !important;
+  font-size: 1.35rem !important;
+}
