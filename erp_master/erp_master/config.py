@@ -74,6 +74,15 @@ class Config:
             "url_dashboard": "/comercial/",
             "estado": "activo",
         },
+        {
+            "slug": "constructora-demo",
+            "nombre": "DEMO Constructora",
+            "descripcion": "Obras, APU y precios · demo",
+            "producto": "constructora",
+            "url": "/constructora/",
+            "url_dashboard": "/constructora/",
+            "estado": "activo",
+        },
     ]
 
     # Administered from master (agrícola + comercial).
@@ -140,6 +149,24 @@ class Config:
             "nombre_erp": "DEMO Comercial",
             "url": "/comercial/",
             "url_dashboard": "/comercial/",
+        },
+        {
+            "slug": "constructora-demo",
+            "nombre": "DEMO Constructora",
+            "kind": "comercial",
+            "producto": "constructora",
+            "es_demo": True,
+            "db": _env(
+                "CONSTRUCTORA_DEMO_DB",
+                "/root/constructora/data/constructora_demo.db",
+            ),
+            "secrets": _env(
+                "CONSTRUCTORA_DEMO_SECRETS",
+                "/root/constructora/secrets.toml",
+            ),
+            "nombre_erp": "DEMO Constructora",
+            "url": "/constructora/",
+            "url_dashboard": "/constructora/",
         },
     ]
 

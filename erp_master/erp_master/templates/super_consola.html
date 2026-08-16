@@ -11,7 +11,9 @@
   <div>
     <h1>Super Consola</h1>
     <p>
-      {% if tenant.producto == 'comercial' %}
+      {% if tenant.producto == 'constructora' %}
+      Gestión de usuarios, alertas y respaldos del producto <strong>Constructora</strong> (obras, APU, precios).
+      {% elif tenant.producto == 'comercial' %}
       Gestión de usuarios y bitácora del producto <strong>Comercial</strong>. No mezcla módulos del ERP agrícola.
       {% else %}
       Poderes de plataforma sobre el <strong>ERP Agrícola</strong> del cliente (usuarios, módulos, respaldos).
@@ -34,6 +36,11 @@
       </optgroup>
       <optgroup label="Comercial">
         {% for t in admin_tenants if t.producto == 'comercial' %}
+        <option value="{{ t.slug }}" {% if t.slug == tenant.slug %}selected{% endif %}>{{ t.nombre }}</option>
+        {% endfor %}
+      </optgroup>
+      <optgroup label="Constructora">
+        {% for t in admin_tenants if t.producto == 'constructora' %}
         <option value="{{ t.slug }}" {% if t.slug == tenant.slug %}selected{% endif %}>{{ t.nombre }}</option>
         {% endfor %}
       </optgroup>
@@ -377,7 +384,7 @@
         <p class="help">
           <strong>Datos</strong>: por este cliente.
           <strong>Código</strong>: una sola vez por rubro
-          ({{ 'Agrícola' if tenant.producto == 'agricola' else ('Comercial' if tenant.producto == 'comercial' else '—') }}),
+          ({{ 'Agrícola' if tenant.producto == 'agricola' else ('Comercial' if tenant.producto == 'comercial' else ('Constructora' if tenant.producto == 'constructora' else '—')) }}),
           compartido por todos los clientes del rubro.
         </p>
         <form method="post" class="form-grid">
@@ -409,7 +416,7 @@
           {% if respaldo_edita_codigo %}
           <label class="check-inline">
             <input type="checkbox" name="activo_codigo" value="1" {% if respaldo.activo_codigo == '1' %}checked{% endif %}>
-            Código (rubro {{ 'agrícola' if tenant.producto == 'agricola' else 'comercial' }})
+            Código (rubro {{ 'agrícola' if tenant.producto == 'agricola' else ('comercial' if tenant.producto == 'comercial' else ('constructora' if tenant.producto == 'constructora' else tenant.producto)) }})
           </label>
           {% else %}
           <p class="help" style="grid-column:1/-1">
@@ -576,7 +583,7 @@
       {% endif %}
 
       {% if sec == 'bitacora' %}
-      {% if tenant.kind != 'comercial' %}
+      {% if tenant.kind != 'comercial' or tenant.producto == 'constructora' %}
       <section class="admin-block">
         <h3>Bitácora ERP del cliente</h3>
         <p class="help">

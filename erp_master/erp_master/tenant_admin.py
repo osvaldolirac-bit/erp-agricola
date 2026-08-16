@@ -968,14 +968,19 @@ def _import_erp_respaldo():
 
 
 
+# Rubros con respaldo de código compartido (1 zip por producto).
+RUBROS_RESPALDO_CODIGO = ("agricola", "comercial", "constructora")
+
 # Tenant canonico donde se edita el checkbox de CODIGO por rubro.
 RESPALDO_CODIGO_OWNER_POR_RUBRO = {
     "agricola": "concepcion",
     "comercial": "riomaipo",
+    "constructora": "constructora-demo",
 }
 RESPALDO_CODIGO_OWNER_LABEL = {
     "concepcion": "La Concepción",
     "riomaipo": "Río Maipo",
+    "constructora-demo": "DEMO Constructora",
 }
 
 
@@ -1011,7 +1016,7 @@ def get_respaldo_config(db_path: str, producto: str = "") -> dict[str, str]:
             "activo_codigo": "0",
         }
     rubro = (producto or "").strip().lower()
-    if rubro in ("agricola", "comercial"):
+    if rubro in RUBROS_RESPALDO_CODIGO:
         try:
             _ensure_demo_web_path()
             erp_r = _import_erp_respaldo()
@@ -1077,7 +1082,7 @@ def save_respaldo_config(
         _meta_set(conn, "respaldo_frecuencia", freq_datos)
         _meta_set(conn, "respaldo_codigo_frecuencia", freq_codigo)
 
-    if guardar_codigo and rubro in ("agricola", "comercial"):
+    if guardar_codigo and rubro in RUBROS_RESPALDO_CODIGO:
         try:
             _ensure_demo_web_path()
             erp_r = _import_erp_respaldo()
@@ -1673,7 +1678,7 @@ def enviar_respaldo_ahora(
         return False, "Base de datos del tenant no encontrada."
     try:
         if tipo == "codigo":
-            rubro = producto if producto in ("agricola", "comercial") else ""
+            rubro = producto if producto in RUBROS_RESPALDO_CODIGO else ""
             if not rubro:
                 return False, "Este cliente no tiene rubro para respaldo de código."
             email = ""

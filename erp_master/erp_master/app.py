@@ -746,8 +746,15 @@ def create_app(config_object: type = Config) -> Flask:
             )
             producto = str(producto).strip().lower()
             out["producto"] = producto
-            out["producto_label"] = "Comercial" if producto == "comercial" else "ERP Agrícola"
-            out["abrir_label"] = "Abrir Comercial" if producto == "comercial" else "Abrir ERP"
+            if producto == "constructora":
+                out["producto_label"] = "Constructora"
+                out["abrir_label"] = "Abrir Constructora"
+            elif producto == "comercial":
+                out["producto_label"] = "Comercial"
+                out["abrir_label"] = "Abrir Comercial"
+            else:
+                out["producto_label"] = "ERP Agrícola"
+                out["abrir_label"] = "Abrir ERP"
             return out
 
         tenant = _producto_meta(tenant)
