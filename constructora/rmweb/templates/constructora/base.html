@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ track_name }}{% endblock %} · {{ app_name }}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=1785543581" sizes="32x32">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v=1785543581">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}?v=1785543581" sizes="any">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=1785543581">
+  <link rel="shortcut icon" href="{{ url_for('favicon') }}?v=1785543581">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/app.css') }}?v=sidebar22" rel="stylesheet">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-logo" src="{{ url_for('static', filename='logo_erpmaster.png') }}" alt="ERP Master">
+        <div class="brand-kicker">{{ app_name }}</div>
+        <div class="brand-title">{{ track_name }}</div>
+        <div class="brand-sub brand-sub-row">
+          <span class="brand-flag" title="Chile"><svg class="flag-cl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" aria-label="Chile" role="img" focusable="false">
+  <rect width="24" height="16" rx="1.5" fill="#fff"/>
+  <rect y="8" width="24" height="8" fill="#d52b1e"/>
+  <rect width="8" height="8" fill="#0039a6"/>
+  <polygon fill="#fff" points="4,1.6 4.65,3.55 6.8,3.55 5.05,4.75 5.7,6.7 4,5.5 2.3,6.7 2.95,4.75 1.2,3.55 3.35,3.55"/>
+</svg></span>
+        </div>
+      </div>
+      <nav class="nav flex-column">
+        <a class="nav-link {% if active=='dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+          <span class="nav-link-main"><i class="bi bi-grid-1x2"></i> Dashboard</span>
+        </a>
+
+        <div class="nav-section">Ventas</div>
+        <a class="nav-link {% if active=='clientes' %}active{% endif %}" href="{{ url_for('clientes_list') }}">
+          <span class="nav-link-main"><i class="bi bi-people"></i> Clientes</span>
+        </a>
+        <a class="nav-link {% if active=='cotizaciones' %}active{% endif %}" href="{{ url_for('cotizaciones_list') }}">
+          <span class="nav-link-main"><i class="bi bi-file-earmark-text"></i> Cotizaciones</span>
+        </a>
+        <a class="nav-link {% if active=='cuentas' %}active{% endif %}" href="{{ url_for('cuentas_list') }}">
+          <span class="nav-link-main"><i class="bi bi-cash-stack"></i> Cuentas por cobrar</span>
+        </a>
+
+                <a class="nav-link {% if active=='ml' %}active{% endif %}" href="{{ url_for('ml_home') }}">
+          <span class="nav-link-main"><i class="bi bi-shop"></i> Mercado Libre</span>
+          <span class="nav-fee">ADD-ON</span>
+        </a>
+
+        <div class="nav-section">Compras</div>
+        <a class="nav-link {% if active=='ordenes' %}active{% endif %}" href="{{ url_for('oc_list') }}">
+          <span class="nav-link-main"><i class="bi bi-clipboard-check"></i> Órdenes de compra</span>
+        </a>
+        <a class="nav-link {% if active=='compras' %}active{% endif %}" href="{{ url_for('compras_list') }}">
+          <span class="nav-link-main"><i class="bi bi-cart3"></i> Compras</span>
+        </a>
+        <a class="nav-link {% if active=='centros' %}active{% endif %}" href="{{ url_for('centros_costo') }}">
+          <span class="nav-link-main"><i class="bi bi-diagram-3"></i> Centro de costo</span>
+        </a>
+        <a class="nav-link {% if active=='tesoreria' %}active{% endif %}" href="{{ url_for('tesoreria_list') }}">
+          <span class="nav-link-main"><i class="bi bi-bank"></i> Tesorería</span>
+        </a>
+        <a class="nav-link {% if active=='bodega' %}active{% endif %}" href="{{ url_for('bodega_list') }}">
+          <span class="nav-link-main"><i class="bi bi-box-seam"></i> Bodega</span>
+        </a>
+
+        <div class="nav-section">Constructora</div>
+        <a class="nav-link {% if active=='constructora' and request.path.rstrip('/') in ('/hub', '/obras', '/obra') %}active{% endif %}" href="{{ url_for('constructora_home') }}">
+          <span class="nav-link-main"><i class="bi bi-building"></i> Constructora</span>
+        </a>
+        <a class="nav-link {% if request.path.startswith('/obras') %}active{% endif %}" href="{{ url_for('constructora_obras') }}">
+          <span class="nav-link-main"><i class="bi bi-signpost-2"></i> Obras</span>
+        </a>
+        <a class="nav-link {% if request.path.startswith('/precios') %}active{% endif %}" href="{{ url_for('constructora_precios') }}">
+          <span class="nav-link-main"><i class="bi bi-tags"></i> Precios</span>
+        </a>
+        <a class="nav-link {% if request.path.startswith('/apu') %}active{% endif %}" href="{{ url_for('constructora_apu_list') }}">
+          <span class="nav-link-main"><i class="bi bi-calculator"></i> APU</span>
+        </a>
+
+        <div class="nav-section">Sistema</div>
+        <a class="nav-link {% if active=='admin' %}active{% endif %}" href="{{ url_for('admin') }}">
+          <span class="nav-link-main"><i class="bi bi-gear"></i> Administración</span>
+        </a>
+        <a class="nav-link {% if active=='soporte' %}active{% endif %}" href="{{ url_for('soporte') }}">
+          <span class="nav-link-main"><i class="bi bi-life-preserver"></i> Soporte</span>
+        </a>
+        <a class="nav-link {% if active=='manual' %}active{% endif %}" href="{{ url_for('manual') }}">
+          <span class="nav-link-main"><i class="bi bi-book"></i> Manual</span>
+        </a>
+      </nav>
+      <div class="sidebar-foot">
+        {% if show_module_fees %}
+        <a class="nav-link {% if active=='planes' %}active{% endif %} nav-planes" href="{{ url_for('planes') }}">
+          <span class="nav-link-main"><i class="bi bi-tags-fill"></i> <strong>Planes</strong></span>
+          <span class="nav-fee nav-fee-pack">REVISA TU PLAN</span>
+        </a>
+        {% endif %}
+        <a class="nav-link" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right"></i> Salir</a>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="breadcrumb-bar">
+        <div class="breadcrumb-left">
+          <span>{{ app_name }}</span><span>›</span><span>Dashboard</span>
+          {% if active %}<span>›</span><span class="current">{{ self.title() }}</span>{% endif %}
+        </div>
+        <div class="breadcrumb-right">
+          {% if demo_prueba_activa %}
+          <div class="demo-prueba-widget{% if demo_prueba_alerta %} demo-prueba-alerta{% endif %}"
+               title="Periodo de prueba DEMO Comercial">
+            <div class="demo-prueba-kicker">Periodo de prueba</div>
+            <div class="demo-prueba-valor">
+              {% if demo_dias_restantes == 0 %}Hoy{% else %}{{ demo_dias_restantes }}{% endif %}
+            </div>
+            <div class="demo-prueba-label">
+              {% if demo_dias_restantes == 0 %}último día
+              {% elif demo_dias_restantes == 1 %}día restante
+              {% else %}días restantes{% endif %}
+            </div>
+            <div class="demo-prueba-meta">Vence el {{ demo_fecha_expira }}</div>
+          </div>
+          {% endif %}
+          <span title="Chile">
+          <svg class="flag-cl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" aria-label="Chile" role="img" focusable="false">
+  <rect width="24" height="16" rx="1.5" fill="#fff"/>
+  <rect y="8" width="24" height="8" fill="#d52b1e"/>
+  <rect width="8" height="8" fill="#0039a6"/>
+  <polygon fill="#fff" points="4,1.6 4.65,3.55 6.8,3.55 5.05,4.75 5.7,6.7 4,5.5 2.3,6.7 2.95,4.75 1.2,3.55 3.35,3.55"/>
+</svg>
+          </span>
+        </div>
+      </div>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for cat, msg in messages %}
+          <div class="alert alert-{{ 'success' if cat=='ok' else cat }} alert-dismissible fade show" role="alert">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+  <script>
+    $(function () {
+      if ($('.datatable').length) {
+        $('.datatable').DataTable({
+          pageLength: 50,
+          order: [],
+          language: {
+            url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'
+          }
+        });
+      }
+    });
+  </script>
+  
+<div id="sessionIdleGuard"
+     data-idle-limit="{{ session_idle_limit }}"
+     data-warn-seconds="{{ session_idle_warn }}"
+     data-continue-url="{{ url_for('session_continue') }}"
+     data-login-url="{{ url_for('login') }}"
+     data-logout-url="{{ url_for('logout') }}"
+     data-logout-mode="get"
+     hidden></div>
+<div class="session-idle-overlay" id="sessionIdleOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sessionIdleTitle">
+  <div class="session-idle-card">
+    <h2 id="sessionIdleTitle">Sesión por inactividad</h2>
+    <p>
+      Por seguridad, tu sesión se cerrará en
+      <span class="session-idle-count" id="sessionIdleCount">2:00</span>
+      si no continúas.
+    </p>
+    <div class="session-idle-actions">
+      <button type="button" class="session-idle-continue" id="sessionIdleContinue">Continuar sesión</button>
+      <button type="button" class="session-idle-logout" id="sessionIdleLogout">Cerrar ahora</button>
+    </div>
+  </div>
+</div>
+<script>
+
+(function () {
+  const root = document.getElementById('sessionIdleGuard');
+  if (!root) return;
+  const idleLimit = Math.max(60, parseInt(root.dataset.idleLimit || '1200', 10) || 1200);
+  const warnSeconds = Math.max(30, parseInt(root.dataset.warnSeconds || '120', 10) || 120);
+  const continueUrl = root.dataset.continueUrl || '/comercial/api/session-continue';
+  const loginUrl = root.dataset.loginUrl || '/comercial/login';
+  const logoutUrl = root.dataset.logoutUrl || '';
+  const logoutMode = (root.dataset.logoutMode || 'get').toLowerCase();
+  const overlay = document.getElementById('sessionIdleOverlay');
+  const countEl = document.getElementById('sessionIdleCount');
+  const btnContinue = document.getElementById('sessionIdleContinue');
+  const btnLogout = document.getElementById('sessionIdleLogout');
+  if (!overlay || !countEl || !btnContinue || !btnLogout) return;
+
+  let lastActive = Date.now();
+  let warnOpen = false;
+  let pingBusy = false;
+  let lastPing = 0;
+
+  function fmt(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function goLogin() {
+    window.location = loginUrl;
+  }
+
+  async function doLogout() {
+    try {
+      if (logoutUrl) {
+        if (logoutMode === 'post') {
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = logoutUrl;
+          document.body.appendChild(form);
+          form.submit();
+          return;
+        }
+        window.location = logoutUrl;
+        return;
+      }
+    } catch (e) {}
+    goLogin();
+  }
+
+  async function pingContinue(force) {
+    const now = Date.now();
+    if (!force && (pingBusy || now - lastPing < 45000)) return;
+    pingBusy = true;
+    lastPing = now;
+    try {
+      const res = await fetch(continueUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (res.status === 401) { goLogin(); return false; }
+      if (!res.ok) return false;
+      lastActive = Date.now();
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      pingBusy = false;
+    }
+  }
+
+  function closeWarn() {
+    warnOpen = false;
+    overlay.classList.remove('is-open');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  function openWarn() {
+    if (!warnOpen) {
+      warnOpen = true;
+      overlay.classList.add('is-open');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function onActivity() {
+    if (warnOpen) return; // exige Continuar explícito
+    lastActive = Date.now();
+  }
+
+  ['click', 'keydown', 'mousedown', 'touchstart', 'scroll'].forEach(function (evt) {
+    window.addEventListener(evt, onActivity, { passive: true, capture: true });
+  });
+
+  btnContinue.addEventListener('click', async function () {
+    const ok = await pingContinue(true);
+    if (ok !== false) {
+      lastActive = Date.now();
+      closeWarn();
+    }
+  });
+  btnLogout.addEventListener('click', function () { doLogout(); });
+
+  setInterval(async function () {
+    const idleSec = (Date.now() - lastActive) / 1000;
+    const left = idleLimit - idleSec;
+    if (left <= 0) {
+      await doLogout();
+      return;
+    }
+    if (left <= warnSeconds) {
+      openWarn();
+      countEl.textContent = fmt(left);
+    } else {
+      if (warnOpen) closeWarn();
+      // Mantener sesión servidor alineada si hay uso real
+      if (idleSec < 60) pingContinue(false);
+    }
+  }, 1000);
+})();
+
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
