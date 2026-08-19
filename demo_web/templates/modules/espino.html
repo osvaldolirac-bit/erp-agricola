@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo, nav_temporada %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}El Espino — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Gastos sector El Espino · temporada {{ temp_sel }} ({{ fi }} → {{ ff }})</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_temporada('modules.espino', temporadas, temp_sel, {'sec': sec_activa}) }}
+  {{ nav_modulo('modules.espino', secciones, sec_activa) }}
+
+  {% if sec_activa == 'historial' %}
+  <div class="alert alert-success text-center fw-bold mb-3">
+    GASTO ACUMULADO EL ESPINO — TEMPORADA {{ temp_sel }}: {{ total_temporada }}
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Filtros</h2>
+    <form method="get" class="row g-2">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-3">
+        <label class="form-label">Buscar</label>
+        <input type="search" name="q" class="form-control" value="{{ filtro_q }}" placeholder="Detalle, documento…">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Orden</label>
+        <select name="orden" class="form-select">
+          {% for key, label in orden_opts %}
+          <option value="{{ key }}" {% if key == orden_sel %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        {{ pdf_btn(pdf_historial_url, '📥 PDF TEMPORADA', 'btn-outline-success w-100') }}
+      </div>
+    </form>
+  </div>
+
+  <p class="small text-muted mb-2">{{ n_movimientos }} movimiento(s) · Total filtrado: <strong>{{ total_filtrado }}</strong></p>
+
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Documento</th>
+            <th>Detalle / Item</th>
+            <th>Monto</th>
+            {% if es_admin and not solo_lectura %}<th class="text-end">Acciones</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in historial_rows %}
+          <tr>
+            <td>{{ row.fecha }}</td>
+            <td>{{ row.documento }}</td>
+            <td>{{ row.item }}</td>
+            <td class="fw-semibold">{{ row.monto }}</td>
+            {% if es_admin and not solo_lectura %}
+            <td class="text-end">
+              <form method="post" class="d-inline-flex flex-wrap gap-1 justify-content-end align-items-center"
+                    onsubmit="return confirm('¿Eliminar el registro ID {{ row.id }} ({{ row.item }})? Esta acción no se puede deshacer.');">
+                <input type="hidden" name="action" value="eliminar">
+                <input type="hidden" name="sec" value="historial">
+                <input type="hidden" name="temp" value="{{ temp_sel }}">
+                <input type="hidden" name="mov_id" value="{{ row.id }}">
+                <input type="hidden" name="q" value="{{ filtro_q }}">
+                <input type="hidden" name="desde" value="{{ filtro_desde }}">
+                <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+                <input type="hidden" name="orden" value="{{ orden_sel }}">
+                <input type="password" name="clave_maestra" class="form-control form-control-sm" style="width:7rem" placeholder="Clave" required aria-label="Clave maestra">
+                <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar</button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not historial_rows %}
+    <p class="text-muted p-3 mb-0">Sin registros para los filtros seleccionados.</p>
+    {% endif %}
+  </div>
+
+  {% if es_admin and mov_edit and not solo_lectura %}
+  <div class="panel-card">
+    <h2 class="h6">Corregir movimientos</h2>
+    <form method="get" class="mb-2">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="q" value="{{ filtro_q }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <input type="hidden" name="orden" value="{{ orden_sel }}">
+      <select name="mov_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for o in mov_opts %}
+        <option value="{{ o.id }}" {% if o.id == mov_edit.id %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <form method="post" class="row g-2 mb-2">
+      <input type="hidden" name="action" value="corregir">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="mov_id" value="{{ mov_edit.id }}">
+      <input type="hidden" name="q" value="{{ filtro_q }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <input type="hidden" name="orden" value="{{ orden_sel }}">
+      <div class="col-md-3"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ mov_edit.fecha_raw }}" min="{{ fi_iso }}" max="{{ ff_iso }}"></div>
+      <div class="col-md-3"><label class="form-label small">Documento</label><input type="text" name="documento" id="espDoc" class="form-control form-control-sm" value="{{ mov_edit.documento }}" {% if mov_edit.documento and mov_edit.documento.startswith('INT-') %}readonly{% endif %}></div>
+      <div class="col-md-4"><label class="form-label small">Detalle</label><input type="text" name="item" class="form-control form-control-sm" value="{{ mov_edit.item }}" required></div>
+      <div class="col-md-2"><label class="form-label small">Monto ($)</label><input type="number" name="monto" class="form-control form-control-sm" value="{{ mov_edit.monto_raw|int }}" min="1" step="1" required></div>
+      <div class="col-md-3"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="espSinDoc" {% if mov_edit.documento and mov_edit.documento.startswith('INT-') %}checked{% endif %} onchange="toggleEspDoc(this.checked)"><label class="form-check-label small" for="espSinDoc">Folio interno</label></div></div>
+      <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button></div>
+    </form>
+    <form method="post" class="row g-2" onsubmit="return confirm('¿Eliminar el registro seleccionado (ID {{ mov_edit.id }})? Esta acción no se puede deshacer.');">
+      <input type="hidden" name="action" value="eliminar">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="mov_id" value="{{ mov_edit.id }}">
+      <input type="hidden" name="q" value="{{ filtro_q }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <input type="hidden" name="orden" value="{{ orden_sel }}">
+      <div class="col-md-4"><label class="form-label small">Clave maestra p/ eliminar</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-4 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar registro</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  {% elif sec_activa == 'registro' %}
+  {% if solo_lectura %}
+  <div class="alert alert-warning">Modo solo lectura: no puede registrar gastos.</div>
+  {% else %}
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Registrar gasto El Espino</h2>
+    <p class="small text-muted">Temporada {{ temp_sel }} · fechas válidas entre {{ fi }} y {{ ff }}</p>
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="registrar">
+      <input type="hidden" name="sec" value="registro">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <div class="col-md-3">
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha" class="form-control" value="{{ fecha_def }}" min="{{ fi_iso }}" max="{{ ff_iso }}" required>
+      </div>
+      <div class="col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="regSinDoc" onchange="toggleRegDoc(this.checked)">
+          <label class="form-check-label" for="regSinDoc">Sin documento oficial (folio interno)</label>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">N° documento / factura</label>
+        <input type="text" name="documento" id="regDoc" class="form-control" placeholder="Factura o boleta">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Detalle / item de gasto</label>
+        <input type="text" name="item" class="form-control" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Monto total liquidado ($)</label>
+        <input type="number" name="monto" class="form-control" min="1" step="1" required>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Guardar registro El Espino</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  {% elif sec_activa == 'bodega' %}
+  {% if alerta_lc %}
+  <div class="alert alert-warning">
+    <strong>Salida registrada.</strong> Anote en <strong>Libro de Campo → Ingreso aplicación</strong>:
+    <strong>{{ alerta_lc.producto }}</strong> — {{ alerta_lc.cantidad }} {{ alerta_lc.um }} — cuartel <strong>{{ alerta_lc.cuarteles|join(', ') }}</strong>
+  </div>
+  {% endif %}
+  <p class="small text-muted mb-2">Movimientos imputados al cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong></p>
+
+  <ul class="nav nav-pills mb-3 gap-1 flex-wrap">
+    {% for key, label in bodega_ops %}
+    <li class="nav-item">
+      <a class="nav-link {% if key == op_activa %}active{% endif %}"
+         href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op=key, desde=filtro_desde, hasta=filtro_hasta, q=filtro_q|default('')) }}">{{ label }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% if op_activa == 'stock' %}
+  <p class="small text-muted mb-2">Stock imputado a <strong>{{ cc_espino|default('EL ESPINO') }}</strong> (ingresos − salidas). No modifica la bodega La Concepción.</p>
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="bodega">
+      <input type="hidden" name="op" value="stock">
+      <div class="col-md-8">
+        <label class="form-label">Buscar producto, familia o ingrediente activo</label>
+        <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="Ej: urea, glifosato…">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  {% if stock_rows %}
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in stock_rows %}
+          <tr>{% for c in stock_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No hay productos que coincidan con la búsqueda.</div>
+  {% endif %}
+  {% if pdf_stock_url %}
+  <div class="d-flex justify-content-end mb-3">
+    {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK EL ESPINO') }}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="panel-card mb-3">
+    {% if solo_lectura %}
+    <div class="alert alert-warning mb-0">Modo solo lectura.</div>
+    {% elif op_activa == 'nuevo' %}
+    <h2 class="h6 panel-title">Crear producto</h2>
+    <p class="small text-muted">Catálogo compartido del demo. El stock de El Espino parte en cero hasta registrar ingresos.</p>
+    <form method="post" class="row g-3 mt-1">
+      <input type="hidden" name="action" value="bodega_ingreso">
+      <input type="hidden" name="sec" value="bodega">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="modo" value="nuevo">
+      <input type="hidden" name="op" value="nuevo">
+      <div class="col-md-6">
+        <label class="form-label">Nombre comercial</label>
+        <input type="text" name="nombre" class="form-control form-control-sm" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Familia</label>
+        <select name="familia" class="form-select form-select-sm" required>
+          <option value="">— Seleccione familia —</option>
+          {% for f in familias_prod %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Ingrediente activo (ING. activo)</label>
+        <input type="text" name="ingrediente_activo" class="form-control form-control-sm" placeholder="Ej. Glifosato, Tebuconazol" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Unidad</label>
+        <select name="unidad_medida" class="form-select form-select-sm">
+          {% for u in unidades_medida %}<option value="{{ u }}" {% if u == um_default %}selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Stock inicial El Espino</label>
+        <input type="number" name="stock" class="form-control form-control-sm" min="0" step="0.01" value="0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">PMP ($)</label>
+        <input type="number" name="precio_medio" class="form-control form-control-sm" min="0" step="1" value="0">
+      </div>
+      <div class="col-12"><button type="submit" class="btn btn-primary">Registrar producto</button></div>
+    </form>
+    {% elif op_activa == 'salida' %}
+    <h2 class="h6 panel-title">Registrar salida</h2>
+    {% if not productos_salida %}
+    <div class="alert alert-warning mb-0">No hay productos con stock disponible.</div>
+    {% else %}
+    <form method="post" class="row g-3 mt-1">
+      <input type="hidden" name="action" value="bodega_salida">
+      <input type="hidden" name="sec" value="bodega">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="op" value="salida">
+      <div class="col-md-6"><label class="form-label">Insumo</label>
+        <select name="producto_id" class="form-select" required>
+          <option value="">— Seleccione —</option>
+          {% for p in productos_salida %}
+          <option value="{{ p.id }}">{{ p.producto }} ({{ p.unidad_medida }}) — stock {{ p.stock_fmt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3"><label class="form-label">Cantidad</label><input type="number" name="cantidad" class="form-control" min="0.01" step="0.01" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Registrar salida</button></div>
+    </form>
+    {% endif %}
+    {% else %}
+    <h2 class="h6 panel-title">Registrar ingreso</h2>
+    <form method="post" class="row g-3 mt-1">
+      <input type="hidden" name="action" value="bodega_ingreso">
+      <input type="hidden" name="sec" value="bodega">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="modo" value="existente">
+      <input type="hidden" name="op" value="ingreso">
+      <div class="col-md-6"><label class="form-label">Insumo</label>
+        <select name="producto_id" class="form-select" required>
+          <option value="">— Seleccione —</option>
+          {% for p in productos_ingreso %}
+          <option value="{{ p.id }}">{{ p.producto }} ({{ p.unidad_medida }}) — stock {{ p.stock_fmt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3"><label class="form-label">Cantidad ingreso</label><input type="number" name="cantidad" class="form-control" min="0.01" step="0.01" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Registrar ingreso</button></div>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="panel-card">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h2 class="h6 mb-0">Historial movimientos</h2>
+      <div class="d-flex flex-wrap gap-2">
+        {{ pdf_btn(pdf_ingreso_url, '📥 PDF INGRESOS') }}
+        {{ pdf_btn(pdf_salida_url, '📥 PDF SALIDAS') }}
+      </div>
+    </div>
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="bodega">
+      <input type="hidden" name="op" value="{{ op_activa }}">
+      <div class="col-md-3"><label class="form-label small">Desde</label><input type="date" name="desde" class="form-control form-control-sm" value="{{ filtro_desde }}"></div>
+      <div class="col-md-3"><label class="form-label small">Hasta</label><input type="date" name="hasta" class="form-control form-control-sm" value="{{ filtro_hasta }}"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm">Filtrar</button></div>
+    </form>
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <h3 class="h6 text-muted">Ingresos</h3>
+        {% if ingreso_rows %}
+        <div class="table-responsive">
+          <table class="table table-sm table-striped">
+            <thead><tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Valor</th></tr></thead>
+            <tbody>
+              {% for r in ingreso_rows %}
+              <tr><td>{{ r.fecha }}</td><td>{{ r.producto }}</td><td>{{ r.cantidad }} {{ r.um }}</td><td>{{ r.valor }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">Sin ingresos en el periodo.</p>
+        {% endif %}
+      </div>
+      <div class="col-lg-6">
+        <h3 class="h6 text-muted">Salidas</h3>
+        {% if salida_rows %}
+        <div class="table-responsive">
+          <table class="table table-sm table-striped">
+            <thead><tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Valor</th></tr></thead>
+            <tbody>
+              {% for r in salida_rows %}
+              <tr><td>{{ r.fecha }}</td><td>{{ r.producto }}</td><td>{{ r.cantidad }} {{ r.um }}</td><td>{{ r.valor }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">Sin salidas en el periodo.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleRegDoc(sinDoc) {
+  const inp = document.getElementById('regDoc');
+  if (!inp) return;
+  if (sinDoc) { inp.value = 'AUTOGENERADO'; inp.readOnly = true; inp.removeAttribute('required'); }
+  else { inp.value = ''; inp.readOnly = false; }
+}
+function toggleEspDoc(sinDoc) {
+  const inp = document.getElementById('espDoc');
+  if (!inp) return;
+  if (sinDoc) { inp.readOnly = true; }
+  else { inp.readOnly = false; }
+}
+</script>
+{% endblock %}
