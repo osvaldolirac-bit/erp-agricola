@@ -294,10 +294,8 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
             ctx.update(_registro(demo, fi, ff))
         elif sec == "bodega_stock":
             ctx.update(espino_bodega.gather_bodega_stock(demo, conn))
-        elif sec == "bodega_ingreso":
-            ctx.update(espino_bodega.gather_bodega_ingreso(demo, conn))
-        elif sec == "bodega_salida":
-            ctx.update(espino_bodega.gather_bodega_salida(demo, conn))
+        elif sec == "bodega_mov":
+            ctx.update(espino_bodega.gather_bodega_mov(demo, conn))
         return ctx
     finally:
         conn.close()
@@ -327,11 +325,17 @@ def view(user_email: str, user_rol: str):
                 flash(result["msg"], "success" if result["ok"] else "danger")
                 extra = {"sec": sec, "temp": temp}
                 extra.update(result.get("extra") or {})
-                for k in ("q", "desde", "hasta", "orden", "modo"):
+                for k in ("q", "desde", "hasta", "orden", "op"):
                     if request.form.get(k):
                         extra[k] = request.form.get(k)
-                if sec in _BODEGA_SECS and action.startswith("bodega_"):
-                    extra["sec"] = sec
+                if action.startswith("bodega_"):
+                    extra["sec"] = "bodega_mov"
+                    if action == "bodega_ingreso":
+                        extra["op"] = request.form.get("modo") or "ingreso"
+                        if extra["op"] == "existente":
+                            extra["op"] = "ingreso"
+                    elif action == "bodega_salida":
+                        extra["op"] = "salida"
                 if action == "corregir" and "mov_id" not in extra:
                     extra["mov_id"] = request.form.get("mov_id", "")
                 return _redirect_espino(**extra)

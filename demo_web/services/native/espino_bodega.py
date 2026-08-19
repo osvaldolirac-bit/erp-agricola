@@ -12,9 +12,14 @@ from demo_web.services.native._helpers import hoy_demo, parse_date
 CC_ESPINO = "EL ESPINO"
 
 BODEGA_SECCIONES = [
-    ("bodega_stock", "📊 STOCK"),
-    ("bodega_ingreso", "📥 INGRESO"),
-    ("bodega_salida", "🔄 SALIDA"),
+    ("bodega_mov", "📦 BODEGA"),
+    ("bodega_stock", "📊 STOCK ACTUAL"),
+]
+
+BODEGA_OPS = [
+    ("ingreso", "📥 Ingreso"),
+    ("nuevo", "➕ Crear producto"),
+    ("salida", "🔄 Salida"),
 ]
 
 
@@ -150,37 +155,34 @@ def _movimientos_cc(demo, conn, tipo: str, dias: int = 90) -> tuple[list[dict], 
     return rows, pdf_url
 
 
-def gather_bodega_ingreso(demo, conn) -> dict:
-    rows, pdf_url = _movimientos_cc(demo, conn, "Ingreso")
+def _bodega_op_activa() -> str:
+    op = (request.args.get("op") or request.form.get("op") or "ingreso").strip().lower()
+    if op not in {k for k, _ in BODEGA_OPS}:
+        op = "ingreso"
+    return op
+
+
+def gather_bodega_mov(demo, conn) -> dict:
+    ingreso_rows, pdf_ingreso = _movimientos_cc(demo, conn, "Ingreso")
+    salida_rows, pdf_salida = _movimientos_cc(demo, conn, "Salida")
     hoy = hoy_demo(demo)
     fi = parse_date(request.args.get("desde"), hoy - timedelta(days=90))
     ff = parse_date(request.args.get("hasta"), hoy)
     return {
+        "bodega_ops": BODEGA_OPS,
+        "op_activa": _bodega_op_activa(),
         "productos_ingreso": _productos_todos(demo, conn),
+        "productos_salida": _productos_con_stock(demo, conn),
         "familias_prod": demo.listar_familias_producto(conn),
         "unidades_medida": demo.UNIDADES_MEDIDA_INSUMO,
         "um_default": demo.DEFAULT_UNIDAD_INSUMO,
-        "ingreso_rows": rows,
-        "pdf_ingreso_url": pdf_url,
+        "ingreso_rows": ingreso_rows,
+        "salida_rows": salida_rows,
+        "pdf_ingreso_url": pdf_ingreso,
+        "pdf_salida_url": pdf_salida,
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
-        "modo_ingreso": request.args.get("modo", "existente"),
-    }
-
-
-def gather_bodega_salida(demo, conn) -> dict:
-    rows, pdf_url = _movimientos_cc(demo, conn, "Salida")
-    hoy = hoy_demo(demo)
-    fi = parse_date(request.args.get("desde"), hoy - timedelta(days=90))
-    ff = parse_date(request.args.get("hasta"), hoy)
-    alerta = session.pop("espino_bodega_alerta_lc", None)
-    return {
-        "productos_salida": _productos_con_stock(demo, conn),
-        "salida_rows": rows,
-        "pdf_salida_url": pdf_url,
-        "filtro_desde": fi.isoformat(),
-        "filtro_hasta": ff.isoformat(),
-        "alerta_lc": alerta,
+        "alerta_lc": session.pop("espino_bodega_alerta_lc", None),
         "cc_espino": CC_ESPINO,
     }
 
