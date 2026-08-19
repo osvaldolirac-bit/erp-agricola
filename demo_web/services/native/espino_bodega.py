@@ -12,14 +12,14 @@ from demo_web.services.native._helpers import hoy_demo, parse_date
 CC_ESPINO = "EL ESPINO"
 
 BODEGA_SECCIONES = [
-    ("bodega_mov", "📦 BODEGA"),
-    ("bodega_stock", "📊 STOCK ACTUAL"),
+    ("bodega", "📦 BODEGA"),
 ]
 
 BODEGA_OPS = [
     ("ingreso", "📥 Ingreso"),
-    ("nuevo", "➕ Crear producto"),
+    ("stock", "📊 Stock"),
     ("salida", "🔄 Salida"),
+    ("nuevo", "➕ Crear producto"),
 ]
 
 
@@ -162,15 +162,16 @@ def _bodega_op_activa() -> str:
     return op
 
 
-def gather_bodega_mov(demo, conn) -> dict:
+def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
     ingreso_rows, pdf_ingreso = _movimientos_cc(demo, conn, "Ingreso")
     salida_rows, pdf_salida = _movimientos_cc(demo, conn, "Salida")
     hoy = hoy_demo(demo)
     fi = parse_date(request.args.get("desde"), hoy - timedelta(days=90))
     ff = parse_date(request.args.get("hasta"), hoy)
-    return {
+    op = op_override or _bodega_op_activa()
+    ctx = {
         "bodega_ops": BODEGA_OPS,
-        "op_activa": _bodega_op_activa(),
+        "op_activa": op,
         "productos_ingreso": _productos_todos(demo, conn),
         "productos_salida": _productos_con_stock(demo, conn),
         "familias_prod": demo.listar_familias_producto(conn),
@@ -185,6 +186,13 @@ def gather_bodega_mov(demo, conn) -> dict:
         "alerta_lc": session.pop("espino_bodega_alerta_lc", None),
         "cc_espino": CC_ESPINO,
     }
+    ctx.update(gather_bodega_stock(demo, conn))
+    return ctx
+
+
+def gather_bodega_mov(demo, conn) -> dict:
+    """Alias retrocompatible."""
+    return gather_bodega(demo, conn)
 
 
 def post_salida(demo, conn) -> dict:

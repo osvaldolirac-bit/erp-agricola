@@ -272,6 +272,12 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
     bind_user_session(user_email, user_rol)
     nombre, fi, ff = temporada_sel(demo, temporadas=demo.TEMPORADAS_ESPINO)
     sec = request.args.get("sec", "historial")
+    bodega_op_override = None
+    if sec == "bodega_mov":
+        sec = "bodega"
+    elif sec == "bodega_stock":
+        sec = "bodega"
+        bodega_op_override = "stock"
     if sec not in {k for k, _ in SECCIONES}:
         sec = "historial"
 
@@ -292,10 +298,8 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
             ctx.update(_historial(demo, conn, nombre, fi, ff))
         elif sec == "registro":
             ctx.update(_registro(demo, fi, ff))
-        elif sec == "bodega_stock":
-            ctx.update(espino_bodega.gather_bodega_stock(demo, conn))
-        elif sec == "bodega_mov":
-            ctx.update(espino_bodega.gather_bodega_mov(demo, conn))
+        elif sec == "bodega":
+            ctx.update(espino_bodega.gather_bodega(demo, conn, op_override=bodega_op_override))
         return ctx
     finally:
         conn.close()
@@ -309,6 +313,8 @@ def view(user_email: str, user_rol: str):
     if request.method == "POST":
         action = request.form.get("action", "")
         sec = request.form.get("sec") or request.args.get("sec", "registro")
+        if sec in ("bodega_mov", "bodega_stock"):
+            sec = "bodega"
         temp = request.form.get("temp") or nombre
         conn = demo.conectar_db()
         try:
@@ -329,7 +335,7 @@ def view(user_email: str, user_rol: str):
                     if request.form.get(k):
                         extra[k] = request.form.get(k)
                 if action.startswith("bodega_"):
-                    extra["sec"] = "bodega_mov"
+                    extra["sec"] = "bodega"
                     if action == "bodega_ingreso":
                         extra["op"] = request.form.get("modo") or "ingreso"
                         if extra["op"] == "existente":

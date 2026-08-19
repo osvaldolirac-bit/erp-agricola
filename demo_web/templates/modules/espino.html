@@ -190,7 +190,7 @@
   </div>
   {% endif %}
 
-  {% elif sec_activa == 'bodega_mov' %}
+  {% elif sec_activa == 'bodega' %}
   {% if alerta_lc %}
   <div class="alert alert-warning">
     <strong>Salida registrada.</strong> Anote en <strong>Libro de Campo → Ingreso aplicación</strong>:
@@ -203,11 +203,50 @@
     {% for key, label in bodega_ops %}
     <li class="nav-item">
       <a class="nav-link {% if key == op_activa %}active{% endif %}"
-         href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega_mov', op=key, desde=filtro_desde, hasta=filtro_hasta) }}">{{ label }}</a>
+         href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op=key, desde=filtro_desde, hasta=filtro_hasta, q=filtro_q|default('')) }}">{{ label }}</a>
     </li>
     {% endfor %}
   </ul>
 
+  {% if op_activa == 'stock' %}
+  <p class="small text-muted mb-2">Inventario compartido del ERP · movimientos imputados a <strong>{{ cc_espino|default('EL ESPINO') }}</strong></p>
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="bodega">
+      <input type="hidden" name="op" value="stock">
+      <div class="col-md-8">
+        <label class="form-label">Buscar producto, familia o ingrediente activo</label>
+        <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="Ej: urea, glifosato…">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  {% if stock_rows %}
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in stock_rows %}
+          <tr>{% for c in stock_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No hay productos que coincidan con la búsqueda.</div>
+  {% endif %}
+  {% if pdf_stock_url %}
+  <div class="d-flex justify-content-end mb-3">
+    {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK EL ESPINO') }}
+  </div>
+  {% endif %}
+
+  {% else %}
   <div class="panel-card mb-3">
     {% if solo_lectura %}
     <div class="alert alert-warning mb-0">Modo solo lectura.</div>
@@ -215,7 +254,7 @@
     <h2 class="h6 panel-title">Crear producto (apertura stock)</h2>
     <form method="post" class="row g-3 mt-1">
       <input type="hidden" name="action" value="bodega_ingreso">
-      <input type="hidden" name="sec" value="bodega_mov">
+      <input type="hidden" name="sec" value="bodega">
       <input type="hidden" name="temp" value="{{ temp_sel }}">
       <input type="hidden" name="modo" value="nuevo">
       <input type="hidden" name="op" value="nuevo">
@@ -242,7 +281,7 @@
     {% else %}
     <form method="post" class="row g-3 mt-1">
       <input type="hidden" name="action" value="bodega_salida">
-      <input type="hidden" name="sec" value="bodega_mov">
+      <input type="hidden" name="sec" value="bodega">
       <input type="hidden" name="temp" value="{{ temp_sel }}">
       <input type="hidden" name="op" value="salida">
       <div class="col-md-6"><label class="form-label">Insumo</label>
@@ -261,7 +300,7 @@
     <h2 class="h6 panel-title">Registrar ingreso</h2>
     <form method="post" class="row g-3 mt-1">
       <input type="hidden" name="action" value="bodega_ingreso">
-      <input type="hidden" name="sec" value="bodega_mov">
+      <input type="hidden" name="sec" value="bodega">
       <input type="hidden" name="temp" value="{{ temp_sel }}">
       <input type="hidden" name="modo" value="existente">
       <input type="hidden" name="op" value="ingreso">
@@ -289,7 +328,7 @@
     </div>
     <form method="get" class="row g-2 mb-3">
       <input type="hidden" name="temp" value="{{ temp_sel }}">
-      <input type="hidden" name="sec" value="bodega_mov">
+      <input type="hidden" name="sec" value="bodega">
       <input type="hidden" name="op" value="{{ op_activa }}">
       <div class="col-md-3"><label class="form-label small">Desde</label><input type="date" name="desde" class="form-control form-control-sm" value="{{ filtro_desde }}"></div>
       <div class="col-md-3"><label class="form-label small">Hasta</label><input type="date" name="hasta" class="form-control form-control-sm" value="{{ filtro_hasta }}"></div>
@@ -331,42 +370,6 @@
         {% endif %}
       </div>
     </div>
-  </div>
-
-  {% elif sec_activa == 'bodega_stock' %}
-  <p class="small text-muted mb-2">Inventario compartido del ERP · movimientos imputados a <strong>{{ espino_bodega_cc|default('EL ESPINO') }}</strong></p>
-  <div class="panel-card mb-3">
-    <form method="get" class="row g-2">
-      <input type="hidden" name="temp" value="{{ temp_sel }}">
-      <input type="hidden" name="sec" value="bodega_stock">
-      <div class="col-md-8">
-        <label class="form-label">Buscar producto, familia o ingrediente activo</label>
-        <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="Ej: urea, glifosato…">
-      </div>
-      <div class="col-md-4 d-flex align-items-end">
-        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
-      </div>
-    </form>
-  </div>
-  {% if stock_rows %}
-  <div class="panel-card mb-3">
-    <div class="table-responsive">
-      <table class="table table-sm table-striped demo-datatable w-100">
-        <thead><tr>{% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}</tr></thead>
-        <tbody>
-          {% for row in stock_rows %}
-          <tr>{% for c in stock_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  {% else %}
-  <div class="alert alert-info">No hay productos que coincidan con la búsqueda.</div>
-  {% endif %}
-  {% if pdf_stock_url %}
-  <div class="d-flex justify-content-end mb-3">
-    {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK EL ESPINO') }}
   </div>
   {% endif %}
 
