@@ -13,6 +13,7 @@ REMOTE = "/root/demo-web"
 FILES = [
     ("demo_web/services/native/espino.py", "demo_web/services/native/espino.py"),
     ("demo_web/services/native/espino_bodega.py", "demo_web/services/native/espino_bodega.py"),
+    ("demo_web/services/native/espino_maquinaria.py", "demo_web/services/native/espino_maquinaria.py"),
     ("demo_web/templates/modules/espino.html", "demo_web/templates/modules/espino.html"),
 ]
 

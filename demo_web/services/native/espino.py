@@ -5,12 +5,13 @@ from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native import espino_bodega
+from demo_web.services.native import espino_bodega, espino_maquinaria
 from demo_web.services.native._helpers import parse_date, temporada_sel
 
 SECCIONES = [
     ("historial", "📜 HISTORIAL"),
     ("registro", "➕ REGISTRO"),
+    ("maquinaria", "🚜 TRABAJOS MAQUINARIA"),
     *espino_bodega.BODEGA_SECCIONES,
 ]
 
@@ -298,6 +299,8 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
             ctx.update(_historial(demo, conn, nombre, fi, ff))
         elif sec == "registro":
             ctx.update(_registro(demo, fi, ff))
+        elif sec == "maquinaria":
+            ctx.update(espino_maquinaria.gather_maquinaria(demo, conn, fi, ff))
         elif sec == "bodega":
             ctx.update(espino_bodega.gather_bodega(demo, conn, op_override=bodega_op_override))
         return ctx
@@ -322,12 +325,17 @@ def view(user_email: str, user_rol: str):
                 "registrar": _post_registrar,
                 "corregir": _post_corregir,
                 "eliminar": _post_eliminar,
+                "maquinaria_registrar": espino_maquinaria.post_registrar,
+                "maquinaria_ingreso": espino_maquinaria.post_ingreso,
                 "bodega_salida": espino_bodega.post_salida,
                 "bodega_ingreso": espino_bodega.post_ingreso,
             }
             fn = handlers.get(action)
             if fn:
-                result = fn(demo, conn, fi, ff)
+                if action.startswith("bodega_"):
+                    result = fn(demo, conn)
+                else:
+                    result = fn(demo, conn, fi, ff)
                 flash(result["msg"], "success" if result["ok"] else "danger")
                 extra = {"sec": sec, "temp": temp}
                 extra.update(result.get("extra") or {})
@@ -337,11 +345,15 @@ def view(user_email: str, user_rol: str):
                 if action.startswith("bodega_"):
                     extra["sec"] = "bodega"
                     if action == "bodega_ingreso":
-                        extra["op"] = request.form.get("modo") or "ingreso"
+                        extra["op"] = request.form.get("op") or request.form.get("modo") or "ingreso"
                         if extra["op"] == "existente":
                             extra["op"] = "ingreso"
                     elif action == "bodega_salida":
                         extra["op"] = "salida"
+                if action.startswith("maquinaria_"):
+                    extra["sec"] = "maquinaria"
+                    if "op" not in extra:
+                        extra["op"] = request.form.get("op") or "libro"
                 if action == "corregir" and "mov_id" not in extra:
                     extra["mov_id"] = request.form.get("mov_id", "")
                 return _redirect_espino(**extra)

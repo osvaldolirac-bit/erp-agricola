@@ -65,7 +65,6 @@
             <th>Documento</th>
             <th>Detalle / Item</th>
             <th>Monto</th>
-            {% if es_admin and not solo_lectura %}<th class="text-end">Acciones</th>{% endif %}
           </tr>
         </thead>
         <tbody>
@@ -75,23 +74,6 @@
             <td>{{ row.documento }}</td>
             <td>{{ row.item }}</td>
             <td class="fw-semibold">{{ row.monto }}</td>
-            {% if es_admin and not solo_lectura %}
-            <td class="text-end">
-              <form method="post" class="d-inline-flex flex-wrap gap-1 justify-content-end align-items-center"
-                    onsubmit="return confirm('¿Eliminar el registro ID {{ row.id }} ({{ row.item }})? Esta acción no se puede deshacer.');">
-                <input type="hidden" name="action" value="eliminar">
-                <input type="hidden" name="sec" value="historial">
-                <input type="hidden" name="temp" value="{{ temp_sel }}">
-                <input type="hidden" name="mov_id" value="{{ row.id }}">
-                <input type="hidden" name="q" value="{{ filtro_q }}">
-                <input type="hidden" name="desde" value="{{ filtro_desde }}">
-                <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
-                <input type="hidden" name="orden" value="{{ orden_sel }}">
-                <input type="password" name="clave_maestra" class="form-control form-control-sm" style="width:7rem" placeholder="Clave" required aria-label="Clave maestra">
-                <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar</button>
-              </form>
-            </td>
-            {% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -104,7 +86,7 @@
 
   {% if es_admin and mov_edit and not solo_lectura %}
   <div class="panel-card">
-    <h2 class="h6">Corregir movimientos</h2>
+    <h2 class="h6">Corregir o eliminar movimiento</h2>
     <form method="get" class="mb-2">
       <input type="hidden" name="temp" value="{{ temp_sel }}">
       <input type="hidden" name="sec" value="historial">
@@ -188,6 +170,191 @@
       </div>
     </form>
   </div>
+  {% endif %}
+
+  {% elif sec_activa == 'maquinaria' %}
+  <ul class="nav nav-pills mb-3 gap-1 flex-wrap">
+    {% for key, label in maq_ops %}
+    <li class="nav-item">
+      <a class="nav-link {% if key == maq_op_activa %}active{% endif %}"
+         href="{{ url_for('modules.espino', temp=temp_sel, sec='maquinaria', op=key, desde=filtro_desde, hasta=filtro_hasta) }}">{{ label }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% if maq_op_activa == 'libro' %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="libro">
+      <div class="col-md-3">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        {{ pdf_btn(pdf_maquinaria_url, '📥 PDF LIBRO MAYOR', 'btn-outline-success w-100') }}
+      </div>
+    </form>
+  </div>
+  <p class="small text-muted mb-2">
+    {{ libro_n|default(0) }} movimiento(s) ·
+    Debe (trabajos): <strong>{{ libro_tot_debe|default('$0') }}</strong> ·
+    Haber (ingresos): <strong>{{ libro_tot_haber|default('$0') }}</strong> ·
+    Saldo: <strong>{{ libro_saldo|default('$0') }}</strong>
+  </p>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered demo-datatable w-100">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Documento</th>
+            <th>Detalle</th>
+            <th class="text-end">Debe</th>
+            <th class="text-end">Haber</th>
+            <th class="text-end">Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in libro_rows|default([]) %}
+          <tr>
+            <td>{{ row.fecha }}</td>
+            <td>{{ row.tipo }}</td>
+            <td>{{ row.documento }}</td>
+            <td>{{ row.detalle }}</td>
+            <td class="text-end">{{ row.debe }}</td>
+            <td class="text-end">{{ row.haber }}</td>
+            <td class="text-end fw-semibold">{{ row.saldo }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not libro_rows %}
+    <p class="text-muted p-3 mb-0">Sin movimientos en el periodo.</p>
+    {% endif %}
+  </div>
+
+  {% elif maq_op_activa == 'ingreso' %}
+  {% if not solo_lectura %}
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Registrar ingreso / abono</h2>
+    <p class="small text-muted">Abonos o pagos registrados en el Haber del libro mayor.</p>
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="maquinaria_ingreso">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="ingreso">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <div class="col-md-3">
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha" class="form-control" value="{{ fecha_def }}" min="{{ fi_iso }}" max="{{ ff_iso }}" required>
+      </div>
+      <div class="col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="maqIngSinDoc" onchange="toggleMaqIngDoc(this.checked)">
+          <label class="form-check-label" for="maqIngSinDoc">Folio interno</label>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">N° documento</label>
+        <input type="text" name="documento" id="maqIngDoc" class="form-control" placeholder="Comprobante de pago">
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">Detalle del abono</label>
+        <input type="text" name="detalle" class="form-control" required placeholder="Ej. Pago parcial faenas julio">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Monto abono ($)</label>
+        <input type="number" name="monto" class="form-control" min="1" step="1" required>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Guardar ingreso</button>
+      </div>
+    </form>
+  </div>
+  {% else %}
+  <div class="alert alert-warning">Modo solo lectura.</div>
+  {% endif %}
+
+  {% else %}
+  {% if not solo_lectura %}
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Registrar trabajo maquinaria</h2>
+    <p class="small text-muted">El monto total del trabajo se imputa al Debe del libro mayor (desglose tractor / implemento).</p>
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="maquinaria_registrar">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="trabajo">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <div class="col-md-3">
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha" class="form-control" value="{{ fecha_def }}" min="{{ fi_iso }}" max="{{ ff_iso }}" required>
+      </div>
+      <div class="col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="maqSinDoc" onchange="toggleMaqDoc(this.checked)">
+          <label class="form-check-label" for="maqSinDoc">Folio interno</label>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">N° documento</label>
+        <input type="text" name="documento" id="maqDoc" class="form-control" placeholder="Factura o boleta">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Tractor</label>
+        <select name="tractor_codigo" class="form-select" required>
+          <option value="">— Seleccione —</option>
+          {% for t in tractores|default([]) %}
+          <option value="{{ t.codigo }}">{{ t.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Implemento (opcional)</label>
+        <select name="implemento_codigo" class="form-select">
+          <option value="">— Sin implemento —</option>
+          {% for t in implementos|default([]) %}
+          <option value="{{ t.codigo }}">{{ t.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Detalle del trabajo</label>
+        <input type="text" name="trabajo" class="form-control" required placeholder="Ej. surcos, picado poda…">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hectáreas</label>
+        <input type="number" name="hectareas" class="form-control" min="0" step="0.01" value="0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Horas</label>
+        <input type="number" name="horas" class="form-control" min="0" step="0.01">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Monto tractor ($)</label>
+        <input type="number" name="monto_tractor" class="form-control" min="0" step="1" value="0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Monto implemento ($)</label>
+        <input type="number" name="monto_implemento" class="form-control" min="0" step="1" value="0">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Guardar trabajo</button>
+      </div>
+    </form>
+  </div>
+  {% else %}
+  <div class="alert alert-warning">Modo solo lectura.</div>
+  {% endif %}
   {% endif %}
 
   {% elif sec_activa == 'bodega' %}
@@ -406,6 +573,18 @@ function toggleEspDoc(sinDoc) {
   if (!inp) return;
   if (sinDoc) { inp.readOnly = true; }
   else { inp.readOnly = false; }
+}
+function toggleMaqDoc(sinDoc) {
+  const inp = document.getElementById('maqDoc');
+  if (!inp) return;
+  if (sinDoc) { inp.value = 'AUTOGENERADO'; inp.readOnly = true; inp.removeAttribute('required'); }
+  else { inp.value = ''; inp.readOnly = false; }
+}
+function toggleMaqIngDoc(sinDoc) {
+  const inp = document.getElementById('maqIngDoc');
+  if (!inp) return;
+  if (sinDoc) { inp.value = 'AUTOGENERADO'; inp.readOnly = true; inp.removeAttribute('required'); }
+  else { inp.value = ''; inp.readOnly = false; }
 }
 </script>
 {% endblock %}
