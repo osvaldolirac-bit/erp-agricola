@@ -5,12 +5,16 @@ from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import parse_date, temporada_sel
 
 SECCIONES = [
     ("historial", "📜 HISTORIAL"),
     ("registro", "➕ REGISTRO"),
+    *espino_bodega.BODEGA_SECCIONES,
 ]
+
+_BODEGA_SECS = {k for k, _ in espino_bodega.BODEGA_SECCIONES}
 
 TABLA = "gastos_espino"
 ETIQUETA = "EL ESPINO"
@@ -288,6 +292,12 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
             ctx.update(_historial(demo, conn, nombre, fi, ff))
         elif sec == "registro":
             ctx.update(_registro(demo, fi, ff))
+        elif sec == "bodega_stock":
+            ctx.update(espino_bodega.gather_bodega_stock(demo, conn))
+        elif sec == "bodega_ingreso":
+            ctx.update(espino_bodega.gather_bodega_ingreso(demo, conn))
+        elif sec == "bodega_salida":
+            ctx.update(espino_bodega.gather_bodega_salida(demo, conn))
         return ctx
     finally:
         conn.close()
@@ -308,6 +318,8 @@ def view(user_email: str, user_rol: str):
                 "registrar": _post_registrar,
                 "corregir": _post_corregir,
                 "eliminar": _post_eliminar,
+                "bodega_salida": espino_bodega.post_salida,
+                "bodega_ingreso": espino_bodega.post_ingreso,
             }
             fn = handlers.get(action)
             if fn:
@@ -315,9 +327,11 @@ def view(user_email: str, user_rol: str):
                 flash(result["msg"], "success" if result["ok"] else "danger")
                 extra = {"sec": sec, "temp": temp}
                 extra.update(result.get("extra") or {})
-                for k in ("q", "desde", "hasta", "orden"):
+                for k in ("q", "desde", "hasta", "orden", "modo"):
                     if request.form.get(k):
                         extra[k] = request.form.get(k)
+                if sec in _BODEGA_SECS and action.startswith("bodega_"):
+                    extra["sec"] = sec
                 if action == "corregir" and "mov_id" not in extra:
                     extra["mov_id"] = request.form.get("mov_id", "")
                 return _redirect_espino(**extra)
