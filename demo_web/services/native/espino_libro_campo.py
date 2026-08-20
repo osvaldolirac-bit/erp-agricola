@@ -120,10 +120,12 @@ def _leer_evento_meta(demo) -> dict:
 
 
 def _siguiente_n_aplicacion(conn) -> int:
+    """Correlativo propio El Espino (no hereda n° del Libro de Campo global)."""
     res = conn.execute(
         "SELECT MAX(CAST(n_aplicacion AS INTEGER)) FROM libro_campo "
-        "WHERE n_aplicacion GLOB '[0-9]*' AND CAST(n_aplicacion AS INTEGER) < ?",
-        (_N_APP_HIST_MIN,),
+        "WHERE UPPER(sector)=? AND n_aplicacion GLOB '[0-9]*' "
+        "AND CAST(n_aplicacion AS INTEGER) < ?",
+        (CC_ESPINO.upper(), _N_APP_HIST_MIN),
     ).fetchone()[0]
     return int(res) + 1 if res is not None else 1
 
