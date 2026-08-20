@@ -5,7 +5,7 @@ from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native import espino_bodega, espino_maquinaria
+from demo_web.services.native import espino_bodega, espino_libro_campo, espino_maquinaria
 from demo_web.services.native._helpers import parse_date, temporada_sel
 
 SECCIONES = [
@@ -13,6 +13,7 @@ SECCIONES = [
     ("registro", "➕ REGISTRO"),
     ("maquinaria", "🚜 TRABAJOS MAQUINARIA"),
     *espino_bodega.BODEGA_SECCIONES,
+    *espino_libro_campo.LIBRO_SECCIONES,
 ]
 
 _BODEGA_SECS = {k for k, _ in espino_bodega.BODEGA_SECCIONES}
@@ -303,6 +304,8 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
             ctx.update(espino_maquinaria.gather_maquinaria(demo, conn, fi, ff, nombre))
         elif sec == "bodega":
             ctx.update(espino_bodega.gather_bodega(demo, conn, op_override=bodega_op_override))
+        elif sec == "libro_campo":
+            ctx.update(espino_libro_campo.gather_libro_campo(demo, conn))
         return ctx
     finally:
         conn.close()
@@ -321,6 +324,25 @@ def view(user_email: str, user_rol: str):
         temp = request.form.get("temp") or nombre
         conn = demo.conectar_db()
         try:
+            if action == "lc_pop_producto":
+                espino_libro_campo.post_pop_producto(demo)
+                flash("Último producto removido del evento.", "info")
+                return _redirect_espino(sec="libro_campo", temp=temp, op="ingreso")
+            lc_handlers = {
+                "lc_agregar_producto": espino_libro_campo.post_agregar_producto,
+                "lc_guardar_evento": espino_libro_campo.post_guardar_evento,
+            }
+            lc_fn = lc_handlers.get(action)
+            if lc_fn:
+                result = lc_fn(demo, conn)
+                flash(result["msg"], "success" if result["ok"] else "danger")
+                extra = {"sec": "libro_campo", "temp": temp}
+                extra.update(result.get("extra") or {})
+                if action == "lc_agregar_producto" and request.form.get("producto"):
+                    extra["prod"] = request.form.get("producto")
+                if "op" not in extra:
+                    extra["op"] = request.form.get("op") or "ingreso"
+                return _redirect_espino(**extra)
             handlers = {
                 "registrar": _post_registrar,
                 "corregir": _post_corregir,

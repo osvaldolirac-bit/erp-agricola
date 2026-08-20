@@ -1,0 +1,232 @@
+{% from "partials/pdf_button.html" import pdf_btn %}
+<p class="small text-muted mb-2">
+  Aplicaciones fitosanitarias cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong> · stock desde bodega El Espino
+</p>
+
+<ul class="nav nav-pills mb-3 gap-1 flex-wrap">
+  {% for key, label in libro_ops %}
+  <li class="nav-item">
+    <a class="nav-link {% if key == lc_op_activa %}active{% endif %}"
+       href="{{ url_for('modules.espino', temp=temp_sel, sec='libro_campo', op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}">{{ label }}</a>
+  </li>
+  {% endfor %}
+</ul>
+
+{% if alerta_bodega_lc %}
+<div class="alert alert-warning">
+  <strong>Aplicación N° {{ '%05d'|format(alerta_bodega_lc.n_app) }} archivada en Libro de Campo El Espino.</strong><br>
+  <strong>Rebajar bodega pendiente</strong> — El stock no se descontó automáticamente.<br>
+  Vaya a <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='movimiento') }}">Bodega → Movimiento → Salida</a></strong>:
+  <ul class="mb-0 mt-1">
+    {% for p in alerta_bodega_lc.productos %}
+    <li><strong>{{ p.producto }}</strong> — {{ p.cantidad }} {{ p.um }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if lc_op_activa == 'historial' %}
+<div class="panel-card mb-3">
+  <h2 class="h6 panel-title">🔍 Filtros</h2>
+  <form method="get" class="row g-2">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="op" value="historial">
+    <div class="col-md-2">
+      <label class="form-label">Desde</label>
+      <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Hasta</label>
+      <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Producto / ing. activo</label>
+      <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="ej. cobre, nordox">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">N° App</label>
+      <input type="text" name="n_app" class="form-control" value="{{ filtro_n_app|default('') }}" placeholder="12">
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+      <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+      {{ pdf_btn(pdf_historial_url, '📥 PDF INFORME', 'btn-outline-success w-100', pdf_historial_filename|default('LIBRO_CAMPO_EL_ESPINO.pdf')) }}
+    </div>
+  </form>
+</div>
+
+{% if historial_grupos %}
+<p class="small text-muted mb-3">
+  <strong>{{ historial_stats.eventos }}</strong> evento(s) · <strong>{{ historial_stats.productos }}</strong> producto(s)
+</p>
+{% for g in historial_grupos %}
+<div class="lc-evento-banner mb-2">
+  <strong>N° {{ '%05d'|format(g.num) }}</strong> &nbsp;|&nbsp;
+  {{ g.fecha }} &nbsp;|&nbsp; {{ g.cuartel }} &nbsp;|&nbsp; {{ g.especie }} &nbsp;|&nbsp;
+  Agua: {{ g.vol_agua }} L &nbsp;|&nbsp; {{ g.maquinaria }} &nbsp;|&nbsp; {{ g.tractor }} &nbsp;|&nbsp;
+  {{ g.aplicador }} &nbsp;|&nbsp; Op.Cert: {{ g.op_cert }}
+</div>
+<div class="panel-card mb-3">
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered mb-0">
+      <thead>
+        <tr><th>Producto</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total</th><th>PHI viable</th></tr>
+      </thead>
+      <tbody>
+        {% for p in g.productos %}
+        <tr>
+          <td>{{ p.producto }}</td><td>{{ p.lote }}</td><td>{{ p.ing_activo }}</td>
+          <td>{{ p.dosis }}</td><td>{{ p.unidad }}</td><td>{{ p.total }}</td><td>{{ p.phi }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-info">No hay registros para los filtros seleccionados.</div>
+{% endif %}
+
+{% elif lc_op_activa == 'desfase' %}
+<div class="alert alert-info small">
+  Detecta productos <strong>PPPL</strong> registrados en Libro de Campo El Espino o en bodega El Espino sin reflejo equivalente en el otro módulo
+  (mismo producto, cuartel {{ cc_espino|default('EL ESPINO') }}, cantidad ±2%, fecha dentro de la ventana).
+</div>
+<div class="panel-card mb-3">
+  <form method="get" class="row g-2">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="op" value="desfase">
+    <div class="col-md-3"><label class="form-label">Desde</label><input type="date" name="desde" class="form-control" value="{{ filtro_desde }}"></div>
+    <div class="col-md-3"><label class="form-label">Hasta</label><input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}"></div>
+    <div class="col-md-2"><label class="form-label">Ventana ± días</label><input type="number" name="ventana" class="form-control" value="{{ ventana_dias }}" min="1" max="60"></div>
+    <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Analizar</button></div>
+  </form>
+</div>
+{% if desfase_ok %}
+<div class="alert alert-success">No hay desfaces PPPL en El Espino para el período seleccionado.</div>
+{% else %}
+{% if desfase_lc_rows %}
+<div class="alert alert-warning">{{ desfase_lc_rows|length }} registro(s) en Libro de Campo sin salida de bodega equivalente.</div>
+<div class="panel-card mb-3">
+  <div class="table-responsive">
+    <table class="table table-sm table-striped w-100">
+      <thead><tr>{% for k in desfase_lc_rows[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in desfase_lc_rows %}<tr>{% for v in row.values() %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% if desfase_bod_rows %}
+<div class="alert alert-warning">{{ desfase_bod_rows|length }} salida(s) de bodega sin aplicación en Libro de Campo.</div>
+<div class="panel-card mb-3">
+  <div class="table-responsive">
+    <table class="table table-sm table-striped w-100">
+      <thead><tr>{% for k in desfase_bod_rows[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in desfase_bod_rows %}<tr>{% for v in row.values() %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+{% else %}
+<div class="alert alert-primary small mb-3">
+  Libro de Campo El Espino y Bodega El Espino son <strong>módulos vinculados</strong>.
+  Registrar aquí archiva la aplicación en cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong>;
+  debe rebajar stock en <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='movimiento') }}">Bodega → Salida</a></strong>.
+</div>
+{% if not productos_stock %}
+<div class="alert alert-warning">No hay productos con stock en bodega El Espino. Registre entradas en Bodega → Movimiento antes de anotar aplicaciones.</div>
+{% else %}
+<div class="panel-card mb-3">
+  <h2 class="h6">Nueva orden N° {{ '%05d'|format(siguiente_app) }}</h2>
+  <p class="small text-muted">Cuartel fijo <strong>{{ cc_espino|default('EL ESPINO') }}</strong> · un evento puede incluir varios productos fitosanitarios.</p>
+  <form method="post" id="lcEventoForm">
+    <input type="hidden" name="action" value="lc_guardar_evento">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="op" value="ingreso">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <div class="row g-2 mb-3" id="lcCabeceraFields">
+      <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
+      <div class="col-md-3"><label class="form-label small">Cuartel</label><input type="text" class="form-control form-control-sm" value="{{ cc_espino|default('EL ESPINO') }}" readonly disabled></div>
+      <div class="col-md-3"><label class="form-label small">Especie</label>
+        <select name="especie" class="form-select form-select-sm lc-cab">{% for e in especies %}<option value="{{ e }}" {% if e == form_especie %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-3"><label class="form-label small">Total agua (L)</label><input type="number" name="vol_agua" class="form-control form-control-sm lc-cab" min="0.1" step="0.1" value="{{ form_vol_agua }}" required></div>
+      <div class="col-md-4"><label class="form-label small">Aplicador(es)</label><input type="text" name="aplicador" class="form-control form-control-sm lc-cab" value="{{ form_aplicador }}" required></div>
+      <div class="col-md-4"><div class="form-check mt-4"><input class="form-check-input lc-cab" type="checkbox" name="op_cert" value="1" id="lcOpCert" {% if form_op_cert %}checked{% endif %}><label class="form-check-label" for="lcOpCert">Operador certificado fitosanitario</label></div></div>
+      <div class="col-md-4"><label class="form-label small">Maquinaria / nebulizador</label>
+        <select name="maquinaria" class="form-select form-select-sm lc-cab" required>{% for cod, etiq in maquinaria_opts %}<option value="{{ cod }}" {% if cod == form_maquinaria %}selected{% endif %}>{{ etiq }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-4"><label class="form-label small">Tractor</label>
+        <select name="tractor" class="form-select form-select-sm lc-cab">{% for cod, etiq in tractor_opts %}<option value="{{ cod }}" {% if cod == form_tractor %}selected{% endif %}>{{ etiq }}</option>{% endfor %}</select>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="panel-card mb-3">
+  <h2 class="h6">Agregar producto al evento</h2>
+  <form method="get" class="mb-2" id="lcProdForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="op" value="ingreso">
+    <label class="form-label small">Producto (stock bodega El Espino)</label>
+    <select name="prod" class="form-select form-select-sm" onchange="this.form.requestSubmit()">
+      {% for p in productos_stock %}
+      <option value="{{ p.producto }}" {% if p.producto == prod_sel %}selected{% endif %}>{{ p.producto }} ({{ p.um }}) — stock {{ p.stock_fmt }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% if stock_info %}<p class="small text-muted">Stock disponible: <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>{% endif %}
+  {% if prod_sel and not pppl_ok %}<div class="alert alert-warning small py-2">Producto no autorizado en PPPL. Revise en GlobalGAP → PPPL.</div>{% endif %}
+  <form method="post" class="row g-2" id="lcAddProdForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
+    <input type="hidden" name="action" value="lc_agregar_producto">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="op" value="ingreso">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <input type="hidden" name="producto" value="{{ prod_sel }}">
+    <div class="col-md-3"><label class="form-label small">Lote</label><input type="text" name="lote" class="form-control form-control-sm"></div>
+    <div class="col-md-3"><label class="form-label small">Ing. activo</label><input type="text" name="ingrediente" class="form-control form-control-sm" value="{{ ing_def }}"></div>
+    <div class="col-md-3"><label class="form-label small">Dosis /100L agua</label><input type="number" name="dosis" class="form-control form-control-sm" min="0" step="0.001" value="0"></div>
+    <div class="col-md-3"><label class="form-label small">Unidad dosis</label>
+      <select name="unidad_dosis" class="form-select form-select-sm">{% for u in unidades_dosis %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select>
+    </div>
+    <div class="col-md-3"><label class="form-label small">Total producto</label><input type="number" name="gasto_total" class="form-control form-control-sm" min="0" step="0.01" required></div>
+    <div class="col-md-3"><label class="form-label small">PHI (días)</label><input type="number" name="dias_car" class="form-control form-control-sm" min="0" max="365" value="{{ phi_def }}"></div>
+    <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm" {% if not pppl_ok %}disabled{% endif %}>Agregar producto</button></div>
+  </form>
+</div>
+
+{% if lc_car %}
+<div class="panel-card mb-3">
+  <h2 class="h6">Productos en este evento</h2>
+  <div class="table-responsive mb-2">
+    <table class="table table-sm table-bordered">
+      <thead><tr><th>Producto</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total</th><th>UM</th><th>PHI días</th></tr></thead>
+      <tbody>{% for r in lc_car %}<tr>
+        <td>{{ r.producto }}</td><td>{{ r.lote }}</td><td>{{ r.ingrediente }}</td><td>{{ r.dosis }}</td>
+        <td>{{ r.unidad_dosis }}</td><td>{{ r.gasto_total }}</td><td>{{ r.um_gasto }}</td><td>{{ r.dias_car }}</td>
+      </tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <div class="d-flex gap-2">
+    <form method="post" id="lcPopForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
+      <input type="hidden" name="action" value="lc_pop_producto">
+      <input type="hidden" name="sec" value="libro_campo">
+      <input type="hidden" name="op" value="ingreso">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <button type="submit" class="btn btn-outline-secondary btn-sm">Quitar último</button>
+    </form>
+    <button type="submit" form="lcEventoForm" class="btn btn-primary btn-sm">Validar y guardar evento completo</button>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">Agregue uno o más productos al evento antes de guardar.</div>
+{% endif %}
+{% endif %}
+{% endif %}

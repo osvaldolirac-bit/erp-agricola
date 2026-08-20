@@ -406,7 +406,8 @@
   </style>
   {% if alerta_lc %}
   <div class="alert alert-warning">
-    <strong>Salida registrada.</strong> Anote en <strong>Libro de Campo → Ingreso aplicación</strong>:
+    <strong>Salida registrada.</strong> Anote en
+    <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='libro_campo', op='ingreso') }}">Libro de Campo → Ingreso aplicación</a></strong>:
     <strong>{{ alerta_lc.producto }}</strong> — {{ alerta_lc.cantidad }} {{ alerta_lc.um }} — cuartel <strong>{{ alerta_lc.cuarteles|join(', ') }}</strong>
   </div>
   {% endif %}
@@ -491,7 +492,7 @@
   <div class="panel-card mb-3">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
       <h2 class="h6 mb-0">Cuaderno de movimientos</h2>
-      {{ pdf_btn(pdf_movimiento_url, '📥 PDF MOVIMIENTOS', 'btn-outline-success btn-sm') }}
+      {{ pdf_btn(pdf_movimiento_url, '📥 PDF MOVIMIENTOS', 'btn-outline-success btn-sm', pdf_movimiento_filename|default('CUADERNO_MOVIMIENTOS_EL_ESPINO.pdf'), movimiento_n|default(0)) }}
     </div>
     <form method="get" class="row g-2 mb-3">
       <input type="hidden" name="temp" value="{{ temp_sel }}">
@@ -575,7 +576,7 @@
   {% endif %}
   {% if pdf_stock_url %}
   <div class="d-flex justify-content-end mb-3">
-    {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK EL ESPINO') }}
+    {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK EL ESPINO', filename=pdf_stock_filename|default('STOCK_BODEGA_EL_ESPINO.pdf')) }}
   </div>
   {% endif %}
 
@@ -627,6 +628,9 @@
   </div>
   {% endif %}
 
+  {% elif sec_activa == 'libro_campo' %}
+  {% include "partials/espino_libro_campo.html" %}
+
   {% endif %}
 </div>
 {% endblock %}
@@ -657,5 +661,33 @@ function toggleMaqIngDoc(sinDoc) {
   if (sinDoc) { inp.value = 'AUTOGENERADO'; inp.readOnly = true; inp.removeAttribute('required'); }
   else { inp.value = ''; inp.readOnly = false; }
 }
+{% if sec_activa == 'libro_campo' and lc_op_activa == 'ingreso' %}
+window.lcSyncCabecera = function (targetForm) {
+  if (!targetForm) return true;
+  var root = document.getElementById('lcCabeceraFields');
+  if (!root) return true;
+  root.querySelectorAll('.lc-cab').forEach(function (el) {
+    var name = el.getAttribute('name');
+    if (!name) return;
+    targetForm.querySelectorAll('[data-lc-sync="1"][name="' + name + '"]').forEach(function (n) { n.remove(); });
+    if (el.type === 'checkbox') {
+      if (el.checked) {
+        var h = document.createElement('input');
+        h.type = 'hidden'; h.name = name; h.value = el.value || '1';
+        h.setAttribute('data-lc-sync', '1');
+        targetForm.appendChild(h);
+      }
+      return;
+    }
+    var hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = name;
+    hidden.value = el.value || '';
+    hidden.setAttribute('data-lc-sync', '1');
+    targetForm.appendChild(hidden);
+  });
+  return true;
+};
+{% endif %}
 </script>
 {% endblock %}
