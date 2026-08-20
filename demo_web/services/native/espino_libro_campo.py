@@ -84,6 +84,8 @@ def _productos_stock_espino(demo, conn) -> list[dict]:
     )
     out = []
     for _, r in dfi.iterrows():
+        if not espino_bodega._es_producto_bodega_espino(str(r["producto"])):
+            continue
         stock = stock_map.get(int(r["id"]), 0.0)
         if stock <= 0:
             continue
@@ -446,7 +448,7 @@ def post_guardar_evento(demo, conn) -> dict:
     session.pop(META_KEY, None)
     return {
         "ok": True,
-        "msg": f"Aplicación N° {n_app:05d} guardada (El Espino). Rebaje stock en Bodega → Salida.",
+        "msg": f"Aplicación N° {n_app:05d} guardada (El Espino).",
         "extra": {"op": "ingreso", "sec": "libro_campo"},
     }
 

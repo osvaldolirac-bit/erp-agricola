@@ -13,15 +13,8 @@
 </ul>
 
 {% if alerta_bodega_lc %}
-<div class="alert alert-warning">
-  <strong>Aplicación N° {{ '%05d'|format(alerta_bodega_lc.n_app) }} archivada en Libro de Campo El Espino.</strong><br>
-  <strong>Rebajar bodega pendiente</strong> — El stock no se descontó automáticamente.<br>
-  Vaya a <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='movimiento') }}">Bodega → Movimiento → Salida</a></strong>:
-  <ul class="mb-0 mt-1">
-    {% for p in alerta_bodega_lc.productos %}
-    <li><strong>{{ p.producto }}</strong> — {{ p.cantidad }} {{ p.um }}</li>
-    {% endfor %}
-  </ul>
+<div class="alert alert-success">
+  <strong>Aplicación N° {{ '%05d'|format(alerta_bodega_lc.n_app) }} archivada en Libro de Campo El Espino.</strong>
 </div>
 {% endif %}
 
@@ -135,12 +128,11 @@
 
 {% else %}
 <div class="alert alert-primary small mb-3">
-  Libro de Campo El Espino y Bodega El Espino son <strong>módulos vinculados</strong>.
-  Registrar aquí archiva la aplicación en cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong>;
-  debe rebajar stock en <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='movimiento') }}">Bodega → Salida</a></strong>.
+  Registro de aplicaciones fitosanitarias cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong>.
+  Stock de referencia en <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock') }}">Bodega → Stock actual</a></strong>.
 </div>
 {% if not productos_stock %}
-<div class="alert alert-warning">No hay productos con stock en bodega El Espino. Registre entradas en Bodega → Movimiento antes de anotar aplicaciones.</div>
+<div class="alert alert-warning">No hay productos con stock en bodega El Espino (Piriproxifen, Bioil spray, Cobre).</div>
 {% else %}
 <div class="panel-card mb-3">
   <h2 class="h6">Nueva orden N° {{ '%05d'|format(siguiente_app) }}</h2>

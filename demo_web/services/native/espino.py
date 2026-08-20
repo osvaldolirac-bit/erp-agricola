@@ -275,9 +275,7 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
     nombre, fi, ff = temporada_sel(demo, temporadas=demo.TEMPORADAS_ESPINO)
     sec = request.args.get("sec", "historial")
     bodega_op_override = None
-    if sec == "bodega_mov":
-        sec = "bodega"
-    elif sec == "bodega_stock":
+    if sec == "bodega_stock":
         sec = "bodega"
         bodega_op_override = "stock"
     if sec not in {k for k, _ in SECCIONES}:
@@ -319,7 +317,7 @@ def view(user_email: str, user_rol: str):
     if request.method == "POST":
         action = request.form.get("action", "")
         sec = request.form.get("sec") or request.args.get("sec", "registro")
-        if sec in ("bodega_mov", "bodega_stock"):
+        if sec in ("bodega_stock",):
             sec = "bodega"
         temp = request.form.get("temp") or nombre
         conn = demo.conectar_db()
@@ -349,7 +347,6 @@ def view(user_email: str, user_rol: str):
                 "eliminar": _post_eliminar,
                 "maquinaria_registrar": espino_maquinaria.post_registrar,
                 "maquinaria_ingreso": espino_maquinaria.post_ingreso,
-                "bodega_salida": espino_bodega.post_salida,
                 "bodega_ingreso": espino_bodega.post_ingreso,
             }
             fn = handlers.get(action)
@@ -368,11 +365,9 @@ def view(user_email: str, user_rol: str):
                     extra["sec"] = "bodega"
                     if action == "bodega_ingreso":
                         modo = request.form.get("modo") or "existente"
-                        extra["op"] = "nuevo" if modo == "nuevo" else "movimiento"
-                    elif action == "bodega_salida":
-                        extra["op"] = "movimiento"
+                        extra["op"] = "nuevo" if modo == "nuevo" else "stock"
                     elif "op" not in extra:
-                        extra["op"] = request.form.get("op") or "movimiento"
+                        extra["op"] = request.form.get("op") or "stock"
                 if action.startswith("maquinaria_"):
                     extra["sec"] = "maquinaria"
                     if "op" not in extra:
