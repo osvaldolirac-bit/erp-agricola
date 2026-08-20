@@ -155,6 +155,24 @@ def _productos_todos(demo, conn) -> list[dict]:
     ]
 
 
+def _pdf_estilo_cuaderno_bodega(row, col, val):
+    """Verde entrada / rojo salida en PDF (cantidades y fila)."""
+    col_u = str(col).strip().upper()
+    txt = str(val or "").strip()
+    entrada = str(row.get("Entrada") or "").strip()
+    salida = str(row.get("Salida") or "").strip()
+    if col_u == "ENTRADA" and txt:
+        return (232, 245, 233), (46, 125, 50), True
+    if col_u == "SALIDA" and txt:
+        return (255, 235, 238), (198, 40, 40), True
+    if col_u in ("FECHA", "PRODUCTO"):
+        if salida:
+            return (255, 248, 248), (33, 33, 33), False
+        if entrada:
+            return (249, 253, 249), (33, 33, 33), False
+    return None
+
+
 def _cuaderno_movimientos(demo, conn, fi, ff) -> tuple[list[dict], str | None]:
     """Cuaderno bodega: Fecha · Producto · Entrada · Salida (cronológico)."""
     sql_um = demo._sql_um_movimiento()
@@ -205,6 +223,7 @@ def _cuaderno_movimientos(demo, conn, fi, ff) -> tuple[list[dict], str | None]:
         blob = demo.generar_pdf_blob(
             df_pdf,
             f"CUADERNO BODEGA {CC_ESPINO} ({fi} a {ff})",
+            estilo_celda_fn=_pdf_estilo_cuaderno_bodega,
         )
         if blob:
             pdf_url = url_for(

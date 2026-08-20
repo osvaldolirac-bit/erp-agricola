@@ -401,8 +401,8 @@
     .espino-bodega-th-salida { background: #ffebee; color: #b71c1c; }
     .espino-bodega-row-entrada { background: #f9fdf9; }
     .espino-bodega-row-salida { background: #fff8f8; }
-    .espino-bodega-cell-entrada { color: #2e7d32; font-weight: 600; }
-    .espino-bodega-cell-salida { color: #c62828; font-weight: 600; }
+    .espino-bodega-cuaderno td.text-success { color: #198754 !important; }
+    .espino-bodega-cuaderno td.text-danger { color: #dc3545 !important; }
   </style>
   {% if alerta_lc %}
   <div class="alert alert-warning">
@@ -529,8 +529,8 @@
           <tr class="{% if row.es_salida %}espino-bodega-row-salida{% else %}espino-bodega-row-entrada{% endif %}">
             <td>{{ row.fecha }}</td>
             <td>{{ row.producto }}</td>
-            <td class="text-end espino-bodega-cell-entrada">{{ row.entrada }}</td>
-            <td class="text-end espino-bodega-cell-salida">{{ row.salida }}</td>
+            <td class="text-end{% if row.entrada %} text-success fw-semibold{% endif %}">{{ row.entrada }}</td>
+            <td class="text-end{% if row.salida %} text-danger fw-semibold{% endif %}">{{ row.salida }}</td>
           </tr>
           {% endfor %}
         </tbody>
