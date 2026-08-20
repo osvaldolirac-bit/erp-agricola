@@ -11,7 +11,7 @@ CC_ESPINO = "EL ESPINO"
 
 PDF_STOCK_FILENAME = "STOCK_BODEGA_EL_ESPINO.pdf"
 
-# Catálogo fijo bodega El Espino (sin movimientos ni salidas).
+# Catálogo fijo bodega El Espino.
 PRODUCTOS_BODEGA_ESPINO = (
     "PIRIPROXIFEN",
     "ACEITE BIOIL SPRAY",
@@ -190,6 +190,8 @@ def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
     ctx = {
         "bodega_ops": BODEGA_OPS,
         "op_activa": op,
+        "productos_ingreso": _productos_todos(demo, conn),
+        "productos_salida": _productos_con_stock(demo, conn),
         "familias_prod": demo.listar_familias_producto(conn),
         "unidades_medida": demo.UNIDADES_MEDIDA_INSUMO,
         "um_default": demo.DEFAULT_UNIDAD_INSUMO,
@@ -197,6 +199,101 @@ def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
     }
     ctx.update(gather_bodega_stock(demo, conn))
     return ctx
+
+
+def _producto_por_id(conn, demo, iid: int):
+    return conn.execute(
+        "SELECT id, producto, precio_medio, COALESCE(unidad_medida, ?) FROM inventario WHERE id=?",
+        (demo.DEFAULT_UNIDAD_INSUMO, iid),
+    ).fetchone()
+
+
+def _producto_por_nombre(conn, demo, nombre: str):
+    return conn.execute(
+        "SELECT id, producto, precio_medio, COALESCE(unidad_medida, ?) FROM inventario WHERE UPPER(producto)=?",
+        (demo.DEFAULT_UNIDAD_INSUMO, nombre.upper().strip()),
+    ).fetchone()
+
+
+def validar_salida_bodega(
+    demo,
+    conn,
+    cantidad: float,
+    *,
+    producto_id: int | None = None,
+    producto: str | None = None,
+) -> tuple[bool, str, int | None, str | None, str | None]:
+    """Valida salida sin escribir. Retorna ok, msg, producto_id, nombre, um."""
+    if cantidad <= 0:
+        return False, "La cantidad debe ser mayor a cero.", None, None, None
+    if producto_id:
+        row = _producto_por_id(conn, demo, producto_id)
+    elif producto:
+        row = _producto_por_nombre(conn, demo, producto)
+    else:
+        return False, "Producto no indicado.", None, None, None
+    if not row:
+        return False, "Producto no encontrado.", None, None, None
+    iid, prod_nombre, _pmp, um_sel = int(row[0]), row[1], float(row[2] or 0), row[3]
+    if not _es_producto_bodega_espino(prod_nombre):
+        return False, f"{prod_nombre} no pertenece a la bodega El Espino.", None, None, None
+    stock = _stock_cc(conn, iid)
+    if cantidad > stock + 1e-9:
+        return False, (
+            f"Stock insuficiente de {prod_nombre} "
+            f"(disponible: {demo.f_cantidad(stock)} {um_sel})."
+        ), None, None, None
+    return True, "", iid, prod_nombre, um_sel
+
+
+def registrar_salida_bodega(
+    demo,
+    conn,
+    cantidad: float,
+    *,
+    producto_id: int | None = None,
+    producto: str | None = None,
+    fecha=None,
+) -> tuple[bool, str]:
+    """Registra salida en bodega El Espino (sin commit). Usado por LC y formulario manual."""
+    ok, msg, iid, prod_nombre, _um = validar_salida_bodega(
+        demo, conn, cantidad, producto_id=producto_id, producto=producto
+    )
+    if not ok:
+        return False, msg
+    row = _producto_por_id(conn, demo, iid)
+    pmp, um_sel = float(row[2] or 0), row[3]
+    fecha_mov = str(fecha or hoy_demo(demo))
+    conn.execute(
+        """INSERT INTO movimientos
+           (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+           VALUES (?,?,?,?,?,?,?)""",
+        (iid, "Salida", cantidad, fecha_mov, CC_ESPINO, cantidad * pmp, um_sel),
+    )
+    return True, prod_nombre
+
+
+def post_salida(demo, conn) -> dict:
+    try:
+        iid = int(request.form.get("producto_id") or 0)
+        ct = float(request.form.get("cantidad") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Datos de salida inválidos."}
+    ok, res = registrar_salida_bodega(demo, conn, ct, producto_id=iid)
+    if not ok:
+        return {"ok": False, "msg": res}
+    conn.commit()
+    prod_nombre = res
+    um = conn.execute(
+        "SELECT COALESCE(unidad_medida, ?) FROM inventario WHERE id=?",
+        (demo.DEFAULT_UNIDAD_INSUMO, iid),
+    ).fetchone()[0]
+    demo.registrar_accion(CC_ESPINO, f"Salida manual bodega {prod_nombre} {demo.f_cantidad(ct)} {um}")
+    return {
+        "ok": True,
+        "msg": f"Salida registrada: −{demo.f_cantidad(ct)} {um} de {prod_nombre}.",
+        "extra": {"op": "stock"},
+    }
 
 
 def gather_bodega_mov(demo, conn) -> dict:
@@ -220,6 +317,8 @@ def post_ingreso_existente(demo, conn) -> dict:
     if not row:
         return {"ok": False, "msg": "Producto no encontrado."}
     prod_nombre, pmp, um_sel = row[0], float(row[1] or 0), row[2]
+    if not _es_producto_bodega_espino(prod_nombre):
+        return {"ok": False, "msg": f"{prod_nombre} no pertenece a la bodega El Espino."}
     fecha = str(hoy_demo(demo))
     conn.execute(
         """INSERT INTO movimientos

@@ -47,21 +47,8 @@ def _libro_op_activa() -> str:
 
 def _pop_alertas() -> dict:
     out: dict = {}
-    if "espino_lc_alerta_bodega" in session:
-        al = session.pop("espino_lc_alerta_bodega")
-        prods = []
-        for p in al.get("productos", []):
-            prods.append(
-                {
-                    "producto": p.get("producto", ""),
-                    "cantidad": p.get("gasto_total", 0),
-                    "um": p.get("um_gasto", "gr"),
-                }
-            )
-        out["alerta_bodega_lc"] = {
-            "n_app": al.get("n_app"),
-            "productos": prods,
-        }
+    if "espino_lc_rebaje_ok" in session:
+        out["rebaje_bodega_ok"] = session.pop("espino_lc_rebaje_ok")
     return out
 
 
@@ -422,6 +409,16 @@ def post_guardar_evento(demo, conn) -> dict:
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
+    for item in car:
+        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
+            demo,
+            conn,
+            float(item.get("gasto_total") or 0),
+            producto=str(item.get("producto") or ""),
+        )
+        if not ok:
+            return {"ok": False, "msg": msg}
+
     n_app = _siguiente_n_aplicacion(conn)
     n_orden = _siguiente_n_orden(conn)
 
@@ -440,15 +437,30 @@ def post_guardar_evento(demo, conn) -> dict:
             tractor,
             n_orden=n_orden,
         )
+
+    for item in car:
+        ok, msg = espino_bodega.registrar_salida_bodega(
+            demo,
+            conn,
+            float(item.get("gasto_total") or 0),
+            producto=str(item.get("producto") or ""),
+            fecha=fe_app,
+        )
+        if not ok:
+            return {"ok": False, "msg": msg}
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
     demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {CC_ESPINO} · {prods_txt}")
-    session["espino_lc_alerta_bodega"] = {"n_app": n_app, "productos": list(car)}
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
+    rebajes = [
+        f"{p['producto']} −{demo.f_cantidad(p.get('gasto_total', 0))} {p.get('um_gasto', '')}"
+        for p in car
+    ]
+    session["espino_lc_rebaje_ok"] = {"n_app": n_app, "rebajes": rebajes}
     return {
         "ok": True,
-        "msg": f"Aplicación N° {n_app:05d} guardada (El Espino).",
+        "msg": f"Aplicación N° {n_app:05d} guardada. Bodega rebajada automáticamente.",
         "extra": {"op": "ingreso", "sec": "libro_campo"},
     }
 

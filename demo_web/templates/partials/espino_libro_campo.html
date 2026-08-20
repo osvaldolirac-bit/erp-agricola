@@ -12,9 +12,14 @@
   {% endfor %}
 </ul>
 
-{% if alerta_bodega_lc %}
+{% if rebaje_bodega_ok %}
 <div class="alert alert-success">
-  <strong>Aplicación N° {{ '%05d'|format(alerta_bodega_lc.n_app) }} archivada en Libro de Campo El Espino.</strong>
+  <strong>Aplicación N° {{ '%05d'|format(rebaje_bodega_ok.n_app) }} guardada.</strong> Bodega rebajada:
+  <ul class="mb-0 mt-1">
+    {% for linea in rebaje_bodega_ok.rebajes %}
+    <li>{{ linea }}</li>
+    {% endfor %}
+  </ul>
 </div>
 {% endif %}
 
@@ -128,8 +133,9 @@
 
 {% else %}
 <div class="alert alert-primary small mb-3">
-  Registro de aplicaciones fitosanitarias cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong>.
-  Stock de referencia en <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock') }}">Bodega → Stock actual</a></strong>.
+  Al guardar una aplicación se archiva en Libro de Campo y se <strong>rebaja automáticamente</strong> el stock en
+  <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock') }}">Bodega</a></strong>.
+  Use entrada/salida manual en Bodega solo para ajustes.
 </div>
 {% if not productos_stock %}
 <div class="alert alert-warning">No hay productos con stock en bodega El Espino (Piriproxifen, Bioil spray, Cobre).</div>

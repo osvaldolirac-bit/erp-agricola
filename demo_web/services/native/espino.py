@@ -348,6 +348,7 @@ def view(user_email: str, user_rol: str):
                 "maquinaria_registrar": espino_maquinaria.post_registrar,
                 "maquinaria_ingreso": espino_maquinaria.post_ingreso,
                 "bodega_ingreso": espino_bodega.post_ingreso,
+                "bodega_salida": espino_bodega.post_salida,
             }
             fn = handlers.get(action)
             if fn:
