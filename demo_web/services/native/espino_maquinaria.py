@@ -1,4 +1,4 @@
-"""Trabajos maquinaria sector El Espino — libro mayor debe/haber + ingreso abonos."""
+"""Trabajos maquinaria sector El Espino — gastos, debe/haber y abonos."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,11 +14,16 @@ TABLA_MOV = "trabajos_maquinaria_espino_mov"
 ETIQUETA = "EL ESPINO"
 
 MAQ_OPS = [
-    ("libro", "📜 Libro mayor"),
-    ("detalle", "📋 Gastos maquinaria"),
-    ("ingreso", "📥 Ingreso"),
+    ("gastos", "📋 Gastos maquinaria"),
+    ("abono", "📥 Abono"),
     ("trabajo", "➕ Registrar trabajo"),
 ]
+
+_MAQ_OP_ALIASES = {
+    "libro": "gastos",
+    "detalle": "gastos",
+    "ingreso": "abono",
+}
 
 ETIQUETA_TRABAJOS = f"{ETIQUETA} — TRABAJOS MAQUINARIA"
 
@@ -91,9 +96,10 @@ def _detalle_trabajo(trabajo: str, tractor: str, implemento: str, monto_tr: floa
 
 
 def _maq_op_activa() -> str:
-    op = (request.args.get("op") or request.form.get("op") or "libro").strip().lower()
+    op = (request.args.get("op") or request.form.get("op") or "gastos").strip().lower()
+    op = _MAQ_OP_ALIASES.get(op, op)
     if op not in {k for k, _ in MAQ_OPS}:
-        op = "libro"
+        op = "gastos"
     return op
 
 
@@ -136,7 +142,7 @@ def _libro_mayor(demo, conn, fi_f, ff_f) -> tuple[list[dict], float, float, str 
             {
                 "sort": (str(r[1]), 1, int(r[0])),
                 "fecha": str(r[1])[:10],
-                "tipo": r[4] or "Movimiento",
+                "tipo": "Abono" if (r[4] or "").strip().lower() == "ingreso" else (r[4] or "Movimiento"),
                 "documento": r[2] or "",
                 "detalle": r[3] or "",
                 "debe": float(r[5] or 0),
@@ -184,7 +190,7 @@ def _libro_mayor(demo, conn, fi_f, ff_f) -> tuple[list[dict], float, float, str 
         )
         blob = demo.generar_pdf_blob(
             df_pdf,
-            f"LIBRO MAYOR MAQUINARIA {ETIQUETA} ({fi_f} a {ff_f})",
+            f"GASTOS MAQUINARIA DEBE/HABER {ETIQUETA} ({fi_f} a {ff_f})",
         )
         if blob:
             pdf_url = url_for("modules.pdf_download", token=store_pdf(blob, "espino_maquinaria_libro.pdf"))
@@ -420,12 +426,12 @@ def post_registrar(demo, conn, fi, ff) -> dict:
     )
     conn.commit()
     demo.registrar_accion(ETIQUETA, f"Trabajo maquinaria {doc} — {trabajo}")
-    return {"ok": True, "msg": f"Trabajo registrado ({demo.f_peso(monto)}). Aparece en libro mayor (Debe).", "extra": {"op": "libro"}}
+    return {"ok": True, "msg": f"Trabajo registrado ({demo.f_peso(monto)}). Imputado al Debe.", "extra": {"op": "gastos"}}
 
 
 def post_ingreso(demo, conn, fi, ff) -> dict:
     if demo.es_solo_lectura():
-        return {"ok": False, "msg": "Modo solo lectura: no puede registrar ingresos."}
+        return {"ok": False, "msg": "Modo solo lectura: no puede registrar abonos."}
 
     fecha = parse_date(request.form.get("fecha"), hoy_demo(demo))
     detalle = (request.form.get("detalle") or "").strip()
@@ -459,4 +465,4 @@ def post_ingreso(demo, conn, fi, ff) -> dict:
     )
     conn.commit()
     demo.registrar_accion(ETIQUETA, f"Abono maquinaria {doc} — {detalle}")
-    return {"ok": True, "msg": f"Ingreso/abono registrado ({demo.f_peso(monto)}).", "extra": {"op": "libro"}}
+    return {"ok": True, "msg": f"Abono registrado ({demo.f_peso(monto)}).", "extra": {"op": "gastos"}}

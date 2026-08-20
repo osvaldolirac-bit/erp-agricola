@@ -353,7 +353,7 @@ def view(user_email: str, user_rol: str):
                 if action.startswith("maquinaria_"):
                     extra["sec"] = "maquinaria"
                     if "op" not in extra:
-                        extra["op"] = request.form.get("op") or "libro"
+                        extra["op"] = request.form.get("op") or "gastos"
                 if action == "corregir" and "mov_id" not in extra:
                     extra["mov_id"] = request.form.get("mov_id", "")
                 return _redirect_espino(**extra)
