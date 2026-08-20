@@ -91,8 +91,9 @@ def gather_bodega_stock(demo, conn) -> dict:
         ]
 
     pdf_url = None
-    if not dfs_view.empty:
-        dfs_op = dfs_view.copy()
+    dfs_pdf = dfs_view[dfs_view["stock_cc"].fillna(0) > 0].copy()
+    if not dfs_pdf.empty:
+        dfs_op = dfs_pdf.copy()
         dfs_op["stock"] = dfs_op["stock_cc"]
         dfs_op = dfs_op.drop(columns=["precio_medio", "id", "stock_cc"], errors="ignore").rename(
             columns={"unidad_medida": "UM", "ingrediente_activo": "ING. ACTIVO"}
@@ -100,7 +101,7 @@ def gather_bodega_stock(demo, conn) -> dict:
         estilo = getattr(demo, "_pdf_estilo_stock_pppl", None)
         blob = demo.generar_pdf_blob(
             dfs_op,
-            f"STOCK BODEGA {CC_ESPINO} (SIN PRECIOS)",
+            f"STOCK BODEGA {CC_ESPINO} — CON STOCK (SIN PRECIOS)",
             incluir_precios=False,
             estilo_celda_fn=estilo,
         )
