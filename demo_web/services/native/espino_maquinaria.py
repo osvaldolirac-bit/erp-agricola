@@ -15,9 +15,12 @@ ETIQUETA = "EL ESPINO"
 
 MAQ_OPS = [
     ("libro", "📜 Libro mayor"),
+    ("detalle", "📋 Gastos maquinaria"),
     ("ingreso", "📥 Ingreso"),
     ("trabajo", "➕ Registrar trabajo"),
 ]
+
+ETIQUETA_TRABAJOS = f"{ETIQUETA} — TRABAJOS MAQUINARIA"
 
 
 def _folio_trabajo(conn, fecha) -> str:
@@ -56,6 +59,24 @@ def _combo_maquinaria(tractor_lbl: str, implemento_lbl: str) -> str:
     if implemento_lbl:
         return f"{tractor_lbl} + {implemento_lbl}"
     return tractor_lbl
+
+
+def _hectareas_efectivas(raw) -> float:
+    try:
+        ha = float(raw or 0)
+    except (TypeError, ValueError):
+        ha = 0.0
+    return ha if ha > 0 else 1.0
+
+
+def _horas_txt(raw) -> tuple[str, float | None]:
+    if raw is None or str(raw).strip() == "":
+        return "—", None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return "—", None
+    return f"{val:g}", val
 
 
 def _detalle_trabajo(trabajo: str, tractor: str, implemento: str, monto_tr: float, monto_imp: float, demo) -> str:
@@ -171,7 +192,108 @@ def _libro_mayor(demo, conn, fi_f, ff_f) -> tuple[list[dict], float, float, str 
     return rows, tot_debe, tot_haber, pdf_url
 
 
-def gather_maquinaria(demo, conn, fi, ff) -> dict:
+def _trabajos_detalle(demo, conn, nombre: str, fi_f, ff_f) -> tuple[list[dict], float, str | None]:
+    rows_raw = conn.execute(
+        f"""SELECT id, fecha, documento,
+                   tractor, implemento, trabajo, horas, hectareas,
+                   monto_tractor, monto_implemento, monto
+            FROM {TABLA}
+            WHERE fecha BETWEEN ? AND ?
+            ORDER BY fecha ASC, id ASC""",
+        (str(fi_f), str(ff_f)),
+    ).fetchall()
+
+    buscar = (request.args.get("q") or "").strip().upper()
+    rows = []
+    total = 0.0
+    pdf_rows = []
+
+    for r in rows_raw:
+        ha = _hectareas_efectivas(r[7])
+        mt = float(r[8] or 0)
+        mi = float(r[9] or 0)
+        tot_tr = mt * ha
+        tot_imp = mi * ha
+        monto = float(r[10] or (tot_tr + tot_imp))
+        tractor = r[3] or "—"
+        implemento = r[4] or "—"
+        trabajo = r[5] or ""
+        horas_txt, _ = _horas_txt(r[6])
+
+        if buscar:
+            blob = " ".join(
+                str(x or "")
+                for x in (r[2], tractor, implemento, trabajo)
+            ).upper()
+            if buscar not in blob:
+                continue
+
+        total += monto
+        fecha_fmt = pd.to_datetime(str(r[1])[:10]).strftime("%d-%m-%Y")
+        rows.append(
+            {
+                "fecha": fecha_fmt,
+                "documento": r[2] or "",
+                "tractor": tractor,
+                "implemento": implemento,
+                "trabajo": trabajo,
+                "horas": horas_txt,
+                "hectareas": f"{ha:g}" if ha else "—",
+                "monto_tractor": demo.f_peso(mt),
+                "monto_implemento": demo.f_peso(mi),
+                "total_tractor": demo.f_peso(tot_tr),
+                "total_implemento": demo.f_peso(tot_imp),
+                "monto": demo.f_peso(monto),
+            }
+        )
+        pdf_rows.append(
+            {
+                "fecha": pd.to_datetime(str(r[1])[:10]).strftime("%Y-%m-%d"),
+                "Documento": r[2] or "",
+                "Tractor": tractor,
+                "Implemento": implemento,
+                "Trabajo": trabajo,
+                "Horas": horas_txt if horas_txt != "—" else "",
+                "Ha": ha,
+                "Valor tractor $/ha": demo.f_peso(mt),
+                "Valor implemento $/ha": demo.f_peso(mi),
+                "Total tractor": demo.f_peso(tot_tr),
+                "Total implemento": demo.f_peso(tot_imp),
+                "Total": demo.f_peso(monto),
+            }
+        )
+
+    pdf_url = None
+    if pdf_rows:
+        cols_pdf = [
+            "fecha",
+            "Documento",
+            "Tractor",
+            "Implemento",
+            "Trabajo",
+            "Horas",
+            "Ha",
+            "Valor tractor $/ha",
+            "Valor implemento $/ha",
+            "Total tractor",
+            "Total implemento",
+            "Total",
+        ]
+        df_pdf = pd.DataFrame(pdf_rows)[cols_pdf]
+        blob = demo.generar_pdf_blob(
+            df_pdf,
+            f"{ETIQUETA_TRABAJOS} TEMPORADA {nombre} ({fi_f} a {ff_f})",
+        )
+        if blob:
+            pdf_url = url_for(
+                "modules.pdf_download",
+                token=store_pdf(blob, f"espino_trabajos_{nombre}.pdf"),
+            )
+
+    return rows, total, pdf_url
+
+
+def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
     hoy = hoy_demo(demo)
     fi_f = parse_date(request.args.get("desde"), fi)
     ff_f = parse_date(request.args.get("hasta"), min(hoy, ff))
@@ -183,6 +305,9 @@ def gather_maquinaria(demo, conn, fi, ff) -> dict:
     op = _maq_op_activa()
     libro_rows, tot_debe, tot_haber, pdf_libro = _libro_mayor(demo, conn, fi_f, ff_f)
     saldo = tot_debe - tot_haber
+    detalle_rows, detalle_total, pdf_detalle = _trabajos_detalle(
+        demo, conn, nombre or "temp", fi_f, ff_f
+    )
 
     from erp_maquinaria import TIPOS_MAQUINARIA_TRACTOR, TIPOS_MAQUINARIA_APLICACION
 
@@ -195,6 +320,11 @@ def gather_maquinaria(demo, conn, fi, ff) -> dict:
         "libro_tot_haber": demo.f_peso(tot_haber),
         "libro_saldo": demo.f_peso(saldo),
         "pdf_maquinaria_url": pdf_libro,
+        "trabajos_rows": detalle_rows,
+        "trabajos_n": len(detalle_rows),
+        "trabajos_total": demo.f_peso(detalle_total),
+        "pdf_trabajos_url": pdf_detalle,
+        "filtro_q": (request.args.get("q") or "").strip(),
         "filtro_desde": fi_f.isoformat(),
         "filtro_hasta": ff_f.isoformat(),
         "tractores": _select_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR),
@@ -252,9 +382,10 @@ def post_registrar(demo, conn, fi, ff) -> dict:
             return {"ok": False, "msg": "Implemento no encontrado en maestra."}
         imp_lbl = etiqueta_maquinaria(imp_cod, imp_row[0])
 
-    monto = monto_tr + monto_imp
+    ha_eff = _hectareas_efectivas(hectareas)
+    monto = (monto_tr + monto_imp) * ha_eff
     if monto <= 0:
-        return {"ok": False, "msg": "Indique montos de tractor y/o implemento."}
+        return {"ok": False, "msg": "Indique valores $/ha de tractor y/o implemento."}
 
     if sin_doc:
         doc = _folio_trabajo(conn, fecha)

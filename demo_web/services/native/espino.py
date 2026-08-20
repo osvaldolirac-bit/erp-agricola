@@ -300,7 +300,7 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
         elif sec == "registro":
             ctx.update(_registro(demo, fi, ff))
         elif sec == "maquinaria":
-            ctx.update(espino_maquinaria.gather_maquinaria(demo, conn, fi, ff))
+            ctx.update(espino_maquinaria.gather_maquinaria(demo, conn, fi, ff, nombre))
         elif sec == "bodega":
             ctx.update(espino_bodega.gather_bodega(demo, conn, op_override=bodega_op_override))
         return ctx
