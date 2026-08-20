@@ -84,17 +84,6 @@ def _horas_txt(raw) -> tuple[str, float | None]:
     return f"{val:g}", val
 
 
-def _detalle_trabajo(trabajo: str, tractor: str, implemento: str, monto_tr: float, monto_imp: float, demo) -> str:
-    parts = [trabajo.strip()]
-    if tractor:
-        parts.append(str(tractor).split(" — ", 1)[-1][:40])
-    if monto_tr or monto_imp:
-        parts.append(f"Tr: {demo.f_peso(monto_tr)}")
-        if monto_imp:
-            parts.append(f"Imp: {demo.f_peso(monto_imp)}")
-    return " · ".join(p for p in parts if p)
-
-
 def _maq_op_activa() -> str:
     op = (request.args.get("op") or request.form.get("op") or "gastos").strip().lower()
     op = _MAQ_OP_ALIASES.get(op, op)
@@ -103,103 +92,14 @@ def _maq_op_activa() -> str:
     return op
 
 
-def _libro_mayor(demo, conn, fi_f, ff_f) -> tuple[list[dict], float, float, str | None]:
-    raw = []
+def _tabla_gastos_unificada(
+    demo, conn, nombre: str, fi_f, ff_f
+) -> tuple[list[dict], float, float, float, int, str | None]:
+    """Tabla única: detalle faenas + filas abono, columnas Haber y Saldo."""
+    buscar = (request.args.get("q") or "").strip().upper()
+    raw: list[dict] = []
 
     trabajos = conn.execute(
-        f"""SELECT id, fecha, documento, trabajo, tractor, implemento,
-                   monto, monto_tractor, monto_implemento
-            FROM {TABLA}
-            WHERE fecha BETWEEN ? AND ?
-            ORDER BY fecha ASC, id ASC""",
-        (str(fi_f), str(ff_f)),
-    ).fetchall()
-    for r in trabajos:
-        monto = float(r[6] or 0)
-        monto_tr = float(r[7] or 0)
-        monto_imp = float(r[8] or 0)
-        raw.append(
-            {
-                "sort": (str(r[1]), 0, int(r[0])),
-                "fecha": str(r[1])[:10],
-                "tipo": "Trabajo",
-                "documento": r[2] or "",
-                "detalle": _detalle_trabajo(r[3] or "", r[4] or "", r[5] or "", monto_tr, monto_imp, demo),
-                "debe": monto,
-                "haber": 0.0,
-            }
-        )
-
-    movs = conn.execute(
-        f"""SELECT id, fecha, documento, detalle, tipo_mov, debe, haber
-            FROM {TABLA_MOV}
-            WHERE fecha BETWEEN ? AND ?
-            ORDER BY fecha ASC, id ASC""",
-        (str(fi_f), str(ff_f)),
-    ).fetchall()
-    for r in movs:
-        raw.append(
-            {
-                "sort": (str(r[1]), 1, int(r[0])),
-                "fecha": str(r[1])[:10],
-                "tipo": "Abono" if (r[4] or "").strip().lower() == "ingreso" else (r[4] or "Movimiento"),
-                "documento": r[2] or "",
-                "detalle": r[3] or "",
-                "debe": float(r[5] or 0),
-                "haber": float(r[6] or 0),
-            }
-        )
-
-    raw.sort(key=lambda x: x["sort"])
-    rows = []
-    saldo = 0.0
-    tot_debe = tot_haber = 0.0
-    for item in raw:
-        debe = item["debe"]
-        haber = item["haber"]
-        saldo += debe - haber
-        tot_debe += debe
-        tot_haber += haber
-        rows.append(
-            {
-                "fecha": pd.to_datetime(item["fecha"]).strftime("%d-%m-%Y"),
-                "tipo": item["tipo"],
-                "documento": item["documento"],
-                "detalle": item["detalle"],
-                "debe": demo.f_peso(debe) if debe else "",
-                "haber": demo.f_peso(haber) if haber else "",
-                "saldo": demo.f_peso(saldo),
-            }
-        )
-
-    pdf_url = None
-    if rows:
-        df_pdf = pd.DataFrame(
-            [
-                {
-                    "FECHA": r["fecha"],
-                    "TIPO": r["tipo"],
-                    "DOCUMENTO": r["documento"],
-                    "DETALLE": r["detalle"],
-                    "DEBE": r["debe"],
-                    "HABER": r["haber"],
-                    "SALDO": r["saldo"],
-                }
-                for r in rows
-            ]
-        )
-        blob = demo.generar_pdf_blob(
-            df_pdf,
-            f"GASTOS MAQUINARIA DEBE/HABER {ETIQUETA} ({fi_f} a {ff_f})",
-        )
-        if blob:
-            pdf_url = url_for("modules.pdf_download", token=store_pdf(blob, "espino_maquinaria_libro.pdf"))
-
-    return rows, tot_debe, tot_haber, pdf_url
-
-
-def _trabajos_detalle(demo, conn, nombre: str, fi_f, ff_f) -> tuple[list[dict], float, str | None]:
-    rows_raw = conn.execute(
         f"""SELECT id, fecha, documento,
                    tractor, implemento, trabajo, horas, hectareas,
                    monto_tractor, monto_implemento, monto
@@ -208,64 +108,152 @@ def _trabajos_detalle(demo, conn, nombre: str, fi_f, ff_f) -> tuple[list[dict], 
             ORDER BY fecha ASC, id ASC""",
         (str(fi_f), str(ff_f)),
     ).fetchall()
-
-    buscar = (request.args.get("q") or "").strip().upper()
-    rows = []
-    total = 0.0
-    pdf_rows = []
-
-    for r in rows_raw:
+    for r in trabajos:
         ha = _hectareas_efectivas(r[7])
         mt = float(r[8] or 0)
         mi = float(r[9] or 0)
         tot_tr = mt * ha
         tot_imp = mi * ha
         monto = float(r[10] or (tot_tr + tot_imp))
-        tractor = r[3] or "—"
-        implemento = r[4] or "—"
-        trabajo = r[5] or ""
-        horas_txt, _ = _horas_txt(r[6])
+        raw.append(
+            {
+                "sort": (str(r[1])[:10], 0, int(r[0])),
+                "kind": "trabajo",
+                "fecha": str(r[1])[:10],
+                "documento": r[2] or "",
+                "tractor": r[3] or "—",
+                "implemento": r[4] or "—",
+                "trabajo": r[5] or "",
+                "horas_raw": r[6],
+                "ha": ha,
+                "monto_tr": mt,
+                "monto_imp": mi,
+                "tot_tr": tot_tr,
+                "tot_imp": tot_imp,
+                "debe": monto,
+                "haber": 0.0,
+            }
+        )
 
+    movs = conn.execute(
+        f"""SELECT id, fecha, documento, detalle, tipo_mov, haber
+            FROM {TABLA_MOV}
+            WHERE fecha BETWEEN ? AND ?
+            ORDER BY fecha ASC, id ASC""",
+        (str(fi_f), str(ff_f)),
+    ).fetchall()
+    for r in movs:
+        haber = float(r[5] or 0)
+        if haber <= 0:
+            continue
+        raw.append(
+            {
+                "sort": (str(r[1])[:10], 1, int(r[0])),
+                "kind": "abono",
+                "fecha": str(r[1])[:10],
+                "documento": r[2] or "",
+                "tractor": "—",
+                "implemento": "—",
+                "trabajo": r[3] or "Abono",
+                "horas_raw": None,
+                "ha": None,
+                "monto_tr": 0.0,
+                "monto_imp": 0.0,
+                "tot_tr": 0.0,
+                "tot_imp": 0.0,
+                "debe": 0.0,
+                "haber": haber,
+            }
+        )
+
+    raw.sort(key=lambda x: x["sort"])
+    rows: list[dict] = []
+    pdf_rows: list[dict] = []
+    saldo = 0.0
+    tot_debe = tot_haber = 0.0
+    n_trabajos = 0
+
+    for item in raw:
         if buscar:
             blob = " ".join(
                 str(x or "")
-                for x in (r[2], tractor, implemento, trabajo)
+                for x in (
+                    item["documento"],
+                    item["tractor"],
+                    item["implemento"],
+                    item["trabajo"],
+                )
             ).upper()
             if buscar not in blob:
                 continue
 
-        total += monto
-        fecha_fmt = pd.to_datetime(str(r[1])[:10]).strftime("%d-%m-%Y")
-        rows.append(
-            {
+        debe = item["debe"]
+        haber = item["haber"]
+        saldo += debe - haber
+        tot_debe += debe
+        tot_haber += haber
+        if item["kind"] == "trabajo":
+            n_trabajos += 1
+
+        horas_txt, _ = _horas_txt(item["horas_raw"])
+        fecha_fmt = pd.to_datetime(item["fecha"]).strftime("%d-%m-%Y")
+        es_abono = item["kind"] == "abono"
+
+        if es_abono:
+            row = {
                 "fecha": fecha_fmt,
-                "documento": r[2] or "",
-                "tractor": tractor,
-                "implemento": implemento,
-                "trabajo": trabajo,
-                "horas": horas_txt,
-                "hectareas": f"{ha:g}" if ha else "—",
-                "monto_tractor": demo.f_peso(mt),
-                "monto_implemento": demo.f_peso(mi),
-                "total_tractor": demo.f_peso(tot_tr),
-                "total_implemento": demo.f_peso(tot_imp),
-                "monto": demo.f_peso(monto),
+                "documento": item["documento"],
+                "tractor": "—",
+                "implemento": "—",
+                "trabajo": item["trabajo"],
+                "horas": "—",
+                "hectareas": "—",
+                "monto_tractor": "",
+                "monto_implemento": "",
+                "total_tractor": "",
+                "total_implemento": "",
+                "monto": "",
+                "haber": demo.f_peso(haber),
+                "saldo": demo.f_peso(saldo),
+                "es_abono": True,
             }
-        )
+        else:
+            ha = item["ha"]
+            row = {
+                "fecha": fecha_fmt,
+                "documento": item["documento"],
+                "tractor": item["tractor"],
+                "implemento": item["implemento"],
+                "trabajo": item["trabajo"],
+                "horas": horas_txt,
+                "hectareas": f"{ha:g}",
+                "monto_tractor": demo.f_peso(item["monto_tr"]),
+                "monto_implemento": demo.f_peso(item["monto_imp"]),
+                "total_tractor": demo.f_peso(item["tot_tr"]),
+                "total_implemento": demo.f_peso(item["tot_imp"]),
+                "monto": demo.f_peso(debe),
+                "haber": "",
+                "saldo": demo.f_peso(saldo),
+                "es_abono": False,
+            }
+
+        rows.append(row)
         pdf_rows.append(
             {
-                "fecha": pd.to_datetime(str(r[1])[:10]).strftime("%Y-%m-%d"),
-                "Documento": r[2] or "",
-                "Tractor": tractor,
-                "Implemento": implemento,
-                "Trabajo": trabajo,
-                "Horas": horas_txt if horas_txt != "—" else "",
-                "Ha": ha,
-                "Valor tractor $/ha": demo.f_peso(mt),
-                "Valor implemento $/ha": demo.f_peso(mi),
-                "Total tractor": demo.f_peso(tot_tr),
-                "Total implemento": demo.f_peso(tot_imp),
-                "Total": demo.f_peso(monto),
+                "fecha": pd.to_datetime(item["fecha"]).strftime("%Y-%m-%d"),
+                "Documento": item["documento"],
+                "Tractor": row["tractor"],
+                "Implemento": row["implemento"],
+                "Trabajo": row["trabajo"],
+                "Horas": row["horas"] if row["horas"] != "—" else "",
+                "Ha": row["hectareas"] if row["hectareas"] != "—" else "",
+                "Valor tractor $/ha": row["monto_tractor"],
+                "Valor implemento $/ha": row["monto_implemento"],
+                "Total tractor": row["total_tractor"],
+                "Total implemento": row["total_implemento"],
+                "Total": row["monto"],
+                "Haber": row["haber"],
+                "Saldo": row["saldo"],
             }
         )
 
@@ -284,6 +272,8 @@ def _trabajos_detalle(demo, conn, nombre: str, fi_f, ff_f) -> tuple[list[dict], 
             "Total tractor",
             "Total implemento",
             "Total",
+            "Haber",
+            "Saldo",
         ]
         df_pdf = pd.DataFrame(pdf_rows)[cols_pdf]
         blob = demo.generar_pdf_blob(
@@ -296,7 +286,7 @@ def _trabajos_detalle(demo, conn, nombre: str, fi_f, ff_f) -> tuple[list[dict], 
                 token=store_pdf(blob, f"espino_trabajos_{nombre}.pdf"),
             )
 
-    return rows, total, pdf_url
+    return rows, tot_debe, tot_haber, saldo, n_trabajos, pdf_url
 
 
 def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
@@ -309,9 +299,7 @@ def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
         ff_f = ff
 
     op = _maq_op_activa()
-    libro_rows, tot_debe, tot_haber, pdf_libro = _libro_mayor(demo, conn, fi_f, ff_f)
-    saldo = tot_debe - tot_haber
-    detalle_rows, detalle_total, pdf_detalle = _trabajos_detalle(
+    gastos_rows, tot_debe, tot_haber, saldo, n_trabajos, pdf_gastos = _tabla_gastos_unificada(
         demo, conn, nombre or "temp", fi_f, ff_f
     )
 
@@ -320,16 +308,14 @@ def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
     return {
         "maq_ops": MAQ_OPS,
         "maq_op_activa": op,
-        "libro_rows": libro_rows,
-        "libro_n": len(libro_rows),
+        "trabajos_rows": gastos_rows,
+        "trabajos_n": n_trabajos,
+        "trabajos_total": demo.f_peso(tot_debe),
+        "libro_n": len(gastos_rows),
         "libro_tot_debe": demo.f_peso(tot_debe),
         "libro_tot_haber": demo.f_peso(tot_haber),
         "libro_saldo": demo.f_peso(saldo),
-        "pdf_maquinaria_url": pdf_libro,
-        "trabajos_rows": detalle_rows,
-        "trabajos_n": len(detalle_rows),
-        "trabajos_total": demo.f_peso(detalle_total),
-        "pdf_trabajos_url": pdf_detalle,
+        "pdf_trabajos_url": pdf_gastos,
         "filtro_q": (request.args.get("q") or "").strip(),
         "filtro_desde": fi_f.isoformat(),
         "filtro_hasta": ff_f.isoformat(),

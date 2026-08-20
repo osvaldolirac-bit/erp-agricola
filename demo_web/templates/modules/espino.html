@@ -203,21 +203,18 @@
       <div class="col-md-2 d-flex align-items-end">
         <button type="submit" class="btn btn-primary w-100">Filtrar</button>
       </div>
-      <div class="col-md-3 d-flex align-items-end gap-1 flex-wrap">
-        {{ pdf_btn(pdf_trabajos_url, '📥 PDF GASTOS', 'btn-outline-success flex-grow-1') }}
-        {{ pdf_btn(pdf_maquinaria_url, '📥 PDF DEBE/HABER', 'btn-outline-secondary flex-grow-1') }}
+      <div class="col-md-3 d-flex align-items-end">
+        {{ pdf_btn(pdf_trabajos_url, '📥 PDF GASTOS MAQUINARIA', 'btn-outline-success w-100') }}
       </div>
     </form>
   </div>
   <p class="small text-muted mb-2">
     {{ trabajos_n|default(0) }} trabajo(s) · Total faenas: <strong>{{ trabajos_total|default('$0') }}</strong> ·
-    Debe: <strong>{{ libro_tot_debe|default('$0') }}</strong> ·
-    Haber (abonos): <strong>{{ libro_tot_haber|default('$0') }}</strong> ·
+    Abonos: <strong>{{ libro_tot_haber|default('$0') }}</strong> ·
     Saldo: <strong>{{ libro_saldo|default('$0') }}</strong>
   </p>
 
   <div class="panel-card mb-3">
-    <h2 class="h6 panel-title mb-2">Detalle por tractor / implemento</h2>
     <div class="table-responsive">
       <table class="table table-sm table-bordered demo-datatable w-100">
         <thead>
@@ -234,16 +231,18 @@
             <th class="text-end">Total tractor</th>
             <th class="text-end">Total implemento</th>
             <th class="text-end">Total</th>
+            <th class="text-end">Haber</th>
+            <th class="text-end">Saldo</th>
           </tr>
         </thead>
         <tbody>
           {% for row in trabajos_rows|default([]) %}
-          <tr>
+          <tr{% if row.es_abono %} class="table-light"{% endif %}>
             <td>{{ row.fecha }}</td>
             <td>{{ row.documento }}</td>
             <td>{{ row.tractor }}</td>
             <td>{{ row.implemento }}</td>
-            <td>{{ row.trabajo }}</td>
+            <td>{% if row.es_abono %}<em>Abono:</em> {% endif %}{{ row.trabajo }}</td>
             <td>{{ row.horas }}</td>
             <td>{{ row.hectareas }}</td>
             <td class="text-end">{{ row.monto_tractor }}</td>
@@ -251,49 +250,15 @@
             <td class="text-end">{{ row.total_tractor }}</td>
             <td class="text-end">{{ row.total_implemento }}</td>
             <td class="text-end fw-semibold">{{ row.monto }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% if not trabajos_rows %}
-    <p class="text-muted p-3 mb-0">Sin trabajos en el periodo.</p>
-    {% endif %}
-  </div>
-
-  <div class="panel-card mb-3">
-    <h2 class="h6 panel-title mb-2">Debe / Haber</h2>
-    <p class="small text-muted mb-2">{{ libro_n|default(0) }} movimiento(s) contables (trabajos en Debe, abonos en Haber).</p>
-    <div class="table-responsive">
-      <table class="table table-sm table-bordered demo-datatable w-100">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Tipo</th>
-            <th>Documento</th>
-            <th>Detalle</th>
-            <th class="text-end">Debe</th>
-            <th class="text-end">Haber</th>
-            <th class="text-end">Saldo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in libro_rows|default([]) %}
-          <tr>
-            <td>{{ row.fecha }}</td>
-            <td>{{ row.tipo }}</td>
-            <td>{{ row.documento }}</td>
-            <td>{{ row.detalle }}</td>
-            <td class="text-end">{{ row.debe }}</td>
-            <td class="text-end">{{ row.haber }}</td>
+            <td class="text-end text-success">{{ row.haber }}</td>
             <td class="text-end fw-semibold">{{ row.saldo }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% if not libro_rows %}
-    <p class="text-muted p-3 mb-0">Sin movimientos debe/haber en el periodo.</p>
+    {% if not trabajos_rows %}
+    <p class="text-muted p-3 mb-0">Sin movimientos en el periodo.</p>
     {% endif %}
   </div>
 
