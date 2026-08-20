@@ -393,7 +393,121 @@
     {% endfor %}
   </ul>
 
-  {% if op_activa == 'stock' %}
+  {% if op_activa == 'movimiento' %}
+  {% if not solo_lectura %}
+  <div class="panel-card mb-3">
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <h2 class="h6 panel-title">Registrar entrada</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="bodega_ingreso">
+          <input type="hidden" name="sec" value="bodega">
+          <input type="hidden" name="temp" value="{{ temp_sel }}">
+          <input type="hidden" name="modo" value="existente">
+          <input type="hidden" name="op" value="movimiento">
+          <div class="col-12">
+            <label class="form-label">Insumo</label>
+            <select name="producto_id" class="form-select form-select-sm" required>
+              <option value="">— Seleccione —</option>
+              {% for p in productos_ingreso %}
+              <option value="{{ p.id }}">{{ p.producto }} ({{ p.unidad_medida }}) — stock {{ p.stock_fmt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Cantidad entrada</label>
+            <input type="number" name="cantidad" class="form-control form-control-sm" min="0.01" step="0.01" required>
+          </div>
+          <div class="col-md-6 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary btn-sm w-100">Registrar entrada</button>
+          </div>
+        </form>
+      </div>
+      <div class="col-lg-6">
+        <h2 class="h6 panel-title">Registrar salida</h2>
+        {% if not productos_salida %}
+        <div class="alert alert-warning mb-0 py-2 small">No hay productos con stock disponible.</div>
+        {% else %}
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="bodega_salida">
+          <input type="hidden" name="sec" value="bodega">
+          <input type="hidden" name="temp" value="{{ temp_sel }}">
+          <input type="hidden" name="op" value="movimiento">
+          <div class="col-12">
+            <label class="form-label">Insumo</label>
+            <select name="producto_id" class="form-select form-select-sm" required>
+              <option value="">— Seleccione —</option>
+              {% for p in productos_salida %}
+              <option value="{{ p.id }}">{{ p.producto }} ({{ p.unidad_medida }}) — stock {{ p.stock_fmt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Cantidad salida</label>
+            <input type="number" name="cantidad" class="form-control form-control-sm" min="0.01" step="0.01" required>
+          </div>
+          <div class="col-md-6 d-flex align-items-end">
+            <button type="submit" class="btn btn-outline-primary btn-sm w-100">Registrar salida</button>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning mb-3">Modo solo lectura.</div>
+  {% endif %}
+
+  <div class="panel-card mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h2 class="h6 mb-0">Cuaderno de movimientos</h2>
+      {{ pdf_btn(pdf_movimiento_url, '📥 PDF MOVIMIENTOS', 'btn-outline-success btn-sm') }}
+    </div>
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="bodega">
+      <input type="hidden" name="op" value="movimiento">
+      <div class="col-md-3">
+        <label class="form-label small">Desde</label>
+        <input type="date" name="desde" class="form-control form-control-sm" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Hasta</label>
+        <input type="date" name="hasta" class="form-control form-control-sm" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-outline-primary btn-sm w-100">Filtrar</button>
+      </div>
+    </form>
+    <p class="small text-muted mb-2">{{ movimiento_n|default(0) }} movimiento(s) en el periodo · orden cronológico</p>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered demo-datatable w-100">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Producto</th>
+            <th class="text-end">Entrada</th>
+            <th class="text-end">Salida</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in movimiento_rows|default([]) %}
+          <tr{% if row.es_salida %} class="table-warning-subtle"{% endif %}>
+            <td>{{ row.fecha }}</td>
+            <td>{{ row.producto }}</td>
+            <td class="text-end text-success">{{ row.entrada }}</td>
+            <td class="text-end text-danger">{{ row.salida }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not movimiento_rows %}
+    <p class="text-muted p-3 mb-0">Sin movimientos en el periodo.</p>
+    {% endif %}
+  </div>
+
+  {% elif op_activa == 'stock' %}
   <p class="small text-muted mb-2">Stock imputado a <strong>{{ cc_espino|default('EL ESPINO') }}</strong> (ingresos − salidas). No modifica la bodega La Concepción.</p>
   <div class="panel-card mb-3">
     <form method="get" class="row g-2">
@@ -431,13 +545,13 @@
   </div>
   {% endif %}
 
-  {% else %}
+  {% elif op_activa == 'nuevo' %}
   <div class="panel-card mb-3">
     {% if solo_lectura %}
     <div class="alert alert-warning mb-0">Modo solo lectura.</div>
-    {% elif op_activa == 'nuevo' %}
+    {% else %}
     <h2 class="h6 panel-title">Crear producto</h2>
-    <p class="small text-muted">Catálogo compartido del demo. El stock de El Espino parte en cero hasta registrar ingresos.</p>
+    <p class="small text-muted">Catálogo compartido del demo. El stock de El Espino parte en cero hasta registrar entradas en Movimiento.</p>
     <form method="post" class="row g-3 mt-1">
       <input type="hidden" name="action" value="bodega_ingreso">
       <input type="hidden" name="sec" value="bodega">
@@ -475,102 +589,7 @@
       </div>
       <div class="col-12"><button type="submit" class="btn btn-primary">Registrar producto</button></div>
     </form>
-    {% elif op_activa == 'salida' %}
-    <h2 class="h6 panel-title">Registrar salida</h2>
-    {% if not productos_salida %}
-    <div class="alert alert-warning mb-0">No hay productos con stock disponible.</div>
-    {% else %}
-    <form method="post" class="row g-3 mt-1">
-      <input type="hidden" name="action" value="bodega_salida">
-      <input type="hidden" name="sec" value="bodega">
-      <input type="hidden" name="temp" value="{{ temp_sel }}">
-      <input type="hidden" name="op" value="salida">
-      <div class="col-md-6"><label class="form-label">Insumo</label>
-        <select name="producto_id" class="form-select" required>
-          <option value="">— Seleccione —</option>
-          {% for p in productos_salida %}
-          <option value="{{ p.id }}">{{ p.producto }} ({{ p.unidad_medida }}) — stock {{ p.stock_fmt }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-3"><label class="form-label">Cantidad</label><input type="number" name="cantidad" class="form-control" min="0.01" step="0.01" required></div>
-      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Registrar salida</button></div>
-    </form>
     {% endif %}
-    {% else %}
-    <h2 class="h6 panel-title">Registrar ingreso</h2>
-    <form method="post" class="row g-3 mt-1">
-      <input type="hidden" name="action" value="bodega_ingreso">
-      <input type="hidden" name="sec" value="bodega">
-      <input type="hidden" name="temp" value="{{ temp_sel }}">
-      <input type="hidden" name="modo" value="existente">
-      <input type="hidden" name="op" value="ingreso">
-      <div class="col-md-6"><label class="form-label">Insumo</label>
-        <select name="producto_id" class="form-select" required>
-          <option value="">— Seleccione —</option>
-          {% for p in productos_ingreso %}
-          <option value="{{ p.id }}">{{ p.producto }} ({{ p.unidad_medida }}) — stock {{ p.stock_fmt }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-3"><label class="form-label">Cantidad ingreso</label><input type="number" name="cantidad" class="form-control" min="0.01" step="0.01" required></div>
-      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Registrar ingreso</button></div>
-    </form>
-    {% endif %}
-  </div>
-
-  <div class="panel-card">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-      <h2 class="h6 mb-0">Historial movimientos</h2>
-      <div class="d-flex flex-wrap gap-2">
-        {{ pdf_btn(pdf_ingreso_url, '📥 PDF INGRESOS') }}
-        {{ pdf_btn(pdf_salida_url, '📥 PDF SALIDAS') }}
-      </div>
-    </div>
-    <form method="get" class="row g-2 mb-3">
-      <input type="hidden" name="temp" value="{{ temp_sel }}">
-      <input type="hidden" name="sec" value="bodega">
-      <input type="hidden" name="op" value="{{ op_activa }}">
-      <div class="col-md-3"><label class="form-label small">Desde</label><input type="date" name="desde" class="form-control form-control-sm" value="{{ filtro_desde }}"></div>
-      <div class="col-md-3"><label class="form-label small">Hasta</label><input type="date" name="hasta" class="form-control form-control-sm" value="{{ filtro_hasta }}"></div>
-      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm">Filtrar</button></div>
-    </form>
-    <div class="row g-3">
-      <div class="col-lg-6">
-        <h3 class="h6 text-muted">Ingresos</h3>
-        {% if ingreso_rows %}
-        <div class="table-responsive">
-          <table class="table table-sm table-striped">
-            <thead><tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Valor</th></tr></thead>
-            <tbody>
-              {% for r in ingreso_rows %}
-              <tr><td>{{ r.fecha }}</td><td>{{ r.producto }}</td><td>{{ r.cantidad }} {{ r.um }}</td><td>{{ r.valor }}</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-        <p class="text-muted small mb-0">Sin ingresos en el periodo.</p>
-        {% endif %}
-      </div>
-      <div class="col-lg-6">
-        <h3 class="h6 text-muted">Salidas</h3>
-        {% if salida_rows %}
-        <div class="table-responsive">
-          <table class="table table-sm table-striped">
-            <thead><tr><th>Fecha</th><th>Producto</th><th>Cant.</th><th>Valor</th></tr></thead>
-            <tbody>
-              {% for r in salida_rows %}
-              <tr><td>{{ r.fecha }}</td><td>{{ r.producto }}</td><td>{{ r.cantidad }} {{ r.um }}</td><td>{{ r.valor }}</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-        <p class="text-muted small mb-0">Sin salidas en el periodo.</p>
-        {% endif %}
-      </div>
-    </div>
   </div>
   {% endif %}
 

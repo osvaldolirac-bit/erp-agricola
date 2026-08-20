@@ -1,4 +1,4 @@
-"""Bodega sector El Espino — stock, ingreso y salida (inventario compartido, CC fijo)."""
+"""Bodega sector El Espino — stock por CC (EL ESPINO), sin alterar inventario global ni La Concepción."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -16,11 +16,15 @@ BODEGA_SECCIONES = [
 ]
 
 BODEGA_OPS = [
-    ("ingreso", "📥 Ingreso"),
-    ("stock", "📊 Stock"),
-    ("salida", "🔄 Salida"),
+    ("movimiento", "📜 Movimiento"),
+    ("stock", "📊 Stock actual"),
     ("nuevo", "➕ Crear producto"),
 ]
+
+_BODEGA_OP_ALIASES = {
+    "ingreso": "movimiento",
+    "salida": "movimiento",
+}
 
 
 def bodega_secciones() -> list[tuple[str, str]]:
@@ -151,57 +155,78 @@ def _productos_todos(demo, conn) -> list[dict]:
     ]
 
 
-def _movimientos_cc(demo, conn, tipo: str, dias: int = 90) -> tuple[list[dict], str | None]:
-    hoy = hoy_demo(demo)
-    fi = parse_date(request.args.get("desde"), hoy - timedelta(days=dias))
-    ff = parse_date(request.args.get("hasta"), hoy)
+def _cuaderno_movimientos(demo, conn, fi, ff) -> tuple[list[dict], str | None]:
+    """Cuaderno bodega: Fecha · Producto · Entrada · Salida (cronológico)."""
     sql_um = demo._sql_um_movimiento()
     df = pd.read_sql_query(
-        f"""SELECT m.id AS ID, m.fecha AS FECHA, i.producto AS PRODUCTO,
-                   m.cantidad AS CANTIDAD, {sql_um} AS UM, m.valor_imputado AS VALOR
+        f"""SELECT m.id, m.fecha, m.tipo, i.producto AS producto,
+                   m.cantidad AS cantidad, {sql_um} AS um
             FROM movimientos m JOIN inventario i ON m.producto_id = i.id
-            WHERE m.centro_costo = ? AND m.tipo = ?
+            WHERE m.centro_costo = ? AND m.tipo IN ('Ingreso', 'Salida')
               AND m.fecha BETWEEN ? AND ?
-            ORDER BY m.fecha DESC, m.id DESC""",
+            ORDER BY m.fecha ASC, m.id ASC""",
         conn,
-        params=(CC_ESPINO, tipo, str(fi), str(ff)),
+        params=(CC_ESPINO, str(fi), str(ff)),
     )
-    rows = []
+    rows: list[dict] = []
+    pdf_rows: list[dict] = []
+    if df.empty:
+        return rows, None
+
+    for _, r in df.iterrows():
+        cant_txt = demo.f_cantidad(r["cantidad"])
+        um = str(r["um"] or "").strip()
+        celda = f"{cant_txt} {um}".strip() if um else cant_txt
+        es_salida = str(r["tipo"]) == "Salida"
+        entrada = "" if es_salida else celda
+        salida = celda if es_salida else ""
+        fecha_fmt = pd.to_datetime(str(r["fecha"])[:10]).strftime("%d-%m-%Y")
+        rows.append(
+            {
+                "fecha": fecha_fmt,
+                "producto": r["producto"],
+                "entrada": entrada,
+                "salida": salida,
+                "es_salida": es_salida,
+            }
+        )
+        pdf_rows.append(
+            {
+                "Fecha": fecha_fmt,
+                "Producto": r["producto"],
+                "Entrada": entrada,
+                "Salida": salida,
+            }
+        )
+
     pdf_url = None
-    if not df.empty:
-        for _, r in df.iterrows():
-            rows.append(
-                {
-                    "id": int(r["ID"]),
-                    "fecha": str(r["FECHA"])[:10],
-                    "producto": r["PRODUCTO"],
-                    "cantidad": demo.f_cantidad(r["CANTIDAD"]),
-                    "um": r["UM"],
-                    "valor": demo.f_peso(r["VALOR"]),
-                }
-            )
-        df_pdf = df[["FECHA", "PRODUCTO", "CANTIDAD", "UM", "VALOR"]].copy()
-        titulo = f"{tipo.upper()} BODEGA {CC_ESPINO} ({fi} a {ff})"
-        blob = demo.generar_pdf_blob(df_pdf, titulo)
+    if pdf_rows:
+        df_pdf = pd.DataFrame(pdf_rows)
+        blob = demo.generar_pdf_blob(
+            df_pdf,
+            f"CUADERNO BODEGA {CC_ESPINO} ({fi} a {ff})",
+        )
         if blob:
-            fname = f"espino_{tipo.lower()}_{CC_ESPINO.lower().replace(' ', '_')}.pdf"
-            pdf_url = url_for("modules.pdf_download", token=store_pdf(blob, fname))
+            pdf_url = url_for(
+                "modules.pdf_download",
+                token=store_pdf(blob, f"espino_movimientos_{CC_ESPINO.lower().replace(' ', '_')}.pdf"),
+            )
     return rows, pdf_url
 
 
 def _bodega_op_activa() -> str:
-    op = (request.args.get("op") or request.form.get("op") or "ingreso").strip().lower()
+    op = (request.args.get("op") or request.form.get("op") or "movimiento").strip().lower()
+    op = _BODEGA_OP_ALIASES.get(op, op)
     if op not in {k for k, _ in BODEGA_OPS}:
-        op = "ingreso"
+        op = "movimiento"
     return op
 
 
 def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
-    ingreso_rows, pdf_ingreso = _movimientos_cc(demo, conn, "Ingreso")
-    salida_rows, pdf_salida = _movimientos_cc(demo, conn, "Salida")
     hoy = hoy_demo(demo)
     fi = parse_date(request.args.get("desde"), hoy - timedelta(days=90))
     ff = parse_date(request.args.get("hasta"), hoy)
+    movimiento_rows, pdf_movimiento = _cuaderno_movimientos(demo, conn, fi, ff)
     op = op_override or _bodega_op_activa()
     ctx = {
         "bodega_ops": BODEGA_OPS,
@@ -211,10 +236,9 @@ def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
         "familias_prod": demo.listar_familias_producto(conn),
         "unidades_medida": demo.UNIDADES_MEDIDA_INSUMO,
         "um_default": demo.DEFAULT_UNIDAD_INSUMO,
-        "ingreso_rows": ingreso_rows,
-        "salida_rows": salida_rows,
-        "pdf_ingreso_url": pdf_ingreso,
-        "pdf_salida_url": pdf_salida,
+        "movimiento_rows": movimiento_rows,
+        "movimiento_n": len(movimiento_rows),
+        "pdf_movimiento_url": pdf_movimiento,
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "alerta_lc": session.pop("espino_bodega_alerta_lc", None),
@@ -259,6 +283,7 @@ def post_salida(demo, conn) -> dict:
     conn.commit()
     demo.registrar_accion(CC_ESPINO, f"Salida bodega {prod_nombre} {demo.f_cantidad(ct)} {um_sel}")
 
+    extra = {"op": "movimiento"}
     if demo.producto_pppl_aprobado(conn, prod_nombre):
         session["espino_bodega_alerta_lc"] = {
             "producto": prod_nombre,
@@ -266,8 +291,8 @@ def post_salida(demo, conn) -> dict:
             "um": um_sel,
             "cuarteles": [CC_ESPINO],
         }
-        return {"ok": True, "msg": "Salida registrada. Revise aviso PPPL / Libro de Campo."}
-    return {"ok": True, "msg": f"Salida bodega {CC_ESPINO} registrada."}
+        return {"ok": True, "msg": "Salida registrada. Revise aviso PPPL / Libro de Campo.", "extra": extra}
+    return {"ok": True, "msg": f"Salida bodega {CC_ESPINO} registrada.", "extra": extra}
 
 
 def post_ingreso_existente(demo, conn) -> dict:
@@ -295,7 +320,11 @@ def post_ingreso_existente(demo, conn) -> dict:
     )
     conn.commit()
     demo.registrar_accion(CC_ESPINO, f"Ingreso bodega {prod_nombre} +{demo.f_cantidad(ct)} {um_sel}")
-    return {"ok": True, "msg": f"Ingreso registrado: +{demo.f_cantidad(ct)} {um_sel} de {prod_nombre}."}
+    return {
+        "ok": True,
+        "msg": f"Entrada registrada: +{demo.f_cantidad(ct)} {um_sel} de {prod_nombre}.",
+        "extra": {"op": "movimiento"},
+    }
 
 
 def post_ingreso_nuevo(demo, conn) -> dict:
@@ -317,7 +346,7 @@ def post_ingreso_nuevo(demo, conn) -> dict:
     if ns < 0:
         return {"ok": False, "msg": "El stock inicial no puede ser negativo."}
     if conn.execute("SELECT id FROM inventario WHERE UPPER(producto)=?", (np.upper(),)).fetchone():
-        return {"ok": False, "msg": "El producto ya existe. Use ingreso a producto existente."}
+        return {"ok": False, "msg": "El producto ya existe. Registre entrada en Movimiento."}
 
     cur = conn.execute(
         "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida, ingrediente_activo) VALUES (?,?,?,?,?,?)",
@@ -346,9 +375,14 @@ def post_ingreso_nuevo(demo, conn) -> dict:
         )
     conn.commit()
     demo.registrar_accion(CC_ESPINO, f"Apertura bodega {np} stock_espino={ns}")
+    extra = {"op": "movimiento" if ns > 0 else "nuevo"}
     if ns > 0:
-        return {"ok": True, "msg": f"Producto {np} creado con stock El Espino {demo.f_cantidad(ns)} {nu}."}
-    return {"ok": True, "msg": f"Producto {np} creado (stock El Espino en cero). Registre ingresos cuando corresponda."}
+        return {"ok": True, "msg": f"Producto {np} creado con stock El Espino {demo.f_cantidad(ns)} {nu}.", "extra": extra}
+    return {
+        "ok": True,
+        "msg": f"Producto {np} creado (stock El Espino en cero). Registre entradas en Movimiento.",
+        "extra": extra,
+    }
 
 
 def post_ingreso(demo, conn) -> dict:

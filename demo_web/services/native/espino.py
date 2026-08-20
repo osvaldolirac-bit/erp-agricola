@@ -345,11 +345,12 @@ def view(user_email: str, user_rol: str):
                 if action.startswith("bodega_"):
                     extra["sec"] = "bodega"
                     if action == "bodega_ingreso":
-                        extra["op"] = request.form.get("op") or request.form.get("modo") or "ingreso"
-                        if extra["op"] == "existente":
-                            extra["op"] = "ingreso"
+                        modo = request.form.get("modo") or "existente"
+                        extra["op"] = "nuevo" if modo == "nuevo" else "movimiento"
                     elif action == "bodega_salida":
-                        extra["op"] = "salida"
+                        extra["op"] = "movimiento"
+                    elif "op" not in extra:
+                        extra["op"] = request.form.get("op") or "movimiento"
                 if action.startswith("maquinaria_"):
                     extra["sec"] = "maquinaria"
                     if "op" not in extra:
