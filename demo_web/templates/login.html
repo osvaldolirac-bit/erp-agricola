@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Acceso — {{ erp_title|default('ERP Agrícola', true) }}{% endblock %}
 {% block content %}
-<section class="login-page" aria-label="Acceso {{ erp_title|default('ERP Agrícola', true) }}">
-  <div class="login-bg-grid" aria-hidden="true">
-    <div class="login-bg-cerezo"></div>
-    <div class="login-bg-cerezas"></div>
-    <div class="login-bg-bodega"></div>
+<section class="login-page login-page--industrial" aria-label="Acceso {{ erp_title|default('ERP Agrícola', true) }}">
+  <div class="login-bg" aria-hidden="true">
+    <div class="login-bg-photo"></div>
+    <div class="login-bg-rows"></div>
+    <div class="login-bg-steel"></div>
   </div>
   <div class="login-scrim" aria-hidden="true"></div>
 
@@ -20,7 +20,7 @@
     <div class="login-panel{% if open_panel %} open{% endif %}" id="loginPanel" role="dialog" aria-label="Iniciar sesión">
       <form method="post" class="login-panel-form" autocomplete="off">
         <label for="email">Usuario</label>
-        <input id="email" name="email" type="email" autocomplete="username" required>
+        <input id="email" name="email" value="{{ acceso_pref or '' }}" type="email" autocomplete="username" required>
         <label for="password">Clave</label>
         <input id="password" name="password" type="password"
                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
@@ -35,8 +35,9 @@
   </div>
 
   <main class="login-hero">
+    <p class="login-brand">{{ erp_brand|default('ERP Master', true) }}</p>
     <h1>{{ erp_title|default('ERP Agrícola', true)|upper }}</h1>
-    <p>{{ erp_login_subtitle|default('Gestión integral para operaciones del campo', true) }}</p>
+    <p>{{ erp_login_subtitle|default('Campo, patio y oficina en una sola operación', true) }}</p>
   </main>
 </section>
 {% endblock %}
