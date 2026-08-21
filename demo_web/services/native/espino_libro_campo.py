@@ -6,7 +6,7 @@ from datetime import timedelta
 import pandas as pd
 from flask import request, session, url_for
 
-from demo_web.services.module_runner import store_pdf
+from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
 
@@ -280,10 +280,7 @@ def _historial(demo, conn) -> dict:
 
     blob = _generar_pdf_historial(demo, df)
     if blob:
-        pdf_url = url_for(
-            "modules.pdf_download",
-            token=store_pdf(blob, PDF_FILENAME),
-        )
+        pdf_url = pdf_download_url(store_pdf(blob, PDF_FILENAME), PDF_FILENAME)
 
     col_app = "N° APP"
     grupos = []

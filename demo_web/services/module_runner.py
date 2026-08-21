@@ -140,6 +140,19 @@ def store_pdf(blob: bytes, filename: str) -> str:
     return _store(blob, filename)
 
 
+def pdf_download_url(token: str, filename: str, *, inline: bool = False) -> str:
+    """URL de descarga con nombre en la ruta (evita 'unknown' en visores/navegadores)."""
+    from werkzeug.utils import secure_filename
+
+    safe = secure_filename((filename or "documento.pdf").split("/")[-1]) or "documento.pdf"
+    if not safe.lower().endswith(".pdf"):
+        safe = f"{safe}.pdf"
+    link = url_for("modules.pdf_download", token=token, download_name=safe)
+    if inline:
+        link += "&inline=1" if "?" in link else "?inline=1"
+    return link
+
+
 def get_pdf(token: str) -> tuple[bytes, str] | None:
     from demo_web.services.pdf_cache import get_pdf as _get
 

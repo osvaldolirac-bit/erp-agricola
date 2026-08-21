@@ -8,7 +8,7 @@ import pandas as pd
 from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
-from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 
 SECCIONES_BASE = [
@@ -423,7 +423,7 @@ def _historial(demo, conn) -> dict:
 
     blob = demo.generar_pdf_libro_campo(df)
     if blob:
-        pdf_url = url_for("modules.pdf_download", token=store_pdf(blob, pdf_filename))
+        pdf_url = pdf_download_url(store_pdf(blob, pdf_filename), pdf_filename)
 
     col_app = "N° APP"
     grupos = []

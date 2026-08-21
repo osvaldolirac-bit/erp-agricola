@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from io import BytesIO
 from urllib.parse import urlparse
 
 from flask import Blueprint, Response, abort, redirect, render_template, request, send_file, url_for
+from werkzeug.utils import secure_filename
 
 from demo_web.auth.decorators import login_required, module_required
 from demo_web.services import module_runner as mr
@@ -53,16 +55,25 @@ def _safe_back_url(raw: str | None) -> str:
         return url_for("modules.dashboard")
 
 
+def _pdf_safe_name(name: str | None) -> str:
+    safe = secure_filename((name or "documento.pdf").split("/")[-1]) or "documento.pdf"
+    if not safe.lower().endswith(".pdf"):
+        safe = f"{safe}.pdf"
+    return safe
+
+
 @bp.route("/pdf/view/<token>")
+@bp.route("/pdf/view/<token>/<path:download_name>")
 @login_required
-def pdf_view(token: str):
+def pdf_view(token: str, download_name: str | None = None):
     got = mr.get_pdf(token)
     if not got:
         return Response("PDF no encontrado o expirado.", status=404)
-    _, filename = got
+    _, stored_name = got
+    filename = _pdf_safe_name(download_name or stored_name)
     back_url = _safe_back_url(request.args.get("back") or request.referrer)
-    pdf_embed_url = url_for("modules.pdf_download", token=token, inline=1)
-    pdf_share_url = url_for("modules.pdf_download", token=token)
+    pdf_embed_url = mr.pdf_download_url(token, filename, inline=True)
+    pdf_share_url = mr.pdf_download_url(token, filename)
     return render_template(
         "pdf_viewer.html",
         page_title=f"PDF — {filename}",
@@ -74,25 +85,21 @@ def pdf_view(token: str):
 
 
 @bp.route("/pdf/<token>")
+@bp.route("/pdf/<token>/<path:download_name>")
 @login_required
-def pdf_download(token: str):
+def pdf_download(token: str, download_name: str | None = None):
     got = mr.get_pdf(token)
     if not got:
         return Response("PDF no encontrado o expirado.", status=404)
-    blob, filename = got
+    blob, stored_name = got
     inline = request.args.get("inline") in ("1", "true", "yes")
-    disposition = "inline" if inline else "attachment"
-    safe = (filename or "documento.pdf").replace('"', "").replace("\\", "")
-    if not safe.lower().endswith(".pdf"):
-        safe = f"{safe}.pdf"
-    from urllib.parse import quote
-
-    encoded = quote(safe)
-    cd = f'{disposition}; filename="{safe}"; filename*=UTF-8\'\'{encoded}'
-    return Response(
-        blob,
+    safe = _pdf_safe_name(download_name or stored_name)
+    return send_file(
+        BytesIO(blob),
         mimetype="application/pdf",
-        headers={"Content-Disposition": cd},
+        as_attachment=not inline,
+        download_name=safe,
+        max_age=0,
     )
 
 

@@ -136,9 +136,14 @@
   function toPdfViewUrl(downloadHref) {
     try {
       var u = new URL(downloadHref, window.location.href);
-      var m = u.pathname.match(/\/pdf\/([^/]+)$/);
+      var m = u.pathname.match(/\/pdf\/([^/]+)(?:\/(.+\.pdf))?$/i);
       if (!m) return downloadHref;
-      u.pathname = u.pathname.replace(/\/pdf\/[^/]+$/, '/pdf/view/' + m[1]);
+      var token = m[1];
+      var fname = m[2] || '';
+      u.pathname = u.pathname.replace(
+        /\/pdf\/[^/]+(?:\/[^/]+)?$/,
+        '/pdf/view/' + token + (fname ? '/' + fname : '')
+      );
       u.searchParams.set('back', window.location.href);
       u.hash = '';
       return u.pathname + u.search;
@@ -157,30 +162,8 @@
     }
   }
 
-  async function abrirPdfMovilIos(btn) {
-    var url = toPdfInlineUrl(btn.getAttribute('href'));
-    var originalText = btn.textContent;
-    btn.dataset.pdfBusy = '1';
-    btn.setAttribute('aria-busy', 'true');
-    btn.textContent = 'Cargando PDF…';
-
-    try {
-      var resp = await fetch(url, { credentials: 'same-origin' });
-      if (!resp.ok) throw new Error('PDF no disponible o expirado.');
-      var blob = await resp.blob();
-      var filename = btn.getAttribute('data-pdf-filename') ||
-        parseFilenameFromDisposition(resp.headers.get('Content-Disposition')) ||
-        'documento.pdf';
-      var blobUrl = URL.createObjectURL(blob);
-      /* Visor nativo del navegador (Chrome/Safari en iPhone) — PDF completo, no iframe */
-      window.location.assign(blobUrl);
-    } catch (err) {
-      window.location.href = url;
-    } finally {
-      delete btn.dataset.pdfBusy;
-      btn.removeAttribute('aria-busy');
-      btn.textContent = originalText;
-    }
+  function abrirPdfMovilIos(btn) {
+    window.location.href = toPdfViewUrl(btn.getAttribute('href'));
   }
 
   async function handlePdfShareClick(e) {
