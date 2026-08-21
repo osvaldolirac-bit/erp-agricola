@@ -593,13 +593,17 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 
 .demo-menu-foot {
   margin-top: auto;
+  flex-shrink: 0;
   padding: 0.75rem 0.5rem 0.25rem;
   border-top: 1px solid #dde5df;
 }
 
 .demo-nav-link.nav-planes {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
   margin: 0 0.15rem;
-  padding: 0.72rem 0.85rem;
+  padding: 0.75rem 0.7rem;
   border: 1px solid rgba(46, 125, 50, 0.35);
   background: linear-gradient(135deg, rgba(46, 125, 50, 0.92), rgba(27, 94, 32, 0.95));
   color: #f3fff4 !important;
@@ -607,6 +611,8 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 }
 
 .demo-nav-link.nav-planes .nav-link-main {
+  justify-content: center;
+  width: 100%;
   font-size: 1.02rem;
 }
 
@@ -615,18 +621,21 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 }
 
 .demo-nav-link.nav-planes .nav-fee {
-  display: inline-block;
-  font-size: 0.65rem;
+  display: block;
+  width: 100%;
+  font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-align: center;
   white-space: nowrap;
-  padding: 0.22rem 0.5rem;
+  padding: 0.35rem 0.45rem;
   border-radius: 999px;
   border: 1px solid #f0c14b;
   color: #3d2a00;
   background: #ffe8a3;
-  line-height: 1.2;
+  line-height: 1.25;
+  box-sizing: border-box;
 }
 
 .demo-nav-link.nav-planes:hover,
