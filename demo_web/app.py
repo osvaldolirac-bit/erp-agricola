@@ -134,6 +134,31 @@ def create_app(config_class=Config) -> Flask:
             abort(404)
         return send_file(path, max_age=3600)
 
+    @app.route("/assets/logo/tenant")
+    def tenant_logo_asset():
+        from flask import abort, send_file
+
+        from demo_web.services.branding import find_tenant_logo_path
+
+        slug = session.get("tenant_slug") or (request.args.get("tenant") or "").strip().lower()
+        if not slug or not get_tenant(slug):
+            abort(404)
+        path = find_tenant_logo_path(slug)
+        if not path:
+            abort(404)
+        return send_file(path, max_age=3600)
+
+    @app.route("/assets/logo/master")
+    def master_logo_asset():
+        from flask import abort, send_file
+
+        from demo_web.services.branding import find_master_logo_path
+
+        path = find_master_logo_path()
+        if not path:
+            abort(404)
+        return send_file(path, max_age=3600)
+
 
     @app.route("/probar", methods=["GET", "POST"])
     def probar():
@@ -359,7 +384,11 @@ def create_app(config_class=Config) -> Flask:
     @app.context_processor
     def inject_globals():
         from demo_web.auth.decorators import build_menu
-        from demo_web.services.branding import find_logo_path
+        from demo_web.services.branding import (
+            find_logo_path,
+            find_master_logo_path,
+            find_tenant_logo_path,
+        )
         from flask import request, url_for
 
         user = None
@@ -381,6 +410,7 @@ def create_app(config_class=Config) -> Flask:
                 else:
                     nav_ops.append(it)
         prefix = (app.config.get("APPLICATION_ROOT") or "/agricola").rstrip("/")
+        master_logo_url = None
         # Login/selector: marca del rubro. Dentro del ERP: nombre del tenant.
         if session.get("email") and tenant:
             title = tenant["nombre"]
@@ -388,8 +418,13 @@ def create_app(config_class=Config) -> Flask:
             subtitle = tenant.get("descripcion") or ""
             badge = ""
             icon = ""
-            logo_url = None  # sin logo de cliente en esquina; nav usa brand texto
             erp_app = tenant["erp_app"]
+            if find_tenant_logo_path(tenant["slug"]):
+                logo_url = url_for("tenant_logo_asset")
+            else:
+                logo_url = None
+            if tenant["slug"] == "concepcion" and find_master_logo_path():
+                master_logo_url = url_for("master_logo_asset")
         else:
             title = app.config.get("ERP_TITLE", RUBRO_TITLE)
             brand = app.config.get("ERP_BRAND", RUBRO_BRAND)
@@ -414,6 +449,7 @@ def create_app(config_class=Config) -> Flask:
             "erp_app": erp_app,
             "tenant": tenant,
             "logo_url": logo_url,
+            "master_logo_url": master_logo_url,
             "static_version": config_class.static_version(),
             "session_idle_limit": int(app.config.get("SESSION_IDLE_SECONDS") or 1200),
             "session_idle_warn": int(app.config.get("SESSION_IDLE_WARN_SECONDS") or 120),

@@ -34,19 +34,39 @@ def _logo_dirs() -> list[Path]:
     return dirs
 
 
-def find_logo_path(prefer_master: bool = True) -> Path | None:
-    names = _MASTER_LOGO_NAMES if prefer_master else _LEGACY_LOGO_NAMES
+def _first_existing(names: tuple[str, ...]) -> Path | None:
     for d in _logo_dirs():
         for name in names:
             p = d / name
             if p.is_file():
                 return p
+    return None
+
+
+def find_logo_path(prefer_master: bool = True) -> Path | None:
     if prefer_master:
+        found = _first_existing(_MASTER_LOGO_NAMES)
+        if found:
+            return found
         # sin logo master, no caer al de LC en la pantalla del rubro
         return None
-    for d in _logo_dirs():
-        for name in _LEGACY_LOGO_NAMES:
-            p = d / name
-            if p.is_file():
-                return p
-    return None
+    return _first_existing(_LEGACY_LOGO_NAMES)
+
+
+def find_master_logo_path() -> Path | None:
+    """Logo ERP Master (marca plataforma)."""
+    return _first_existing(_MASTER_LOGO_NAMES)
+
+
+_TENANT_LOGO_NAMES: dict[str, tuple[str, ...]] = {
+    "concepcion": _LEGACY_LOGO_NAMES,
+}
+
+
+def find_tenant_logo_path(slug: str | None) -> Path | None:
+    """Logo del cliente según tenant (p. ej. La Concepción)."""
+    key = (slug or "").strip().lower()
+    names = _TENANT_LOGO_NAMES.get(key)
+    if not names:
+        return None
+    return _first_existing(names)

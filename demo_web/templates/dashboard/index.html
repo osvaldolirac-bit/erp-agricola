@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — {{ erp_title|default('ERP') }}{% endblock %}
 {% block content %}
-<div class="container-fluid py-3 dashboard-page">
+<div class="container-fluid py-3 dashboard-page{% if erp_app == 'concepcion' %} dashboard-page--concepcion{% endif %}">
   {% if logo_url %}
-  <div class="text-center mb-3">
+  <div class="text-center mb-3 dashboard-tenant-logo">
     <img src="{{ logo_url }}" alt="{{ erp_title }}" class="logo-modulo">
   </div>
   {% endif %}
@@ -69,5 +69,11 @@
       </div>
     </div>
   </div>
+
+  {% if master_logo_url %}
+  <div class="dashboard-master-logo" aria-hidden="true">
+    <img src="{{ master_logo_url }}" alt="ERP Master">
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

@@ -1259,6 +1259,46 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   display: block;
   margin: 0 auto;
 }
+.dashboard-page--concepcion .dashboard-tenant-logo .logo-modulo {
+  max-width: 320px;
+}
+.dashboard-master-logo {
+  position: fixed;
+  right: 1.15rem;
+  bottom: 1rem;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0.92;
+}
+.dashboard-master-logo img {
+  max-height: 42px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.12));
+}
+.erp-master-brand {
+  position: fixed;
+  right: 1.15rem;
+  bottom: 1rem;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0.88;
+}
+.erp-master-brand img {
+  max-height: 34px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.1));
+}
+@media (max-width: 767.98px) {
+  .dashboard-master-logo,
+  .erp-master-brand {
+    right: 0.65rem;
+    bottom: 0.65rem;
+  }
+  .dashboard-master-logo img { max-height: 32px; }
+  .erp-master-brand img { max-height: 28px; }
+}
 .demo-sidebar-logo {
   padding-top: 0.85rem;
   padding-bottom: 0.25rem;
