@@ -482,6 +482,175 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   font-size: 0.85rem;
 }
 
+/* Sidebar — navegación principal */
+.demo-offcanvas {
+  background: #fff;
+}
+
+.demo-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-top: 0.35rem;
+  padding: 0 0.5rem 0.75rem;
+}
+
+.demo-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.62rem 0.85rem;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: #1f2933;
+  font-weight: 600;
+  font-size: 0.94rem;
+  line-height: 1.25;
+  text-decoration: none;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.demo-nav-link:hover,
+.demo-nav-link:focus {
+  background: var(--demo-green-light);
+  color: var(--demo-green-dark);
+}
+
+.demo-nav-link.active {
+  background: var(--demo-green);
+  color: #fff !important;
+}
+
+.nav-link-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.nav-link-main i {
+  flex-shrink: 0;
+  width: 1.15rem;
+  font-size: 1.05rem;
+  opacity: 0.92;
+}
+
+.nav-link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.demo-nav-link.active .nav-link-main i {
+  opacity: 1;
+}
+
+.demo-nav-link.nav-with-count {
+  padding-right: 0.65rem;
+}
+
+.nav-count {
+  flex-shrink: 0;
+  min-width: 1.45rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: #e8edf2;
+  color: #425466;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.nav-count-alert {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+.demo-nav-link.active .nav-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.demo-nav-link.active .nav-count-alert {
+  background: #fff;
+  color: #b71c1c;
+}
+
+.demo-nav-section {
+  margin: 0.85rem 0.85rem 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid #dde5df;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #5f6b7a;
+}
+
+.demo-menu-foot {
+  margin-top: auto;
+  padding: 0.75rem 0.5rem 0.25rem;
+  border-top: 1px solid #dde5df;
+}
+
+.demo-nav-link.nav-planes {
+  margin: 0 0.15rem;
+  padding: 0.72rem 0.85rem;
+  border: 1px solid rgba(46, 125, 50, 0.35);
+  background: linear-gradient(135deg, rgba(46, 125, 50, 0.92), rgba(27, 94, 32, 0.95));
+  color: #f3fff4 !important;
+  box-shadow: 0 6px 16px rgba(27, 94, 32, 0.22);
+}
+
+.demo-nav-link.nav-planes .nav-link-main {
+  font-size: 1.02rem;
+}
+
+.demo-nav-link.nav-planes .nav-link-main i {
+  color: #ffe8a3;
+}
+
+.demo-nav-link.nav-planes .nav-fee {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #f0c14b;
+  color: #3d2a00;
+  background: #ffe8a3;
+  line-height: 1.2;
+}
+
+.demo-nav-link.nav-planes:hover,
+.demo-nav-link.nav-planes:focus {
+  background: linear-gradient(135deg, #388e3c, #1b5e20);
+  color: #fff !important;
+}
+
+.demo-nav-link.nav-planes.active {
+  background: linear-gradient(135deg, #f0a202, #2e7d32) !important;
+  border-color: #ffe8a3 !important;
+}
+
+.demo-nav-link.nav-planes.active .nav-link-main i {
+  color: #fff8e1;
+}
+
+.demo-nav-link.nav-planes.active .nav-fee-pack {
+  color: #5a3d00;
+  background: #fff3cd;
+  border-color: transparent;
+}
+
+/* Compatibilidad menú antiguo list-group */
 .demo-menu .list-group-item {
   border: 0 !important;
   position: relative;
@@ -511,10 +680,6 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   .demo-sidebar-head {
     margin-top: 1rem;
   }
-}
-
-.demo-menu {
-  margin-top: 0.35rem;
 }
 
 .demo-menu .list-group-item.active {
@@ -614,6 +779,7 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   .demo-offcanvas .demo-menu {
     flex: 1 1 auto;
     padding-bottom: 0.5rem;
+    min-height: 0;
   }
   .demo-offcanvas .btn-close { display: none; }
 }
@@ -1105,6 +1271,7 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 .logo-sidebar {
   max-width: 235px;
   max-height: 112px;
+  width: auto;
   object-fit: contain;
 }
 .logo-login { max-width: 380px; }

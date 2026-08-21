@@ -179,9 +179,34 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
         "Manual": "modules.manual",
         "Administracion": "modules.admin",
     }
+    icon_map = {
+        "DASHBOARD": "bi-grid-1x2",
+        "Compras": "bi-cart3",
+        "Tesoreria": "bi-bank",
+        "Flujo financiero": "bi-graph-up-arrow",
+        "Costos": "bi-calculator",
+        "RRHH": "bi-people",
+        "Campob": "bi-tree",
+        "Espino": "bi-geo-alt",
+        "Libro de Campo": "bi-journal-text",
+        "Petróleo": "bi-fuel-pump",
+        "Bodega": "bi-box-seam",
+        "Maquinaria": "bi-truck",
+        "GlobalGAP": "bi-patch-check",
+        "Soporte": "bi-life-preserver",
+        "Manual": "bi-book",
+        "Administracion": "bi-gear",
+    }
     items = []
     for label, key in opts.items():
         endpoint = slug_map.get(key)
         if endpoint:
-            items.append({"label": label, "key": key, "endpoint": endpoint})
+            items.append(
+                {
+                    "label": label,
+                    "key": key,
+                    "endpoint": endpoint,
+                    "icon": icon_map.get(key, "bi-circle"),
+                }
+            )
     return items
