@@ -571,3 +571,35 @@ body:has(.planes-hero) .page-head h1 {
   font-size: 1.05rem;
   line-height: 1.35;
 }
+
+/* Layout Planes con sidebar fijo (evita columnas aplastadas) */
+body.demo-body.planes-page {
+  font-family: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+body.demo-body.planes-page .demo-main {
+  padding: 1rem 1.15rem 2.5rem;
+}
+body.demo-body.planes-page .planes-pricing {
+  max-width: none;
+  width: 100%;
+}
+body.demo-body.planes-page .planes-cards.planes-cards-5 {
+  grid-template-columns: 1fr;
+  max-width: 420px;
+}
+@media (min-width: 768px) {
+  body.demo-body.planes-page .planes-cards.planes-cards-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+  }
+}
+@media (min-width: 1200px) {
+  body.demo-body.planes-page .planes-cards.planes-cards-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1600px) {
+  body.demo-body.planes-page .planes-cards.planes-cards-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}

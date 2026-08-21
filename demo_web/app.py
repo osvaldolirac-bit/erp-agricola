@@ -360,6 +360,7 @@ def create_app(config_class=Config) -> Flask:
         return render_template(
             "planes.html",
             active_key="Planes",
+            body_class="planes-page",
             modulos=MODULOS_FEE,
             pack=PACK,
             pack_campo=PACK_CAMPO,
