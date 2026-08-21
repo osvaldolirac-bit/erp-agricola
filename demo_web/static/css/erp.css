@@ -96,7 +96,7 @@ body.demo-body {
   position: fixed;
   top: 1.25rem;
   right: 1.25rem;
-  z-index: 10;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1038,11 +1038,22 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 .logo-login { max-width: 380px; }
 .login-logo-corner {
   position: fixed;
-  top: 1rem;
-  left: 1rem;
-  z-index: 20;
+  top: 1.1rem;
+  left: 1.1rem;
+  right: auto;
+  bottom: auto;
+  z-index: 8;
+  width: fit-content;
+  height: fit-content;
+  pointer-events: none;
 }
-.login-logo-corner .logo-login { max-width: 200px; margin: 0; }
+.login-logo-corner .logo-login {
+  max-width: 200px;
+  max-height: 52px;
+  width: auto;
+  margin: 0;
+  pointer-events: auto;
+}
 
 /* Dashboard encabezado */
 .dash-hr {
