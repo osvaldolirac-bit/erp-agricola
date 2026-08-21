@@ -64,6 +64,34 @@ def _activate_session(
         pass
 
 
+def _maybe_alert_login(*, email: str, exitoso: bool, tenant_slug: str | None = None) -> None:
+    """Alerta SMTP de ingreso — sin spam en DEMO público ni cuentas internas."""
+    em = (email or "").strip().lower()
+    slug = (tenant_slug or "").strip().lower()
+    if slug == "demo":
+        return
+    try:
+        from erp_correo_html import omitir_alerta_acceso
+
+        if omitir_alerta_acceso(em):
+            return
+    except Exception:
+        if em in {
+            "demo@erpmaster.cl",
+            "certificacion@erpmaster.cl",
+            "osvaldolira@laconcepcion.cl",
+            "osvaldolirac@gmail.com",
+        }:
+            return
+    if not exitoso:
+        return
+    try:
+        mod = get_erp_module_for(slug or "concepcion")
+        mod.enviar_correo_alerta(email or "desconocido", exitoso=True)
+    except Exception:
+        pass
+
+
 def _find_login_matches(email: str, password: str) -> list[dict]:
     matches: list[dict] = []
     for t in list_tenants():
@@ -170,22 +198,12 @@ def login():
         password = request.form.get("password") or ""
         matches = _find_login_matches(email, password)
         if not matches:
-            # alerta en el primer tenant demo si existe (best-effort)
-            try:
-                erp = get_erp_module_for("demo")
-                erp.enviar_correo_alerta(email or "desconocido", exitoso=False)
-            except Exception:
-                pass
             error = "Acceso denegado o periodo de prueba vencido."
             open_panel = True
             flash(error, "danger")
         elif len(matches) == 1:
             m = matches[0]
-            if email.lower() != "osvaldolira@laconcepcion.cl":
-                try:
-                    get_erp_module_for(m["slug"]).enviar_correo_alerta(email, exitoso=True)
-                except Exception:
-                    pass
+            _maybe_alert_login(email=email, exitoso=True, tenant_slug=m["slug"])
             _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
             return redirect(safe_next(pop_login_next()))
         else:
