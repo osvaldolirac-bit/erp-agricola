@@ -22,8 +22,8 @@ _BASE_MODULES: dict[str, tuple[str, str]] = {
 
 
 def get_modules() -> dict[str, tuple[str, str]]:
-    # Rubro agrícola multi-tenant: registrar ambos; menú/tenant elige.
     mods = dict(_BASE_MODULES)
-    mods["espino"] = ("Espino", "modulo_espino")
     mods["campob"] = ("Campob", "modulo_campob")
+    # Espino: ruta activa (La Concepción); tenant demo lo bloquea en module_required.
+    mods["espino"] = ("Espino", "modulo_espino")
     return mods

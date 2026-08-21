@@ -119,6 +119,11 @@ def module_required(module_key: str):
     def deco(view: Callable):
         @wraps(view)
         def wrapped(*args, **kwargs):
+            from flask import session
+
+            tenant_slug = (getattr(g, "tenant_slug", None) or session.get("tenant_slug") or "").strip().lower()
+            if module_key == "Espino" and tenant_slug == "demo":
+                abort(404)
             demo = g.demo
             bind_user_session(g.user["email"], g.user["rol"])
             if not demo.puede_acceder_modulo(module_key):
