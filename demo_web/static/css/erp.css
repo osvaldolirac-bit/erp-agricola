@@ -47,14 +47,14 @@ body.demo-body {
   width: 100%;
 }
 
-/* Campo inteligente: foto full-bleed + surcos + acero */
+/* Patio industrial: packing, flota y riego */
 .login-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background: #1a2420;
+  background: #141a1f;
 }
 
 .login-bg-photo {
@@ -66,41 +66,42 @@ body.demo-body {
     url("../login/bg_campo_industrial.jpg") type("image/jpeg")
   );
   background-size: cover;
-  background-position: center 42%;
+  background-position: center 48%;
   background-repeat: no-repeat;
   transform: scale(1.04);
-  filter: saturate(0.9) contrast(1.06) brightness(0.9);
+  filter: saturate(0.72) contrast(1.12) brightness(0.86);
   animation: login-bg-drift 28s ease-in-out infinite alternate;
 }
 
 .login-bg-rows {
   position: absolute;
   inset: 0;
-  opacity: 0.22;
+  opacity: 0.28;
   background-image:
     repeating-linear-gradient(
-      98deg,
+      90deg,
       transparent 0,
-      transparent 38px,
-      rgba(210, 220, 200, 0.07) 38px,
-      rgba(210, 220, 200, 0.07) 40px
+      transparent 47px,
+      rgba(180, 190, 200, 0.06) 47px,
+      rgba(180, 190, 200, 0.06) 48px
     ),
     repeating-linear-gradient(
-      8deg,
+      0deg,
       transparent 0,
-      transparent 72px,
-      rgba(0, 0, 0, 0.08) 72px,
-      rgba(0, 0, 0, 0.08) 74px
+      transparent 47px,
+      rgba(180, 190, 200, 0.05) 47px,
+      rgba(180, 190, 200, 0.05) 48px
     );
-  mix-blend-mode: soft-light;
+  mix-blend-mode: overlay;
 }
 
 .login-bg-steel {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 80% 55% at 70% 35%, rgba(90, 110, 100, 0.25), transparent 60%),
-    linear-gradient(115deg, rgba(26, 36, 32, 0.55) 0%, rgba(31, 58, 44, 0.2) 45%, rgba(45, 55, 50, 0.35) 100%);
+    radial-gradient(ellipse 70% 50% at 25% 55%, rgba(120, 135, 150, 0.22), transparent 62%),
+    radial-gradient(ellipse 55% 45% at 78% 40%, rgba(70, 90, 110, 0.28), transparent 58%),
+    linear-gradient(125deg, rgba(16, 22, 28, 0.62) 0%, rgba(28, 38, 48, 0.35) 48%, rgba(18, 24, 30, 0.55) 100%);
 }
 
 .login-scrim {
@@ -110,9 +111,9 @@ body.demo-body {
   pointer-events: none;
   background: linear-gradient(
     180deg,
-    rgba(12, 18, 16, 0.55) 0%,
-    rgba(12, 18, 16, 0.28) 42%,
-    rgba(12, 18, 16, 0.62) 100%
+    rgba(10, 14, 18, 0.62) 0%,
+    rgba(10, 14, 18, 0.32) 45%,
+    rgba(10, 14, 18, 0.68) 100%
   );
 }
 
