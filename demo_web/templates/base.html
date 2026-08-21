@@ -13,6 +13,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/erp.css') }}?v={{ static_version }}" rel="stylesheet">
+  {% block extra_head %}{% endblock %}
   {% if solo_lectura %}
   <style>
     body.erp-solo-lectura main.demo-main form[method="post"]:not([action*="logout"]) input:not([type="hidden"]),

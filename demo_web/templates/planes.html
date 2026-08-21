@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Planes y precios{% endblock %}
+{% block extra_head %}
+<link href="{{ url_for('static', filename='css/planes.css') }}?v={{ static_version }}" rel="stylesheet">
+{% endblock %}
 {% block content %}
 {% set mod_icons = {
   'dashboard': 'bi-grid-1x2',
@@ -25,6 +28,20 @@
     <p class="planes-iva-note"><strong>Todos los precios incluyen IVA</strong> (19%).</p>
     <p class="planes-trust-note">Sin letra chica. Sin contratos. Date de baja cuando quieras.</p>
   </header>
+
+  <aside class="planes-story" aria-label="Origen del ERP">
+    <div class="planes-story-badge">Estrategia</div>
+    <h2>Nació en los <strong>Costos</strong></h2>
+    <p>
+      Este ERP está enfocado en <strong>COSTOS</strong>: entender cuánto cuesta producir por centro de costo.
+      Esa fue la idea original. Después, a medida que se desarrollaba, se fueron sumando módulos según los
+      dolores reales del campo, el patio y la oficina — labores, maquinaria, petróleo, bodega, RRHH…
+    </p>
+    <p class="planes-story-foot">
+      El <strong>Pack Oficina</strong> concentra ese eje: RRHH + Costos + Flujo. El resto de packs cubre
+      la operación de terreno y abastecimiento.
+    </p>
+  </aside>
 
   <div class="planes-cards planes-cards-5" aria-label="Alternativas de plan">
     <article class="plan-card plan-card-modulos">
