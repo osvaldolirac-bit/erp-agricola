@@ -383,6 +383,7 @@ def _historial(demo, conn) -> dict:
                 ORDER BY CAST(n_aplicacion AS INTEGER) DESC, id ASC"""
     df = pd.read_sql_query(query, conn, params=params)
     pdf_url = None
+    pdf_filename = "LIBRO_DE_CAMPO_LA_CONCEPCION.pdf"
     if df.empty:
         return {
             "historial_grupos": [],
@@ -394,6 +395,7 @@ def _historial(demo, conn) -> dict:
             "filtro_n_app": q_app,
             "cuarteles": ["TODOS"] + demo.CENTROS_COSTO,
             "pdf_historial_url": pdf_url,
+            "pdf_historial_filename": pdf_filename,
         }
 
     df = df.rename(columns={
@@ -421,7 +423,7 @@ def _historial(demo, conn) -> dict:
 
     blob = demo.generar_pdf_libro_campo(df)
     if blob:
-        pdf_url = url_for("modules.pdf_download", token=store_pdf(blob, "libro_campo.pdf"))
+        pdf_url = url_for("modules.pdf_download", token=store_pdf(blob, pdf_filename))
 
     col_app = "N° APP"
     grupos = []
@@ -474,6 +476,7 @@ def _historial(demo, conn) -> dict:
         "filtro_n_app": q_app,
         "cuarteles": ["TODOS"] + demo.CENTROS_COSTO,
         "pdf_historial_url": pdf_url,
+        "pdf_historial_filename": pdf_filename,
     }
 
 

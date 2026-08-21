@@ -60,7 +60,7 @@
         <button type="submit" class="btn btn-primary w-100">Filtrar</button>
       </div>
       <div class="col-md-2 d-flex align-items-end">
-        {{ pdf_btn(pdf_historial_url, '📥 PDF INFORME', 'btn-outline-success w-100') }}
+        {{ pdf_btn(pdf_historial_url, '📥 PDF INFORME', 'btn-outline-success w-100', filename=pdf_historial_filename|default('LIBRO_DE_CAMPO_LA_CONCEPCION.pdf')) }}
       </div>
     </form>
   </div>

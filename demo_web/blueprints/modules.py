@@ -86,7 +86,9 @@ def pdf_download(token: str):
     if not safe.lower().endswith(".pdf"):
         safe = f"{safe}.pdf"
     from urllib.parse import quote
-    cd = f'{disposition}; filename="{safe}"; filename*=UTF-8''{quote(safe)}'
+
+    encoded = quote(safe)
+    cd = f'{disposition}; filename="{safe}"; filename*=UTF-8\'\'{encoded}'
     return Response(
         blob,
         mimetype="application/pdf",
