@@ -149,7 +149,7 @@
      data-logout-url="{{ url_for('auth.logout') }}"
      data-logout-mode="post"
      hidden></div>
-<div class="session-idle-overlay" id="sessionIdleOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sessionIdleTitle">
+<div class="session-idle-overlay" id="sessionIdleOverlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sessionIdleTitle">
   <div class="session-idle-card">
     <h2 id="sessionIdleTitle">Sesión por inactividad</h2>
     <p>
@@ -239,12 +239,14 @@
   function closeWarn() {
     warnOpen = false;
     overlay.classList.remove('is-open');
+    overlay.setAttribute('hidden', '');
     overlay.setAttribute('aria-hidden', 'true');
   }
 
   function openWarn() {
     if (!warnOpen) {
       warnOpen = true;
+      overlay.removeAttribute('hidden');
       overlay.classList.add('is-open');
       overlay.setAttribute('aria-hidden', 'false');
     }

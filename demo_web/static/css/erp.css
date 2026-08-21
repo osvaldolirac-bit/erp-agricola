@@ -749,8 +749,15 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 }
 
 @media (min-width: 992px) {
+  body.demo-body {
+    overflow-x: hidden;
+  }
   .demo-main {
     margin-left: 280px;
+    width: auto;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   .demo-offcanvas,
   .demo-offcanvas.demo-sidebar-desktop {
@@ -765,6 +772,9 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
     z-index: 1040;
     overflow: hidden;
     pointer-events: auto !important;
+  }
+  .offcanvas-backdrop {
+    display: none !important;
   }
   .demo-offcanvas .offcanvas-body {
     display: flex;
@@ -1907,4 +1917,80 @@ body.erp-ios .erp-pdf-viewer-object {
 }
 .petroleo-salida-manual .salida-petroleo-cuarteles {
   margin-top: 0.25rem;
+}
+
+/* Sesión por inactividad — modal centrado (oculto hasta aviso) */
+.session-idle-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(18, 28, 40, 0.55);
+  backdrop-filter: blur(3px);
+}
+.session-idle-overlay.is-open {
+  display: flex;
+}
+.session-idle-card {
+  width: min(420px, 100%);
+  background: #fffaf3;
+  border: 1px solid rgba(40, 52, 68, 0.16);
+  border-radius: 4px;
+  box-shadow: 0 18px 40px rgba(18, 28, 40, 0.28);
+  padding: 1.35rem 1.3rem 1.2rem;
+  color: #1f2a36;
+}
+.session-idle-card h2 {
+  margin: 0 0 0.45rem;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #163a5f;
+}
+.session-idle-card p {
+  margin: 0 0 0.85rem;
+  color: #5b6b7c;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+.session-idle-count {
+  display: inline-block;
+  min-width: 3.2rem;
+  font-weight: 800;
+  color: #9a4d12;
+  font-variant-numeric: tabular-nums;
+}
+.session-idle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.session-idle-actions button {
+  border-radius: 2px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.session-idle-continue {
+  background: #243546;
+  border-color: #243546;
+  color: #f4f1ea;
+  flex: 1 1 auto;
+}
+.session-idle-continue:hover {
+  background: #1a2734;
+}
+.session-idle-logout {
+  background: transparent;
+  border-color: rgba(40, 52, 68, 0.35);
+  color: #243546;
+}
+.session-idle-logout:hover {
+  background: rgba(40, 52, 68, 0.06);
 }
