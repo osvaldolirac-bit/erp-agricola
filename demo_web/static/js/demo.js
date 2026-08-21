@@ -162,8 +162,30 @@
     }
   }
 
-  function abrirPdfMovilIos(btn) {
-    window.location.href = toPdfViewUrl(btn.getAttribute('href'));
+  async function abrirPdfMovilIos(btn) {
+    var url = toPdfInlineUrl(btn.getAttribute('href'));
+    var originalText = btn.textContent;
+    btn.dataset.pdfBusy = '1';
+    btn.setAttribute('aria-busy', 'true');
+    btn.textContent = 'Cargando PDF…';
+
+    try {
+      var resp = await fetch(url, { credentials: 'same-origin' });
+      if (!resp.ok) throw new Error('PDF no disponible o expirado.');
+      var blob = await resp.blob();
+      var filename = btn.getAttribute('data-pdf-filename') ||
+        parseFilenameFromDisposition(resp.headers.get('Content-Disposition')) ||
+        'documento.pdf';
+      var blobUrl = URL.createObjectURL(blob);
+      /* Visor nativo del navegador — PDF completo, no iframe intermedio */
+      window.location.assign(blobUrl);
+    } catch (err) {
+      window.location.href = url;
+    } finally {
+      delete btn.dataset.pdfBusy;
+      btn.removeAttribute('aria-busy');
+      btn.textContent = originalText;
+    }
   }
 
   async function handlePdfShareClick(e) {
@@ -225,7 +247,6 @@
       var label = (btn.getAttribute('data-pdf-label') || btn.textContent || 'PDF').trim();
       var rows = btn.getAttribute('data-pdf-rows');
       btn.setAttribute('data-pdf-label', label);
-      btn.textContent = iosViewLabel(label);
       btn.removeAttribute('download');
       btn.addEventListener('click', function (e) {
         e.preventDefault();
