@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Planes y precios{% endblock %}
+{% block content %}
+{% set mod_icons = {
+  'dashboard': 'bi-grid-1x2',
+  'libro_campo': 'bi-journal-text',
+  'campob': 'bi-tree',
+  'globalgap': 'bi-shield-check',
+  'maquinaria': 'bi-gear-wide-connected',
+  'compras': 'bi-cart3',
+  'bodega': 'bi-box-seam',
+  'petroleo': 'bi-fuel-pump',
+  'tesoreria': 'bi-bank',
+  'rrhh': 'bi-people',
+  'costos': 'bi-calculator',
+  'flujo': 'bi-graph-up-arrow',
+  'admin': 'bi-gear',
+  'manual': 'bi-book',
+  'soporte': 'bi-life-preserver'
+} %}
+<section class="planes-pricing">
+  <header class="planes-pricing-head">
+    <h1>Planes y precios</h1>
+    <p>Elige cómo contratar: por módulo, Pack Campo, Pack Patio, Pack Oficina (eje Costos) o Pack Agrícola completo.</p>
+    <p class="planes-iva-note"><strong>Todos los precios incluyen IVA</strong> (19%).</p>
+    <p class="planes-trust-note">Sin letra chica. Sin contratos. Date de baja cuando quieras.</p>
+  </header>
+
+  <div class="planes-cards planes-cards-5" aria-label="Alternativas de plan">
+    <article class="plan-card plan-card-modulos">
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-puzzle"></i></div>
+        <h2>POR MÓDULO</h2>
+        <div class="plan-card-price">
+          <span class="plan-card-from">desde</span>
+          <strong>{{ clp(modulos_pago_min) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">IVA incluido · Pagas solo lo que activas</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Dashboard, Administración, Manual y Soporte incluidos</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Eliges módulos uno a uno</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 1 asiento (Operador o Lector)</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuario adicional: $3.900/mes</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Puedes partir solo con Costos (el eje)</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Respaldo de datos permanente</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Precios con IVA incluido</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Packs Campo, Patio, Oficina o Agrícola en un solo precio</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Ahorro de los packs</li>
+      </ul>
+      <div class="plan-card-foot">
+        <a class="plan-card-cta" href="{{ url_for('modules.soporte') }}">Consultar plan</a>
+      </div>
+    </article>
+
+    <article class="plan-card plan-card-pack-campo">
+      <div class="plan-card-badge plan-card-badge-campo">Campo</div>
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-tree"></i></div>
+        <h2>PACK CAMPO</h2>
+        <div class="plan-card-price">
+          <strong>{{ clp(pack_campo.fee) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">IVA incluido · Ahorras {{ clp(ahorro_campo) }}/mes</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Dashboard, Administración, Manual y Soporte incluidos</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> {{ pack_campo_labels|join(', ') }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 1 asiento (Operador o Lector)</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuario adicional: $3.900/mes</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> {{ pack_campo.flujo }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Setup único {{ pack_campo.setup_txt }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Ideal si aún no necesitas patio ni oficina</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Módulos de Patio y Oficina</li>
+      </ul>
+      <div class="plan-card-foot">
+        <a class="plan-card-cta" href="{{ url_for('modules.soporte') }}">Consultar plan</a>
+      </div>
+    </article>
+
+    <article class="plan-card plan-card-pack-patio">
+      <div class="plan-card-badge plan-card-badge-patio">Patio</div>
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-box-seam"></i></div>
+        <h2>PACK PATIO</h2>
+        <div class="plan-card-price">
+          <strong>{{ clp(pack_patio.fee) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">IVA incluido · Ahorras {{ clp(ahorro_patio) }}/mes</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Dashboard, Administración, Manual y Soporte incluidos</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> {{ pack_patio_labels|join(', ') }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 1 asiento (Operador o Lector)</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuario adicional: $3.900/mes</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> {{ pack_patio.flujo }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Setup único {{ pack_patio.setup_txt }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Ideal para abastecimiento y CxP</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Módulos de Campo y Oficina</li>
+      </ul>
+      <div class="plan-card-foot">
+        <a class="plan-card-cta" href="{{ url_for('modules.soporte') }}">Consultar plan</a>
+      </div>
+    </article>
+
+    <article class="plan-card plan-card-pack-oficina plan-card-featured">
+      <div class="plan-card-badge plan-card-badge-oficina">Eje Costos</div>
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-calculator"></i></div>
+        <h2>PACK OFICINA</h2>
+        <div class="plan-card-price">
+          <strong>{{ clp(pack_oficina.fee) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">IVA incluido · Ahorras {{ clp(ahorro_oficina) }}/mes</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Dashboard, Administración, Manual y Soporte incluidos</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> {{ pack_oficina_labels|join(', ') }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 1 asiento (Operador o Lector)</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuario adicional: $3.900/mes</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> {{ pack_oficina.flujo }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Setup único {{ pack_oficina.setup_txt }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Incluye Compras y Tesorería para pagar proveedores</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Módulos de Campo y Patio (Bodega / Petróleo)</li>
+      </ul>
+      <div class="plan-card-foot">
+        <a class="plan-card-cta" href="{{ url_for('modules.soporte') }}">Consultar plan</a>
+      </div>
+    </article>
+
+    <article class="plan-card plan-card-pack">
+      <div class="plan-card-badge plan-card-badge-full">Completo</div>
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-bounding-box"></i></div>
+        <h2>PACK AGRÍCOLA</h2>
+        <div class="plan-card-price">
+          <strong>{{ clp(pack.fee) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">IVA incluido · Ahorras {{ clp(ahorro) }}/mes</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Todo lo de Campo, Patio y Oficina</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 3 asientos (Operador o Lector)</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuario adicional: $1.990/mes</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> {{ pack.flujo }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Eje Costos integrado con la operación completa</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> ERP Agrícola completo en un solo plan</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Setup único {{ pack.setup_txt }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Ahorro vs módulos sueltos: {{ clp(ahorro) }}/mes</li>
+      </ul>
+      <div class="plan-card-foot">
+        <a class="plan-card-cta" href="{{ url_for('modules.soporte') }}">Consultar plan</a>
+      </div>
+    </article>
+  </div>
+
+  <p class="planes-trust-note" style="margin-top:1.25rem;display:block;max-width:52rem;">
+    Los asientos (además del Administrador) pueden ser Operador o Lector.
+    El Administrador configura el acceso de cada usuario y a qué módulos puede entrar.
+  </p>
+
+  <section class="planes-modulos-block" aria-labelledby="modulos-incluyen-title">
+    <header class="planes-pricing-head planes-modulos-head">
+      <h2 id="modulos-incluyen-title">Qué incluye cada módulo</h2>
+</header>
+
+    <div class="planes-mod-cards" aria-label="Módulos del ERP Agrícola">
+      {% for key, m in modulos.items() %}
+      <article class="plan-card plan-card-modulo{% if m.fee == 0 %} plan-card-incluido{% endif %}{% if m.eje %} plan-card-eje{% endif %}">
+        {% if m.eje %}<div class="plan-card-badge plan-card-badge-eje">Eje</div>{% endif %}
+        <div class="plan-card-top">
+          <div class="plan-card-icon" aria-hidden="true">
+            <i class="bi {{ mod_icons.get(key, 'bi-app') }}"></i>
+          </div>
+          <h2>{{ m.label|upper }}</h2>
+          <div class="plan-card-price">
+            {% if m.fee > 0 %}
+            <strong>{{ clp(m.fee) }}</strong>
+            <span class="plan-card-period">/mes</span>
+            {% else %}
+            <strong class="plan-card-incluido-txt">Incluido</strong>
+            {% endif %}
+          </div>
+          <p class="plan-card-note">{% if m.fee > 0 %}IVA incluido · {% endif %}{{ m.pitch }}</p>
+        </div>
+        <ul class="plan-card-features">
+          {% for f in m.funciones %}
+          <li class="ok{% if m.eje and loop.index <= 2 %} plan-feat-strong{% endif %}">
+            <i class="bi bi-check-lg"></i>
+            {% if m.eje and loop.index <= 2 %}<strong>{{ f }}</strong>{% else %}{{ f }}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+</section>
+{% endblock %}

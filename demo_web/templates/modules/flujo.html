@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_temporada %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Flujo financiero — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Proyección por temporada · {{ fi }} → {{ ff }}{% if es_vigente %} · en curso{% endif %}</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_temporada('modules.flujo', temporadas, temp_sel) }}
+
+  {% if sin_datos %}
+  <div class="alert alert-info">Sin meses proyectables en esta temporada desde la fecha actual.</div>
+  {% else %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg">
+      <div class="flujo-metric flujo-metric-ing">
+        <div class="flujo-metric-label">Ingresos proyectados</div>
+        <div class="flujo-metric-value">{{ kpis.ingresos }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg">
+      <div class="flujo-metric flujo-metric-eg">
+        <div class="flujo-metric-label">Gastado imputado (Costos)</div>
+        <div class="flujo-metric-value">{{ kpis.gastado }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg">
+      <div class="flujo-metric flujo-metric-eg">
+        <div class="flujo-metric-label">Cuentas por pagar</div>
+        <div class="flujo-metric-value">{{ kpis.cxp }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg">
+      <div class="flujo-metric flujo-metric-eg">
+        <div class="flujo-metric-label">Egresos caja proy.</div>
+        <div class="flujo-metric-value">{{ kpis.egresos_proy }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg">
+      <div class="flujo-metric flujo-metric-res">
+        <div class="flujo-metric-label">EERR acumulado</div>
+        <div class="flujo-metric-value {% if kpis.eerr and '-' in kpis.eerr %}text-danger{% endif %}">{{ kpis.eerr }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <span class="flujo-legend flujo-legend-real">■ Real</span>
+    <span class="flujo-legend flujo-legend-proy">■ Proyectado</span>
+  </div>
+
+  <div class="panel-card mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h2 class="h6 panel-title mb-0">Flujo mensual</h2>
+      {{ pdf_btn(pdf_flujo_url, '📥 PDF FLUJO FINANCIERO') }}
+    </div>
+    <div class="table-responsive flujo-tabla-principal">
+      <table class="table table-sm table-bordered w-100 mb-0">
+        <thead>
+          <tr>
+            {% for c in flujo_cols %}
+            <th class="{{ flujo_th_class(c) }}">{{ c }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in flujo_rows %}
+          <tr class="{% if row.is_total %}flujo-row-total{% endif %}">
+            {% for c in flujo_cols %}
+            <td class="{{ row.classes[c] }}">{{ row.cells[c] }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if flujo_detalle_rows %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Detalle egresos (Tesorería / RRHH)</h2>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr>{% for c in flujo_detalle_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in flujo_detalle_rows %}
+          <tr>
+            <td>{{ row.MES }}</td>
+            <td>{{ row['Teso. real'] }}</td>
+            <td class="{{ row._cls_teso_proy }}">{{ row['Teso. proy. (EERR)'] }}</td>
+            <td>{{ row['RRHH real'] }}</td>
+            <td class="{{ row._cls_rrhh_proy }}">{{ row['RRHH proy.'] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if eg_cc_rows %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Presupuesto y proyección por CC</h2>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr>{% for c in eg_cc_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in eg_cc_rows %}<tr>{% for c in eg_cc_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if ing_cc_rows %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Ingresos proyectados por CC</h2>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr>{% for c in ing_cc_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in ing_cc_rows %}<tr>{% for c in ing_cc_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if notas_rows %}
+  <div class="panel-card">
+    <h2 class="h6 panel-title mb-2">Notas de ingresos</h2>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Centro de costo</th>
+            <th>Mes</th>
+            <th class="text-end">Ingreso</th>
+            <th>Nota</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in notas_rows %}
+          <tr>
+            <td>{{ row.centro_costo }}</td>
+            <td>{{ row.mes }}</td>
+            <td class="text-end">{{ row.ingreso }}</td>
+            <td>{{ row.nota }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

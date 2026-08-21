@@ -14,6 +14,7 @@ from flask import (
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
+from demo_web.auth.login_next import pop_login_next, safe_next, stash_login_next
 from demo_web.auth.user_db import fetch_bridge_user, fetch_login_row
 from demo_web.services.erp_loader import bind_tenant_context, get_erp_module_for
 from demo_web.tenants import get_tenant, list_tenants
@@ -92,45 +93,6 @@ def _find_login_matches(email: str, password: str) -> list[dict]:
     return matches
 
 
-def _login_next_prefix() -> str:
-    return (
-        (request.headers.get("X-Forwarded-Prefix") or "").rstrip("/")
-        or (request.environ.get("SCRIPT_NAME") or "").rstrip("/")
-        or (current_app.config.get("APPLICATION_ROOT") or "").rstrip("/")
-    )
-
-
-def _parse_next(raw: str | None) -> str | None:
-    nxt = (raw or "").strip()
-    prefix = _login_next_prefix()
-    if (
-        not nxt
-        or not nxt.startswith("/")
-        or nxt.startswith("//")
-        or "://" in nxt
-        or nxt.startswith("/riomaipo")
-        or nxt.startswith("/laconcepcion")
-        or nxt.startswith("/demo")
-        or (prefix and not (nxt == prefix or nxt.startswith(prefix + "/")))
-    ):
-        return None
-    return nxt
-
-
-def _safe_next(raw: str | None) -> str:
-    return _parse_next(raw) or url_for("modules.dashboard")
-
-
-def _stash_login_next(raw: str | None) -> None:
-    nxt = _parse_next(raw)
-    if nxt:
-        session["login_next"] = nxt
-
-
-def _pop_login_next() -> str | None:
-    return session.pop("login_next", None)
-
-
 @bp.route("/login/master")
 def master_entry():
     """Ingreso desde Super Consola → tenant del token + dashboard."""
@@ -189,16 +151,19 @@ def master_entry():
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("email") and session.get("tenant_slug"):
-        return redirect(_safe_next(_pop_login_next()))
+        return redirect(safe_next(pop_login_next()))
 
     # URL limpia: destino post-login en sesión, no en ?next=
     if request.method == "GET" and request.args.get("next"):
-        _stash_login_next(request.args.get("next"))
+        stash_login_next(request.args.get("next"))
         return redirect(url_for("auth.login"))
 
     error = None
     open_panel = False
     remember_key = _remember_storage_key()
+    acceso_pref = (request.args.get("acceso") or "").strip()
+    if acceso_pref and "@" in acceso_pref:
+        open_panel = True
 
     if request.method == "POST":
         email = (request.form.get("email") or "").strip()
@@ -222,7 +187,7 @@ def login():
                 except Exception:
                     pass
             _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
-            return redirect(_safe_next(_pop_login_next()))
+            return redirect(safe_next(pop_login_next()))
         else:
             # Varios tenants: selector
             session["pending_login"] = {
@@ -244,6 +209,7 @@ def login():
         error=error,
         open_panel=open_panel,
         remember_key=remember_key,
+        acceso_pref=acceso_pref,
     )
 
 
@@ -263,7 +229,7 @@ def elegir_empresa():
             return redirect(url_for("auth.elegir_empresa"))
         _activate_session(email=email, rol=chosen.get("rol") or "operador", tenant_slug=slug)
         session.pop("pending_login", None)
-        return redirect(_safe_next(_pop_login_next()))
+        return redirect(safe_next(pop_login_next()))
 
     return render_template(
         "select_tenant.html",
