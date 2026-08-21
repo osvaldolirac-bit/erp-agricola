@@ -5,6 +5,7 @@ from typing import Callable
 
 from flask import abort, flash, g, redirect, request, session, url_for
 
+from demo_web.auth.routes import _stash_login_next
 from demo_web.auth.user_db import fetch_session_row
 from demo_web.services.demo_loader import bind_user_session, get_demo_module, get_erp_app
 
@@ -82,7 +83,8 @@ def login_required(view: Callable):
                     return redirect(acceso_login_path(current_app))
             except Exception:
                 pass
-            return redirect(url_for("auth.login", next=request_path()))
+            _stash_login_next(request_path())
+            return redirect(url_for("auth.login"))
         demo = get_demo_module()
         conn = demo.conectar_db()
         try:

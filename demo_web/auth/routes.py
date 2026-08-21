@@ -92,13 +92,17 @@ def _find_login_matches(email: str, password: str) -> list[dict]:
     return matches
 
 
-def _safe_next(raw: str | None) -> str:
-    nxt = (raw or "").strip()
-    prefix = (
+def _login_next_prefix() -> str:
+    return (
         (request.headers.get("X-Forwarded-Prefix") or "").rstrip("/")
         or (request.environ.get("SCRIPT_NAME") or "").rstrip("/")
         or (current_app.config.get("APPLICATION_ROOT") or "").rstrip("/")
     )
+
+
+def _parse_next(raw: str | None) -> str | None:
+    nxt = (raw or "").strip()
+    prefix = _login_next_prefix()
     if (
         not nxt
         or not nxt.startswith("/")
@@ -109,8 +113,22 @@ def _safe_next(raw: str | None) -> str:
         or nxt.startswith("/demo")
         or (prefix and not (nxt == prefix or nxt.startswith(prefix + "/")))
     ):
-        return url_for("modules.dashboard")
+        return None
     return nxt
+
+
+def _safe_next(raw: str | None) -> str:
+    return _parse_next(raw) or url_for("modules.dashboard")
+
+
+def _stash_login_next(raw: str | None) -> None:
+    nxt = _parse_next(raw)
+    if nxt:
+        session["login_next"] = nxt
+
+
+def _pop_login_next() -> str | None:
+    return session.pop("login_next", None)
 
 
 @bp.route("/login/master")
@@ -171,7 +189,12 @@ def master_entry():
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("email") and session.get("tenant_slug"):
-        return redirect(url_for("modules.dashboard"))
+        return redirect(_safe_next(_pop_login_next()))
+
+    # URL limpia: destino post-login en sesión, no en ?next=
+    if request.method == "GET" and request.args.get("next"):
+        _stash_login_next(request.args.get("next"))
+        return redirect(url_for("auth.login"))
 
     error = None
     open_panel = False
@@ -199,7 +222,7 @@ def login():
                 except Exception:
                     pass
             _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
-            return redirect(_safe_next(request.args.get("next")))
+            return redirect(_safe_next(_pop_login_next()))
         else:
             # Varios tenants: selector
             session["pending_login"] = {
@@ -240,7 +263,7 @@ def elegir_empresa():
             return redirect(url_for("auth.elegir_empresa"))
         _activate_session(email=email, rol=chosen.get("rol") or "operador", tenant_slug=slug)
         session.pop("pending_login", None)
-        return redirect(url_for("modules.dashboard"))
+        return redirect(_safe_next(_pop_login_next()))
 
     return render_template(
         "select_tenant.html",
