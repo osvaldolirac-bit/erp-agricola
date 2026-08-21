@@ -47,61 +47,50 @@ body.demo-body {
   width: 100%;
 }
 
-/* Patio industrial: packing, flota y riego */
+/* Vista aérea / drone: sectores geométricos + patio industrial */
 .login-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background: #141a1f;
+  background: #0f1418;
 }
 
 .login-bg-photo {
   position: absolute;
-  inset: -2%;
-  background-image: url("../login/bg_campo_industrial.jpg");
+  inset: -3%;
+  background-image: url("../login/bg_login_drone.jpg");
   background-image: image-set(
-    url("../login/bg_campo_industrial.webp") type("image/webp"),
-    url("../login/bg_campo_industrial.jpg") type("image/jpeg")
+    url("../login/bg_login_drone.webp") type("image/webp"),
+    url("../login/bg_login_drone.jpg") type("image/jpeg")
   );
   background-size: cover;
-  background-position: center 48%;
+  background-position: 52% 46%;
   background-repeat: no-repeat;
-  transform: scale(1.04);
-  filter: saturate(0.72) contrast(1.12) brightness(0.86);
-  animation: login-bg-drift 28s ease-in-out infinite alternate;
+  transform: scale(1.06);
+  filter: saturate(0.82) contrast(1.08) brightness(0.88);
+  animation: login-bg-drift 36s ease-in-out infinite alternate;
 }
 
 .login-bg-rows {
   position: absolute;
   inset: 0;
-  opacity: 0.28;
+  opacity: 0.18;
   background-image:
-    repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent 47px,
-      rgba(180, 190, 200, 0.06) 47px,
-      rgba(180, 190, 200, 0.06) 48px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0,
-      transparent 47px,
-      rgba(180, 190, 200, 0.05) 47px,
-      rgba(180, 190, 200, 0.05) 48px
-    );
-  mix-blend-mode: overlay;
+    linear-gradient(rgba(120, 200, 180, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 200, 180, 0.14) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mix-blend-mode: soft-light;
 }
 
 .login-bg-steel {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 70% 50% at 25% 55%, rgba(120, 135, 150, 0.22), transparent 62%),
-    radial-gradient(ellipse 55% 45% at 78% 40%, rgba(70, 90, 110, 0.28), transparent 58%),
-    linear-gradient(125deg, rgba(16, 22, 28, 0.62) 0%, rgba(28, 38, 48, 0.35) 48%, rgba(18, 24, 30, 0.55) 100%);
+    radial-gradient(circle at 68% 72%, rgba(255, 255, 255, 0.06), transparent 22%),
+    radial-gradient(ellipse 90% 70% at 50% 40%, transparent 35%, rgba(8, 14, 18, 0.45) 100%),
+    linear-gradient(180deg, rgba(8, 14, 18, 0.35) 0%, rgba(8, 14, 18, 0.12) 42%, rgba(8, 14, 18, 0.4) 100%);
 }
 
 .login-scrim {
@@ -111,15 +100,15 @@ body.demo-body {
   pointer-events: none;
   background: linear-gradient(
     180deg,
-    rgba(10, 14, 18, 0.62) 0%,
-    rgba(10, 14, 18, 0.32) 45%,
-    rgba(10, 14, 18, 0.68) 100%
+    rgba(8, 12, 16, 0.58) 0%,
+    rgba(8, 12, 16, 0.22) 46%,
+    rgba(8, 12, 16, 0.64) 100%
   );
 }
 
 @keyframes login-bg-drift {
-  from { transform: scale(1.04) translate3d(0, 0, 0); }
-  to   { transform: scale(1.08) translate3d(-1.2%, 0.6%, 0); }
+  from { transform: scale(1.06) translate3d(0, 0, 0); }
+  to   { transform: scale(1.1) translate3d(-0.8%, 0.5%, 0); }
 }
 
 .login-logo-corner {
@@ -347,9 +336,9 @@ body.demo-body {
 
 @media (max-width: 768px) {
   .login-bg-photo {
-    background-position: center 38%;
+    background-position: 50% 44%;
     animation: none;
-    transform: scale(1.06);
+    transform: scale(1.08);
   }
 
   .login-access {
