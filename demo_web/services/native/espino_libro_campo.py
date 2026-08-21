@@ -32,6 +32,7 @@ UNIDADES_DOSIS = [
 _N_APP_HIST_MIN = 10000
 
 PDF_TITULO = f"LIBRO DE CAMPO {CC_ESPINO}"
+PDF_FILENAME = "LIBRO_DE_CAMPO_EL_ESPINO.pdf"
 
 
 def _generar_pdf_historial(demo, df) -> bytes | None:
@@ -239,7 +240,7 @@ def _historial(demo, conn) -> dict:
                 ORDER BY CAST(n_aplicacion AS INTEGER) DESC, id ASC"""
     df = pd.read_sql_query(query, conn, params=params)
     pdf_url = None
-    pdf_filename = None
+    pdf_filename = PDF_FILENAME
     if df.empty:
         return {
             "historial_grupos": [],
@@ -279,10 +280,9 @@ def _historial(demo, conn) -> dict:
 
     blob = _generar_pdf_historial(demo, df)
     if blob:
-        pdf_filename = f"LIBRO_CAMPO_{CC_ESPINO.replace(' ', '_')}.pdf"
         pdf_url = url_for(
             "modules.pdf_download",
-            token=store_pdf(blob, pdf_filename),
+            token=store_pdf(blob, PDF_FILENAME),
         )
 
     col_app = "N° APP"
