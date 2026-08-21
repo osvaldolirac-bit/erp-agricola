@@ -598,14 +598,20 @@ window.lcSyncCabecera = function (targetForm) {
       }
       return;
     }
-    var hidden = document.createElement('input');
-    hidden.type = 'hidden';
-    hidden.name = name;
-    hidden.value = el.value || '';
-    hidden.setAttribute('data-lc-sync', '1');
-    targetForm.appendChild(hidden);
+    if (el.tagName === 'SELECT' || (el.value || '').trim()) {
+      var hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = name;
+      hidden.value = el.value || '';
+      hidden.setAttribute('data-lc-sync', '1');
+      targetForm.appendChild(hidden);
+    }
   });
   return true;
+};
+window.lcCambiarProducto = function (form) {
+  if (window.lcSyncCabecera) window.lcSyncCabecera(form);
+  form.submit();
 };
 {% endif %}
 </script>

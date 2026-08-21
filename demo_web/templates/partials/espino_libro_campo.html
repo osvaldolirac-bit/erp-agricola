@@ -174,7 +174,7 @@
     <input type="hidden" name="sec" value="libro_campo">
     <input type="hidden" name="op" value="ingreso">
     <label class="form-label small">Producto (stock bodega El Espino)</label>
-    <select name="prod" class="form-select form-select-sm" onchange="this.form.requestSubmit()">
+    <select name="prod" class="form-select form-select-sm" onchange="lcCambiarProducto(this.form)">
       {% for p in productos_stock %}
       <option value="{{ p.producto }}" {% if p.producto == prod_sel %}selected{% endif %}>{{ p.producto }} ({{ p.um }}) — stock {{ p.stock_fmt }}</option>
       {% endfor %}

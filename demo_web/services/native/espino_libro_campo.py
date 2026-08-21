@@ -31,6 +31,17 @@ UNIDADES_DOSIS = [
 
 _N_APP_HIST_MIN = 10000
 
+PDF_TITULO = f"LIBRO DE CAMPO {CC_ESPINO}"
+
+
+def _generar_pdf_historial(demo, df) -> bytes | None:
+    titulo = PDF_TITULO
+    fn = demo.generar_pdf_libro_campo
+    try:
+        return fn(df, titulo=titulo)
+    except TypeError:
+        return fn(df)
+
 
 def _fmt_op_cert(val) -> str:
     if val in (1, "1", True, "Sí", "Si"):
@@ -99,11 +110,15 @@ def _evento_meta_defaults(demo) -> dict:
 
 
 def _guardar_evento_meta(demo, src=None) -> dict:
+    """Guarda cabecera del evento en sesión (sobrevive a agregar producto / cambio de prod)."""
     src = src if src is not None else request.values
     meta = session.get(META_KEY) or _evento_meta_defaults(demo)
     for key in ("fecha", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
-        if key in src:
-            meta[key] = (src.get(key) or "").strip()
+        if key not in src:
+            continue
+        val = (src.get(key) or "").strip()
+        if val:
+            meta[key] = val
     if "op_cert" in src:
         meta["op_cert"] = "1" if src.get("op_cert") in ("1", "on", "true", "True") else ""
     session[META_KEY] = meta
@@ -142,8 +157,7 @@ def _siguiente_n_orden(conn) -> str:
 def _ingreso(demo, conn) -> dict:
     siguiente = _siguiente_n_aplicacion(conn)
     car = session.get(CAR_KEY, [])
-    if any(k in request.args for k in ("fecha", "vol_agua", "aplicador", "especie", "maquinaria", "tractor", "op_cert")):
-        _guardar_evento_meta(demo, request.args)
+    _guardar_evento_meta(demo, request.values)
     meta = _leer_evento_meta(demo)
 
     from erp_maquinaria import TIPOS_MAQUINARIA_APLICACION, TIPOS_MAQUINARIA_TRACTOR
@@ -263,7 +277,7 @@ def _historial(demo, conn) -> dict:
     if "OP. CERT." in df.columns:
         df["OP. CERT."] = df["OP. CERT."].apply(_fmt_op_cert)
 
-    blob = demo.generar_pdf_libro_campo(df)
+    blob = _generar_pdf_historial(demo, df)
     if blob:
         pdf_filename = f"LIBRO_CAMPO_{CC_ESPINO.replace(' ', '_')}.pdf"
         pdf_url = url_for(
