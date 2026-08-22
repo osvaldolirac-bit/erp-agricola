@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actualiza membrete en .doc GlobalGAP (Instructivos / Anexos) vía LibreOffice UNO."""
+"""Actualiza membrete en .doc / .docx GlobalGAP (Instructivos / Anexos) vía LibreOffice UNO."""
 from __future__ import annotations
 
 import argparse
@@ -170,6 +170,9 @@ def patch_file(desktop, uno, path: Path) -> tuple[bool, str]:
         doc.close(True)
 
 
+DOC_GLOBS = ("*.doc", "*.docx")
+
+
 def collect_files(roots: list[Path]) -> list[Path]:
     out: list[Path] = []
     for root in roots:
@@ -177,8 +180,10 @@ def collect_files(roots: list[Path]) -> list[Path]:
             d = root / sub
             if not d.is_dir():
                 continue
-            out.extend(sorted(Path(p) for p in glob.glob(str(d / "*.doc"))))
-    return out
+            for pattern in DOC_GLOBS:
+                out.extend(sorted(Path(p) for p in glob.glob(str(d / pattern))))
+    # Evitar respaldos *.doc.bak capturados por *.doc
+    return sorted({p for p in out if not p.name.endswith(".bak")})
 
 
 def main() -> int:
@@ -194,7 +199,7 @@ def main() -> int:
     ]
     files = collect_files(roots)
     if not files:
-        print("No se encontraron archivos .doc en Instructivos/Anexos", file=sys.stderr)
+        print("No se encontraron archivos .doc/.docx en Instructivos/Anexos", file=sys.stderr)
         return 1
 
     if args.dry_run:
