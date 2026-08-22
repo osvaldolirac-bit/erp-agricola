@@ -69,7 +69,7 @@ body.demo-body {
   background-position: 52% 46%;
   background-repeat: no-repeat;
   transform: scale(1.06);
-  filter: saturate(0.82) contrast(1.08) brightness(0.88);
+  filter: saturate(0.92) contrast(1.04) brightness(1.04);
   animation: login-bg-drift 36s ease-in-out infinite alternate;
 }
 
@@ -88,9 +88,9 @@ body.demo-body {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 68% 72%, rgba(255, 255, 255, 0.06), transparent 22%),
-    radial-gradient(ellipse 90% 70% at 50% 40%, transparent 35%, rgba(8, 14, 18, 0.45) 100%),
-    linear-gradient(180deg, rgba(8, 14, 18, 0.35) 0%, rgba(8, 14, 18, 0.12) 42%, rgba(8, 14, 18, 0.4) 100%);
+    radial-gradient(circle at 68% 72%, rgba(255, 255, 255, 0.08), transparent 22%),
+    radial-gradient(ellipse 90% 70% at 50% 40%, transparent 35%, rgba(8, 14, 18, 0.28) 100%),
+    linear-gradient(180deg, rgba(8, 14, 18, 0.22) 0%, rgba(8, 14, 18, 0.06) 42%, rgba(8, 14, 18, 0.26) 100%);
 }
 
 .login-scrim {
@@ -100,9 +100,9 @@ body.demo-body {
   pointer-events: none;
   background: linear-gradient(
     180deg,
-    rgba(8, 12, 16, 0.58) 0%,
-    rgba(8, 12, 16, 0.22) 46%,
-    rgba(8, 12, 16, 0.64) 100%
+    rgba(8, 12, 16, 0.4) 0%,
+    rgba(8, 12, 16, 0.12) 46%,
+    rgba(8, 12, 16, 0.45) 100%
   );
 }
 
