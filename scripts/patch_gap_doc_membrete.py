@@ -1,176 +1,137 @@
 #!/usr/bin/env python3
-"""Actualiza membrete en .doc / .docx GlobalGAP (Instructivos / Anexos) vía LibreOffice UNO."""
+"""Actualiza solo textos de membrete en .doc GlobalGAP (Instructivos / Anexos).
+
+Reemplazo binario same-length: preserva código del documento, título, marcos
+y estructura Word. No usa LibreOffice (re-guardar .doc nativos los corrompe).
+"""
 from __future__ import annotations
 
 import argparse
 import glob
-import re
-import subprocess
 import sys
-import time
-import unicodedata
 from pathlib import Path
-
-HEADER_LINES = (
-    "LA CONCEPCION AGRICOLA LTDA",
-    "CARLOS LIRA VALENCIA",
-    "SOCIEDAD AGRICOLA EL ESPINO LTDA",
-)
 
 DOCS_ROOT = Path("/root/demo-web/demo_web/static/globalgap/docs")
 SUBDIRS = ("Instructivos", "Anexos")
-UNO_PORT = 2003
+
+_MARKERS = (
+    b"GGIN",
+    b"GGAN",
+    b"ANEXO",
+    b"INTRUCTIVO",
+    b"INSTRUCTIVO",
+    b"PROCEDIMIENTO",
+    b"C\xf3d.",
+)
 
 
-def _norm(text: str) -> str:
-    s = unicodedata.normalize("NFKD", text or "")
-    s = "".join(ch for ch in s if not unicodedata.combining(ch))
-    s = re.sub(r"\s+", " ", s).strip().upper()
-    return s
+def _pad(value: bytes, size: int) -> bytes:
+    if len(value) > size:
+        raise ValueError(f"texto demasiado largo ({len(value)}>{size}): {value!r}")
+    return value + b" " * (size - len(value))
 
 
-def _is_membrete_paragraph(text: str) -> bool:
-    t = _norm(text)
-    if not t or len(t) > 90:
-        return False
-    if any(x in t for x in ("RAZON SOCIAL", "DIRECCION", "PREDIO:", "AVISAR", "ANTE ", "CERTIFICA")):
-        return False
-    keys = (
-        "LA CONCEPCION",
-        "CARLOS LIRA",
-        "SOCIEDAD AGRICOLA EL ESPINO",
-        "CONCEPCION SOCIEDAD AGRICOLA",
-        "CONCEPCION AGRICOLA",
-    )
-    return any(k in t for k in keys)
+def _build_replacements() -> list[tuple[bytes, bytes]]:
+    razon_lc = "Raz\u00f3n Social/Predio: LA CONCEPCION AGRICOLA LTDA.".encode("latin-1")
+    razon_cv = "Raz\u00f3n Social/Predio: LA CONCEPCION AGRICO.".encode("latin-1")
+    dir_carlos = "DIRECCI\u00d3N: CARLOS LIRA VALENCIA".encode("latin-1")
+    dir_espino = "DIRECCI\u00d3N: SOCIEDAD AGRICOLA EL ESPINO LTDA".encode("latin-1")
+    return [
+        # GGIN01 — bloque Razón Social / Dirección en cuerpo
+        (
+            "Raz\u00f3n Social/Predio: LA CONCEPCION SOCIEDAD AGRICOLA LTDA.".encode("latin-1"),
+            _pad(razon_lc, 58),
+        ),
+        (
+            "Raz\u00f3n Social/Predio: CARLOS LIRA VALENCIA.".encode("latin-1"),
+            _pad(razon_cv, 42),
+        ),
+        (
+            "DIRECCI\u00d3N:  PARC. EL SAUCE LOTE 4 LA APARICION PAINE".encode("latin-1"),
+            _pad(dir_carlos, 52),
+        ),
+        (
+            "DIRECCI\u00d3N: CAMINO LAS LILAS PARC.44 CHADA PAINE".encode("latin-1"),
+            _pad(dir_espino, 47),
+        ),
+        # Ciruelos — línea 1 del membrete (con contexto \rCAMINO para no tocar cuerpo)
+        (
+            b"CARLOS LIRA VALENCIA\rCAMINO LAS LILAS PARC.44\rCHADA",
+            b"LA CONCEPCION AGRICO\rCAMINO LAS LILAS PARC.44\rCHADA",
+        ),
+        (
+            b"CARLOS LIRA VALENCIA \rCAMINO",
+            b"LA CONCEPCION AGRICOL\rCAMINO",
+        ),
+        (
+            b"CARLOS LIRA VALENCIA\rCAMINO",
+            b"LA CONCEPCION AGRICO\rCAMINO",
+        ),
+        # Cerezos — membrete tabla
+        (
+            b"PARC. EL SAUCE LOTE 4 LA APARICION PAINE ",
+            _pad(b"CARLOS LIRA VALENCIA", 41),
+        ),
+        (
+            b"PARC. EL SAUCE LOTE 4 LA APARICION PAINE",
+            _pad(b"SOCIEDAD AGRICOLA EL ESPINO LTDA", 40),
+        ),
+        (
+            b"LA CONCEPCION SOCIEDAD AGRICOLA LTDA",
+            _pad(b"LA CONCEPCION AGRICOLA LTDA", 36),
+        ),
+        (
+            b"SOCIEDAD AGRICOLA EL ESPINO LTDA.",
+            _pad(b"CARLOS LIRA VALENCIA", 33),
+        ),
+        # Ciruelos — líneas de dirección en membrete
+        (
+            b"CAMINO LAS LILAS PARC.44 CHADA PAINE ",
+            _pad(b"CARLOS LIRA VALENCIA", 37),
+        ),
+        (
+            b"CAMINO LAS LILAS PARC.44 CHADA PAINE",
+            _pad(b"SOCIEDAD AGRICOLA EL ESPINO LTDA", 36),
+        ),
+        (
+            b"CAMINO LAS LILAS PARC.44 ",
+            _pad(b"CARLOS LIRA VALENCIA", 25),
+        ),
+        (
+            b"CHADA PAINE ",
+            _pad(b"ESPINO LTDA ", 12),
+        ),
+        (
+            b"CHADA PAINE",
+            _pad(b"ESPINO LTDA", 11),
+        ),
+    ]
 
 
-def _start_soffice() -> None:
-    subprocess.Popen(
-        [
-            "soffice",
-            "--headless",
-            "--invisible",
-            "--nologo",
-            "--nodefault",
-            f"--accept=socket,host=127.0.0.1,port={UNO_PORT};urp;StarOffice.ServiceManager",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    time.sleep(3)
+_REPLACEMENTS = _build_replacements()
 
 
-def _connect():
-    import uno
-
-    local_ctx = uno.getComponentContext()
-    resolver = local_ctx.ServiceManager.createInstanceWithContext(
-        "com.sun.star.bridge.UnoUrlResolver", local_ctx
-    )
-    ctx = resolver.resolve(
-        f"uno:socket,host=127.0.0.1,port={UNO_PORT};urp;StarOffice.ComponentContext"
-    )
-    smgr = ctx.ServiceManager
-    desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
-    return desktop, uno
+def _validate_rules() -> None:
+    for old, new in _REPLACEMENTS:
+        if len(old) != len(new):
+            raise ValueError(f"longitud distinta: {old!r} ({len(old)}) vs {new!r} ({len(new)})")
 
 
-def _prop(name: str, value) -> object:
-    from com.sun.star.beans import PropertyValue
-
-    p = PropertyValue()
-    p.Name = name
-    p.Value = value
-    return p
-
-
-def _set_page_header(doc) -> bool:
-    from com.sun.star.text import ControlCharacter
-
-    style = doc.getStyleFamilies().getByName("PageStyles").getByName("Standard")
-    style.setPropertyValue("HeaderIsOn", True)
-    header = style.getPropertyValue("HeaderText")
-    if header is None:
-        return False
-    header.setString("")
-    for i, line in enumerate(HEADER_LINES):
-        if i:
-            header.insertControlCharacter(header.getEnd(), ControlCharacter.PARAGRAPH_BREAK, False)
-        header.insertString(header.getEnd(), line, False)
-    return True
+def _patch_bytes(raw: bytes) -> tuple[bytes, list[str]]:
+    data = raw
+    applied: list[str] = []
+    for old, new in _REPLACEMENTS:
+        count = data.count(old)
+        if count:
+            data = data.replace(old, new)
+            applied.append(f"{old.decode('latin-1', errors='replace')!r} x{count}")
+    return data, applied
 
 
-def _body_paragraphs(doc) -> list:
-    text = doc.getText()
-    enum = text.createEnumeration()
-    paras = []
-    while enum.hasMoreElements():
-        el = enum.nextElement()
-        if el.supportsService("com.sun.star.text.Paragraph"):
-            paras.append(el)
-    return paras
-
-
-def _patch_body_membrete(doc) -> bool:
-    paras = _body_paragraphs(doc)
-    if not paras:
-        return False
-
-    indices: list[int] = []
-    started = False
-    for i, para in enumerate(paras[:20]):
-        raw = para.getString()
-        if not raw.strip():
-            if started:
-                indices.append(i)
-            continue
-        if _is_membrete_paragraph(raw):
-            indices.append(i)
-            started = True
-            continue
-        if started:
-            break
-        break
-
-    membrete_idx = [i for i in indices if paras[i].getString().strip()]
-    if not membrete_idx:
-        return False
-
-    for n, idx in enumerate(membrete_idx[:3]):
-        paras[idx].setString(HEADER_LINES[n])
-    for idx in membrete_idx[3:]:
-        paras[idx].setString("")
-    return True
-
-
-def patch_file(desktop, uno, path: Path) -> tuple[bool, str]:
-    url = uno.systemPathToFileUrl(str(path.resolve()))
-    doc = desktop.loadComponentFromURL(
-        url,
-        "_blank",
-        0,
-        (_prop("Hidden", True), _prop("ReadOnly", False)),
-    )
-    if doc is None:
-        return False, "no se pudo abrir"
-    try:
-        h = _set_page_header(doc)
-        b = _patch_body_membrete(doc)
-        if not h and not b:
-            return False, "sin encabezado ni membrete en cuerpo"
-        doc.store()
-        parts = []
-        if h:
-            parts.append("header")
-        if b:
-            parts.append("body")
-        return True, "+".join(parts)
-    finally:
-        doc.close(True)
-
-
-DOC_GLOBS = ("*.doc", "*.docx")
+def _integrity_ok(raw: bytes) -> tuple[bool, str]:
+    if not any(m in raw for m in _MARKERS):
+        return False, "sin marcadores de código/título (GGIN/ANEXO/INTRUCTIVO/Cód.)"
+    return True, ""
 
 
 def collect_files(roots: list[Path]) -> list[Path]:
@@ -180,31 +141,61 @@ def collect_files(roots: list[Path]) -> list[Path]:
             d = root / sub
             if not d.is_dir():
                 continue
-            for pattern in DOC_GLOBS:
-                out.extend(sorted(Path(p) for p in glob.glob(str(d / pattern))))
-    # Evitar respaldos *.doc.bak capturados por *.doc
+            out.extend(sorted(Path(p) for p in glob.glob(str(d / "*.doc"))))
     return sorted({p for p in out if not p.name.endswith(".bak")})
 
 
+def patch_file(path: Path) -> tuple[bool, str]:
+    raw = path.read_bytes()
+    patched, applied = _patch_bytes(raw)
+    if not applied:
+        return False, "sin coincidencias de membrete"
+    ok, reason = _integrity_ok(patched)
+    if not ok:
+        return False, f"abortado: {reason}"
+    path.write_bytes(patched)
+    return True, "; ".join(applied)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--root", action="append", default=[])
     parser.add_argument("--no-backup", action="store_true")
+    parser.add_argument("--restore", action="store_true", help="Restaurar desde .bak y salir")
     args = parser.parse_args()
+
+    _validate_rules()
 
     roots = [Path(r) for r in args.root] if args.root else [
         DOCS_ROOT / "cerezos",
         DOCS_ROOT / "ciruelos",
     ]
+
+    if args.restore:
+        restored = 0
+        for root in roots:
+            for bak in sorted(root.rglob("*.bak")):
+                target = Path(str(bak)[:-4])
+                if target.suffix.lower() != ".doc":
+                    continue
+                target.write_bytes(bak.read_bytes())
+                restored += 1
+                print(f"RESTORE\t{target}")
+        print(f"Restaurados: {restored}")
+        return 0
+
     files = collect_files(roots)
     if not files:
-        print("No se encontraron archivos .doc/.docx en Instructivos/Anexos", file=sys.stderr)
+        print("No se encontraron archivos .doc en Instructivos/Anexos", file=sys.stderr)
         return 1
 
     if args.dry_run:
-        for f in files:
-            print(f)
+        for path in files:
+            raw = path.read_bytes()
+            _, applied = _patch_bytes(raw)
+            status = "OK" if applied else "SKIP"
+            print(f"{status}\t{path.name}\t{'; '.join(applied) if applied else '-'}")
         print(f"Total: {len(files)}")
         return 0
 
@@ -214,12 +205,10 @@ def main() -> int:
             if not bak.exists():
                 bak.write_bytes(path.read_bytes())
 
-    _start_soffice()
-    desktop, uno = _connect()
     ok_n = 0
     for path in files:
         try:
-            ok, msg = patch_file(desktop, uno, path)
+            ok, msg = patch_file(path)
             status = "OK" if ok else "SKIP"
             print(f"{status}\t{path.name}\t{msg}")
             if ok:
