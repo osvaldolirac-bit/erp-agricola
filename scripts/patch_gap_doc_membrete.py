@@ -97,6 +97,15 @@ def _fit_inner_to_budget(budget: int) -> bytes:
     return _pad(L1, budget)[:budget]
 
 
+def _build_ctrl_region(body_budget: int) -> bytes | None:
+    if body_budget < len(INNER3):
+        return None
+    pad_len = body_budget - len(INNER3)
+    body = (b"\r" * pad_len) + INNER3 if pad_len else INNER3
+    region = CTRL + body + b"\x07"
+    return region if len(region) == len(CTRL) + body_budget + 1 else None
+
+
 def _fit_ctrl_region(old_region: bytes) -> tuple[bytes | None, str]:
     if not old_region.startswith(CTRL) or not old_region.endswith(b"\x07"):
         return None, ""
@@ -107,17 +116,43 @@ def _fit_ctrl_region(old_region: bytes) -> tuple[bytes | None, str]:
         return None, ""
 
     if body_budget >= len(INNER3):
-        pad_len = body_budget - len(INNER3)
-        body = (b"\r" * pad_len) + INNER3 if pad_len else INNER3
-        kind = "ctrl-3line"
-    else:
-        body = _fit_inner_to_budget(body_budget)
-        kind = "ctrl-fit"
+        new_region = _build_ctrl_region(body_budget)
+        return (new_region, "ctrl-3line") if new_region else (None, "")
 
+    body = _fit_inner_to_budget(body_budget)
     new_region = CTRL + body + b"\x07"
     if len(new_region) != target:
         return None, ""
-    return new_region, kind
+    return new_region, "ctrl-fit"
+
+
+def _fit_ctrl_extended(raw: bytes, abs_start: int, abs_end: int) -> tuple[int, int, bytes, str] | None:
+    """Roba \\r de padding previo para caber INNER3 completo (same-length)."""
+    old_region = raw[abs_start:abs_end]
+    if not old_region.startswith(CTRL) or not old_region.endswith(b"\x07"):
+        return None
+
+    body_budget = len(old_region) - len(CTRL) - 1
+    if body_budget >= len(INNER3):
+        return None
+
+    deficit = len(INNER3) - body_budget
+    steal = 0
+    pos = abs_start - 1
+    while pos >= 0 and raw[pos : pos + 1] == b"\r" and steal < deficit:
+        steal += 1
+        pos -= 1
+    if steal < deficit:
+        return None
+
+    ext_start = abs_start - steal
+    old_window = raw[ext_start:abs_end]
+    new_body_budget = len(old_window) - len(CTRL) - 1
+    new_region = _build_ctrl_region(new_body_budget)
+    if new_region is None or len(new_region) != len(old_window):
+        return None
+
+    return ext_start, abs_end, new_region, f"ctrl-ext+{steal}@{ext_start}:{len(old_window)}B"
 
 
 def _find_ctrl_regions(raw: bytes) -> list[tuple[int, int, bytes]]:
@@ -148,12 +183,23 @@ def _find_ctrl_regions(raw: bytes) -> list[tuple[int, int, bytes]]:
     return sorted(out, key=lambda item: item[0])
 
 
-def _patch_ctrl_regions(raw: bytes) -> tuple[bytes, list[str]]:
+def _patch_ctrl_regions(raw: bytes) -> tuple[bytes, list[str], list[tuple[int, int]]]:
     data = bytearray(raw)
     notes: list[str] = []
     patched_ranges: list[tuple[int, int]] = []
 
     for start, end, old_region in _find_ctrl_regions(raw):
+        ext = _fit_ctrl_extended(raw, start, end)
+        if ext is not None:
+            ext_start, ext_end, new_region, kind = ext
+            if bytes(data[ext_start:ext_end]) != new_region:
+                data[ext_start:ext_end] = new_region
+                patched_ranges.append((ext_start, ext_end))
+                notes.append(kind)
+            else:
+                notes.append(f"ctrl-skip-ext@{ext_start}:{ext_end-ext_start}B")
+            continue
+
         new_region, kind = _fit_ctrl_region(old_region)
         if new_region is None or new_region == old_region:
             notes.append(f"ctrl-skip@{start}:{len(old_region)}B")
@@ -163,6 +209,45 @@ def _patch_ctrl_regions(raw: bytes) -> tuple[bytes, list[str]]:
         notes.append(f"{kind}@{start}:{len(old_region)}B")
 
     return bytes(data), notes, patched_ranges
+
+
+def _ggin_code(name: str) -> str:
+    m = re.match(r"(GGIN\d+)", name)
+    return m.group(1) if m else ""
+
+
+def _cerezos_counterpart(ciruelos_path: Path) -> Path | None:
+    code = _ggin_code(ciruelos_path.name)
+    if not code:
+        return None
+    cer_root = DOCS_ROOT / "cerezos"
+    for sub in SUBDIRS:
+        d = cer_root / sub
+        if not d.is_dir():
+            continue
+        for p in d.glob(f"{code}*.doc"):
+            if not p.name.endswith(".bak"):
+                return p
+    return None
+
+
+def transplant_ciruelos_from_cerezos(roots: list[Path]) -> list[str]:
+    """Copia plantilla cerezos (membrete amplio) sobre ciruelos del mismo GGIN."""
+    notes: list[str] = []
+    for root in roots:
+        if root.name != "ciruelos":
+            continue
+        for path in collect_files([root]):
+            src = _cerezos_counterpart(path)
+            if src is None or not src.is_file():
+                notes.append(f"transplant-skip\t{path.name}\tsin cerezos")
+                continue
+            if path.read_bytes() == src.read_bytes():
+                notes.append(f"transplant-skip\t{path.name}\tigual")
+                continue
+            path.write_bytes(src.read_bytes())
+            notes.append(f"transplant\t{path.name}\t<- {src.name}")
+    return notes
 
 
 def _split_suffix(block: bytes) -> tuple[bytes, bytes, bytes]:
@@ -222,6 +307,9 @@ def _build_tight_block(old_block: bytes) -> bytes | None:
 
 
 def _fit_block(old_block: bytes) -> tuple[bytes | None, str]:
+    if INNER3 in old_block or L3 in old_block:
+        return None, ""
+
     n = len(old_block)
     variants = _build_block_variants(n)
     if variants:
@@ -327,6 +415,11 @@ def main() -> int:
     parser.add_argument("--root", action="append", default=[])
     parser.add_argument("--no-backup", action="store_true")
     parser.add_argument("--restore", action="store_true")
+    parser.add_argument(
+        "--transplant-ciruelos",
+        action="store_true",
+        help="Copia instructivos cerezos sobre ciruelos (mismo GGIN) antes de parchear",
+    )
     args = parser.parse_args()
 
     roots = [Path(r) for r in args.root] if args.root else [
@@ -350,6 +443,10 @@ def main() -> int:
     if not files:
         print("No se encontraron .doc", file=sys.stderr)
         return 1
+
+    if args.transplant_ciruelos:
+        for line in transplant_ciruelos_from_cerezos(roots):
+            print(line)
 
     if args.dry_run:
         for path in files:
