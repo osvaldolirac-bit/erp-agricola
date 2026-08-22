@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Actualiza membrete .doc GlobalGAP con las 3 razones sociales completas.
 
-Reemplazo binario same-length: reorganiza \\r del prefijo para caber 3 líneas.
-No usa LibreOffice.
+Reemplazo binario same-length sobre la región de control (\\x03\\r\\r\\x04...)
+y bloques secundarios del encabezado. No usa LibreOffice.
 """
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ L1 = b"LA CONCEPCION AGRICOLA LTDA"
 L2 = b"CARLOS LIRA VALENCIA"
 L3 = b"SOCIEDAD AGRICOLA EL ESPINO LTDA"
 INNER3 = L1 + b"\r" + L2 + b"\r" + L3
+
+CTRL = b"\x03\r\r\x04\r\r\x03\r\r\x04"
 
 _MARKERS = (
     b"GGIN",
@@ -53,21 +55,114 @@ def _build_body_replacements() -> list[tuple[bytes, bytes]]:
     return [
         (
             "Raz\u00f3n Social/Predio: LA CONCEPCION SOCIEDAD AGRICOLA LTDA.".encode("latin-1"),
-            _pad(b"Raz\u00f3n Social/Predio: LA CONCEPCION AGRICOLA LTDA.", 58),
+            _pad(razon_lc, 58),
         ),
         (
             "Raz\u00f3n Social/Predio: CARLOS LIRA VALENCIA.".encode("latin-1"),
-            _pad(b"Raz\u00f3n Social/Predio: LA CONCEPCION AGRICO.", 42),
+            _pad(razon_cv, 42),
         ),
         (
             "DIRECCI\u00d3N:  PARC. EL SAUCE LOTE 4 LA APARICION PAINE".encode("latin-1"),
-            _pad(b"DIRECCI\u00d3N: CARLOS LIRA VALENCIA", 52),
+            _pad(dir_carlos, 52),
         ),
         (
             "DIRECCI\u00d3N: CAMINO LAS LILAS PARC.44 CHADA PAINE".encode("latin-1"),
-            _pad(b"DIRECCI\u00d3N: SOCIEDAD AGRICOLA EL ESPINO LTDA", 47),
+            _pad(dir_espino, 47),
         ),
     ]
+
+
+def _fit_inner_to_budget(budget: int) -> bytes:
+    """Distribuye L1/L2/L3 en budget bytes (incluye \\r entre filas)."""
+    if budget >= len(INNER3):
+        return _pad(INNER3, budget)
+
+    need_l1_l2 = len(L1) + 1 + len(L2)
+    need_three_min = need_l1_l2 + 1 + 1  # L1 + L2 + al menos 1 char de L3
+
+    if budget >= need_three_min:
+        l3_len = budget - need_l1_l2 - 1
+        inner = L1 + b"\r" + L2 + b"\r" + L3[:l3_len]
+        return inner[:budget]
+
+    if budget >= need_l1_l2:
+        return L1 + b"\r" + L2 + b" " * (budget - need_l1_l2)
+
+    if budget >= len(L1):
+        return _pad(L1, budget)
+
+    if budget >= len(L2):
+        return _pad(L2, budget)
+
+    return _pad(L1, budget)[:budget]
+
+
+def _fit_ctrl_region(old_region: bytes) -> tuple[bytes | None, str]:
+    if not old_region.startswith(CTRL) or not old_region.endswith(b"\x07"):
+        return None, ""
+
+    target = len(old_region)
+    body_budget = target - len(CTRL) - 1
+    if body_budget <= 0:
+        return None, ""
+
+    if body_budget >= len(INNER3):
+        pad_len = body_budget - len(INNER3)
+        body = (b"\r" * pad_len) + INNER3 if pad_len else INNER3
+        kind = "ctrl-3line"
+    else:
+        body = _fit_inner_to_budget(body_budget)
+        kind = "ctrl-fit"
+
+    new_region = CTRL + body + b"\x07"
+    if len(new_region) != target:
+        return None, ""
+    return new_region, kind
+
+
+def _find_ctrl_regions(raw: bytes) -> list[tuple[int, int, bytes]]:
+    seen: set[tuple[int, int]] = set()
+    out: list[tuple[int, int, bytes]] = []
+
+    for marker in (b"INTRUCTIVO", b"INSTRUCTIVO"):
+        idx = 0
+        while True:
+            idx = raw.find(marker, idx)
+            if idx < 0:
+                break
+            start_search = max(0, idx - 160)
+            chunk = raw[start_search:idx]
+            pos = chunk.rfind(CTRL)
+            if pos >= 0:
+                abs_start = start_search + pos
+                segment = raw[abs_start:idx]
+                x7 = segment.rfind(b"\x07")
+                if x7 >= 0:
+                    abs_end = abs_start + x7 + 1
+                    key = (abs_start, abs_end)
+                    if key not in seen:
+                        seen.add(key)
+                        out.append((abs_start, abs_end, raw[abs_start:abs_end]))
+            idx += len(marker)
+
+    return sorted(out, key=lambda item: item[0])
+
+
+def _patch_ctrl_regions(raw: bytes) -> tuple[bytes, list[str]]:
+    data = bytearray(raw)
+    notes: list[str] = []
+    patched_ranges: list[tuple[int, int]] = []
+
+    for start, end, old_region in _find_ctrl_regions(raw):
+        new_region, kind = _fit_ctrl_region(old_region)
+        if new_region is None or new_region == old_region:
+            notes.append(f"ctrl-skip@{start}:{len(old_region)}B")
+            continue
+        data[start:end] = new_region
+        patched_ranges.append((start, end))
+        notes.append(f"{kind}@{start}:{len(old_region)}B")
+
+    return bytes(data), notes, patched_ranges
 
 
 def _split_suffix(block: bytes) -> tuple[bytes, bytes, bytes]:
@@ -92,7 +187,6 @@ def _build_block_variants(target_len: int) -> list[bytes]:
 
 
 def _build_tight_inner(body_len: int) -> bytes | None:
-    """3 líneas en body_len bytes; recorte mínimo solo al final de L3 si hace falta."""
     if body_len >= len(INNER3):
         return _pad(INNER3, body_len)
     trim = len(INNER3) - body_len
@@ -108,7 +202,6 @@ def _build_tight_block(old_block: bytes) -> bytes | None:
     target = len(old_block)
     best: bytes | None = None
     best_trim = 999
-    # Probar prefijos de 0..len(prefix) priorizando prefijo mínimo (más espacio al cuerpo)
     for prefix_len in range(0, min(len(prefix), 4) + 1):
         body_len = target - prefix_len - len(suffix)
         if body_len <= 0:
@@ -128,85 +221,26 @@ def _build_tight_block(old_block: bytes) -> bytes | None:
     return best
 
 
-def _fit_single_line_block(target_len: int) -> bytes | None:
-    for prefix_len in range(6):
-        for suffix in (b"\r\x07", b"\x07\r", b"\x07", b"\r\r\x07"):
-            body_len = target_len - prefix_len - len(suffix)
-            if body_len <= 0:
-                continue
-            block = (b"\r" * prefix_len) + _pad(L1, body_len) + suffix
-            if len(block) == target_len:
-                return block
-    return None
-
-
-def _rebuild_ciruelos_block(old_block: bytes) -> bytes | None:
-    """Distribuye L1/L2/L3 en las filas existentes (same-length)."""
-    prefix, inner, suffix = _split_suffix(old_block)
-    rows = [p for p in inner.split(b"\r") if p.strip()]
-    if len(rows) < 2:
-        return None
-
-    # Prefijo mínimo y sufijo compacto para maximizar espacio útil
-    min_prefix = b""
-    compact_suffix = b"\x07" if suffix.startswith(b"\x07") else suffix
-    budget = len(old_block) - len(min_prefix) - len(compact_suffix)
-
-    if len(rows) == 2:
-        n1 = len(rows[0])
-        n2 = budget - n1 - 1
-        if n2 < len(L2) + 2:
-            return None
-        row1 = _pad(L1, n1)
-        l3_room = n2 - len(L2) - 1
-        l3_part = L3 if len(L3) <= l3_room else L3[:l3_room]
-        row2 = _pad(L2 + b"\r" + l3_part, n2)
-        new_inner = row1 + b"\r" + row2
-    else:
-        n1 = len(rows[0])
-        n2 = budget - n1 - 1
-        if n2 < len(L2) + 2:
-            return None
-        row1 = _pad(L1, n1)
-        l3_room = n2 - len(L2) - 1
-        l3_part = L3 if len(L3) <= l3_room else L3[:l3_room]
-        row2 = _pad(L2 + b"\r" + l3_part, n2)
-        new_inner = row1 + b"\r" + row2
-
-    if len(new_inner) > budget:
-        return None
-    if len(new_inner) < budget:
-        new_inner = _pad(new_inner, budget)
-
-    new_block = min_prefix + new_inner + compact_suffix
-    if len(new_block) != len(old_block) and compact_suffix != suffix:
-        # Compensar con espacios si el sufijo compacto liberó bytes
-        pad = len(old_block) - len(new_block)
-        if pad > 0:
-            new_inner = _pad(new_inner, len(new_inner) + pad)
-            new_block = min_prefix + new_inner + compact_suffix
-    return new_block if len(new_block) == len(old_block) else None
-
-
 def _fit_block(old_block: bytes) -> tuple[bytes | None, str]:
     n = len(old_block)
     variants = _build_block_variants(n)
     if variants:
-        return variants[0], "3-line"
+        return variants[0], "block-3line"
     tight = _build_tight_block(old_block)
     if tight:
-        return tight, "3-line-tight"
-    if n <= 40:
-        single = _fit_single_line_block(n)
-        if single:
-            return single, "1-line-L1"
-    if b"CAMINO" in old_block or (
-        b"CARLOS LIRA" in old_block and b"LA CONCEPCION SOCIEDAD" not in old_block
-    ):
-        cir = _rebuild_ciruelos_block(old_block)
-        if cir:
-            return cir, "3-line-ciruelos"
+        return tight, "block-tight"
+    prefix, inner, suffix = _split_suffix(old_block)
+    body_len = len(inner)
+    if body_len > 0:
+        fitted = _fit_inner_to_budget(body_len)
+        new_block = prefix + fitted + suffix
+        if len(new_block) == n and fitted != inner:
+            return new_block, "block-fit"
     return None, ""
+
+
+def _overlaps(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    return a[0] < b[1] and b[0] < a[1]
 
 
 def _find_blocks(raw: bytes) -> list[tuple[int, int, bytes]]:
@@ -216,7 +250,9 @@ def _find_blocks(raw: bytes) -> list[tuple[int, int, bytes]]:
     ]
 
 
-def _patch_membrete_blocks(raw: bytes) -> tuple[bytes, list[str]]:
+def _patch_membrete_blocks(
+    raw: bytes, skip_ranges: list[tuple[int, int]]
+) -> tuple[bytes, list[str]]:
     data = bytearray(raw)
     notes: list[str] = []
     blocks = _find_blocks(raw)
@@ -224,9 +260,12 @@ def _patch_membrete_blocks(raw: bytes) -> tuple[bytes, list[str]]:
         return raw, []
 
     for start, end, old_block in reversed(blocks):
+        if any(_overlaps((start, end), skip) for skip in skip_ranges):
+            notes.append(f"block-skip-overlap@{start}:{len(old_block)}B")
+            continue
         new_block, kind = _fit_block(old_block)
-        if new_block is None:
-            notes.append(f"skip@{start}:{len(old_block)}B")
+        if new_block is None or new_block == old_block:
+            notes.append(f"block-skip@{start}:{len(old_block)}B")
             continue
         data[start:end] = new_block
         notes.append(f"{kind}@{start}:{len(old_block)}B")
@@ -263,10 +302,11 @@ def collect_files(roots: list[Path]) -> list[Path]:
 
 def patch_file(path: Path) -> tuple[bool, str]:
     raw = path.read_bytes()
-    patched, block_notes = _patch_membrete_blocks(raw)
+    patched, ctrl_notes, ctrl_ranges = _patch_ctrl_regions(raw)
+    patched, block_notes = _patch_membrete_blocks(patched, ctrl_ranges)
     patched, body_notes = _apply_body_replacements(patched)
-    notes = block_notes + body_notes
-    if not notes or all(n.startswith("skip") for n in notes):
+    notes = ctrl_notes + block_notes + body_notes
+    if not notes or all("skip" in n for n in notes):
         return False, "sin cambios"
     ok, reason = _integrity_ok(patched)
     if not ok:
@@ -313,8 +353,11 @@ def main() -> int:
 
     if args.dry_run:
         for path in files:
-            _, notes = _patch_membrete_blocks(path.read_bytes())
-            ok = notes and not all(n.startswith("skip") for n in notes)
+            raw = path.read_bytes()
+            patched, ctrl_notes, ctrl_ranges = _patch_ctrl_regions(raw)
+            _, block_notes = _patch_membrete_blocks(patched, ctrl_ranges)
+            notes = ctrl_notes + block_notes
+            ok = notes and not all("skip" in n for n in notes)
             print(f"{'OK' if ok else 'SKIP'}\t{path.name}\t{'; '.join(notes)}")
         print(f"Total: {len(files)}")
         return 0
