@@ -8,13 +8,14 @@ import urllib.parse
 import urllib.request
 from datetime import date, timedelta
 
-# Soc. Agrícola La Concepción — San Javier, Maule (configurable por env).
-_DEFAULT_LAT = -35.5952
-_DEFAULT_LON = -71.4593
+# Soc. Agrícola La Concepción — La Aparición, Paine, RM (configurable por env).
+_DEFAULT_LAT = -33.7810
+_DEFAULT_LON = -70.6553
 
+# Cuarteles en el mismo predio (La Aparición); leve offset por sector.
 _SECTOR_COORDS: dict[str, tuple[float, float]] = {
-    "CEREZOS CORTE 1": (-35.5920, -71.4620),
-    "CIRUELOS": (-35.5985, -71.4555),
+    "CEREZOS CORTE 1": (-33.7795, -70.6520),
+    "CIRUELOS": (-33.7825, -70.6580),
 }
 
 
