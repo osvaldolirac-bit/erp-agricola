@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
-from flask import flash, render_template, request, session, url_for
+from flask import flash, jsonify, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
@@ -666,13 +666,28 @@ def _post_guardar_evento(demo, conn) -> dict:
             tractor,
             n_orden=n_orden,
         )
+    from demo_web.services.libro_campo_gap import enriquecer_aplicacion_globalgap
+
+    wx = enriquecer_aplicacion_globalgap(
+        conn,
+        n_app,
+        fe_app,
+        huerto,
+        especie,
+        car,
+        op_cert=op_cert,
+    )
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
     demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
     session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
-    return {"ok": True, "msg": f"Aplicación N° {n_app:05d} guardada en Libro de Campo."}
+    msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
+    if wx:
+        msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
+    msg += " — visible en planilla GlobalGAP."
+    return {"ok": True, "msg": msg}
 
 
 def _post_editar_linea(demo, conn) -> dict:
@@ -785,6 +800,16 @@ def gather_libro_campo(user_email: str, user_rol: str) -> dict:
 def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
+
+    if request.method == "GET" and request.args.get("clima") == "1":
+        from demo_web.services.weather import fetch_daily_weather
+
+        fecha = parse_date(request.args.get("fecha"), hoy_demo(demo))
+        sector = (request.args.get("cuartel") or request.args.get("sector") or "").strip() or None
+        wx = fetch_daily_weather(fecha, sector)
+        if not wx:
+            return jsonify({"ok": False, "msg": "No se pudo obtener clima para la fecha indicada."}), 502
+        return jsonify({"ok": True, **wx})
 
     if request.method == "POST":
         action = request.form.get("action", "")

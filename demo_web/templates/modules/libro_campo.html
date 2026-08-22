@@ -220,7 +220,10 @@
   {% elif sec_activa == 'ingreso' %}
   <div class="alert alert-primary small mb-3">
     Libro de Campo y Bodega son <strong>módulos independientes</strong>.
-    Registrar aquí archiva la aplicación; debe rebajar stock en <strong>Bodega → Salida</strong>.
+    Registrar aquí archiva la aplicación; debe rebajar stock en <strong>Bodega → Salida</strong>.<br>
+    Al guardar, los datos también alimentan la <strong>planilla GlobalGAP</strong> (misma tabla).
+    T°, HR y viento se completan desde <strong>Open-Meteo</strong> (La Aparición, Paine) si no los ingresa.
+    <span id="lcClimaHint" class="d-block mt-1 text-muted"></span>
   </div>
   {% if not productos_stock %}
   <div class="alert alert-warning">No hay productos con stock en bodega. Registre compras o apertura de stock antes de anotar aplicaciones.</div>
@@ -232,9 +235,9 @@
       <input type="hidden" name="action" value="guardar_evento">
       <input type="hidden" name="sec" value="ingreso">
       <div class="row g-2 mb-3" id="lcCabeceraFields">
-        <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
+        <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" id="lcFechaApp" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
         <div class="col-md-3"><label class="form-label small">Cuartel</label>
-          <select name="cuartel" class="form-select form-select-sm lc-cab">{% for c in cuarteles %}<option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+          <select name="cuartel" id="lcCuartel" class="form-select form-select-sm lc-cab">{% for c in cuarteles %}<option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
         </div>
         <div class="col-md-3"><label class="form-label small">Especie</label>
           <select name="especie" class="form-select form-select-sm lc-cab">{% for e in especies %}<option value="{{ e }}" {% if e == form_especie %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
@@ -375,6 +378,38 @@ window.lcSyncCabecera = function (targetForm) {
   });
   return true;
 };
+
+(function () {
+  var fecha = document.getElementById('lcFechaApp');
+  var cuartel = document.getElementById('lcCuartel');
+  var hint = document.getElementById('lcClimaHint');
+  if (!fecha || !hint) return;
+
+  async function cargarClima() {
+    var f = fecha.value;
+    if (!f) return;
+    hint.textContent = 'Consultando clima para GlobalGAP…';
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('sec', 'ingreso');
+      u.searchParams.set('clima', '1');
+      u.searchParams.set('fecha', f);
+      if (cuartel && cuartel.value) u.searchParams.set('cuartel', cuartel.value);
+      var resp = await fetch(u.pathname + u.search, { credentials: 'same-origin' });
+      var data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error((data && data.msg) || 'Sin datos');
+      hint.textContent = 'Clima previsto ' + f + ': T° máx ' + data.t_max + ' · mín ' + data.t_min
+        + ' · HR ' + data.hr_pct + '% · viento ' + data.viento_kmh + ' km/h (se guardará al validar)';
+    } catch (e) {
+      hint.textContent = 'Clima no disponible — al guardar se intentará nuevamente.';
+    }
+  }
+
+  [fecha, cuartel].forEach(function (el) {
+    if (el) el.addEventListener('change', cargarClima);
+  });
+  cargarClima();
+})();
 </script>
 {% endif %}
 {% endblock %}
