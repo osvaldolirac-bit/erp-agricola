@@ -1,0 +1,10 @@
+{% macro nav_seccion(secciones, activa, param='sec') %}
+<ul class="nav nav-pills flex-wrap demo-nav-seccion gap-1 mb-3">
+  {% for key, label in secciones %}
+  <li class="nav-item">
+    <a class="nav-link {% if activa == key %}active{% endif %}"
+       href="{{ url_for('modules.tesoreria', **{param: key}) }}">{{ label }}</a>
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}

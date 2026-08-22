@@ -1,0 +1,555 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}RRHH — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Personal, contratistas, remuneraciones y liquidaciones</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_modulo('modules.rrhh', secciones, sec_activa) }}
+
+  {% if sec_activa == 'personal' %}
+  <div class="row g-3 mb-3">
+    <div class="col-lg-5">
+      <div class="panel-card">
+        <h2 class="h6">Registrar trabajador</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="crear_personal">
+          <input type="hidden" name="sec" value="personal">
+          <div class="col-12"><input type="text" name="nombre" class="form-control form-control-sm" placeholder="Nombre completo" required></div>
+          <div class="col-md-6"><input type="text" name="rut" class="form-control form-control-sm" placeholder="RUT" required></div>
+          <div class="col-md-6"><input type="text" name="cargo" class="form-control form-control-sm" placeholder="Cargo"></div>
+          <div class="col-md-6"><input type="date" name="fecha_contrato" class="form-control form-control-sm" value="{{ hoy }}" required></div>
+          <div class="col-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="autorizado_salida_petroleo" value="1" id="authPetCrear">
+              <label class="form-check-label small" for="authPetCrear">Autorizado para formulario Salida Link (petróleo)</label>
+            </div>
+          </div>
+          <div class="col-12"><button type="submit" class="btn btn-primary btn-sm">Registrar trabajador</button></div>
+        </form>
+      </div>
+    </div>
+    {% if personal_edit %}
+    <div class="col-lg-7">
+      <div class="panel-card">
+        <h2 class="h6">Editar / eliminar</h2>
+        <form method="get" class="mb-2">
+          <input type="hidden" name="sec" value="personal">
+          <select name="edit_id" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% for p in personal_rows %}
+            <option value="{{ p.id }}" {% if p.id == personal_edit.id %}selected{% endif %}>{{ p.nombre }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        <form method="post" class="row g-2 mb-2">
+          <input type="hidden" name="action" value="editar_personal">
+          <input type="hidden" name="sec" value="personal">
+          <input type="hidden" name="personal_id" value="{{ personal_edit.id }}">
+          <div class="col-md-6"><input type="text" name="nombre" class="form-control form-control-sm" value="{{ personal_edit.nombre }}" required></div>
+          <div class="col-md-6"><input type="text" name="rut" class="form-control form-control-sm" value="{{ personal_edit.rut }}" required></div>
+          <div class="col-md-6"><input type="text" name="cargo" class="form-control form-control-sm" value="{{ personal_edit.cargo }}"></div>
+          <div class="col-md-6"><input type="date" name="fecha_contrato" class="form-control form-control-sm" value="{{ personal_edit.fecha_contrato or hoy }}"></div>
+          <div class="col-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="autorizado_salida_petroleo" value="1" id="authPetEdit"
+                     {% if personal_edit.autorizado_salida_petroleo %}checked{% endif %}>
+              <label class="form-check-label small" for="authPetEdit">Autorizado para formulario Salida Link (petróleo)</label>
+            </div>
+          </div>
+          <div class="col-md-6"><input type="password" name="clave_maestra" class="form-control form-control-sm" placeholder="Clave maestra" required></div>
+          <div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm">Modificar registro</button></div>
+        </form>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="eliminar_personal">
+          <input type="hidden" name="sec" value="personal">
+          <input type="hidden" name="personal_id" value="{{ personal_edit.id }}">
+          <div class="col-md-6"><input type="password" name="clave_maestra" class="form-control form-control-sm" placeholder="Clave maestra p/ eliminar" required></div>
+          <div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar trabajador</button></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-3 mb-3">
+    <span class="badge bg-secondary">{{ n_personal }} registro(s)</span>
+    <span class="badge bg-success">{{ n_activos }} activo(s)</span>
+  </div>
+  <div class="panel-card">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr><th>ID</th><th>Nombre</th><th>RUT</th><th>Cargo</th><th>Estado</th><th>Salida Link petróleo</th><th>Fecha contrato</th></tr></thead>
+        <tbody>
+          {% for row in personal_rows %}
+          <tr class="{% if row.estado|lower != 'activo' %}text-muted{% endif %}">
+            <td>{{ row.id }}</td><td>{{ row.nombre }}</td><td>{{ row.rut }}</td>
+            <td>{{ row.cargo }}</td><td>{{ row.estado }}</td>
+            <td>{% if row.autorizado_salida_petroleo %}<span class="badge bg-success">Autorizado</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>{{ row.fecha_contrato }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not personal_rows %}<p class="text-muted p-3 mb-0">Sin personal registrado.</p>{% endif %}
+  </div>
+
+  <div class="panel-card mt-3">
+    <h2 class="h6 mb-1">Autorizados adicionales (dueños / sin ficha)</h2>
+    <p class="small text-muted mb-3">Personas que pueden cargar petróleo con su link personal sin ser trabajadores de RRHH.</p>
+    <form method="post" class="row g-2 mb-3">
+      <input type="hidden" name="action" value="crear_auth_extra">
+      <input type="hidden" name="sec" value="personal">
+      <div class="col-md-6"><input type="text" name="nombre" class="form-control form-control-sm" placeholder="Nombre (ej. dueño)" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Agregar a Salida Link</button></div>
+    </form>
+    {% if auth_extra_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100 mb-0">
+        <thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          {% for row in auth_extra_rows %}
+          <tr>
+            <td>{{ row.nombre }}</td>
+            <td>{% if row.activo %}<span class="badge bg-success">Con link</span>{% else %}<span class="text-muted">Inactivo</span>{% endif %}</td>
+            <td class="text-end">
+              <form method="post" class="d-inline-flex gap-2 align-items-center justify-content-end">
+                <input type="hidden" name="action" value="eliminar_auth_extra">
+                <input type="hidden" name="sec" value="personal">
+                <input type="hidden" name="extra_id" value="{{ row.id }}">
+                <input type="password" name="clave_maestra" class="form-control form-control-sm" style="max-width:10rem" placeholder="Clave maestra" required>
+                <button type="submit" class="btn btn-outline-danger btn-sm">Quitar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Aún no hay autorizados adicionales.</p>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'contratistas' %}
+  <ul class="nav nav-pills flex-wrap gap-1 mb-3">
+    {% for key, label in contratistas_sec %}
+    <li class="nav-item">
+      <a class="nav-link {% if sub_activa == key %}active{% endif %}"
+         href="{{ url_for('modules.rrhh', sec='contratistas', sub=key) }}">{{ label }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% if sub_activa == 'maestro' %}
+  <div class="row g-3 mb-3">
+    <div class="col-lg-5">
+      <div class="panel-card">
+        <h2 class="h6">Registrar contratista</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="crear_contratista">
+          <input type="hidden" name="sec" value="contratistas">
+          <input type="hidden" name="sub" value="maestro">
+          <div class="col-md-6"><input type="text" name="razon_social" class="form-control form-control-sm" placeholder="Razón social *" required></div>
+          <div class="col-md-6"><input type="text" name="rut" class="form-control form-control-sm" placeholder="RUT"></div>
+          <div class="col-md-6"><input type="text" name="rubro" class="form-control form-control-sm" placeholder="Rubro"></div>
+          <div class="col-md-6"><input type="text" name="contacto" class="form-control form-control-sm" placeholder="Contacto"></div>
+          <div class="col-md-6"><input type="email" name="email" class="form-control form-control-sm" placeholder="Email"></div>
+          <div class="col-md-6"><input type="text" name="celular" class="form-control form-control-sm" placeholder="Celular"></div>
+          <div class="col-md-6">
+            <select name="cc_habitual" class="form-select form-select-sm">
+              <option value="—">CC habitual —</option>
+              {% for cc in centros_costo %}<option value="{{ cc }}">{{ cc }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6"><div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="mail_pago" value="1" id="ctMail"><label class="form-check-label small" for="ctMail">Mail al pagar</label></div></div>
+          <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="whatsapp_pago" value="1" id="ctWa"><label class="form-check-label small" for="ctWa">WhatsApp al pagar</label></div></div>
+          <div class="col-12"><textarea name="notas" class="form-control form-control-sm" rows="2" placeholder="Notas"></textarea></div>
+          <div class="col-12"><button type="submit" class="btn btn-primary btn-sm">Registrar contratista</button></div>
+        </form>
+      </div>
+    </div>
+    {% if contratista_edit %}
+    <div class="col-lg-7">
+      <div class="panel-card">
+        <h2 class="h6">Editar contratista</h2>
+        <form method="get" class="mb-2">
+          <input type="hidden" name="sec" value="contratistas">
+          <input type="hidden" name="sub" value="maestro">
+          <select name="edit_id" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% for c in contratistas_rows %}
+            <option value="{{ c.id }}" {% if c.id == contratista_edit.id %}selected{% endif %}>{{ c.razon_social }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="editar_contratista">
+          <input type="hidden" name="sec" value="contratistas">
+          <input type="hidden" name="sub" value="maestro">
+          <input type="hidden" name="contratista_id" value="{{ contratista_edit.id }}">
+          <div class="col-md-6"><input type="text" name="razon_social" class="form-control form-control-sm" value="{{ contratista_edit.razon_social }}" required></div>
+          <div class="col-md-6"><input type="text" name="rut" class="form-control form-control-sm" value="{{ contratista_edit.rut }}"></div>
+          <div class="col-md-6"><input type="text" name="rubro" class="form-control form-control-sm" value="{{ contratista_edit.rubro }}"></div>
+          <div class="col-md-6"><input type="text" name="contacto" class="form-control form-control-sm" value="{{ contratista_edit.contacto }}"></div>
+          <div class="col-md-6">
+            <select name="cc_habitual" class="form-select form-select-sm">
+              <option value="—" {% if not contratista_edit.cc_habitual %}selected{% endif %}>—</option>
+              {% for cc in centros_costo %}<option value="{{ cc }}" {% if cc == contratista_edit.cc_habitual %}selected{% endif %}>{{ cc }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <select name="estado" class="form-select form-select-sm">
+              <option value="Activo" {% if contratista_edit.estado == 'Activo' %}selected{% endif %}>Activo</option>
+              <option value="Inactivo" {% if contratista_edit.estado == 'Inactivo' %}selected{% endif %}>Inactivo</option>
+            </select>
+          </div>
+          <div class="col-md-6"><input type="password" name="clave_maestra" class="form-control form-control-sm" placeholder="Clave maestra" required></div>
+          <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Actualizar contratista</button></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="panel-card">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr><th>RUT</th><th>Razón social</th><th>Rubro</th><th>Contacto</th><th>Mail</th><th>Celular</th><th>Mail pago</th><th>WA</th><th>CC</th><th>Estado</th></tr></thead>
+        <tbody>
+          {% for row in contratistas_rows %}
+          <tr>
+            <td>{{ row.rut }}</td><td>{{ row.razon_social }}</td><td>{{ row.rubro }}</td>
+            <td>{{ row.contacto }}</td><td>{{ row.mail }}</td><td>{{ row.celular }}</td>
+            <td>{{ row.mail_pago }}</td><td>{{ row.wa_pago }}</td><td>{{ row.cc_habitual }}</td><td>{{ row.estado }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% elif sub_activa == 'servicio' %}
+  {% if sin_contratistas %}
+  <div class="alert alert-warning">Registre contratistas activos en la pestaña Maestro.</div>
+  {% else %}
+  <div class="panel-card">
+    <form method="post">
+      <input type="hidden" name="action" value="registrar_servicio">
+      <input type="hidden" name="sec" value="contratistas">
+      <input type="hidden" name="sub" value="servicio">
+      <div class="row g-2 mb-2">
+        <div class="col-md-4">
+          <label class="form-label">Contratista</label>
+          <select name="contratista_id" class="form-select form-select-sm">
+            {% for c in servicio_contratistas %}
+            <option value="{{ c.id }}" {% if c.id|string == servicio_sel_id %}selected{% endif %}>{{ c.razon_social }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="srvSinDoc" onchange="toggleSrvDoc(this.checked)">
+            <label class="form-check-label small" for="srvSinDoc">Sin documento (folio interno)</label>
+          </div>
+        </div>
+      </div>
+      <div class="row g-2">
+        <div class="col-md-3"><label class="form-label">N° documento</label><input type="text" name="nro_doc" id="srvNroDoc" class="form-control form-control-sm" required></div>
+        <div class="col-md-3"><label class="form-label">Fecha servicio</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}" required></div>
+        <div class="col-md-3"><label class="form-label">Vencimiento</label><input type="date" name="fecha_vence" class="form-control form-control-sm" value="{{ hoy }}" required></div>
+        <div class="col-md-3"><label class="form-label">Razón social</label>
+          <select name="razon_social" class="form-select form-select-sm">{% for r in razones_sociales %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
+        </div>
+        <div class="col-12"><label class="form-label">Servicio / concepto</label><input type="text" name="concepto" class="form-control form-control-sm" required></div>
+        <div class="col-12">
+          <label class="form-label">Centros de costo</label>
+          <div class="row g-1">
+            {% for cc in centros_costo %}
+            <div class="col-md-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="cc_{{ cc }}" value="1" id="srvcc{{ loop.index }}"
+                       {% if servicio_sel and cc == servicio_sel.cc_habitual %}checked{% endif %}>
+                <label class="form-check-label small" for="srvcc{{ loop.index }}">{{ cc }}</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-3"><label class="form-label">Monto bruto ($)</label><input type="number" name="monto" class="form-control form-control-sm" min="0" step="1000" required></div>
+        <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="iva_bruto" value="1" id="srvIva" checked><label class="form-check-label small" for="srvIva">Imputar bruto</label></div></div>
+        <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Registrar servicio</button></div>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  {% elif sub_activa == 'por_cc' %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="por_cc">
+      <div class="col-md-2"><label class="form-label">CC</label><select name="cc" class="form-select" onchange="var f=this.form;if(f.desde)f.desde.value='';if(f.hasta)f.hasta.value='';f.submit();">{% for c in cuarteles %}<option value="{{ c }}" {% if c == cc_sel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="form-label">Contratista</label><select name="contratista" class="form-select">{% for cid, nombre in contratistas_filtro.items() %}<option value="{{ cid }}" {% if cid == contratista_sel %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">Desde</label><input type="date" name="desde" class="form-control" value="{{ filtro_desde }}"></div>
+      <div class="col-md-2"><label class="form-label">Hasta</label><input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Filtrar</button></div>
+    </form>
+  </div>
+  {% if por_cc_rows %}
+  <p class="small text-muted">{{ cc_sel }} · {{ por_cc_n }} mov. · Total: <strong>{{ por_cc_total }}</strong>
+    {{ pdf_btn(pdf_por_cc_url, '📥 PDF', rows=por_cc_n) }}
+  </p>
+  <div class="panel-card"><div class="table-responsive"><table class="table table-sm table-striped demo-datatable w-100">
+    <thead><tr><th>Fecha</th><th>Contratista</th><th>Documento</th><th>Concepto</th><th>Monto</th></tr></thead>
+    <tbody>{% for row in por_cc_rows %}<tr><td>{{ row.fecha }}</td><td>{{ row.contratista }}</td><td>{{ row.documento }}</td><td>{{ row.concepto }}</td><td>{{ row.monto }}</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+  {% else %}<div class="alert alert-info">Sin servicios en este CC y período.</div>{% endif %}
+
+  {% elif sub_activa == 'cuenta' %}
+  {% if cta_vacia %}<div class="alert alert-warning">Registre contratistas activos en Maestro.</div>
+  {% else %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cuenta">
+      <div class="col-md-3"><select name="contratista" class="form-select" onchange="this.form.submit()">{% for nombre in contratistas_cta.keys() %}<option value="{{ nombre }}" {% if nombre == contratista_cta_sel %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><select name="cc_filtro" class="form-select" onchange="var f=this.form;if(f.desde)f.desde.value='';if(f.hasta)f.hasta.value='';f.submit();"><option value="">Todos CC</option>{% for c in cc_filtro_opts %}<option value="{{ c }}" {% if c == cc_filtro_sel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><input type="date" name="desde" class="form-control" value="{{ filtro_desde }}"></div>
+      <div class="col-md-2"><input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}"></div>
+      <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Filtrar</button></div>
+    </form>
+  </div>
+  {% if cta_rows %}
+  <p class="small text-muted"><strong>{{ cta_razon }}</strong> · Trabajos {{ cta_tot_gen }} · Pagos {{ cta_tot_pag }} · Saldo {{ cta_saldo }}
+    {{ pdf_btn(pdf_cta_url, '📥 PDF CUENTA CORRIENTE', rows=pdf_cta_rows) }}
+  </p>
+  <div class="panel-card"><div class="table-responsive"><table class="table table-sm table-bordered demo-datatable w-100">
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Documento</th><th>Detalle</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
+    <tbody>{% for row in cta_rows %}<tr><td>{{ row.fecha }}</td><td>{{ row.tipo }}</td><td>{{ row.documento }}</td><td>{{ row.detalle }}</td><td>{{ row.debe }}</td><td>{{ row.haber }}</td><td class="fw-semibold">{{ row.saldo }}</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+  {% else %}<div class="alert alert-info">Sin movimientos para este contratista.</div>{% endif %}
+  {% endif %}
+  {% endif %}
+
+  {% elif sec_activa == 'remuneraciones' %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2 align-items-end">
+      <input type="hidden" name="sec" value="remuneraciones">
+      <div class="col-md-3"><label class="form-label">Trabajador</label>
+        <select name="trabajador_id" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for t in trabajadores %}<option value="{{ t.id }}" {% if t.id == trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label">Mes</label><select name="mes" class="form-select form-select-sm">{% for m in meses %}<option value="{{ m }}" {% if m == mes_sel %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">Año</label><input type="number" name="anio" class="form-control form-control-sm" value="{{ anio_sel }}" min="2020" max="2040"></div>
+      <div class="col-md-2"><button type="submit" class="btn btn-primary btn-sm">Ver planilla</button></div>
+    </form>
+  </div>
+
+  {% if trabajadores %}
+  <div class="row g-3 mb-3">
+    <div class="col-lg-5">
+      <div class="panel-card">
+        <h2 class="h6">Sueldo y suple fijo</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="guardar_ficha">
+          <input type="hidden" name="sec" value="remuneraciones">
+          <input type="hidden" name="mes" value="{{ mes_sel }}">
+          <input type="hidden" name="anio" value="{{ anio_sel }}">
+          <div class="col-12">
+            <select name="trabajador_id" class="form-select form-select-sm">
+              {% for t in trabajadores %}<option value="{{ t.id }}" {% if t.id == trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6"><label class="form-label small">Sueldo líquido pactado ($)</label><input type="number" name="sueldo" class="form-control form-control-sm" value="{{ ficha_sueldo|int }}" min="0" step="1000"></div>
+          <div class="col-md-6"><label class="form-label small">Suple fijo ($)</label><input type="number" name="suple" class="form-control form-control-sm" value="{{ ficha_suple|int }}" min="0" step="1000"></div>
+          <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar sueldo y suple</button></div>
+        </form>
+
+        {% if info_prestamo and info_prestamo.monto|default(0) > 0 %}
+        <hr>
+        <h2 class="h6">Estado del crédito</h2>
+        <div class="row g-2 small mb-2">
+          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Préstamo original</div><strong>{{ info_prestamo.monto_fmt }}</strong></div></div>
+          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Total descontado</div><strong>{{ info_prestamo.descontado_fmt }}</strong></div></div>
+          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Saldo pendiente</div><strong>{{ info_prestamo.saldo_fmt }}</strong></div></div>
+          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Cuota referencia</div><strong>{{ info_prestamo.cuota_ref_fmt }}</strong></div></div>
+        </div>
+        <p class="small text-muted mb-1">Primera cuota: <strong>{{ info_prestamo.primera_cuota_fmt }}</strong>
+          · Cuotas: {{ info_prestamo.cuotas_pagadas }}/{{ info_prestamo.cuotas }} (restan {{ info_prestamo.cuotas_restantes }})</p>
+        {% if info_prestamo.saldado %}
+        <div class="alert alert-success py-2 small mb-2">Préstamo saldado. Puede poner monto en $0 abajo o registrar uno nuevo tras limpiar el crédito.</div>
+        {% endif %}
+        {% elif puede_registrar_prestamo %}
+        <hr>
+        <h2 class="h6">Registrar nuevo préstamo</h2>
+        <p class="small text-muted mb-2">Monto total, cuotas pactadas y mes de la primera cuota (descuento en planilla).</p>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="registrar_prestamo">
+          <input type="hidden" name="sec" value="remuneraciones">
+          <input type="hidden" name="mes" value="{{ mes_sel }}">
+          <input type="hidden" name="anio" value="{{ anio_sel }}">
+          <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+          <div class="col-md-6">
+            <label class="form-label small">Monto préstamo ($)</label>
+            <input type="number" name="monto_prestamo" class="form-control form-control-sm" min="1" step="1" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Cuotas pactadas</label>
+            <input type="number" name="cuotas" class="form-control form-control-sm" min="1" step="1" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Primera cuota (mes)</label>
+            <input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ primera_cuota_def }}">
+          </div>
+          <div class="col-md-6 d-flex align-items-end">
+            <button type="submit" class="btn btn-success btn-sm w-100">Registrar préstamo</button>
+          </div>
+        </form>
+        {% endif %}
+
+        <hr>
+        <h2 class="h6">Modificar términos del crédito</h2>
+        <p class="small text-muted mb-2">Ajuste monto, cuotas o primera cuota del contrato. Ponga monto $0 para limpiar y poder registrar uno nuevo.</p>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="editar_prestamo">
+          <input type="hidden" name="sec" value="remuneraciones">
+          <input type="hidden" name="mes" value="{{ mes_sel }}">
+          <input type="hidden" name="anio" value="{{ anio_sel }}">
+          <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+          <div class="col-md-6">
+            <label class="form-label small">Monto préstamo total ($)</label>
+            <input type="number" name="monto_prestamo" class="form-control form-control-sm"
+                   value="{{ ficha_monto_prestamo|int }}" min="0" step="1">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Cuotas pactadas</label>
+            <input type="number" name="cuotas" class="form-control form-control-sm"
+                   value="{{ ficha_cuotas_prestamo }}" min="0" step="1">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Primera cuota (mes)</label>
+            <input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ primera_cuota_def }}">
+          </div>
+          <div class="col-md-6 d-flex align-items-end">
+            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Actualizar crédito</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="panel-card mb-3">
+    <h2 class="h6">Registro de préstamos y cuotas</h2>
+    {% if prestamos_rows %}
+    <p class="small text-muted">Saldo según descuentos de la planilla de Remuneraciones de cada mes.</p>
+    <div class="table-responsive"><table class="table table-sm table-striped w-100">
+      <thead><tr><th>Trabajador</th><th>Préstamo</th><th>Cuotas</th><th>Descontado</th><th>Saldo</th><th>1ª cuota</th></tr></thead>
+      <tbody>{% for row in prestamos_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.prestamo_total }}</td><td>{{ row.cuotas_pagadas }}/{{ row.cuotas_pactadas }}</td><td>{{ row.total_descontado }}</td><td>{{ row.saldo_pendiente }}</td><td>{{ row.primera_cuota }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}
+    <p class="text-muted mb-0">No hay préstamos registrados.</p>
+    {% endif %}
+  </div>
+
+  <div class="alert alert-info fw-semibold mb-3">TOTAL LÍQUIDO A PROVISIONAR ({{ mes_sel }}/{{ anio_sel }}): {{ total_provision }}</div>
+  <div class="panel-card">
+    <h2 class="h6">Detalle planilla del mes</h2>
+    {% if planilla_rows %}
+    <form method="post">
+      <input type="hidden" name="action" value="guardar_planilla">
+      <input type="hidden" name="sec" value="remuneraciones">
+      <input type="hidden" name="mes" value="{{ mes_sel }}">
+      <input type="hidden" name="anio" value="{{ anio_sel }}">
+      <div class="table-responsive mb-2">
+        <table class="table table-sm table-bordered w-100">
+          <thead><tr><th>Trabajador</th><th>Líquido ganado</th><th>Suple</th><th>Desc. préstamo</th><th>A provisionar</th></tr></thead>
+          <tbody>
+            {% for row in planilla_rows %}
+            <tr>
+              <td>{{ row.trabajador }}</td>
+              <td><input type="number" name="liq_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.liquido_ganado|int }}" min="0" step="1000"></td>
+              <td><input type="number" name="sup_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.suple|int }}" min="0" step="1000"></td>
+              <td><input type="number" name="desc_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.descuento_prestamo|int }}" min="0" step="1000"></td>
+              <td class="fw-semibold">{{ row.prov_fmt }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Guardar planilla del mes</button>
+    </form>
+    {% else %}<p class="text-muted mb-0">No hay trabajadores activos.</p>{% endif %}
+  </div>
+
+  {% elif sec_activa == 'liquidacion' %}
+  {% if sin_trabajadores %}
+  <div class="alert alert-warning">Registre trabajadores activos en Personal.</div>
+  {% else %}
+  <div class="panel-card">
+    <p class="small text-muted">Registro del pago real (líquido + leyes sociales). Independiente de la provisión en Remuneraciones.</p>
+    {% if liq_existente %}<div class="alert alert-warning small">Ya existe liquidación para este trabajador/mes. Guardar actualizará el registro.</div>{% endif %}
+    <form method="get" class="row g-2 mb-3" id="liqFilter">
+      <input type="hidden" name="sec" value="liquidacion">
+      <div class="col-md-4">
+        <label class="form-label">Trabajador</label>
+        <select name="trabajador_id" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for t in liq_trabajadores %}<option value="{{ t.id }}" {% if t.id == liq_trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label">Mes</label><select name="mes" class="form-select form-select-sm" onchange="this.form.submit()">{% for m in meses %}<option value="{{ m }}" {% if m == liq_mes %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">Año</label><input type="number" name="anio" class="form-control form-control-sm" value="{{ liq_anio }}" min="2020" max="2040" onchange="document.getElementById('liqFilter').submit()"></div>
+    </form>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="liquidacion">
+      <input type="hidden" name="sec" value="liquidacion">
+      <input type="hidden" name="trabajador_id" value="{{ liq_trabajador_sel }}">
+      <input type="hidden" name="mes" value="{{ liq_mes }}">
+      <input type="hidden" name="anio" value="{{ liq_anio }}">
+      <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="licencia" value="1" id="liqLic"><label class="form-check-label" for="liqLic">Licencia médica (montos en cero)</label></div></div>
+      <div class="col-md-3"><label class="form-label">Líquido pagado ($)</label><input type="number" name="liquido" class="form-control form-control-sm" value="{{ liq_existente.liquido|int if liq_existente else 0 }}" min="0" step="1"></div>
+      <div class="col-md-3"><label class="form-label">Leyes sociales ($)</label><input type="number" name="leyes" class="form-control form-control-sm" value="{{ liq_existente.leyes|int if liq_existente else 0 }}" min="0" step="1"></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Registrar liquidación</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-3"><label class="form-label">Desde</label><input type="date" name="desde" class="form-control" value="{{ filtro_desde }}"></div>
+      <div class="col-md-3"><label class="form-label">Hasta</label><input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Filtrar</button></div>
+    </form>
+  </div>
+  <div class="alert alert-success fw-semibold">EGRESO TOTAL PERÍODO: {{ historial_total }}
+    {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL') }}
+  </div>
+  <div class="panel-card">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr><th>Trabajador</th><th>Mes</th><th>Año</th><th>Líquido</th><th>Previred</th><th>Total</th><th>Registro</th></tr></thead>
+        <tbody>{% for row in historial_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.mes }}</td><td>{{ row.anio }}</td><td>{{ row.liquido_pagado }}</td><td>{{ row.previred }}</td><td class="fw-semibold">{{ row.total_pagado }}</td><td>{{ row.fecha_registro }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if not historial_rows %}<p class="text-muted p-3 mb-0">Sin liquidaciones en el período.</p>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSrvDoc(sinDoc) {
+  const inp = document.getElementById('srvNroDoc');
+  if (!inp) return;
+  if (sinDoc) { inp.value = 'AUTOGENERADO'; inp.readOnly = true; inp.removeAttribute('required'); }
+  else { inp.value = ''; inp.readOnly = false; inp.setAttribute('required', 'required'); }
+}
+</script>
+{% endblock %}
