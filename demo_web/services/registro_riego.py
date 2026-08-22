@@ -13,6 +13,7 @@ from flask import current_app, request
 from demo_web.services.demo_loader import get_demo_module, get_erp_app
 
 _CODIGO_RE = re.compile(r"^RIE-(\d+)$", re.I)
+_FAMILIAS_FERTILIZANTE = ("FERTILIZANTE", "FERTILIZANTE FOLIAR")
 
 
 def _conn() -> sqlite3.Connection:
@@ -50,6 +51,205 @@ def huertos_para_formulario() -> list[str]:
     otros = [c for c in raw if str(c).strip().upper() == "OTROS"]
     resto = [c for c in raw if str(c).strip().upper() != "OTROS"]
     return resto + otros
+
+
+def fertilizantes_bodega_para_formulario() -> list[dict[str, Any]]:
+    """Productos de bodega (familia fertilizante) para el formulario link."""
+    demo = get_demo_module()
+    conn = _conn()
+    try:
+        migrar_tabla(conn)
+        placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+        rows = conn.execute(
+            f"""SELECT id, producto, COALESCE(stock, 0), COALESCE(unidad_medida, 'kg'), familia
+                FROM inventario
+                WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})
+                ORDER BY producto COLLATE NOCASE""",
+            _FAMILIAS_FERTILIZANTE,
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
+        for pid, nombre, stock, um, fam in rows:
+            stock_f = float(stock or 0)
+            um_s = str(um or "kg")
+            nom = str(nombre or "").strip()
+            out.append(
+                {
+                    "id": int(pid),
+                    "nombre": nom,
+                    "stock": stock_f,
+                    "stock_fmt": f_cant(stock_f),
+                    "um": um_s,
+                    "familia": str(fam or ""),
+                    "etiqueta": f"{nom} — {f_cant(stock_f)} {um_s} en bodega",
+                }
+            )
+        return out
+    finally:
+        conn.close()
+
+
+def parse_fertilizantes_request(form) -> list[dict[str, Any]]:
+    """Lee filas fert_producto_id / fert_cantidad / fert_dosis_ha del POST."""
+    pids = form.getlist("fert_producto_id")
+    cants = form.getlist("fert_cantidad")
+    dosis = form.getlist("fert_dosis_ha")
+    n = max(len(pids), len(cants), len(dosis))
+    lineas: list[dict[str, Any]] = []
+    for i in range(n):
+        pid_raw = pids[i] if i < len(pids) else ""
+        cant_raw = cants[i] if i < len(cants) else ""
+        dosis_raw = dosis[i] if i < len(dosis) else ""
+        pid = str(pid_raw or "").strip()
+        if not pid:
+            continue
+        try:
+            cant = float(str(cant_raw or "0").replace(",", "."))
+        except ValueError:
+            cant = 0.0
+        dosis_ha = None
+        if str(dosis_raw or "").strip():
+            try:
+                dosis_ha = float(str(dosis_raw).replace(",", "."))
+            except ValueError:
+                dosis_ha = None
+        lineas.append(
+            {
+                "producto_id": int(pid),
+                "cantidad": cant,
+                "dosis_ha": dosis_ha,
+            }
+        )
+    return lineas
+
+
+def _validar_lineas_fertilizantes(
+    conn: sqlite3.Connection, lineas: list[dict[str, Any]]
+) -> tuple[bool, str, list[dict[str, Any]]]:
+    if not lineas:
+        return False, "Agregue al menos un fertilizante de bodega.", []
+    demo = get_demo_module()
+    placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+    out: list[dict[str, Any]] = []
+    for ln in lineas:
+        pid = int(ln.get("producto_id") or 0)
+        cant = float(ln.get("cantidad") or 0)
+        dosis_ha = ln.get("dosis_ha")
+        if pid <= 0:
+            return False, "Seleccione un fertilizante válido.", []
+        if cant <= 0:
+            return False, "Indique cantidad mayor a cero en cada fertilizante.", []
+        row = conn.execute(
+            f"""SELECT id, producto, COALESCE(stock, 0), COALESCE(unidad_medida, 'kg'), familia
+                FROM inventario WHERE id=?
+                  AND UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})""",
+            (pid, *_FAMILIAS_FERTILIZANTE),
+        ).fetchone()
+        if not row:
+            return False, "Uno de los fertilizantes no existe o no es de bodega.", []
+        _id, nombre, stock, um, _fam = row
+        stock_f = float(stock or 0)
+        um_s = str(um or "kg")
+        f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
+        if cant > stock_f + 1e-9:
+            return (
+                False,
+                f"Stock insuficiente de {nombre}: pidió {f_cant(cant)} {um_s}, "
+                f"hay {f_cant(stock_f)} {um_s}.",
+                [],
+            )
+        out.append(
+            {
+                "producto_id": int(_id),
+                "producto": str(nombre),
+                "cantidad": cant,
+                "dosis_ha": dosis_ha,
+                "unidad": um_s,
+            }
+        )
+    return True, "", out
+
+
+def _guardar_fertilizantes(
+    conn: sqlite3.Connection, codigo: str, lineas: list[dict[str, Any]]
+) -> None:
+    conn.execute("DELETE FROM riego_fertilizantes WHERE codigo=?", (codigo,))
+    for ln in lineas:
+        conn.execute(
+            """INSERT INTO riego_fertilizantes
+               (codigo, producto_id, producto, cantidad, dosis_ha, unidad)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                codigo,
+                ln["producto_id"],
+                ln["producto"],
+                float(ln["cantidad"]),
+                ln.get("dosis_ha"),
+                ln.get("unidad") or "kg",
+            ),
+        )
+
+
+def _listar_fertilizantes(conn: sqlite3.Connection, codigo: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """SELECT producto_id, producto, cantidad, dosis_ha, unidad
+           FROM riego_fertilizantes WHERE codigo=? ORDER BY id""",
+        (codigo,),
+    ).fetchall()
+    return [
+        {
+            "producto_id": int(r[0]),
+            "producto": r[1],
+            "cantidad": float(r[2] or 0),
+            "dosis_ha": r[3],
+            "unidad": r[4] or "kg",
+        }
+        for r in rows
+    ]
+
+
+def _aplicar_salidas_bodega_fertilizantes(
+    conn: sqlite3.Connection,
+    codigo: str,
+    huerto_cc: str,
+    fecha: str,
+    demo,
+) -> tuple[bool, str]:
+    lineas = _listar_fertilizantes(conn, codigo)
+    if not lineas:
+        return True, ""
+    um_default = getattr(demo, "DEFAULT_UNIDAD_INSUMO", "kg")
+    for ln in lineas:
+        pid = ln["producto_id"]
+        cant = float(ln["cantidad"])
+        row = conn.execute(
+            "SELECT producto, precio_medio, COALESCE(unidad_medida, ?), COALESCE(stock, 0) "
+            "FROM inventario WHERE id=?",
+            (um_default, pid),
+        ).fetchone()
+        if not row:
+            return False, f"Producto id {pid} no encontrado en bodega."
+        nombre, pmp, um, stock = row[0], float(row[1] or 0), row[2], float(row[3] or 0)
+        f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
+        if cant > stock + 1e-9:
+            return (
+                False,
+                f"Stock insuficiente de {nombre} al autorizar "
+                f"({f_cant(stock)} {um} disponible).",
+            )
+        conn.execute(
+            """INSERT INTO movimientos
+               (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+               VALUES (?,?,?,?,?,?,?)""",
+            (pid, "Salida", cant, fecha, huerto_cc, cant * pmp, um),
+        )
+        cur = conn.execute(
+            "UPDATE inventario SET stock = stock - ? WHERE id = ? AND stock >= ?",
+            (cant, pid, cant),
+        )
+        if cur.rowcount != 1:
+            return False, f"No se pudo descontar {nombre} de bodega."
+    return True, ""
 
 
 def _ensure_mail_riego_usuarios(conn: sqlite3.Connection) -> None:
@@ -130,6 +330,20 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
                    rechazado_en TEXT DEFAULT '',
                    rechazo_motivo TEXT DEFAULT ''
                )"""
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS riego_fertilizantes (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   codigo TEXT NOT NULL,
+                   producto_id INTEGER NOT NULL,
+                   producto TEXT NOT NULL,
+                   cantidad REAL DEFAULT 0,
+                   dosis_ha REAL,
+                   unidad TEXT DEFAULT 'kg'
+               )"""
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_riego_fert_codigo ON riego_fertilizantes(codigo)"
         )
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"
@@ -322,6 +536,29 @@ def _fmt_fert(dosis, total, demo) -> str:
     return " · ".join(parts) if parts else "—"
 
 
+def _fmt_fertilizantes(
+    conn: sqlite3.Connection | None,
+    codigo: str,
+    demo,
+    dosis=None,
+    total=None,
+) -> str:
+    if conn and codigo:
+        rows = _listar_fertilizantes(conn, codigo)
+        if rows:
+            f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
+            parts = []
+            for ln in rows:
+                p = str(ln["producto"])
+                if float(ln["cantidad"] or 0) > 0:
+                    p += f" {f_cant(ln['cantidad'])} {ln['unidad']}"
+                if ln.get("dosis_ha") is not None and float(ln["dosis_ha"] or 0) > 0:
+                    p += f" ({demo.f_decimal(ln['dosis_ha'])}×ha)"
+                parts.append(p)
+            return "; ".join(parts)
+    return _fmt_fert(dosis, total, demo)
+
+
 def enviar_alerta(registro: dict[str, Any]) -> bool:
     demo = get_demo_module()
     if not hasattr(demo, "_enviar_correo_html"):
@@ -368,6 +605,7 @@ def registrar_link(
     *,
     fert_dosis_ha: float | None = None,
     fert_total: float | None = None,
+    fertilizantes: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     demo = get_demo_module()
     huerto = (huerto or "").strip().upper()
@@ -376,8 +614,16 @@ def registrar_link(
     ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
 
     conn = _conn()
+    codigo = ""
     try:
         migrar_tabla(conn)
+        lineas_fert: list[dict[str, Any]] = []
+        if fertilizantes:
+            ok_f, msg_f, lineas_fert = _validar_lineas_fertilizantes(conn, fertilizantes)
+            if not ok_f:
+                return {"ok": False, "msg": msg_f}
+            fert_total = sum(float(ln["cantidad"]) for ln in lineas_fert) or fert_total
+
         conn.execute("BEGIN IMMEDIATE")
         codigo = _siguiente_codigo(conn)
         conn.execute(
@@ -398,6 +644,8 @@ def registrar_link(
                 fh,
             ),
         )
+        if lineas_fert:
+            _guardar_fertilizantes(conn, codigo, lineas_fert)
         conn.commit()
     except Exception:
         try:
@@ -408,13 +656,21 @@ def registrar_link(
     finally:
         conn.close()
 
+    conn_fmt = _conn()
+    try:
+        fert_txt = _fmt_fertilizantes(
+            conn_fmt, codigo, demo, fert_dosis_ha, fert_total
+        )
+    finally:
+        conn_fmt.close()
+
     registro = {
         "codigo": codigo,
         "fecha": fecha,
         "huerto": huerto,
         "horas_fmt": demo.f_decimal(horas),
         "m3_fmt": demo.f_decimal(m3),
-        "fert_txt": _fmt_fert(fert_dosis_ha, fert_total, demo),
+        "fert_txt": fert_txt,
         "regador": regador,
     }
     mail_ok = enviar_alerta(registro)
@@ -422,7 +678,7 @@ def registrar_link(
         conn = _conn()
         det = (
             f"Link | {codigo} | {huerto} | {registro['horas_fmt']} h | "
-            f"{registro['m3_fmt']} m3 | {regador[:40]}"
+            f"{registro['m3_fmt']} m3 | {fert_txt[:60]} | {regador[:40]}"
             + (" | mail OK" if mail_ok else " | mail falló")
         )
         conn.execute(
@@ -478,6 +734,13 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
             return {"ok": False, "msg": "Huerto inválido."}
 
         fh_auth = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("BEGIN IMMEDIATE")
+        ok_bod, msg_bod = _aplicar_salidas_bodega_fertilizantes(
+            conn, codigo, huerto_cc, str(fecha)[:10], demo
+        )
+        if not ok_bod:
+            conn.rollback()
+            return {"ok": False, "msg": msg_bod}
         conn.execute(
             """INSERT INTO riego
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
@@ -503,16 +766,23 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
                WHERE codigo=?""",
             (usuario, fh_auth, codigo),
         )
+        fert_resumen = _fmt_fertilizantes(conn, codigo, demo, fert_dosis_ha, fert_total)
         conn.execute(
             "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
             (
                 usuario,
                 "RIEGO AUTORIZAR",
-                f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | {demo.f_decimal(m3)} m3",
+                f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | {demo.f_decimal(m3)} m3 | {fert_resumen[:80]}",
                 fh_auth,
             ),
         )
         conn.commit()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "msg": f"Error al autorizar: {exc}"}
     finally:
         conn.close()
 
@@ -670,7 +940,7 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
                 "huerto": huerto or "—",
                 "horas": demo.f_decimal(horas),
                 "m3": demo.f_decimal(m3),
-                "fert_txt": _fmt_fert(dosis, total, demo),
+                "fert_txt": _fmt_fertilizantes(conn, codigo or "", demo, dosis, total),
                 "regador": regador,
                 "estado": est,
                 "pendiente": est == "pendiente",
@@ -720,7 +990,7 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
                 "huerto": huerto or "—",
                 "horas": demo.f_decimal(horas),
                 "m3": demo.f_decimal(m3),
-                "fert_txt": _fmt_fert(dosis, total, demo),
+                "fert_txt": _fmt_fertilizantes(conn, codigo or "", demo, dosis, total),
                 "regador": regador or "—",
                 "origen": origen or "manual",
                 "bitacora_codigo": bit_cod or "",

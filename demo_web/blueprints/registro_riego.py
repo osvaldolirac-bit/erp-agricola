@@ -14,9 +14,11 @@ from demo_web.auth.decorators import login_required
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.registro_riego import (
     aplicar_cookie_operador,
+    fertilizantes_bodega_para_formulario,
     habilitado,
     huertos_para_formulario,
     leer_operador_cookie,
+    parse_fertilizantes_request,
     registrar_link,
     regadores_autorizados_para_formulario,
     resolver_regador_por_id,
@@ -41,6 +43,7 @@ def formulario():
         return render_template("registro_riego/denied.html"), 403
 
     huertos = huertos_para_formulario()
+    fertilizantes_opts = fertilizantes_bodega_para_formulario()
     regadores_opts = regadores_autorizados_para_formulario()
     op_query = resolver_regador_por_id(request.args.get("op"), regadores_opts)
     op_cookie = leer_operador_cookie(regadores_opts)
@@ -55,9 +58,8 @@ def formulario():
     form_huerto = ""
     form_horas = ""
     form_m3 = ""
-    form_dosis = ""
-    form_total = ""
     form_con_fert = False
+    form_fert_lineas: list[dict] = []
 
     if request.method == "POST":
         hp = (request.form.get(_HONEYPOT_FIELD) or "").strip()
@@ -65,9 +67,8 @@ def formulario():
         form_huerto = request.form.get("huerto") or ""
         form_horas = request.form.get("horas") or ""
         form_m3 = request.form.get("m3") or ""
-        form_dosis = request.form.get("fert_dosis_ha") or ""
-        form_total = request.form.get("fert_total") or ""
         form_con_fert = request.form.get("con_fertilizacion") == "1"
+        form_fert_lineas = parse_fertilizantes_request(request.form)
 
         try:
             horas = float((form_horas or "0").replace(",", "."))
@@ -77,17 +78,8 @@ def formulario():
             m3 = float((form_m3 or "0").replace(",", "."))
         except ValueError:
             m3 = 0.0
-        dosis = None
-        total = None
-        if form_con_fert:
-            try:
-                dosis = float((form_dosis or "0").replace(",", ".")) if form_dosis else None
-            except ValueError:
-                dosis = None
-            try:
-                total = float((form_total or "0").replace(",", ".")) if form_total else None
-            except ValueError:
-                total = None
+
+        fert_lineas_post = form_fert_lineas if form_con_fert else []
 
         bot_claro = bool(hp) and horas <= 0 and m3 <= 0 and not form_huerto
         if bot_claro:
@@ -101,6 +93,10 @@ def formulario():
             error = "Seleccione un huerto válido."
         elif horas <= 0 and m3 <= 0:
             error = "Indique horas de riego o m³ mayores a cero."
+        elif form_con_fert and not fertilizantes_opts:
+            error = "No hay fertilizantes en bodega. Registre productos en Bodega primero."
+        elif form_con_fert and not fert_lineas_post:
+            error = "Agregue al menos un fertilizante con cantidad."
         elif not regadores_opts:
             error = "No hay regadores autorizados. En RRHH marque trabajadores como regador."
         else:
@@ -111,23 +107,28 @@ def formulario():
                     horas,
                     m3,
                     (operador or {}).get("nombre", ""),
-                    fert_dosis_ha=dosis,
-                    fert_total=total,
+                    fertilizantes=fert_lineas_post if form_con_fert else None,
                 )
             except Exception as exc:
                 error = f"No se pudo guardar: {exc}"
                 res = {"ok": False}
-            if res.get("ok"):
+            if not res.get("ok") and res.get("msg"):
+                error = res["msg"]
+            elif res.get("ok"):
                 ok = True
                 mail_ok = res.get("mail_ok")
                 codigo = res.get("codigo")
                 operador = operador
+
+    if not form_fert_lineas and fertilizantes_opts:
+        form_fert_lineas = [{"producto_id": "", "cantidad": "", "dosis_ha": ""}]
 
     html = render_template(
         "registro_riego/form.html",
         token=tok,
         honeypot_field=_HONEYPOT_FIELD,
         huertos=huertos,
+        fertilizantes=fertilizantes_opts,
         operador=operador,
         acceso_personal=acceso_personal,
         ok=ok,
@@ -138,9 +139,8 @@ def formulario():
         form_huerto=form_huerto,
         form_horas=form_horas,
         form_m3=form_m3,
-        form_dosis=form_dosis,
-        form_total=form_total,
         form_con_fert=form_con_fert,
+        form_fert_lineas=form_fert_lineas,
     )
     resp = make_response(html)
     if ok and operador:

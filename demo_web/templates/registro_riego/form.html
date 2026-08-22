@@ -37,7 +37,7 @@
       <div class="small mb-0 mt-1">Solicite su link en RRHH (regador autorizado).</div>
     </div>
     {% elif not ok %}
-    <form method="post" class="salida-petroleo-form" autocomplete="off">
+    <form method="post" class="salida-petroleo-form" autocomplete="off" id="formRiego">
       <input type="hidden" name="t" value="{{ token }}">
       <div class="salida-petroleo-honeypot" aria-hidden="true">
         <input type="text" name="{{ honeypot_field }}" tabindex="-1" autocomplete="off">
@@ -70,19 +70,127 @@
       <div class="form-check mt-3">
         <input class="form-check-input" type="checkbox" name="con_fertilizacion" value="1"
                id="conFert" {% if form_con_fert %}checked{% endif %}>
-        <label class="form-check-label" for="conFert">Incluir fertilización</label>
+        <label class="form-check-label" for="conFert">Incluir fertilización (bodega)</label>
       </div>
 
-      <label class="form-label mt-2" for="fert_dosis_ha">Dosis × ha</label>
-      <input id="fert_dosis_ha" name="fert_dosis_ha" type="number" class="form-control"
-             min="0" step="0.01" value="{{ form_dosis }}">
-
-      <label class="form-label mt-2" for="fert_total">Total fertilización</label>
-      <input id="fert_total" name="fert_total" type="number" class="form-control"
-             min="0" step="0.01" value="{{ form_total }}">
+      <div id="fertSection" class="mt-2{% if not form_con_fert %} d-none{% endif %}">
+        <p class="small text-muted mb-2">Seleccione uno o más fertilizantes del inventario. Al autorizar el admin, se descontará de bodega e imputará al huerto.</p>
+        {% if not fertilizantes %}
+        <div class="alert alert-warning py-2 small mb-0">No hay fertilizantes en bodega (familia FERTILIZANTE).</div>
+        {% else %}
+        <div id="fertRows" class="d-flex flex-column gap-3">
+          {% for ln in form_fert_lineas %}
+          <div class="fert-row border rounded p-2 bg-light">
+            <label class="form-label small mb-1">Fertilizante</label>
+            <select name="fert_producto_id" class="form-select form-select-sm mb-2" required>
+              <option value="">— Producto —</option>
+              {% for f in fertilizantes %}
+              <option value="{{ f.id }}" {% if ln.producto_id|string == f.id|string %}selected{% endif %}>{{ f.etiqueta }}</option>
+              {% endfor %}
+            </select>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label small mb-1">Cantidad</label>
+                <input type="number" name="fert_cantidad" class="form-control form-control-sm"
+                       min="0" step="0.01" inputmode="decimal" placeholder="Ej. 25"
+                       value="{{ ln.cantidad }}">
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1">Dosis × ha <span class="text-muted">(opc.)</span></label>
+                <input type="number" name="fert_dosis_ha" class="form-control form-control-sm"
+                       min="0" step="0.01" inputmode="decimal" placeholder="Opcional"
+                       value="{{ ln.dosis_ha }}">
+              </div>
+            </div>
+            <button type="button" class="btn btn-link btn-sm text-danger px-0 mt-1 js-quitar-fert">Quitar</button>
+          </div>
+          {% endfor %}
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="addFertRow">+ Agregar otro fertilizante</button>
+        {% endif %}
+      </div>
 
       <button type="submit" class="btn btn-primary btn-lg w-100 mt-4">Registrar riego</button>
     </form>
+
+    {% if fertilizantes %}
+    <template id="fertRowTpl">
+      <div class="fert-row border rounded p-2 bg-light">
+        <label class="form-label small mb-1">Fertilizante</label>
+        <select name="fert_producto_id" class="form-select form-select-sm mb-2">
+          <option value="">— Producto —</option>
+          {% for f in fertilizantes %}
+          <option value="{{ f.id }}">{{ f.etiqueta }}</option>
+          {% endfor %}
+        </select>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label small mb-1">Cantidad</label>
+            <input type="number" name="fert_cantidad" class="form-control form-control-sm"
+                   min="0" step="0.01" inputmode="decimal" placeholder="Ej. 25">
+          </div>
+          <div class="col-6">
+            <label class="form-label small mb-1">Dosis × ha <span class="text-muted">(opc.)</span></label>
+            <input type="number" name="fert_dosis_ha" class="form-control form-control-sm"
+                   min="0" step="0.01" inputmode="decimal" placeholder="Opcional">
+          </div>
+        </div>
+        <button type="button" class="btn btn-link btn-sm text-danger px-0 mt-1 js-quitar-fert">Quitar</button>
+      </div>
+    </template>
+    <script>
+    (function() {
+      var conFert = document.getElementById('conFert');
+      var fertSection = document.getElementById('fertSection');
+      var fertRows = document.getElementById('fertRows');
+      var tpl = document.getElementById('fertRowTpl');
+      var addBtn = document.getElementById('addFertRow');
+      var form = document.getElementById('formRiego');
+
+      function toggleFert() {
+        if (!fertSection) return;
+        fertSection.classList.toggle('d-none', !conFert.checked);
+        fertRows.querySelectorAll('select, input').forEach(function(el) {
+          el.required = conFert.checked && el.name === 'fert_producto_id';
+          if (!conFert.checked && el.name === 'fert_cantidad') el.required = false;
+        });
+      }
+      if (conFert) {
+        conFert.addEventListener('change', toggleFert);
+        toggleFert();
+      }
+      if (addBtn && tpl && fertRows) {
+        addBtn.addEventListener('click', function() {
+          fertRows.appendChild(tpl.content.cloneNode(true));
+          toggleFert();
+        });
+      }
+      if (fertRows) {
+        fertRows.addEventListener('click', function(ev) {
+          if (ev.target.classList.contains('js-quitar-fert')) {
+            var rows = fertRows.querySelectorAll('.fert-row');
+            if (rows.length > 1) ev.target.closest('.fert-row').remove();
+          }
+        });
+      }
+      if (form) {
+        form.addEventListener('submit', function(ev) {
+          if (!conFert || !conFert.checked) return;
+          var valid = false;
+          fertRows.querySelectorAll('.fert-row').forEach(function(row) {
+            var pid = row.querySelector('[name=fert_producto_id]');
+            var cant = row.querySelector('[name=fert_cantidad]');
+            if (pid && pid.value && cant && parseFloat(cant.value) > 0) valid = true;
+          });
+          if (!valid) {
+            ev.preventDefault();
+            alert('Indique al menos un fertilizante con cantidad mayor a cero.');
+          }
+        });
+      }
+    })();
+    </script>
+    {% endif %}
     {% endif %}
   </main>
 </body>
