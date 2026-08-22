@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
-from flask import abort, flash, render_template, request, send_file, url_for
+from flask import abort, flash, jsonify, render_template, request, send_file, url_for
 from werkzeug.utils import secure_filename
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
@@ -3329,9 +3329,25 @@ def _post_planilla_orden(demo, conn, especie: str) -> dict:
     mojamiento = _fnum("mojamiento_l_ha")
     if vol_agua <= 0 and mojamiento:
         vol_agua = float(mojamiento)
-    t_c = _fnum("t_c")
+    t_max = _fnum("t_max")
+    if t_max is None:
+        t_max = _fnum("t_c")
+    t_min = _fnum("t_min")
     hr = _fnum("hr_pct")
     viento = _fnum("viento_kmh")
+    if any(v is None for v in (t_max, t_min, hr, viento)):
+        from demo_web.services.weather import fetch_daily_weather
+
+        wx = fetch_daily_weather(fecha, sector)
+        if wx:
+            if t_max is None:
+                t_max = wx.get("t_max")
+            if t_min is None:
+                t_min = wx.get("t_min")
+            if hr is None:
+                hr = wx.get("hr_pct")
+            if viento is None:
+                viento = wx.get("viento_kmh")
     reingreso = _fnum("reingreso_hrs")
 
     try:
@@ -3407,8 +3423,8 @@ def _post_planilla_orden(demo, conn, especie: str) -> dict:
                 "car_agenda": p["car_agenda"],
                 "car_mayor": car_m,
                 "fecha_viable": fv,
-                "t_max": t_c,
-                "t_min": None,
+                "t_max": t_max,
+                "t_min": t_min,
                 "hr_pct": hr,
                 "viento_kmh": viento,
                 "lote_producto": "",
@@ -3442,7 +3458,7 @@ def _post_planilla_orden(demo, conn, especie: str) -> dict:
             (request.form.get("conf_hr_inicio") or "").strip(),
             (request.form.get("conf_hr_termino") or "").strip(),
             (request.form.get("conf_firma") or "").strip(),
-            t_c, hr, viento,
+            t_max, hr, viento,
             (request.form.get("lavado_maquinaria") or "").strip(),
             vol_agua if vol_agua else None,
             aplicador,
@@ -3750,6 +3766,16 @@ def gather_globalgap(user_email: str, user_rol: str) -> dict:
 def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
+
+    if request.method == "GET" and request.args.get("clima") == "1":
+        from demo_web.services.weather import fetch_daily_weather
+
+        fecha = parse_date(request.args.get("fecha"), hoy_demo(demo))
+        sector = (request.args.get("sector") or "").strip() or None
+        wx = fetch_daily_weather(fecha, sector)
+        if not wx:
+            return jsonify({"ok": False, "msg": "No se pudo obtener clima para la fecha indicada."}), 502
+        return jsonify({"ok": True, **wx})
 
     if request.method == "GET" and request.args.get("download_doc"):
         especie = _especie_sel(demo)

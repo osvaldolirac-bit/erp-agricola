@@ -745,7 +745,7 @@
         </div>
         <div class="col-md-3">
           <label class="form-label small">Fecha</label>
-          <input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}" required>
+          <input type="date" name="fecha" id="gapFechaApp" class="form-control form-control-sm" value="{{ hoy }}" required>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Sector</label>
@@ -858,13 +858,17 @@
 
       <div class="border rounded p-2 mb-3">
         <div class="row g-2">
-          <div class="col-12"><div class="small fw-semibold">Confirmación aplicación · Condiciones atmosféricas · Lavado maquinaria</div></div>
-          <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="conf_fecha" class="form-control form-control-sm" value="{{ hoy }}"></div>
+          <div class="col-12 d-flex flex-wrap align-items-center gap-2">
+            <div class="small fw-semibold mb-0">Confirmación aplicación · Condiciones atmosféricas · Lavado maquinaria</div>
+            <span id="gapClimaHint" class="small text-muted">Consultando clima…</span>
+          </div>
+          <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="conf_fecha" id="gapFechaConf" class="form-control form-control-sm" value="{{ hoy }}"></div>
           <div class="col-md-2"><label class="form-label small">Hr inicio</label><input type="time" name="conf_hr_inicio" class="form-control form-control-sm"></div>
           <div class="col-md-2"><label class="form-label small">Hr término</label><input type="time" name="conf_hr_termino" class="form-control form-control-sm"></div>
-          <div class="col-md-1"><label class="form-label small">T (°C)</label><input type="number" name="t_c" class="form-control form-control-sm" step="any"></div>
-          <div class="col-md-1"><label class="form-label small">HR %</label><input type="number" name="hr_pct" class="form-control form-control-sm" step="any"></div>
-          <div class="col-md-1"><label class="form-label small">Viento</label><input type="number" name="viento_kmh" class="form-control form-control-sm" step="any"></div>
+          <div class="col-md-1"><label class="form-label small">T° máx</label><input type="number" name="t_max" id="gapTMax" class="form-control form-control-sm" step="any" placeholder="°C"></div>
+          <div class="col-md-1"><label class="form-label small">T° mín</label><input type="number" name="t_min" id="gapTMin" class="form-control form-control-sm" step="any" placeholder="°C"></div>
+          <div class="col-md-1"><label class="form-label small">HR %</label><input type="number" name="hr_pct" id="gapHrPct" class="form-control form-control-sm" step="any"></div>
+          <div class="col-md-1"><label class="form-label small">Viento km/h</label><input type="number" name="viento_kmh" id="gapViento" class="form-control form-control-sm" step="any"></div>
           <div class="col-md-1"><label class="form-label small">Volumen</label><input type="number" name="lavado_volumen" class="form-control form-control-sm" min="0" step="any" placeholder="lt"></div>
           <div class="col-md-2"><label class="form-label small">Maquinaria lavado</label><input type="text" name="lavado_maquinaria" class="form-control form-control-sm" placeholder="Ej. Lévera"></div>
           <div class="col-md-3"><label class="form-label small">Responsable</label><input type="text" name="lavado_responsable" class="form-control form-control-sm" placeholder="Aplicador / responsable" required></div>
@@ -1182,6 +1186,74 @@
       }
     });
   }
+})();
+</script>
+{% endif %}
+{% if sec_activa == 'planilla' %}
+<script>
+(function () {
+  var form = document.getElementById('gapOrdenForm');
+  if (!form) return;
+  var fechaApp = document.getElementById('gapFechaApp');
+  var fechaConf = document.getElementById('gapFechaConf');
+  var sector = document.getElementById('gapSector');
+  var tMax = document.getElementById('gapTMax');
+  var tMin = document.getElementById('gapTMin');
+  var hr = document.getElementById('gapHrPct');
+  var viento = document.getElementById('gapViento');
+  var hint = document.getElementById('gapClimaHint');
+  var busy = false;
+
+  function setNum(input, val) {
+    if (!input || val == null || val === '') return;
+    input.value = val;
+  }
+
+  function fechaClima() {
+    return (fechaConf && fechaConf.value) || (fechaApp && fechaApp.value) || '';
+  }
+
+  async function cargarClima(force) {
+    var f = fechaClima();
+    if (!f || busy) return;
+    busy = true;
+    if (hint) hint.textContent = 'Consultando clima…';
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('sec', 'planilla');
+      u.searchParams.set('clima', '1');
+      u.searchParams.set('fecha', f);
+      if (sector && sector.value) u.searchParams.set('sector', sector.value);
+      ['cuartel', 'especie', 'n_app', 'linea_id'].forEach(function (k) { u.searchParams.delete(k); });
+      var resp = await fetch(u.pathname + u.search, { credentials: 'same-origin' });
+      var data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error((data && data.msg) || 'Sin datos');
+      if (force || !(tMax && tMax.value)) setNum(tMax, data.t_max);
+      if (force || !(tMin && tMin.value)) setNum(tMin, data.t_min);
+      if (force || !(hr && hr.value)) setNum(hr, data.hr_pct);
+      if (force || !(viento && viento.value)) setNum(viento, data.viento_kmh);
+      if (hint) hint.textContent = 'Clima ' + f + ' · Open-Meteo (editable)';
+    } catch (err) {
+      if (hint) hint.textContent = 'Clima no disponible — ingrese T° / HR / viento manualmente';
+    } finally {
+      busy = false;
+    }
+  }
+
+  function onFechaSectorChange() {
+    cargarClima(true);
+  }
+
+  [fechaApp, fechaConf, sector].forEach(function (el) {
+    if (el) el.addEventListener('change', onFechaSectorChange);
+  });
+  if (fechaApp && fechaConf) {
+    fechaApp.addEventListener('change', function () {
+      if (fechaConf && !fechaConf.dataset.userEdited) fechaConf.value = fechaApp.value;
+    });
+    fechaConf.addEventListener('input', function () { fechaConf.dataset.userEdited = '1'; });
+  }
+  cargarClima(false);
 })();
 </script>
 {% endif %}
