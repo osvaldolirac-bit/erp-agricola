@@ -8,6 +8,7 @@ _BASE_MODULES: dict[str, tuple[str, str]] = {
     "compras": ("Compras", "modulo_compras"),
     "tesoreria": ("Tesoreria", "modulo_tesoreria"),
     "petroleo": ("Petróleo", "modulo_petroleo"),
+    "riego": ("Riego", "modulo_riego"),
     "bodega": ("Bodega", "modulo_bodega"),
     "libro-campo": ("Libro de Campo", "modulo_libro_campo"),
     "rrhh": ("RRHH", "modulo_rrhh"),

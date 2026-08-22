@@ -124,6 +124,7 @@
                     <input type="hidden" name="action" value="flags_usuario">
                     <input type="hidden" name="user_id" value="{{ u.id }}">
                     <label><input type="checkbox" name="mail_tesoreria" value="1" {% if u.mail_tesoreria %}checked{% endif %}> Mail tesorería</label>
+                    <label><input type="checkbox" name="mail_riego" value="1" {% if u.mail_riego_bitacora %}checked{% endif %}> Mail riego</label>
                     {% if tenant.kind == 'lc' %}
                     <label><input type="checkbox" name="mail_petroleo" value="1" {% if u.mail_petroleo_bitacora %}checked{% endif %}> Mail petróleo</label>
                     <label><input type="checkbox" name="solo_lectura" value="1" {% if u.solo_lectura %}checked{% endif %}> Solo lectura</label>

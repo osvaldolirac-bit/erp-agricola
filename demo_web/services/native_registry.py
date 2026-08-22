@@ -16,6 +16,7 @@ _BASE_NATIVE: dict[str, str] = {
     "rrhh": "demo_web.services.native.rrhh:view",
     "libro-campo": "demo_web.services.native.libro_campo:view",
     "petroleo": "demo_web.services.native.petroleo:view",
+    "riego": "demo_web.services.native.riego:view",
     "bodega": "demo_web.services.native.bodega:view",
     "maquinaria": "demo_web.services.native.maquinaria:view",
     "globalgap": "demo_web.services.native.globalgap:view",

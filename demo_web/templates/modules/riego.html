@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% block title %}Riego — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Registro de riego y fertilización por centro de costo</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_modulo('modules.riego', secciones, sec_activa) }}
+
+  {% if riego_desfase %}
+  <div class="alert alert-warning py-2 mb-3">
+    Hay <strong>{{ riego_pendientes }}</strong> registro(s) de link pendientes de autorizar.
+    Revise en <a href="{{ url_for('modules.riego', sec='ingreso') }}" class="alert-link">Ingreso</a>.
+  </div>
+  {% endif %}
+
+  {% if sec_activa == 'manual' %}
+  <div class="panel-card">
+    <h2 class="h6">Registro manual</h2>
+    <p class="small text-muted">Imputa directamente al huerto (centro de costo). Fertilización opcional.</p>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="registrar_manual">
+      <input type="hidden" name="sec" value="manual">
+      <div class="col-md-2">
+        <label class="form-label small">N° (auto)</label>
+        <input type="text" class="form-control form-control-sm" value="Correlativo al guardar" disabled>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Fecha</label>
+        <input type="date" name="fecha" class="form-control form-control-sm" value="{{ form_fecha }}" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Huerto (CC)</label>
+        <select name="huerto" class="form-select form-select-sm" required>
+          <option value="">—</option>
+          {% for h in huertos %}
+          <option value="{{ h }}">{{ h }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Horas riego</label>
+        <input type="number" name="horas" class="form-control form-control-sm" min="0" step="0.1" value="0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">m³</label>
+        <input type="number" name="m3" class="form-control form-control-sm" min="0" step="0.1" value="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Regador / responsable</label>
+        <input type="text" name="regador" class="form-control form-control-sm" placeholder="Nombre regador">
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="con_fertilizacion" value="1" id="manualFert">
+          <label class="form-check-label small" for="manualFert">Incluir fertilización</label>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Dosis × ha</label>
+        <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" min="0" step="0.01">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Total fertilización</label>
+        <input type="number" name="fert_total" class="form-control form-control-sm" min="0" step="0.01">
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary btn-sm" {% if solo_lectura %}disabled{% endif %}>Guardar registro</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'ingreso' %}
+  <div class="panel-card">
+    <h2 class="h6">🔗 Ingreso (Registro Link)</h2>
+    <p class="small text-muted mb-3">
+      El regador envía desde celular con enlace personal. Al autorizar, el registro pasa a Historial imputado al CC del huerto.
+    </p>
+    {% if ingreso_admin_links %}
+    <div class="mb-3">
+      <h3 class="h6">Enlaces personales regador</h3>
+      {% if ingreso_links %}
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead><tr><th>Regador</th><th>Enlace</th><th></th></tr></thead>
+          <tbody>
+            {% for op in ingreso_links %}
+            <tr>
+              <td><strong>{{ op.nombre }}</strong></td>
+              <td><input type="text" class="form-control form-control-sm font-monospace js-link-personal" id="linkRie-{{ loop.index }}" value="{{ op.url }}" readonly></td>
+              <td class="text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-primary js-copiar-link" data-target="linkRie-{{ loop.index }}">Copiar</button>
+                <a class="btn btn-sm btn-outline-success" href="{{ op.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="alert alert-warning py-2 small mb-0">En RRHH marque trabajadores como regador o agregue extras.</div>
+      {% endif %}
+    </div>
+    <hr>
+    {% endif %}
+    <h3 class="h6">Pendientes de autorización</h3>
+    <p class="small text-muted">Pendientes: {{ riego_pendientes|default(0) }}</p>
+    {% if ingreso_registros %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle">
+        <thead>
+          <tr>
+            <th>N°</th><th>Fecha</th><th>Huerto</th><th>Horas</th><th>m³</th>
+            <th>Fertilización</th><th>Regador</th><th>Estado</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in ingreso_registros %}
+          <tr class="{% if r.pendiente %}table-warning{% elif r.rechazado %}table-secondary{% endif %}">
+            <td><strong>{{ r.codigo }}</strong></td>
+            <td>{{ r.fecha }}</td>
+            <td>{{ r.huerto }}</td>
+            <td>{{ r.horas }}</td>
+            <td>{{ r.m3 }}</td>
+            <td>{{ r.fert_txt }}</td>
+            <td>{{ r.regador }}</td>
+            <td>
+              {% if r.pendiente %}<span class="badge bg-warning text-dark">Pendiente</span>
+              {% elif r.rechazado %}<span class="badge bg-secondary">Rechazado</span>
+              {% else %}<span class="badge bg-success">Autorizado</span>{% endif %}
+            </td>
+            <td class="text-nowrap">
+              {% if r.pendiente and ingreso_puede_autorizar %}
+              <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="autorizar_riego">
+                <input type="hidden" name="sec" value="ingreso">
+                <input type="hidden" name="codigo" value="{{ r.codigo }}">
+                <button type="submit" class="btn btn-success btn-sm">Autorizar</button>
+              </form>
+              <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="rechazar_riego">
+                <input type="hidden" name="sec" value="ingreso">
+                <input type="hidden" name="codigo" value="{{ r.codigo }}">
+                <input type="hidden" name="motivo" value="">
+                <button type="submit" class="btn btn-outline-danger btn-sm">Rechazar</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Sin registros aún.</p>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'historial' %}
+  <div class="panel-card">
+    <h2 class="h6">Historial de riego</h2>
+    {% if historial_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover demo-datatable w-100">
+        <thead>
+          <tr>
+            <th>#</th><th>N°</th><th>Fecha</th><th>Huerto</th><th>Horas</th><th>m³</th>
+            <th>Fertilización</th><th>Regador</th><th>Origen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in historial_rows %}
+          <tr>
+            <td>{{ r.num }}</td>
+            <td><strong>{{ r.codigo }}</strong></td>
+            <td>{{ r.fecha }}</td>
+            <td>{{ r.huerto }}</td>
+            <td>{{ r.horas }}</td>
+            <td>{{ r.m3 }}</td>
+            <td>{{ r.fert_txt }}</td>
+            <td>{{ r.regador }}</td>
+            <td>{{ r.origen }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Sin registros.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% if sec_activa == 'ingreso' %}
+<script>
+document.querySelectorAll('.js-copiar-link').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var id = btn.getAttribute('data-target');
+    var el = document.getElementById(id);
+    if (el) { el.select(); document.execCommand('copy'); btn.textContent = 'Copiado'; }
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Registro riego</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/erp.css') }}?v={{ static_version }}" rel="stylesheet">
+</head>
+<body class="salida-petroleo-body{% if ok %} salida-petroleo-exito{% endif %}">
+  <main class="salida-petroleo-page">
+    <header class="salida-petroleo-header">
+      <div class="salida-petroleo-icon" aria-hidden="true">💧</div>
+      <h1>Registro de riego</h1>
+      <p>Registro Link — pendiente de autorización</p>
+    </header>
+
+    {% if ok %}
+    <div class="salida-petroleo-ok salida-petroleo-ok-flash" role="status">
+      <strong>✓ Registrado{% if codigo %} — {{ codigo }}{% endif %}</strong>
+      {% if mail_ok %}
+      <span>Se envió aviso por correo a administración.</span>
+      {% elif mail_ok == false %}
+      <span>Registro guardado (correo no pudo enviarse).</span>
+      {% else %}
+      <span>Registro guardado.</span>
+      {% endif %}
+      {% if operador %}<span class="small">Regador: {{ operador.nombre }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+
+    {% if not ok and not acceso_personal %}
+    <div class="alert alert-warning">
+      <strong>Acceso solo con enlace personal.</strong>
+      <div class="small mb-0 mt-1">Solicite su link en RRHH (regador autorizado).</div>
+    </div>
+    {% elif not ok %}
+    <form method="post" class="salida-petroleo-form" autocomplete="off">
+      <input type="hidden" name="t" value="{{ token }}">
+      <div class="salida-petroleo-honeypot" aria-hidden="true">
+        <input type="text" name="{{ honeypot_field }}" tabindex="-1" autocomplete="off">
+      </div>
+
+      <div class="alert alert-success py-2 mb-3">
+        <strong>Regador:</strong> {{ operador.nombre }}
+      </div>
+
+      <label class="form-label" for="fecha">Fecha</label>
+      <input id="fecha" name="fecha" type="date" class="form-control form-control-lg" required
+             value="{{ form_fecha }}">
+
+      <label class="form-label mt-2" for="huerto">Huerto</label>
+      <select id="huerto" name="huerto" class="form-select form-select-lg" required>
+        <option value="">— Seleccione —</option>
+        {% for h in huertos %}
+        <option value="{{ h }}" {% if form_huerto == h %}selected{% endif %}>{{ h }}</option>
+        {% endfor %}
+      </select>
+
+      <label class="form-label mt-2" for="horas">Horas riego</label>
+      <input id="horas" name="horas" type="number" class="form-control form-control-lg"
+             min="0" step="0.1" inputmode="decimal" value="{{ form_horas }}">
+
+      <label class="form-label mt-2" for="m3">m³</label>
+      <input id="m3" name="m3" type="number" class="form-control form-control-lg"
+             min="0" step="0.1" inputmode="decimal" value="{{ form_m3 }}">
+
+      <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" name="con_fertilizacion" value="1"
+               id="conFert" {% if form_con_fert %}checked{% endif %}>
+        <label class="form-check-label" for="conFert">Incluir fertilización</label>
+      </div>
+
+      <label class="form-label mt-2" for="fert_dosis_ha">Dosis × ha</label>
+      <input id="fert_dosis_ha" name="fert_dosis_ha" type="number" class="form-control"
+             min="0" step="0.01" value="{{ form_dosis }}">
+
+      <label class="form-label mt-2" for="fert_total">Total fertilización</label>
+      <input id="fert_total" name="fert_total" type="number" class="form-control"
+             min="0" step="0.01" value="{{ form_total }}">
+
+      <button type="submit" class="btn btn-primary btn-lg w-100 mt-4">Registrar riego</button>
+    </form>
+    {% endif %}
+  </main>
+</body>
+</html>

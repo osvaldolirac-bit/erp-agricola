@@ -31,6 +31,7 @@ MENU_LC = [
     ("Espino", "El Espino"),
     ("Libro de Campo", "Libro de Campo"),
     ("Petróleo", "Petróleo"),
+    ("Riego", "Riego"),
     ("Bodega", "Bodega"),
     ("Maquinaria", "Maquinaria"),
     ("GlobalGAP", "GlobalGAP"),
@@ -48,6 +49,7 @@ MENU_DEMO = [
     ("Campob", "Campo B"),
     ("Libro de Campo", "Libro de Campo"),
     ("Petróleo", "Petróleo"),
+    ("Riego", "Riego"),
     ("Bodega", "Bodega"),
     ("Maquinaria", "Maquinaria"),
     ("GlobalGAP", "GlobalGAP"),
@@ -111,12 +113,22 @@ def _meta_set(conn: sqlite3.Connection, clave: str, valor: str) -> None:
     )
 
 
+def _ensure_mail_riego_bitacora(conn: sqlite3.Connection) -> None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(usuarios)").fetchall()}
+    if "mail_riego_bitacora" not in cols:
+        conn.execute(
+            "ALTER TABLE usuarios ADD COLUMN mail_riego_bitacora INTEGER DEFAULT 0"
+        )
+
+
 def list_users(db_path: str, kind: str) -> list[dict[str, Any]]:
     with tenant_conn(db_path) as conn:
+        _ensure_mail_riego_bitacora(conn)
         if kind == "demo":
             rows = conn.execute(
                 """
                 SELECT id, email, rol, modulos, mail_tesoreria,
+                       COALESCE(mail_riego_bitacora, 0) AS mail_riego_bitacora,
                        fecha_expira, invitado_por
                 FROM usuarios
                 ORDER BY lower(email)
@@ -126,7 +138,8 @@ def list_users(db_path: str, kind: str) -> list[dict[str, Any]]:
             rows = conn.execute(
                 """
                 SELECT id, email, rol, modulos, mail_tesoreria,
-                       solo_lectura, mail_petroleo_bitacora
+                       solo_lectura, mail_petroleo_bitacora,
+                       COALESCE(mail_riego_bitacora, 0) AS mail_riego_bitacora
                 FROM usuarios
                 ORDER BY lower(email)
                 """
@@ -428,9 +441,11 @@ def set_mail_flags(
     *,
     mail_tesoreria: bool | None = None,
     mail_petroleo: bool | None = None,
+    mail_riego: bool | None = None,
     solo_lectura: bool | None = None,
 ) -> tuple[bool, str]:
     with tenant_conn(db_path) as conn:
+        _ensure_mail_riego_bitacora(conn)
         row = conn.execute(
             "SELECT id FROM usuarios WHERE id = ?", (user_id,)
         ).fetchone()
@@ -440,6 +455,11 @@ def set_mail_flags(
             conn.execute(
                 "UPDATE usuarios SET mail_tesoreria = ? WHERE id = ?",
                 (1 if mail_tesoreria else 0, user_id),
+            )
+        if mail_riego is not None:
+            conn.execute(
+                "UPDATE usuarios SET mail_riego_bitacora = ? WHERE id = ?",
+                (1 if mail_riego else 0, user_id),
             )
         if kind == "lc":
             if mail_petroleo is not None:

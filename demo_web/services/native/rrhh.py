@@ -68,11 +68,20 @@ def migrar_personal_salida_petroleo(conn) -> None:
     conn.commit()
 
 
+def migrar_personal_registro_riego(conn) -> None:
+    """Columna + extras para el formulario Registro Link de riego."""
+    from demo_web.services.registro_riego import migrar_tabla
+
+    migrar_tabla(conn)
+
+
 def _personal(demo, conn) -> dict:
     migrar_personal_salida_petroleo(conn)
+    migrar_personal_registro_riego(conn)
     df = pd.read_sql_query(
         """SELECT id, nombre, rut, cargo, COALESCE(estado, 'Activo') AS estado, fecha_contrato,
-                  COALESCE(autorizado_salida_petroleo, 0) AS autorizado_salida_petroleo
+                  COALESCE(autorizado_salida_petroleo, 0) AS autorizado_salida_petroleo,
+                  COALESCE(autorizado_registro_riego, 0) AS autorizado_registro_riego
            FROM personal ORDER BY nombre""",
         conn,
     )
@@ -87,6 +96,7 @@ def _personal(demo, conn) -> dict:
                 "estado": r["estado"],
                 "fecha_contrato": str(r["fecha_contrato"] or "")[:10],
                 "autorizado_salida_petroleo": bool(int(r["autorizado_salida_petroleo"] or 0)),
+                "autorizado_registro_riego": bool(int(r["autorizado_registro_riego"] or 0)),
             }
         )
     extras = pd.read_sql_query(
@@ -103,6 +113,20 @@ def _personal(demo, conn) -> dict:
         }
         for _, r in extras.iterrows()
     ]
+    extras_riego = pd.read_sql_query(
+        """SELECT id, nombre, COALESCE(activo, 1) AS activo
+           FROM autorizados_registro_riego_extra
+           ORDER BY nombre""",
+        conn,
+    )
+    extra_riego_rows = [
+        {
+            "id": int(r["id"]),
+            "nombre": r["nombre"],
+            "activo": bool(int(r["activo"] or 0)),
+        }
+        for _, r in extras_riego.iterrows()
+    ]
     edit_id = request.args.get("edit_id")
     edit_item = next((x for x in rows if str(x["id"]) == edit_id), rows[0] if rows else None)
     activos = sum(1 for x in rows if str(x["estado"]).lower() == "activo")
@@ -112,6 +136,7 @@ def _personal(demo, conn) -> dict:
         "n_activos": activos,
         "personal_edit": edit_item,
         "auth_extra_rows": extra_rows,
+        "auth_extra_riego_rows": extra_riego_rows,
         "hoy": hoy_demo(demo).isoformat(),
     }
 
@@ -575,20 +600,23 @@ def _post_crear_personal(demo, conn) -> dict:
     from erp_rut import validar_rut_campo
 
     migrar_personal_salida_petroleo(conn)
+    migrar_personal_registro_riego(conn)
     nom = (request.form.get("nombre") or "").strip()
     rut_raw = request.form.get("rut") or ""
     cargo = (request.form.get("cargo") or "").strip()
     fecha = request.form.get("fecha_contrato") or str(hoy_demo(demo))
     auth_pet = 1 if request.form.get("autorizado_salida_petroleo") == "1" else 0
+    auth_riego = 1 if request.form.get("autorizado_registro_riego") == "1" else 0
     ok_rut, msg_rut, rut_fmt = validar_rut_campo(rut_raw, obligatorio=True)
     if not nom:
         return {"ok": False, "msg": "Ingrese el nombre del trabajador."}
     if not ok_rut:
         return {"ok": False, "msg": msg_rut}
     conn.execute(
-        """INSERT INTO personal (nombre, rut, cargo, fecha_contrato, autorizado_salida_petroleo)
-           VALUES (?,?,?,?,?)""",
-        (nom, rut_fmt, cargo, fecha, auth_pet),
+        """INSERT INTO personal (nombre, rut, cargo, fecha_contrato,
+           autorizado_salida_petroleo, autorizado_registro_riego)
+           VALUES (?,?,?,?,?,?)""",
+        (nom, rut_fmt, cargo, fecha, auth_pet, auth_riego),
     )
     conn.commit()
     demo.registrar_accion("RRHH", nom)
@@ -599,6 +627,7 @@ def _post_editar_personal(demo, conn) -> dict:
     from erp_rut import validar_rut_campo
 
     migrar_personal_salida_petroleo(conn)
+    migrar_personal_registro_riego(conn)
     if not _check_master(demo, request.form.get("clave_maestra")):
         return {"ok": False, "msg": "Clave maestra incorrecta."}
     pid = int(request.form.get("personal_id") or 0)
@@ -607,6 +636,7 @@ def _post_editar_personal(demo, conn) -> dict:
     cargo = (request.form.get("cargo") or "").strip()
     fecha = request.form.get("fecha_contrato") or str(hoy_demo(demo))
     auth_pet = 1 if request.form.get("autorizado_salida_petroleo") == "1" else 0
+    auth_riego = 1 if request.form.get("autorizado_registro_riego") == "1" else 0
     ok_rut, msg_rut, rut_fmt = validar_rut_campo(rut_raw, obligatorio=True)
     if not pid or not nom:
         return {"ok": False, "msg": "Datos incompletos."}
@@ -614,8 +644,8 @@ def _post_editar_personal(demo, conn) -> dict:
         return {"ok": False, "msg": msg_rut}
     conn.execute(
         """UPDATE personal SET nombre=?, rut=?, cargo=?, fecha_contrato=?,
-           autorizado_salida_petroleo=? WHERE id=?""",
-        (nom, rut_fmt, cargo, fecha, auth_pet, pid),
+           autorizado_salida_petroleo=?, autorizado_registro_riego=? WHERE id=?""",
+        (nom, rut_fmt, cargo, fecha, auth_pet, auth_riego, pid),
     )
     conn.commit()
     demo.registrar_accion("UPDATE RRHH", nom)
@@ -675,6 +705,48 @@ def _post_eliminar_auth_extra(demo, conn) -> dict:
     conn.commit()
     demo.registrar_accion("DELETE AUTH PETROLEO EXTRA", row[0])
     return {"ok": True, "msg": f"{row[0]} quitado del formulario Salida Link."}
+
+
+def _post_crear_auth_extra_riego(demo, conn) -> dict:
+    migrar_personal_registro_riego(conn)
+    nom = (request.form.get("nombre") or "").strip()
+    if not nom:
+        return {"ok": False, "msg": "Ingrese el nombre del regador."}
+    existe = conn.execute(
+        "SELECT id FROM autorizados_registro_riego_extra WHERE lower(nombre)=lower(?)",
+        (nom,),
+    ).fetchone()
+    if existe:
+        conn.execute(
+            "UPDATE autorizados_registro_riego_extra SET activo=1, nombre=? WHERE id=?",
+            (nom, int(existe[0])),
+        )
+        conn.commit()
+        demo.registrar_accion("AUTH RIEGO EXTRA", f"reactivado {nom}")
+        return {"ok": True, "msg": f"{nom} ya existía; quedó activo para Registro Link riego."}
+    conn.execute(
+        "INSERT INTO autorizados_registro_riego_extra (nombre, activo) VALUES (?, 1)",
+        (nom,),
+    )
+    conn.commit()
+    demo.registrar_accion("AUTH RIEGO EXTRA", nom)
+    return {"ok": True, "msg": f"{nom} autorizado para registro riego (sin ficha de trabajador)."}
+
+
+def _post_eliminar_auth_extra_riego(demo, conn) -> dict:
+    migrar_personal_registro_riego(conn)
+    if not _check_master(demo, request.form.get("clave_maestra")):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+    eid = int(request.form.get("extra_id") or 0)
+    row = conn.execute(
+        "SELECT nombre FROM autorizados_registro_riego_extra WHERE id=?", (eid,)
+    ).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Regador no encontrado."}
+    conn.execute("DELETE FROM autorizados_registro_riego_extra WHERE id=?", (eid,))
+    conn.commit()
+    demo.registrar_accion("DELETE AUTH RIEGO EXTRA", row[0])
+    return {"ok": True, "msg": f"{row[0]} quitado del formulario Registro Link riego."}
 
 
 def _post_crear_contratista(demo, conn) -> dict:
@@ -978,6 +1050,8 @@ def view(user_email: str, user_rol: str):
                 "eliminar_personal": _post_eliminar_personal,
                 "crear_auth_extra": _post_crear_auth_extra,
                 "eliminar_auth_extra": _post_eliminar_auth_extra,
+                "crear_auth_extra_riego": _post_crear_auth_extra_riego,
+                "eliminar_auth_extra_riego": _post_eliminar_auth_extra_riego,
                 "crear_contratista": _post_crear_contratista,
                 "editar_contratista": _post_editar_contratista,
                 "registrar_servicio": _post_registrar_servicio,

@@ -424,6 +424,8 @@ def _log_admin_action(
             flags.append("mail_tesoreria")
         if request.form.get("mail_petroleo") == "1":
             flags.append("mail_petroleo")
+        if request.form.get("mail_riego") == "1":
+            flags.append("mail_riego")
         if request.form.get("solo_lectura") == "1":
             flags.append("solo_lectura")
         detalle = f"{target or f'#{uid}'} · {', '.join(flags) if flags else 'sin flags'}"
@@ -523,6 +525,7 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
             uid,
             mail_tesoreria=request.form.get("mail_tesoreria") == "1",
             mail_petroleo=request.form.get("mail_petroleo") == "1",
+            mail_riego=request.form.get("mail_riego") == "1",
             solo_lectura=request.form.get("solo_lectura") == "1",
         )
 

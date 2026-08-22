@@ -139,6 +139,18 @@ MODULOS_FEE: dict[str, dict[str, Any]] = {
             "Costo de combustible por operación",
         ],
     },
+    "riego": {
+        "label": "Riego",
+        "fee": 15_900,
+        "fee_txt": _fee_txt(15_900),
+        "pitch": "Riego y fertilización por huerto",
+        "funciones": [
+            "Registro manual imputado a centro de costo",
+            "Enlaces personales del regador (Registro Link)",
+            "Fertilización opcional por registro",
+            "Autorización admin antes de imputar al CC",
+        ],
+    },
     "tesoreria": {
         "label": "Tesorería",
         "fee": 15_900,
@@ -233,6 +245,7 @@ PRICING_TO_MENU_KEY: dict[str, str] = {
     "compras": "Compras",
     "bodega": "Bodega",
     "petroleo": "Petróleo",
+    "riego": "Riego",
     "tesoreria": "Tesoreria",
     "rrhh": "RRHH",
     "costos": "Costos",
@@ -252,6 +265,7 @@ PRICING_TO_SLUG: dict[str, str] = {
     "compras": "compras",
     "bodega": "bodega",
     "petroleo": "petroleo",
+    "riego": "riego",
     "tesoreria": "tesoreria",
     "rrhh": "rrhh",
     "costos": "costos",
@@ -284,6 +298,7 @@ NUCLEO_PATIO: tuple[str, ...] = (
     "compras",
     "bodega",
     "petroleo",
+    "riego",
     "tesoreria",
 )
 # Oficina: eje Costos + compras/pagos para cerrar el ciclo administrativo.
