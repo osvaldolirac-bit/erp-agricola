@@ -94,13 +94,24 @@ def pdf_download(token: str, download_name: str | None = None):
     blob, stored_name = got
     inline = request.args.get("inline") in ("1", "true", "yes")
     safe = _pdf_safe_name(download_name or stored_name)
-    return send_file(
+    from demo_web.services.pdf_meta import stamp_pdf_title
+
+    blob = stamp_pdf_title(blob, safe)
+    resp = send_file(
         BytesIO(blob),
         mimetype="application/pdf",
         as_attachment=not inline,
         download_name=safe,
         max_age=0,
     )
+    from urllib.parse import quote
+
+    disp = "inline" if inline else "attachment"
+    encoded = quote(safe)
+    resp.headers["Content-Disposition"] = (
+        f'{disp}; filename="{safe}"; filename*=UTF-8\'\'{encoded}'
+    )
+    return resp
 
 
 @bp.route("/fitosanitarios/<especie>/pdf")

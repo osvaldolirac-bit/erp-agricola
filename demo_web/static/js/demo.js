@@ -162,30 +162,21 @@
     }
   }
 
-  async function abrirPdfMovilIos(btn) {
-    var url = toPdfInlineUrl(btn.getAttribute('href'));
-    var originalText = btn.textContent;
-    btn.dataset.pdfBusy = '1';
-    btn.setAttribute('aria-busy', 'true');
-    btn.textContent = 'Cargando PDF…';
-
+  function pdfFilenameFromHref(href) {
     try {
-      var resp = await fetch(url, { credentials: 'same-origin' });
-      if (!resp.ok) throw new Error('PDF no disponible o expirado.');
-      var blob = await resp.blob();
-      var filename = btn.getAttribute('data-pdf-filename') ||
-        parseFilenameFromDisposition(resp.headers.get('Content-Disposition')) ||
-        'documento.pdf';
-      var blobUrl = URL.createObjectURL(blob);
-      /* Visor nativo del navegador — PDF completo, no iframe intermedio */
-      window.location.assign(blobUrl);
-    } catch (err) {
-      window.location.href = url;
-    } finally {
-      delete btn.dataset.pdfBusy;
-      btn.removeAttribute('aria-busy');
-      btn.textContent = originalText;
+      var path = new URL(href, window.location.href).pathname;
+      var last = (path.split('/').pop() || '').split('?')[0];
+      return last.toLowerCase().endsWith('.pdf') ? last : null;
+    } catch (e) {
+      return null;
     }
+  }
+
+  function abrirPdfMovilIos(btn) {
+    var href = btn.getAttribute('href');
+    btn.textContent = 'Cargando PDF…';
+    /* iOS: blob: e inline=1 → "unknown" al guardar. URL con …/NOMBRE.pdf (attachment). */
+    window.location.href = href;
   }
 
   async function handlePdfShareClick(e) {
