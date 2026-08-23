@@ -1913,6 +1913,77 @@ body.erp-ios .erp-pdf-viewer-object {
   color: #fff;
 }
 
+.registro-riego-fert-block {
+  margin-top: 1rem;
+}
+
+.registro-riego-fert-kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #1565c0;
+}
+
+.registro-riego-fert-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.85rem 0.95rem;
+  border: 2px solid #90caf9;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #e3f2fd 0%, #f5fbff 100%);
+  cursor: pointer;
+  min-height: 4.25rem;
+  box-shadow: 0 2px 8px rgba(21, 101, 192, 0.12);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.registro-riego-fert-toggle .form-check-input {
+  flex-shrink: 0;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-top: 0.15rem;
+  border-width: 2px;
+  cursor: pointer;
+}
+
+.registro-riego-fert-toggle-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.registro-riego-fert-toggle-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #0d47a1;
+}
+
+.registro-riego-fert-toggle-hint {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #546e7a;
+}
+
+.registro-riego-fert-toggle:has(input:checked) {
+  border-color: #1565c0;
+  background: linear-gradient(135deg, #bbdefb 0%, #e3f2fd 100%);
+  box-shadow: 0 3px 12px rgba(21, 101, 192, 0.22);
+}
+
+.registro-riego-fert-toggle:has(input:checked) .registro-riego-fert-toggle-title {
+  color: #0d47a1;
+}
+
+.registro-riego-fert-toggle:has(input:focus-visible) {
+  outline: 2px solid rgba(21, 101, 192, 0.45);
+  outline-offset: 2px;
+}
+
 /* Petróleo — salida manual (formulario ordenado) */
 .petroleo-salida-manual .panel-title { margin-bottom: 0; }
 .petroleo-salida-fieldset {
