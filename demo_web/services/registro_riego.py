@@ -14,18 +14,35 @@ from demo_web.services.demo_loader import get_demo_module, get_erp_app
 
 _CODIGO_RE = re.compile(r"^RIE-(\d+)$", re.I)
 _FAMILIAS_FERTILIZANTE = ("FERTILIZANTE",)
-# Análisis N-P₂O₅-K₂O (% en etiqueta) por palabras clave en nombre de producto.
+# Fórmula comercial N-P₂O₅-K₂O en nombre (ej. 20-20-20, 13 40 13, 10/34/0).
+_NPK_FORMULA_RE = re.compile(
+    r"(?<![\d.])(\d{1,2})\s*[-–/]\s*(\d{1,2})\s*[-–/]\s*(\d{1,2})(?![\d.])",
+    re.I,
+)
+# Solución UAN (ej. UAN-32 → 32 % N).
+_UAN_RE = re.compile(r"UAN[\s\-–]?(\d{2})", re.I)
+# Análisis N-P₂O₅-K₂O (% etiqueta). Orden: entradas más específicas primero.
 _FERTILIZANTE_NPK: tuple[tuple[tuple[str, ...], tuple[float, float, float]], ...] = (
-    (("UREA",), (46.0, 0.0, 0.0)),
-    (("MONOAMONIO", "MAP"), (11.0, 52.0, 0.0)),
-    (("DIAMONIO", "DAP"), (18.0, 46.0, 0.0)),
-    (("NITRATO DE CALCIO", "CALCINIT"), (15.5, 0.0, 0.0)),
-    (("NITRATO DE POTASIO", "NITRATO POTASIO"), (13.0, 0.0, 46.0)),
-    (("SULFATO DE POTASIO", "SOP"), (0.0, 0.0, 50.0)),
-    (("CLORURO DE POTASIO", "MOP"), (0.0, 0.0, 60.0)),
-    (("FOSFATO MONOPOTASICO", "MKP"), (0.0, 52.0, 34.0)),
-    (("NITROFOSFA", "NPK"), (15.0, 15.0, 15.0)),
-    (("CALCIO BORO", "BORO FOLIAR"), (0.0, 0.0, 0.0)),
+    # --- Binarios / compuestos (doble aporte) ---
+    (("NITRATO DE POTASIO", "NITRATO POTASIO", "KNO3"), (13.0, 0.0, 46.0)),
+    (("FOSFATO MONOPOTASICO", "MONOPOTASICO", "MKP", "KH2PO4"), (0.0, 52.0, 34.0)),
+    (("FOSFATO MONOAMONICO", "MONOAMONICO", "MAP", "NH4H2PO4"), (12.0, 61.0, 0.0)),
+    (("FOSFATO DIAMONICO", "DIAMONIO", "DAP"), (18.0, 46.0, 0.0)),
+    (("POLIFOSFATO", "10-34-0"), (10.0, 34.0, 0.0)),
+    # --- Nitrógeno ---
+    (("NITRATO DE CALCIO", "CALCINIT", "CALNIT"), (15.5, 0.0, 0.0)),
+    (("NITRATO DE MAGNESIO", "MAGNESIO NITRATO"), (11.0, 0.0, 0.0)),
+    (("NITRATO DE AMONIO", "AMMONIUM NITRATE"), (33.5, 0.0, 0.0)),
+    (("SULFATO DE AMONIO", "SULFATO AMONIO", "(NH4)2SO4"), (21.0, 0.0, 0.0)),
+    (("UREA SOLUBLE", "UREA"), (46.0, 0.0, 0.0)),
+    # --- Fósforo (incl. ácido para pH / desincrustación) ---
+    (("ACIDO FOSFORICO", "ÁCIDO FOSFORICO", "H3PO4", "FOSFORICO"), (0.0, 54.0, 0.0)),
+    # --- Potasio ---
+    (("SULFATO DE POTASIO", "SOP", "K2SO4"), (0.0, 0.0, 51.0)),
+    (("CLORURO DE POTASIO", "MOP", "KCL"), (0.0, 0.0, 60.0)),
+    (("TIOSULFATO DE POTASIO", "TIOSULFATO POTASIO", "K2S2O3"), (0.0, 0.0, 25.0)),
+    # --- Sin macro NPK (micronutrientes / correctores) ---
+    (("CALCIO BORO", "BORO FOLIAR", "BORO", "CALCIO FOLIAR"), (0.0, 0.0, 0.0)),
 )
 
 
@@ -248,15 +265,48 @@ def _norm_nombre_fertilizante(nombre: str) -> str:
     return re.sub(r"\s+", " ", str(nombre or "").strip().upper())
 
 
+def _npk_desde_formula(nombre: str) -> tuple[float, float, float] | None:
+    """Detecta fórmula N-P₂O₅-K₂O en el nombre (ej. Ultrasol 20-20-20)."""
+    m = _NPK_FORMULA_RE.search(nombre)
+    if not m:
+        return None
+    n, p, k = (float(m.group(i)) for i in (1, 2, 3))
+    if max(n, p, k) > 70 or (n + p + k) > 120:
+        return None
+    return (n, p, k)
+
+
+def _npk_desde_uan(nombre: str) -> tuple[float, float, float] | None:
+    m = _UAN_RE.search(nombre)
+    if not m:
+        return None
+    pct = float(m.group(1))
+    if pct <= 0 or pct > 40:
+        return None
+    return (pct, 0.0, 0.0)
+
+
 def _npk_producto(nombre: str) -> tuple[float, float, float]:
-    """Retorna % N, P₂O₅, K₂O según nombre de producto (0 si no reconocido)."""
+    """Retorna % N, P₂O₅, K₂O según nombre (fórmula, UAN o catálogo técnico)."""
     n = _norm_nombre_fertilizante(nombre)
     if not n:
         return (0.0, 0.0, 0.0)
+    parsed = _npk_desde_formula(n)
+    if parsed:
+        return parsed
+    uan = _npk_desde_uan(n)
+    if uan:
+        return uan
     for keys, npk in _FERTILIZANTE_NPK:
         if any(k in n for k in keys):
             return npk
     return (0.0, 0.0, 0.0)
+
+
+def _kg_nutriente_aplicado(cantidad: float, unidad: str | None, pct: float) -> float:
+    """kg nutriente = kg fertilizante × (% riqueza / 100)."""
+    kg = _cantidad_kg_fertilizante(cantidad, unidad)
+    return kg * float(pct or 0) / 100.0
 
 
 def _cantidad_kg_fertilizante(cantidad: float, unidad: str | None) -> float:
@@ -267,7 +317,7 @@ def _cantidad_kg_fertilizante(cantidad: float, unidad: str | None) -> float:
 
 
 def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Suma N, P₂O₅ y K₂O (kg) aplicados vía fertilización en historial de riego."""
+    """Suma N, P₂O₅ y K₂O (kg) aplicados vía fertirriego en historial autorizado."""
     migrar_tabla(conn)
     demo = get_demo_module()
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
@@ -279,13 +329,17 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
     ).fetchall()
     por_huerto: dict[str, dict[str, Any]] = {}
     totales = {"n": 0.0, "p": 0.0, "k": 0.0}
+    sin_analisis: dict[str, float] = {}
     for huerto, producto, cantidad, unidad in rows:
         h = str(huerto or "—").strip() or "—"
-        kg = _cantidad_kg_fertilizante(float(cantidad or 0), unidad)
-        pct_n, pct_p, pct_k = _npk_producto(str(producto or ""))
-        n = kg * pct_n / 100.0
-        p = kg * pct_p / 100.0
-        k = kg * pct_k / 100.0
+        prod = str(producto or "").strip()
+        kg_fert = _cantidad_kg_fertilizante(float(cantidad or 0), unidad)
+        pct_n, pct_p, pct_k = _npk_producto(prod)
+        n = _kg_nutriente_aplicado(kg_fert, "kg", pct_n)
+        p = _kg_nutriente_aplicado(kg_fert, "kg", pct_p)
+        k = _kg_nutriente_aplicado(kg_fert, "kg", pct_k)
+        if pct_n == pct_p == pct_k == 0.0 and kg_fert > 0:
+            sin_analisis[prod] = sin_analisis.get(prod, 0.0) + kg_fert
         bucket = por_huerto.setdefault(
             h,
             {"huerto": h, "n": 0.0, "p": 0.0, "k": 0.0},
@@ -301,6 +355,7 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
         row["n_fmt"] = f_cant(row["n"])
         row["p_fmt"] = f_cant(row["p"])
         row["k_fmt"] = f_cant(row["k"])
+    avisos = sorted(sin_analisis.keys())
     return {
         "filas": filas,
         "totales": totales,
@@ -308,6 +363,7 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
         "p_fmt": f_cant(totales["p"]),
         "k_fmt": f_cant(totales["k"]),
         "tiene_datos": bool(filas),
+        "sin_analisis": avisos,
     }
 
 

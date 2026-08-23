@@ -388,7 +388,7 @@
   <div class="panel-card mb-3">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
       <h2 class="h6 mb-0">Nutrientes aplicados (fertilización)</h2>
-      <span class="small text-muted">kg de N, P₂O₅ y K₂O según historial autorizado</span>
+      <span class="small text-muted">kg nutriente = kg fertilizante × (% N-P₂O₅-K₂O ÷ 100) · solubles/líquidos del historial</span>
     </div>
     <div class="row g-2 mb-3">
       <div class="col-md-4">
@@ -443,6 +443,12 @@
     </div>
     {% else %}
     <p class="text-muted small mb-0">Sin fertilizantes registrados en el historial.</p>
+    {% endif %}
+    {% if npk_resumen.sin_analisis %}
+    <p class="small text-warning mb-0 mt-2">
+      Sin análisis NPK reconocido para: {{ npk_resumen.sin_analisis|join(', ') }}.
+      Incluya la fórmula en el nombre (ej. 20-20-20) o avísenos para agregar el producto al catálogo.
+    </p>
     {% endif %}
   </div>
   {% endif %}
