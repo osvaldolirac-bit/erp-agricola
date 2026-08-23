@@ -13,7 +13,7 @@ from flask import current_app, request
 from demo_web.services.demo_loader import get_demo_module, get_erp_app
 
 _CODIGO_RE = re.compile(r"^RIE-(\d+)$", re.I)
-_FAMILIAS_FERTILIZANTE = ("FERTILIZANTE", "FERTILIZANTE FOLIAR")
+_FAMILIAS_FERTILIZANTE = ("FERTILIZANTE",)
 
 
 def _conn() -> sqlite3.Connection:
@@ -51,6 +51,200 @@ def huertos_para_formulario() -> list[str]:
     otros = [c for c in raw if str(c).strip().upper() == "OTROS"]
     resto = [c for c in raw if str(c).strip().upper() != "OTROS"]
     return resto + otros
+
+
+# m³/h·ha por huerto (cálculo automático de volumen)
+RIEGO_M3_HR_HA: dict[str, float] = {
+    "CEREZOS CORTE 1": 18.0,
+    "CEREZOS CORTE 2": 18.0,
+    "CIRUELOS": 18.0,
+    "NOGALES APARICION": 34.0,
+}
+
+
+def huerto_tiene_calculo_auto(huerto: str) -> bool:
+    return (huerto or "").strip().upper() in RIEGO_M3_HR_HA
+
+
+def _norm_cc(huerto: str) -> str:
+    return (huerto or "").strip().upper()
+
+
+def _cargar_superficie_ha(conn: sqlite3.Connection, huerto: str) -> float:
+    cc = _norm_cc(huerto)
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(superficie_ha, 0) FROM prorrateo_cc WHERE centro_costo=?",
+            (cc,),
+        ).fetchone()
+        if row and float(row[0] or 0) > 0:
+            return float(row[0])
+    except sqlite3.OperationalError:
+        pass
+    demo = get_demo_module()
+    defaults = getattr(demo, "PRORRATEO_CC_DEFAULT", {}) or {}
+    if cc in defaults:
+        return float(defaults[cc])
+    return 0.0
+
+
+def _cargar_surcos_total(conn: sqlite3.Connection, huerto: str) -> int:
+    cc = _norm_cc(huerto)
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(surcos_total, 0) FROM riego_config_cc WHERE centro_costo=?",
+            (cc,),
+        ).fetchone()
+        if row:
+            return int(row[0] or 0)
+    except sqlite3.OperationalError:
+        pass
+    return 0
+
+
+def _ensure_riego_config_cc(conn: sqlite3.Connection) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS riego_config_cc (
+               centro_costo TEXT PRIMARY KEY,
+               m3_hr_ha REAL NOT NULL,
+               surcos_total INTEGER DEFAULT 0
+           )"""
+    )
+    for cc, coef in RIEGO_M3_HR_HA.items():
+        conn.execute(
+            """INSERT OR IGNORE INTO riego_config_cc (centro_costo, m3_hr_ha, surcos_total)
+               VALUES (?,?,0)""",
+            (cc, float(coef)),
+        )
+        conn.execute(
+            "UPDATE riego_config_cc SET m3_hr_ha=? WHERE centro_costo=?",
+            (float(coef), cc),
+        )
+
+
+def guardar_surcos_total_cc(centro_costo: str, surcos_total: int) -> tuple[bool, str]:
+    cc = _norm_cc(centro_costo)
+    if cc not in RIEGO_M3_HR_HA:
+        return False, "Centro de costo sin cálculo automático de riego."
+    try:
+        total = int(surcos_total)
+    except (TypeError, ValueError):
+        return False, "Indique un número entero de surcos."
+    if total <= 0:
+        return False, "El total de surcos debe ser mayor a cero."
+    conn = _conn()
+    try:
+        migrar_tabla(conn)
+        conn.execute(
+            """INSERT INTO riego_config_cc (centro_costo, m3_hr_ha, surcos_total)
+               VALUES (?,?,?)
+               ON CONFLICT(centro_costo) DO UPDATE SET surcos_total=excluded.surcos_total""",
+            (cc, float(RIEGO_M3_HR_HA[cc]), total),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return True, f"Total surcos {cc}: {total}."
+
+
+def config_riego_cc_para_formulario() -> dict[str, dict[str, float | int]]:
+    conn = _conn()
+    try:
+        migrar_tabla(conn)
+        out: dict[str, dict[str, float | int]] = {}
+        for cc, coef in RIEGO_M3_HR_HA.items():
+            out[cc] = {
+                "m3_hr_ha": float(coef),
+                "ha": _cargar_superficie_ha(conn, cc),
+                "surcos_total": _cargar_surcos_total(conn, cc),
+            }
+        return out
+    finally:
+        conn.close()
+
+
+def listar_config_riego_cc() -> list[dict[str, Any]]:
+    conn = _conn()
+    try:
+        migrar_tabla(conn)
+        rows: list[dict[str, Any]] = []
+        for cc in sorted(RIEGO_M3_HR_HA.keys()):
+            rows.append(
+                {
+                    "centro_costo": cc,
+                    "m3_hr_ha": RIEGO_M3_HR_HA[cc],
+                    "superficie_ha": _cargar_superficie_ha(conn, cc),
+                    "surcos_total": _cargar_surcos_total(conn, cc),
+                }
+            )
+        return rows
+    finally:
+        conn.close()
+
+
+def calcular_m3_riego(
+    conn: sqlite3.Connection,
+    huerto: str,
+    horas: float,
+    *,
+    modo: str = "horas",
+    surcos: float | None = None,
+) -> tuple[float, str]:
+    cc = _norm_cc(huerto)
+    if cc not in RIEGO_M3_HR_HA:
+        return 0.0, ""
+    coef = RIEGO_M3_HR_HA[cc]
+    ha = _cargar_superficie_ha(conn, cc)
+    if ha <= 0:
+        return 0.0, f"No hay superficie (ha) configurada para {cc}."
+    if horas <= 0:
+        return 0.0, "Indique horas de riego mayores a cero."
+    base = horas * coef * ha
+    modo_n = (modo or "horas").strip().lower()
+    if modo_n == "surcos":
+        surcos_n = float(surcos or 0)
+        if surcos_n <= 0:
+            return 0.0, "Indique cantidad de surcos regados."
+        total = _cargar_surcos_total(conn, cc)
+        if total <= 0:
+            return (
+                0.0,
+                f"Configure el total de surcos del huerto {cc} "
+                f"(Riego → Link riego → Configuración surcos).",
+            )
+        return round(base * (surcos_n / total), 2), ""
+    return round(base, 2), ""
+
+
+def resolver_m3_registro(
+    conn: sqlite3.Connection,
+    huerto: str,
+    horas: float,
+    m3_manual: float,
+    *,
+    modo: str = "horas",
+    surcos: float | None = None,
+) -> tuple[float, str | None]:
+    cc = _norm_cc(huerto)
+    if huerto_tiene_calculo_auto(cc):
+        m3, err = calcular_m3_riego(conn, cc, horas, modo=modo, surcos=surcos)
+        if err:
+            return 0.0, err
+        return m3, None
+    if horas <= 0 and m3_manual <= 0:
+        return 0.0, "Indique horas o m³ mayores a cero."
+    return float(m3_manual or 0), None
+
+
+def _fmt_modo_riego(modo: str | None, surcos: float | None, demo) -> str:
+    modo_n = (modo or "horas").strip().lower()
+    if modo_n == "surcos" and surcos and float(surcos) > 0:
+        return f"Surcos ({demo.f_decimal(surcos)})"
+    return "Horas"
 
 
 def fertilizantes_bodega_para_formulario() -> list[dict[str, Any]]:
@@ -345,6 +539,15 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_riego_fert_codigo ON riego_fertilizantes(codigo)"
         )
+        for tabla in ("riego", "riego_bitacora"):
+            cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tabla})").fetchall()}
+            if "modo_riego" not in cols:
+                conn.execute(
+                    f"ALTER TABLE {tabla} ADD COLUMN modo_riego TEXT DEFAULT 'horas'"
+                )
+            if "surcos" not in cols:
+                conn.execute(f"ALTER TABLE {tabla} ADD COLUMN surcos REAL")
+        _ensure_riego_config_cc(conn)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"
         )
@@ -573,7 +776,7 @@ def enviar_alerta(registro: dict[str, Any]) -> bool:
     interior = f"""
         <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
           Se registró un riego desde <b>Registro Link</b>. Un administrador debe
-          <b>autorizarlo</b> en Riego → Ingreso para imputarlo al centro de costo.
+          <b>autorizarlo</b> en Riego → Link riego para imputarlo al centro de costo.
         </p>
         <div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:10px;padding:16px 18px;">
           <p style="margin:6px 0;"><b>Código:</b> {html_esc(codigo)}</p>
@@ -606,10 +809,13 @@ def registrar_link(
     fert_dosis_ha: float | None = None,
     fert_total: float | None = None,
     fertilizantes: list[dict[str, Any]] | None = None,
+    modo_riego: str = "horas",
+    surcos: float | None = None,
 ) -> dict[str, Any]:
     demo = get_demo_module()
-    huerto = (huerto or "").strip().upper()
+    huerto = _norm_cc(huerto)
     regador = (regador or "").strip()
+    modo_riego = (modo_riego or "horas").strip().lower()
     fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
     ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
 
@@ -617,6 +823,13 @@ def registrar_link(
     codigo = ""
     try:
         migrar_tabla(conn)
+        m3_final, err_m3 = resolver_m3_registro(
+            conn, huerto, float(horas or 0), float(m3 or 0),
+            modo=modo_riego, surcos=surcos,
+        )
+        if err_m3:
+            return {"ok": False, "msg": err_m3}
+        m3 = m3_final
         lineas_fert: list[dict[str, Any]] = []
         if fertilizantes:
             ok_f, msg_f, lineas_fert = _validar_lineas_fertilizantes(conn, fertilizantes)
@@ -629,8 +842,8 @@ def registrar_link(
         conn.execute(
             """INSERT INTO riego_bitacora
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, ip_origen, creado_en, estado)
-               VALUES (?,?,?,?,?,?,?,?,?,?,'pendiente')""",
+                regador, ip_origen, creado_en, estado, modo_riego, surcos)
+               VALUES (?,?,?,?,?,?,?,?,?,?,'pendiente',?,?)""",
             (
                 codigo,
                 fecha,
@@ -642,6 +855,8 @@ def registrar_link(
                 regador,
                 ip or None,
                 fh,
+                modo_riego,
+                float(surcos) if surcos and modo_riego == "surcos" else None,
             ),
         )
         if lineas_fert:
@@ -704,7 +919,7 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
         migrar_tabla(conn)
         row = conn.execute(
             """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                      regador, COALESCE(estado, 'pendiente')
+                      regador, COALESCE(estado, 'pendiente'), modo_riego, surcos
                FROM riego_bitacora WHERE codigo=?""",
             (codigo,),
         ).fetchone()
@@ -720,6 +935,8 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
             fert_total,
             regador,
             estado,
+            modo_riego,
+            surcos,
         ) = row
         est = str(estado or "pendiente").lower()
         if est == "autorizado":
@@ -744,8 +961,8 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
         conn.execute(
             """INSERT INTO riego
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, origen, bitacora_codigo, creado_por, creado_en)
-               VALUES (?,?,?,?,?,?,?,?, 'link', ?, ?, ?)""",
+                regador, origen, bitacora_codigo, creado_por, creado_en, modo_riego, surcos)
+               VALUES (?,?,?,?,?,?,?,?, 'link', ?, ?, ?, ?, ?)""",
             (
                 codigo,
                 str(fecha)[:10],
@@ -758,6 +975,8 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
                 codigo,
                 usuario,
                 fh_auth,
+                modo_riego or "horas",
+                surcos,
             ),
         )
         conn.execute(
@@ -856,23 +1075,42 @@ def registrar_manual(
     *,
     fert_dosis_ha: float | None = None,
     fert_total: float | None = None,
+    fertilizantes: list[dict[str, Any]] | None = None,
+    modo_riego: str = "horas",
+    surcos: float | None = None,
 ) -> dict[str, Any]:
     demo = get_demo_module()
-    huerto_cc = (huerto or "").strip().upper()
+    huerto_cc = _norm_cc(huerto)
     if not huerto_cc:
         return {"ok": False, "msg": "Seleccione huerto."}
+    modo_riego = (modo_riego or "horas").strip().lower()
 
     conn = _conn()
+    codigo = ""
     try:
         migrar_tabla(conn)
+        m3_final, err_m3 = resolver_m3_registro(
+            conn, huerto_cc, float(horas or 0), float(m3 or 0),
+            modo=modo_riego, surcos=surcos,
+        )
+        if err_m3:
+            return {"ok": False, "msg": err_m3}
+        m3 = m3_final
+        lineas_fert: list[dict[str, Any]] = []
+        if fertilizantes:
+            ok_f, msg_f, lineas_fert = _validar_lineas_fertilizantes(conn, fertilizantes)
+            if not ok_f:
+                return {"ok": False, "msg": msg_f}
+            fert_total = sum(float(ln["cantidad"]) for ln in lineas_fert) or fert_total
+
         conn.execute("BEGIN IMMEDIATE")
         codigo = _siguiente_codigo(conn)
         fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
             """INSERT INTO riego
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, origen, creado_por, creado_en)
-               VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?)""",
+                regador, origen, creado_por, creado_en, modo_riego, surcos)
+               VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?, ?, ?)""",
             (
                 codigo,
                 str(fecha)[:10],
@@ -884,18 +1122,36 @@ def registrar_manual(
                 (regador or usuario or "").strip(),
                 usuario,
                 fh,
+                modo_riego,
+                float(surcos) if surcos and modo_riego == "surcos" else None,
             ),
         )
+        if lineas_fert:
+            _guardar_fertilizantes(conn, codigo, lineas_fert)
+            ok_bod, msg_bod = _aplicar_salidas_bodega_fertilizantes(
+                conn, codigo, huerto_cc, str(fecha)[:10], demo
+            )
+            if not ok_bod:
+                conn.rollback()
+                return {"ok": False, "msg": msg_bod}
+
+        fert_resumen = _fmt_fertilizantes(conn, codigo, demo, fert_dosis_ha, fert_total)
         conn.execute(
             "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
             (
                 usuario,
                 "RIEGO MANUAL",
-                f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | {demo.f_decimal(m3)} m3",
+                f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | {demo.f_decimal(m3)} m3 | {fert_resumen[:80]}",
                 fh,
             ),
         )
         conn.commit()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "msg": f"No se pudo registrar: {exc}"}
     finally:
         conn.close()
 
@@ -909,7 +1165,8 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
         """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total, regador,
                   COALESCE(estado, 'pendiente'), COALESCE(autorizado_por, ''),
                   COALESCE(autorizado_en, ''), COALESCE(rechazado_por, ''),
-                  COALESCE(rechazado_en, ''), COALESCE(rechazo_motivo, ''), creado_en
+                  COALESCE(rechazado_en, ''), COALESCE(rechazo_motivo, ''), creado_en,
+                  COALESCE(modo_riego, 'horas'), surcos
            FROM riego_bitacora ORDER BY id DESC LIMIT ?""",
         (limite,),
     ).fetchall()
@@ -931,8 +1188,11 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
             rej_en,
             rej_mot,
             creado,
+            modo_riego,
+            surcos,
         ) = row
         est = (estado or "pendiente").lower()
+        modo_txt = _fmt_modo_riego(modo_riego, surcos, demo)
         out.append(
             {
                 "codigo": codigo or "—",
@@ -940,6 +1200,7 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
                 "huerto": huerto or "—",
                 "horas": demo.f_decimal(horas),
                 "m3": demo.f_decimal(m3),
+                "modo_txt": modo_txt,
                 "fert_txt": _fmt_fertilizantes(conn, codigo or "", demo, dosis, total),
                 "regador": regador,
                 "estado": est,
@@ -962,7 +1223,8 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
     migrar_tabla(conn)
     rows = conn.execute(
         """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                  regador, origen, bitacora_codigo, creado_por, creado_en
+                  regador, origen, bitacora_codigo, creado_por, creado_en,
+                  COALESCE(modo_riego, 'horas'), surcos
            FROM riego ORDER BY fecha DESC, id DESC LIMIT ?""",
         (limite,),
     ).fetchall()
@@ -981,6 +1243,8 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
             bit_cod,
             creado_por,
             creado_en,
+            modo_riego,
+            surcos,
         ) = row
         out.append(
             {
@@ -990,6 +1254,7 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
                 "huerto": huerto or "—",
                 "horas": demo.f_decimal(horas),
                 "m3": demo.f_decimal(m3),
+                "modo_txt": _fmt_modo_riego(modo_riego, surcos, demo),
                 "fert_txt": _fmt_fertilizantes(conn, codigo or "", demo, dosis, total),
                 "regador": regador or "—",
                 "origen": origen or "manual",

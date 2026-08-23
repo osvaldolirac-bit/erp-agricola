@@ -68,13 +68,36 @@
         {% endfor %}
       </select>
 
+      <div id="riegoModoBlock" class="mt-3 d-none">
+        <label class="form-label d-block mb-1">Tipo de registro</label>
+        <div class="btn-group w-100" role="group" aria-label="Modo riego">
+          <input type="radio" class="btn-check" name="modo_riego" id="modoHoras" value="horas"
+                 {% if form_modo_riego != 'surcos' %}checked{% endif %}>
+          <label class="btn btn-outline-primary" for="modoHoras">Todo el huerto (horas)</label>
+          <input type="radio" class="btn-check" name="modo_riego" id="modoSurcos" value="surcos"
+                 {% if form_modo_riego == 'surcos' %}checked{% endif %}>
+          <label class="btn btn-outline-primary" for="modoSurcos">Por surcos</label>
+        </div>
+        <p id="riegoCoefHint" class="small text-muted mt-2 mb-0"></p>
+      </div>
+
+      <div id="surcosField" class="mt-2 d-none">
+        <label class="form-label" for="surcos">Surcos regados</label>
+        <input id="surcos" name="surcos" type="number" class="form-control form-control-lg"
+               min="0" step="1" inputmode="numeric" placeholder="Cantidad de surcos"
+               value="{{ form_surcos }}">
+      </div>
+
       <label class="form-label mt-2" for="horas">Horas riego</label>
       <input id="horas" name="horas" type="number" class="form-control form-control-lg"
              min="0" step="0.1" inputmode="decimal" value="{{ form_horas }}">
 
-      <label class="form-label mt-2" for="m3">m³</label>
+      <label class="form-label mt-2" for="m3">m³ <span id="m3AutoTag" class="badge bg-info text-dark d-none">calculado</span></label>
       <input id="m3" name="m3" type="number" class="form-control form-control-lg"
              min="0" step="0.1" inputmode="decimal" value="{{ form_m3 }}">
+      <p id="m3CalcHint" class="small text-muted mb-0 mt-1 d-none"></p>
+
+      <script id="riegoCcConfig" type="application/json">{{ riego_cc_config|tojson }}</script>
 
       <div class="registro-riego-fert-block mt-3">
         <p class="registro-riego-fert-kicker mb-2">Fertilización</p>
@@ -222,6 +245,88 @@
       return;
     }
 
+    var cfgEl = document.getElementById('riegoCcConfig');
+    var riegoCfg = {};
+    if (cfgEl) {
+      try { riegoCfg = JSON.parse(cfgEl.textContent || '{}'); } catch (e) { riegoCfg = {}; }
+    }
+
+    var huertoEl = document.getElementById('huerto');
+    var horasEl = document.getElementById('horas');
+    var m3El = document.getElementById('m3');
+    var surcosEl = document.getElementById('surcos');
+    var modoBlock = document.getElementById('riegoModoBlock');
+    var surcosField = document.getElementById('surcosField');
+    var coefHint = document.getElementById('riegoCoefHint');
+    var m3Hint = document.getElementById('m3CalcHint');
+    var m3AutoTag = document.getElementById('m3AutoTag');
+    var modoInputs = document.querySelectorAll('input[name="modo_riego"]');
+
+    function ccSel() {
+      return huertoEl ? (huertoEl.value || '').trim().toUpperCase() : '';
+    }
+
+    function modoSel() {
+      var m = 'horas';
+      modoInputs.forEach(function (inp) { if (inp.checked) m = inp.value; });
+      return m;
+    }
+
+    function esAutoCc() {
+      return !!riegoCfg[ccSel()];
+    }
+
+    function recalcM3() {
+      if (!m3El || !horasEl) return;
+      var cc = ccSel();
+      var conf = riegoCfg[cc];
+      var horas = parseFloat(horasEl.value) || 0;
+      if (!conf) {
+        m3El.readOnly = false;
+        if (m3AutoTag) m3AutoTag.classList.add('d-none');
+        if (m3Hint) m3Hint.classList.add('d-none');
+        return;
+      }
+      m3El.readOnly = true;
+      if (m3AutoTag) m3AutoTag.classList.remove('d-none');
+      var base = horas * conf.m3_hr_ha * conf.ha;
+      var m3 = base;
+      var modo = modoSel();
+      if (modo === 'surcos') {
+        var surcos = parseFloat(surcosEl && surcosEl.value) || 0;
+        var total = conf.surcos_total || 0;
+        m3 = total > 0 && surcos > 0 ? base * (surcos / total) : 0;
+      }
+      m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : '';
+      if (m3Hint) {
+        var txt = conf.ha + ' ha × ' + conf.m3_hr_ha + ' m³/h·ha × ' + horas + ' h';
+        if (modo === 'surcos') {
+          txt += ' × (' + (parseFloat(surcosEl && surcosEl.value) || 0) + '/' + (conf.surcos_total || '?') + ' surcos)';
+        }
+        m3Hint.textContent = 'm³ = ' + txt;
+        m3Hint.classList.toggle('d-none', !(horas > 0));
+      }
+    }
+
+    function refreshUi() {
+      var auto = esAutoCc();
+      var conf = riegoCfg[ccSel()];
+      if (modoBlock) modoBlock.classList.toggle('d-none', !auto);
+      if (surcosField) surcosField.classList.toggle('d-none', !auto || modoSel() !== 'surcos');
+      if (coefHint && conf) {
+        coefHint.textContent = conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha'
+          + (conf.surcos_total ? ' · ' + conf.surcos_total + ' surcos en huerto' : ' · configure total surcos para riego parcial');
+      }
+      if (m3Hint) m3Hint.classList.toggle('d-none', !auto);
+      recalcM3();
+    }
+
+    if (huertoEl) huertoEl.addEventListener('change', refreshUi);
+    if (horasEl) horasEl.addEventListener('input', recalcM3);
+    if (surcosEl) surcosEl.addEventListener('input', recalcM3);
+    modoInputs.forEach(function (inp) { inp.addEventListener('change', refreshUi); });
+    refreshUi();
+
     var form = document.getElementById('formRiego');
     var btn = document.getElementById('btnRegistrarRiego');
     if (!form || !btn) return;
@@ -233,6 +338,7 @@
         ev.preventDefault();
         return false;
       }
+      if (esAutoCc()) recalcM3();
       enviando = true;
       btn.disabled = true;
       btn.textContent = 'Registrando…';

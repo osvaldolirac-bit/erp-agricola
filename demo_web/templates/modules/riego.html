@@ -16,15 +16,15 @@
   {% if riego_desfase %}
   <div class="alert alert-warning py-2 mb-3">
     Hay <strong>{{ riego_pendientes }}</strong> registro(s) de link pendientes de autorizar.
-    Revise en <a href="{{ url_for('modules.riego', sec='ingreso') }}" class="alert-link">Ingreso</a>.
+    Revise en <a href="{{ url_for('modules.riego', sec='bitacora') }}" class="alert-link">Link riego</a>.
   </div>
   {% endif %}
 
   {% if sec_activa == 'manual' %}
   <div class="panel-card">
     <h2 class="h6">Registro manual</h2>
-    <p class="small text-muted">Imputa directamente al huerto (centro de costo). Fertilización opcional.</p>
-    <form method="post" class="row g-2">
+    <p class="small text-muted">Imputa directamente al huerto (CC). Fertilización opcional desde bodega (familia FERTILIZANTE).</p>
+    <form method="post" class="row g-2" id="formManualRiego">
       <input type="hidden" name="action" value="registrar_manual">
       <input type="hidden" name="sec" value="manual">
       <div class="col-md-2">
@@ -37,20 +37,35 @@
       </div>
       <div class="col-md-3">
         <label class="form-label small">Huerto (CC)</label>
-        <select name="huerto" class="form-select form-select-sm" required>
+        <select name="huerto" id="manualHuerto" class="form-select form-select-sm" required>
           <option value="">—</option>
           {% for h in huertos %}
           <option value="{{ h }}">{{ h }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-2">
-        <label class="form-label small">Horas riego</label>
-        <input type="number" name="horas" class="form-control form-control-sm" min="0" step="0.1" value="0">
+      <div class="col-12" id="manualModoBlock" style="display:none">
+        <label class="form-label small d-block">Tipo de registro</label>
+        <div class="btn-group btn-group-sm" role="group">
+          <input type="radio" class="btn-check" name="modo_riego" id="manualModoHoras" value="horas" checked>
+          <label class="btn btn-outline-primary" for="manualModoHoras">Todo el huerto</label>
+          <input type="radio" class="btn-check" name="modo_riego" id="manualModoSurcos" value="surcos">
+          <label class="btn btn-outline-primary" for="manualModoSurcos">Por surcos</label>
+        </div>
+        <p id="manualCoefHint" class="small text-muted mb-0 mt-1"></p>
+      </div>
+      <div class="col-md-2" id="manualSurcosField" style="display:none">
+        <label class="form-label small">Surcos</label>
+        <input type="number" name="surcos" id="manualSurcos" class="form-control form-control-sm" min="0" step="1">
       </div>
       <div class="col-md-2">
-        <label class="form-label small">m³</label>
-        <input type="number" name="m3" class="form-control form-control-sm" min="0" step="0.1" value="0">
+        <label class="form-label small">Horas riego</label>
+        <input type="number" name="horas" id="manualHoras" class="form-control form-control-sm" min="0" step="0.1" value="0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">m³ <span id="manualM3Tag" class="badge bg-info text-dark" style="display:none">auto</span></label>
+        <input type="number" name="m3" id="manualM3" class="form-control form-control-sm" min="0" step="0.1" value="0">
+        <p id="manualM3Hint" class="small text-muted mb-0" style="display:none"></p>
       </div>
       <div class="col-md-3">
         <label class="form-label small">Regador / responsable</label>
@@ -59,38 +74,199 @@
       <div class="col-12">
         <div class="form-check">
           <input class="form-check-input" type="checkbox" name="con_fertilizacion" value="1" id="manualFert">
-          <label class="form-check-label small" for="manualFert">Incluir fertilización</label>
+          <label class="form-check-label small" for="manualFert">Incluir fertilización (bodega)</label>
         </div>
       </div>
-      <div class="col-md-3">
-        <label class="form-label small">Dosis × ha</label>
-        <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" min="0" step="0.01">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label small">Total fertilización</label>
-        <input type="number" name="fert_total" class="form-control form-control-sm" min="0" step="0.01">
+      <div class="col-12">
+        <div id="manualFertSection" class="border rounded p-2 bg-light d-none">
+          <p class="small text-muted mb-2">Solo familia <strong>FERTILIZANTE</strong>. Descuenta stock al guardar.</p>
+          {% if not fertilizantes %}
+          <div class="alert alert-warning py-2 small mb-0">No hay productos FERTILIZANTE en bodega.</div>
+          {% else %}
+          <div id="manualFertRows" class="d-flex flex-column gap-2">
+            <div class="fert-row row g-2 align-items-end">
+              <div class="col-md-5">
+                <label class="form-label small">Producto</label>
+                <select name="fert_producto_id" class="form-select form-select-sm">
+                  <option value="">—</option>
+                  {% for f in fertilizantes %}
+                  <option value="{{ f.id }}">{{ f.etiqueta }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small">Cantidad</label>
+                <input type="number" name="fert_cantidad" class="form-control form-control-sm" min="0" step="0.01">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small">Dosis × ha <span class="text-muted">(opc.)</span></label>
+                <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" min="0" step="0.01">
+              </div>
+              <div class="col-md-1">
+                <button type="button" class="btn btn-outline-danger btn-sm js-quitar-fert-manual" title="Quitar">×</button>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="addManualFertRow">+ Agregar fertilizante</button>
+          {% endif %}
+        </div>
       </div>
       <div class="col-12">
         <button type="submit" class="btn btn-primary btn-sm" {% if solo_lectura %}disabled{% endif %}>Guardar registro</button>
       </div>
     </form>
+    <script id="riegoCcConfigManual" type="application/json">{{ riego_cc_config|tojson }}</script>
+    <script>
+    (function() {
+      var cfgEl = document.getElementById('riegoCcConfigManual');
+      var riegoCfg = {};
+      if (cfgEl) { try { riegoCfg = JSON.parse(cfgEl.textContent || '{}'); } catch (e) {} }
+      var huertoEl = document.getElementById('manualHuerto');
+      var horasEl = document.getElementById('manualHoras');
+      var m3El = document.getElementById('manualM3');
+      var surcosEl = document.getElementById('manualSurcos');
+      var modoBlock = document.getElementById('manualModoBlock');
+      var surcosField = document.getElementById('manualSurcosField');
+      var coefHint = document.getElementById('manualCoefHint');
+      var m3Hint = document.getElementById('manualM3Hint');
+      var m3Tag = document.getElementById('manualM3Tag');
+      var modoInputs = document.querySelectorAll('#formManualRiego input[name="modo_riego"]');
+      function ccSel() { return huertoEl ? (huertoEl.value || '').trim().toUpperCase() : ''; }
+      function modoSel() {
+        var m = 'horas';
+        modoInputs.forEach(function (inp) { if (inp.checked) m = inp.value; });
+        return m;
+      }
+      function recalcM3() {
+        var cc = ccSel();
+        var conf = riegoCfg[cc];
+        var horas = parseFloat(horasEl && horasEl.value) || 0;
+        if (!conf || !m3El) {
+          if (m3El) m3El.readOnly = false;
+          if (m3Tag) m3Tag.style.display = 'none';
+          if (m3Hint) m3Hint.style.display = 'none';
+          return;
+        }
+        m3El.readOnly = true;
+        if (m3Tag) m3Tag.style.display = 'inline';
+        var base = horas * conf.m3_hr_ha * conf.ha;
+        var m3 = base;
+        if (modoSel() === 'surcos') {
+          var surcos = parseFloat(surcosEl && surcosEl.value) || 0;
+          var total = conf.surcos_total || 0;
+          m3 = total > 0 && surcos > 0 ? base * (surcos / total) : 0;
+        }
+        m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : 0;
+        if (m3Hint) {
+          m3Hint.textContent = 'Calculado: ' + conf.m3_hr_ha + ' m³/h·ha × ' + conf.ha + ' ha × ' + horas + ' h';
+          m3Hint.style.display = horas > 0 ? 'block' : 'none';
+        }
+      }
+      function refreshUi() {
+        var conf = riegoCfg[ccSel()];
+        var auto = !!conf;
+        if (modoBlock) modoBlock.style.display = auto ? 'block' : 'none';
+        if (surcosField) surcosField.style.display = auto && modoSel() === 'surcos' ? 'block' : 'none';
+        if (coefHint && conf) {
+          coefHint.textContent = conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha'
+            + (conf.surcos_total ? ' · ' + conf.surcos_total + ' surcos' : ' · configure surcos en Link riego');
+        }
+        recalcM3();
+      }
+      if (huertoEl) huertoEl.addEventListener('change', refreshUi);
+      if (horasEl) horasEl.addEventListener('input', recalcM3);
+      if (surcosEl) surcosEl.addEventListener('input', recalcM3);
+      modoInputs.forEach(function (inp) { inp.addEventListener('change', refreshUi); });
+      var formManual = document.getElementById('formManualRiego');
+      if (formManual) {
+        formManual.addEventListener('submit', function() { recalcM3(); });
+      }
+      refreshUi();
+    })();
+    </script>
+    {% if fertilizantes %}
+    <template id="manualFertRowTpl">
+      <div class="fert-row row g-2 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label small">Producto</label>
+          <select name="fert_producto_id" class="form-select form-select-sm">
+            <option value="">—</option>
+            {% for f in fertilizantes %}
+            <option value="{{ f.id }}">{{ f.etiqueta }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Cantidad</label>
+          <input type="number" name="fert_cantidad" class="form-control form-control-sm" min="0" step="0.01">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Dosis × ha <span class="text-muted">(opc.)</span></label>
+          <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" min="0" step="0.01">
+        </div>
+        <div class="col-md-1">
+          <button type="button" class="btn btn-outline-danger btn-sm js-quitar-fert-manual" title="Quitar">×</button>
+        </div>
+      </div>
+    </template>
+    <script>
+    (function() {
+      var chk = document.getElementById('manualFert');
+      var sec = document.getElementById('manualFertSection');
+      var rows = document.getElementById('manualFertRows');
+      var tpl = document.getElementById('manualFertRowTpl');
+      var addBtn = document.getElementById('addManualFertRow');
+      var form = document.getElementById('formManualRiego');
+      function toggle() {
+        if (!sec || !chk) return;
+        sec.classList.toggle('d-none', !chk.checked);
+      }
+      if (chk) { chk.addEventListener('change', toggle); toggle(); }
+      if (addBtn && tpl && rows) {
+        addBtn.addEventListener('click', function() { rows.appendChild(tpl.content.cloneNode(true)); });
+      }
+      if (rows) {
+        rows.addEventListener('click', function(ev) {
+          if (ev.target.classList.contains('js-quitar-fert-manual')) {
+            var items = rows.querySelectorAll('.fert-row');
+            if (items.length > 1) ev.target.closest('.fert-row').remove();
+          }
+        });
+      }
+      if (form) {
+        form.addEventListener('submit', function(ev) {
+          if (!chk || !chk.checked || !rows) return;
+          var ok = false;
+          rows.querySelectorAll('.fert-row').forEach(function(row) {
+            var pid = row.querySelector('[name=fert_producto_id]');
+            var cant = row.querySelector('[name=fert_cantidad]');
+            if (pid && pid.value && cant && parseFloat(cant.value) > 0) ok = true;
+          });
+          if (!ok) { ev.preventDefault(); alert('Indique al menos un fertilizante con cantidad.'); }
+        });
+      }
+    })();
+    </script>
+    {% endif %}
   </div>
 
-  {% elif sec_activa == 'ingreso' %}
+  {% elif sec_activa == 'bitacora' %}
   <div class="panel-card">
-    <h2 class="h6">🔗 Ingreso (Registro Link)</h2>
-    <p class="small text-muted mb-3">
-      El regador envía desde celular con enlace personal. Al autorizar, el registro pasa a Historial imputado al CC del huerto.
-    </p>
-    {% if ingreso_admin_links %}
+    <h2 class="h6">🔗 Link riego</h2>
+    <div class="alert alert-info py-2 small mb-3">
+      Registros desde celular del regador. Al pulsar <strong>Autorizar</strong>: pasan a Historial,
+      se imputa el riego al huerto (CC) y, si traen fertilizantes, se descuenta stock de bodega
+      e imputa el valor al mismo centro de costo.
+    </div>
+    {% if bitacora_admin_links %}
     <div class="mb-3">
       <h3 class="h6">Enlaces personales regador</h3>
-      {% if ingreso_links %}
+      {% if bitacora_links %}
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle mb-0">
           <thead><tr><th>Regador</th><th>Enlace</th><th></th></tr></thead>
           <tbody>
-            {% for op in ingreso_links %}
+            {% for op in bitacora_links %}
             <tr>
               <td><strong>{{ op.nombre }}</strong></td>
               <td><input type="text" class="form-control form-control-sm font-monospace js-link-personal" id="linkRie-{{ loop.index }}" value="{{ op.url }}" readonly></td>
@@ -107,49 +283,91 @@
       <div class="alert alert-warning py-2 small mb-0">En RRHH marque trabajadores como regador o agregue extras.</div>
       {% endif %}
     </div>
+    {% if riego_config_rows %}
+    <div class="mb-3">
+      <h3 class="h6">Configuración cálculo m³ (surcos por huerto)</h3>
+      <p class="small text-muted mb-2">
+        Cerezos 1/2 y Ciruelos: 18 m³/h·ha. Nogales Aparición: 34 m³/h·ha.
+        Superficie desde prorrateo. Indique total de surcos para riego parcial.
+      </p>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead>
+            <tr><th>Huerto</th><th>m³/h·ha</th><th>Superficie ha</th><th>Total surcos</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for row in riego_config_rows %}
+            <tr>
+              <td><strong>{{ row.centro_costo }}</strong></td>
+              <td>{{ row.m3_hr_ha }}</td>
+              <td>{{ row.superficie_ha }}</td>
+              <td>
+                <form method="post" class="d-flex gap-1 align-items-center">
+                  <input type="hidden" name="action" value="guardar_surcos_riego">
+                  <input type="hidden" name="sec" value="bitacora">
+                  <input type="hidden" name="centro_costo" value="{{ row.centro_costo }}">
+                  <input type="number" name="surcos_total" class="form-control form-control-sm" style="max-width:6rem"
+                         min="1" step="1" value="{{ row.surcos_total or '' }}" placeholder="Ej. 120">
+                  <button type="submit" class="btn btn-sm btn-outline-primary">Guardar</button>
+                </form>
+              </td>
+              <td class="small text-muted">{% if row.surcos_total %}OK{% else %}Pendiente{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
     <hr>
     {% endif %}
-    <h3 class="h6">Pendientes de autorización</h3>
+    <h3 class="h6">Registros link</h3>
     <p class="small text-muted">Pendientes: {{ riego_pendientes|default(0) }}</p>
-    {% if ingreso_registros %}
+    {% if bitacora_registros %}
     <div class="table-responsive">
-      <table class="table table-sm table-bordered align-middle">
+      <table class="table table-sm table-bordered align-middle demo-datatable w-100">
         <thead>
           <tr>
-            <th>N°</th><th>Fecha</th><th>Huerto</th><th>Horas</th><th>m³</th>
-            <th>Fertilización</th><th>Regador</th><th>Estado</th><th></th>
+            <th>N°</th><th>Fecha</th><th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
+            <th>Fertilización</th><th>Regador</th><th>Estado</th><th>Recibido</th><th></th>
           </tr>
         </thead>
         <tbody>
-          {% for r in ingreso_registros %}
+          {% for r in bitacora_registros %}
           <tr class="{% if r.pendiente %}table-warning{% elif r.rechazado %}table-secondary{% endif %}">
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha }}</td>
             <td>{{ r.huerto }}</td>
+            <td class="small">{{ r.modo_txt|default('Horas') }}</td>
             <td>{{ r.horas }}</td>
             <td>{{ r.m3 }}</td>
-            <td>{{ r.fert_txt }}</td>
+            <td class="small">{{ r.fert_txt }}</td>
             <td>{{ r.regador }}</td>
             <td>
               {% if r.pendiente %}<span class="badge bg-warning text-dark">Pendiente</span>
               {% elif r.rechazado %}<span class="badge bg-secondary">Rechazado</span>
               {% else %}<span class="badge bg-success">Autorizado</span>{% endif %}
             </td>
+            <td class="small text-muted">{{ r.creado_en[:16] if r.creado_en else '—' }}</td>
             <td class="text-nowrap">
-              {% if r.pendiente and ingreso_puede_autorizar %}
+              {% if r.pendiente and bitacora_puede_autorizar %}
               <form method="post" class="d-inline">
                 <input type="hidden" name="action" value="autorizar_riego">
-                <input type="hidden" name="sec" value="ingreso">
+                <input type="hidden" name="sec" value="bitacora">
                 <input type="hidden" name="codigo" value="{{ r.codigo }}">
                 <button type="submit" class="btn btn-success btn-sm">Autorizar</button>
               </form>
               <form method="post" class="d-inline">
                 <input type="hidden" name="action" value="rechazar_riego">
-                <input type="hidden" name="sec" value="ingreso">
+                <input type="hidden" name="sec" value="bitacora">
                 <input type="hidden" name="codigo" value="{{ r.codigo }}">
                 <input type="hidden" name="motivo" value="">
                 <button type="submit" class="btn btn-outline-danger btn-sm">Rechazar</button>
               </form>
+              {% elif r.autorizado %}
+              <span class="small text-muted">{{ r.autorizado_por or '' }}</span>
+              {% elif r.rechazado and r.rechazo_motivo %}
+              <span class="small text-muted" title="{{ r.rechazo_motivo }}">Rechazado</span>
               {% endif %}
             </td>
           </tr>
@@ -158,7 +376,7 @@
       </table>
     </div>
     {% else %}
-    <p class="text-muted mb-0">Sin registros aún.</p>
+    <p class="text-muted mb-0">Sin registros en link riego.</p>
     {% endif %}
   </div>
 
@@ -170,8 +388,8 @@
       <table class="table table-sm table-hover demo-datatable w-100">
         <thead>
           <tr>
-            <th>#</th><th>N°</th><th>Fecha</th><th>Huerto</th><th>Horas</th><th>m³</th>
-            <th>Fertilización</th><th>Regador</th><th>Origen</th>
+            <th>#</th><th>N°</th><th>Fecha</th><th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
+            <th>Fertilización</th><th>Regador</th><th>Origen</th><th>Registrado</th>
           </tr>
         </thead>
         <tbody>
@@ -181,11 +399,13 @@
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha }}</td>
             <td>{{ r.huerto }}</td>
+            <td class="small">{{ r.modo_txt|default('Horas') }}</td>
             <td>{{ r.horas }}</td>
             <td>{{ r.m3 }}</td>
-            <td>{{ r.fert_txt }}</td>
+            <td class="small">{{ r.fert_txt }}</td>
             <td>{{ r.regador }}</td>
             <td>{{ r.origen }}</td>
+            <td class="small text-muted">{{ r.creado_en[:16] if r.creado_en else '—' }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -197,7 +417,7 @@
   </div>
   {% endif %}
 </div>
-{% if sec_activa == 'ingreso' %}
+{% if sec_activa == 'bitacora' %}
 <script>
 document.querySelectorAll('.js-copiar-link').forEach(function(btn) {
   btn.addEventListener('click', function() {

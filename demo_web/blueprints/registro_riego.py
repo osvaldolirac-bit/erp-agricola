@@ -14,8 +14,10 @@ from demo_web.auth.decorators import login_required
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.registro_riego import (
     aplicar_cookie_operador,
+    config_riego_cc_para_formulario,
     fertilizantes_bodega_para_formulario,
     habilitado,
+    huerto_tiene_calculo_auto,
     huertos_para_formulario,
     leer_operador_cookie,
     parse_fertilizantes_request,
@@ -60,6 +62,8 @@ def formulario():
     form_m3 = ""
     form_con_fert = False
     form_fert_lineas: list[dict] = []
+    form_modo_riego = "horas"
+    form_surcos = ""
 
     if request.method == "POST":
         hp = (request.form.get(_HONEYPOT_FIELD) or "").strip()
@@ -69,6 +73,8 @@ def formulario():
         form_m3 = request.form.get("m3") or ""
         form_con_fert = request.form.get("con_fertilizacion") == "1"
         form_fert_lineas = parse_fertilizantes_request(request.form)
+        form_modo_riego = (request.form.get("modo_riego") or "horas").strip().lower()
+        form_surcos = request.form.get("surcos") or ""
 
         try:
             horas = float((form_horas or "0").replace(",", "."))
@@ -78,6 +84,12 @@ def formulario():
             m3 = float((form_m3 or "0").replace(",", "."))
         except ValueError:
             m3 = 0.0
+        surcos = None
+        if form_modo_riego == "surcos" and form_surcos.strip():
+            try:
+                surcos = float(form_surcos.replace(",", "."))
+            except ValueError:
+                surcos = None
 
         fert_lineas_post = form_fert_lineas if form_con_fert else []
 
@@ -91,7 +103,11 @@ def formulario():
             error = "Indique la fecha."
         elif form_huerto not in huertos:
             error = "Seleccione un huerto válido."
-        elif horas <= 0 and m3 <= 0:
+        elif huerto_tiene_calculo_auto(form_huerto) and horas <= 0:
+            error = "Indique horas de riego mayores a cero."
+        elif huerto_tiene_calculo_auto(form_huerto) and form_modo_riego == "surcos" and (surcos is None or surcos <= 0):
+            error = "Indique cantidad de surcos regados."
+        elif not huerto_tiene_calculo_auto(form_huerto) and horas <= 0 and m3 <= 0:
             error = "Indique horas de riego o m³ mayores a cero."
         elif form_con_fert and not fertilizantes_opts:
             error = "No hay fertilizantes en bodega. Registre productos en Bodega primero."
@@ -108,6 +124,8 @@ def formulario():
                     m3,
                     (operador or {}).get("nombre", ""),
                     fertilizantes=fert_lineas_post if form_con_fert else None,
+                    modo_riego=form_modo_riego,
+                    surcos=surcos,
                 )
             except Exception as exc:
                 error = f"No se pudo guardar: {exc}"
@@ -141,6 +159,9 @@ def formulario():
         form_m3=form_m3,
         form_con_fert=form_con_fert,
         form_fert_lineas=form_fert_lineas,
+        form_modo_riego=form_modo_riego,
+        form_surcos=form_surcos,
+        riego_cc_config=config_riego_cc_para_formulario(),
     )
     resp = make_response(html)
     if ok and operador:
@@ -158,4 +179,4 @@ def links_admin():
     demo = get_demo_module()
     if not demo.es_super_admin():
         abort(403)
-    return redirect(url_for("modules.riego", sec="ingreso"))
+    return redirect(url_for("modules.riego", sec="bitacora"))
