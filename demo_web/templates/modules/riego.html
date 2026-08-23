@@ -385,76 +385,56 @@
 
   {% elif sec_activa == 'historial' %}
   {% if npk_resumen %}
-  <div class="panel-card mb-3">
+  <div class="panel-card mb-3 riego-npk-panel">
     <div class="alert alert-info py-2 small mb-3 riego-npk-ayuda">
-      <strong>Balance NPK del historial.</strong>
-      Suma lo <em>aplicado</em> en fertirriego (registros autorizados), no el stock actual de bodega.
-      El catálogo técnico cubre fuentes habituales de fertirriego; irán ingresando a bodega según se necesiten.
-      El módulo interpreta el <strong>nombre tal como está en bodega</strong> (sin renombrar) para imputar N, P₂O₅ o K₂O.
-      Correctores y micronutrientes sin macro NPK no suman; fertilizantes aún no mapeados se listan abajo.
+      <strong>Balance NPK por centro de costo.</strong>
+      Acumulado del historial de fertirriego expresado en <strong>kg/ha</strong>:
+      kg nutriente aplicados ÷ superficie (ha) del <strong>prorrateo CC</strong>.
+      El módulo interpreta el nombre de bodega tal cual (sin renombrar).
     </div>
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-      <h2 class="h6 mb-0">Nutrientes aplicados (fertilización)</h2>
-      <span class="small text-muted">kg nutriente = kg fertilizante × (% N-P₂O₅-K₂O ÷ 100) · solubles/líquidos del historial</span>
-    </div>
-    <div class="row g-2 mb-3">
-      <div class="col-md-4">
-        <div class="kpi-card riego-npk-kpi riego-npk-n">
-          <div class="kpi-label">Nitrógeno (N)</div>
-          <div class="kpi-value">{{ npk_resumen.n_fmt }} <span class="fs-6 fw-normal text-muted">kg</span></div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="kpi-card riego-npk-kpi riego-npk-p">
-          <div class="kpi-label">Fósforo (P₂O₅)</div>
-          <div class="kpi-value">{{ npk_resumen.p_fmt }} <span class="fs-6 fw-normal text-muted">kg</span></div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="kpi-card riego-npk-kpi riego-npk-k">
-          <div class="kpi-label">Potasio (K₂O)</div>
-          <div class="kpi-value">{{ npk_resumen.k_fmt }} <span class="fs-6 fw-normal text-muted">kg</span></div>
-        </div>
-      </div>
-    </div>
-    {% if npk_resumen.tiene_datos %}
+    <h2 class="h6 mb-3">NPK aplicado (kg/ha por CC)</h2>
     <div class="table-responsive">
-      <table class="table table-sm table-bordered mb-0 riego-npk-tabla">
-        <thead class="table-light">
+      <table class="table table-sm mb-0 riego-npk-cc-table">
+        <thead>
           <tr>
-            <th>Huerto (CC)</th>
-            <th class="text-end">N (kg)</th>
-            <th class="text-end">P₂O₅ (kg)</th>
-            <th class="text-end">K₂O (kg)</th>
+            <th>Centro de costo</th>
+            <th class="text-end">Superficie (ha)</th>
+            <th class="text-end riego-npk-th-n">N (kg/ha)</th>
+            <th class="text-end riego-npk-th-p">P₂O₅ (kg/ha)</th>
+            <th class="text-end riego-npk-th-k">K₂O (kg/ha)</th>
           </tr>
         </thead>
         <tbody>
           {% for row in npk_resumen.filas %}
-          <tr>
-            <td>{{ row.huerto }}</td>
-            <td class="text-end">{{ row.n_fmt }}</td>
-            <td class="text-end">{{ row.p_fmt }}</td>
-            <td class="text-end">{{ row.k_fmt }}</td>
+          <tr class="{% if row.tiene_aplic %}riego-npk-cc-row-active{% endif %}{% if row.sin_ha %} table-warning{% endif %}">
+            <td><strong>{{ row.huerto }}</strong>{% if row.sin_ha %} <span class="small text-warning">sin ha prorrateo</span>{% endif %}</td>
+            <td class="text-end">{{ row.ha_fmt }}</td>
+            <td class="text-end riego-npk-val-n">{{ row.n_ha_fmt }}</td>
+            <td class="text-end riego-npk-val-p">{{ row.p_ha_fmt }}</td>
+            <td class="text-end riego-npk-val-k">{{ row.k_ha_fmt }}</td>
           </tr>
           {% endfor %}
         </tbody>
-        <tfoot class="table-light">
-          <tr class="fw-semibold">
-            <td>Total</td>
-            <td class="text-end">{{ npk_resumen.n_fmt }}</td>
-            <td class="text-end">{{ npk_resumen.p_fmt }}</td>
-            <td class="text-end">{{ npk_resumen.k_fmt }}</td>
+        {% if npk_resumen.tiene_datos %}
+        <tfoot>
+          <tr class="riego-npk-cc-foot">
+            <td><strong>Promedio ponderado</strong><span class="small text-muted d-block">CC con aplicaciones · {{ npk_resumen.sum_ha_fmt }} ha</span></td>
+            <td></td>
+            <td class="text-end"><strong>{{ npk_resumen.prom_n_ha_fmt }}</strong></td>
+            <td class="text-end"><strong>{{ npk_resumen.prom_p_ha_fmt }}</strong></td>
+            <td class="text-end"><strong>{{ npk_resumen.prom_k_ha_fmt }}</strong></td>
           </tr>
         </tfoot>
+        {% endif %}
       </table>
     </div>
-    {% else %}
-    <p class="text-muted small mb-0">Sin fertilizantes registrados en el historial.</p>
+    {% if not npk_resumen.tiene_datos %}
+    <p class="text-muted small mb-0 mt-2">Sin fertilizantes registrados en el historial.</p>
     {% endif %}
     {% if npk_resumen.sin_analisis %}
     <p class="small text-warning mb-0 mt-2">
       <strong>Sin mapeo NPK aún:</strong> {{ npk_resumen.sin_analisis|join(', ') }}.
-      Al usarse en riego, avise para incorporar el producto al catálogo del módulo (sin cambiar el nombre en bodega).
+      Avise para incorporar al catálogo del módulo (sin cambiar el nombre en bodega).
     </p>
     {% endif %}
   </div>

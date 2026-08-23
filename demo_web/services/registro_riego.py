@@ -337,8 +337,34 @@ def _cantidad_kg_fertilizante(cantidad: float, unidad: str | None) -> float:
     return float(cantidad or 0)
 
 
+def _listar_cc_prorrateo(conn: sqlite3.Connection) -> list[tuple[str, float]]:
+    """Centros de costo con superficie desde prorrateo_cc (base kg/ha)."""
+    try:
+        rows = conn.execute(
+            """SELECT centro_costo, COALESCE(superficie_ha, 0)
+               FROM prorrateo_cc
+               ORDER BY centro_costo COLLATE NOCASE"""
+        ).fetchall()
+        if rows:
+            return [(str(r[0]).strip(), float(r[1] or 0)) for r in rows if str(r[0] or "").strip()]
+    except sqlite3.OperationalError:
+        pass
+    out: list[tuple[str, float]] = []
+    for h in huertos_para_formulario():
+        cc = str(h or "").strip()
+        if cc:
+            out.append((cc, _cargar_superficie_ha(conn, cc)))
+    return out
+
+
+def _fmt_kg_ha(val: float | None, f_cant) -> str:
+    if val is None:
+        return "—"
+    return f_cant(val)
+
+
 def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Suma N, P₂O₅ y K₂O (kg) aplicados vía fertirriego en historial autorizado."""
+    """N, P₂O₅ y K₂O acumulados por CC expresados en kg/ha (superficie prorrateo_cc)."""
     migrar_tabla(conn)
     demo = get_demo_module()
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
@@ -348,11 +374,12 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
            INNER JOIN riego_fertilizantes rf ON rf.codigo = r.codigo
            WHERE COALESCE(rf.cantidad, 0) > 0"""
     ).fetchall()
-    por_huerto: dict[str, dict[str, Any]] = {}
-    totales = {"n": 0.0, "p": 0.0, "k": 0.0}
+    por_huerto: dict[str, dict[str, float]] = {}
     sin_analisis: dict[str, float] = {}
     for huerto, producto, cantidad, unidad in rows:
-        h = str(huerto or "—").strip() or "—"
+        h = _norm_cc(huerto)
+        if not h or h == "—":
+            continue
         prod = str(producto or "").strip()
         kg_fert = _cantidad_kg_fertilizante(float(cantidad or 0), unidad)
         pct_n, pct_p, pct_k, reconocido = _npk_resolver(prod)
@@ -361,29 +388,78 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
         k = _kg_nutriente_aplicado(kg_fert, "kg", pct_k)
         if not reconocido and kg_fert > 0:
             sin_analisis[prod] = sin_analisis.get(prod, 0.0) + kg_fert
-        bucket = por_huerto.setdefault(
-            h,
-            {"huerto": h, "n": 0.0, "p": 0.0, "k": 0.0},
-        )
+        bucket = por_huerto.setdefault(h, {"n": 0.0, "p": 0.0, "k": 0.0})
         bucket["n"] += n
         bucket["p"] += p
         bucket["k"] += k
-        totales["n"] += n
-        totales["p"] += p
-        totales["k"] += k
-    filas = sorted(por_huerto.values(), key=lambda x: str(x["huerto"]))
-    for row in filas:
-        row["n_fmt"] = f_cant(row["n"])
-        row["p_fmt"] = f_cant(row["p"])
-        row["k_fmt"] = f_cant(row["k"])
+
+    cc_list = _listar_cc_prorrateo(conn)
+    cc_norms = {_norm_cc(cc): cc for cc, _ in cc_list}
+    filas: list[dict[str, Any]] = []
+    sum_ha = 0.0
+    sum_n_kg = sum_p_kg = sum_k_kg = 0.0
+    for cc, ha in cc_list:
+        cc_n = _norm_cc(cc)
+        kg = por_huerto.get(cc_n, {"n": 0.0, "p": 0.0, "k": 0.0})
+        n_ha = (kg["n"] / ha) if ha > 0 else None
+        p_ha = (kg["p"] / ha) if ha > 0 else None
+        k_ha = (kg["k"] / ha) if ha > 0 else None
+        tiene_aplic = kg["n"] > 0 or kg["p"] > 0 or kg["k"] > 0
+        if ha > 0 and tiene_aplic:
+            sum_ha += ha
+            sum_n_kg += kg["n"]
+            sum_p_kg += kg["p"]
+            sum_k_kg += kg["k"]
+        filas.append(
+            {
+                "huerto": cc,
+                "ha": ha,
+                "ha_fmt": f_cant(ha) if ha > 0 else "—",
+                "n_ha": n_ha,
+                "p_ha": p_ha,
+                "k_ha": k_ha,
+                "n_ha_fmt": _fmt_kg_ha(n_ha, f_cant),
+                "p_ha_fmt": _fmt_kg_ha(p_ha, f_cant),
+                "k_ha_fmt": _fmt_kg_ha(k_ha, f_cant),
+                "sin_ha": ha <= 0 and tiene_aplic,
+                "tiene_aplic": tiene_aplic,
+            }
+        )
+
+    for cc_n, kg in por_huerto.items():
+        if cc_n in cc_norms:
+            continue
+        if kg["n"] <= 0 and kg["p"] <= 0 and kg["k"] <= 0:
+            continue
+        filas.append(
+            {
+                "huerto": cc_n,
+                "ha": 0.0,
+                "ha_fmt": "—",
+                "n_ha": None,
+                "p_ha": None,
+                "k_ha": None,
+                "n_ha_fmt": "—",
+                "p_ha_fmt": "—",
+                "k_ha_fmt": "—",
+                "sin_ha": True,
+                "tiene_aplic": True,
+            }
+        )
+    filas.sort(key=lambda x: str(x["huerto"]))
+
+    prom_n = (sum_n_kg / sum_ha) if sum_ha > 0 else None
+    prom_p = (sum_p_kg / sum_ha) if sum_ha > 0 else None
+    prom_k = (sum_k_kg / sum_ha) if sum_ha > 0 else None
     avisos = sorted(sin_analisis.keys())
+    tiene_datos = any(r["tiene_aplic"] for r in filas)
     return {
         "filas": filas,
-        "totales": totales,
-        "n_fmt": f_cant(totales["n"]),
-        "p_fmt": f_cant(totales["p"]),
-        "k_fmt": f_cant(totales["k"]),
-        "tiene_datos": bool(filas),
+        "prom_n_ha_fmt": _fmt_kg_ha(prom_n, f_cant),
+        "prom_p_ha_fmt": _fmt_kg_ha(prom_p, f_cant),
+        "prom_k_ha_fmt": _fmt_kg_ha(prom_k, f_cant),
+        "sum_ha_fmt": f_cant(sum_ha) if sum_ha > 0 else "—",
+        "tiene_datos": tiene_datos,
         "sin_analisis": avisos,
     }
 

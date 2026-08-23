@@ -395,9 +395,55 @@ body.demo-body {
 .riego-npk-n { border-left-color: #2e7d32; }
 .riego-npk-p { border-left-color: #1565c0; }
 .riego-npk-k { border-left-color: #ef6c00; }
-.riego-npk-tabla th,
-.riego-npk-tabla td { font-size: 0.875rem; }
 .riego-npk-ayuda code { font-size: 0.85em; }
+
+.riego-npk-panel {
+  border: 1px solid #c5d9c5;
+  background: linear-gradient(180deg, #f7faf6 0%, #fff 48%);
+}
+.riego-npk-cc-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.riego-npk-cc-table thead th {
+  background: #eef5eb;
+  border-bottom: 2px solid #b7cfb8;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4a5d4a;
+  padding: 0.65rem 0.75rem;
+}
+.riego-npk-cc-table tbody td,
+.riego-npk-cc-table tfoot td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid #e3ebe0;
+  font-size: 0.9rem;
+  vertical-align: middle;
+}
+.riego-npk-cc-table tbody tr:last-child td { border-bottom-width: 0; }
+.riego-npk-cc-row-active {
+  background: #fff;
+}
+.riego-npk-cc-row-active td:first-child {
+  border-left: 4px solid var(--demo-green, #2e7d32);
+}
+.riego-npk-cc-foot {
+  background: #eef5eb;
+}
+.riego-npk-cc-foot td {
+  border-top: 2px solid #b7cfb8;
+  font-size: 0.95rem;
+}
+.riego-npk-th-n, .riego-npk-val-n { color: #2e7d32; font-weight: 600; }
+.riego-npk-th-p, .riego-npk-val-p { color: #1565c0; font-weight: 600; }
+.riego-npk-th-k, .riego-npk-val-k { color: #ef6c00; font-weight: 600; }
+.riego-npk-cc-table tbody tr:not(.riego-npk-cc-row-active) .riego-npk-val-n,
+.riego-npk-cc-table tbody tr:not(.riego-npk-cc-row-active) .riego-npk-val-p,
+.riego-npk-cc-table tbody tr:not(.riego-npk-cc-row-active) .riego-npk-val-k {
+  font-weight: 400;
+  color: #888;
+}
 
 .panel-card {
   background: #fff;
