@@ -60,6 +60,8 @@ RIEGO_M3_HR_HA: dict[str, float] = {
     "CIRUELOS": 18.0,
     "NOGALES APARICION": 34.0,
 }
+# Riego por surcos: caudal fijo m³/h (todos los huertos)
+RIEGO_M3_HR_SURCO = 40.0
 
 
 def huerto_tiene_calculo_auto(huerto: str) -> bool:
@@ -159,6 +161,7 @@ def config_riego_cc_para_formulario() -> dict[str, dict[str, float | int]]:
         for cc, coef in RIEGO_M3_HR_HA.items():
             out[cc] = {
                 "m3_hr_ha": float(coef),
+                "m3_hr_surco": float(RIEGO_M3_HR_SURCO),
                 "ha": _cargar_superficie_ha(conn, cc),
                 "surcos_total": _cargar_surcos_total(conn, cc),
             }
@@ -197,18 +200,14 @@ def calcular_m3_riego(
     cc = _norm_cc(huerto)
     if cc not in RIEGO_M3_HR_HA:
         return 0.0, ""
-    coef = RIEGO_M3_HR_HA[cc]
-    ha = _cargar_superficie_ha(conn, cc)
-    if ha <= 0:
-        return 0.0, f"No hay superficie (ha) configurada para {cc}."
     if horas <= 0:
         return 0.0, "Indique horas de riego mayores a cero."
-    base = horas * coef * ha
     modo_n = (modo or "horas").strip().lower()
     if modo_n == "surcos":
         surcos_n = float(surcos or 0)
         if surcos_n <= 0:
             return 0.0, "Indique cantidad de surcos regados."
+        base = horas * RIEGO_M3_HR_SURCO
         total = _cargar_surcos_total(conn, cc)
         if total <= 0:
             return (
@@ -217,7 +216,11 @@ def calcular_m3_riego(
                 f"(Riego → Link riego → Configuración surcos).",
             )
         return round(base * (surcos_n / total), 2), ""
-    return round(base, 2), ""
+    coef = RIEGO_M3_HR_HA[cc]
+    ha = _cargar_superficie_ha(conn, cc)
+    if ha <= 0:
+        return 0.0, f"No hay superficie (ha) en prorrateo de costos para {cc}."
+    return round(horas * coef * ha, 2), ""
 
 
 def resolver_m3_registro(

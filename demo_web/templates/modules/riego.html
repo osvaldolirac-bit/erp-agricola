@@ -149,16 +149,27 @@
         }
         m3El.readOnly = true;
         if (m3Tag) m3Tag.style.display = 'inline';
-        var base = horas * conf.m3_hr_ha * conf.ha;
-        var m3 = base;
+        var m3 = 0;
         if (modoSel() === 'surcos') {
           var surcos = parseFloat(surcosEl && surcosEl.value) || 0;
           var total = conf.surcos_total || 0;
-          m3 = total > 0 && surcos > 0 ? base * (surcos / total) : 0;
+          var baseSurco = horas * (conf.m3_hr_surco || 40);
+          m3 = total > 0 && surcos > 0 ? baseSurco * (surcos / total) : 0;
+        } else {
+          m3 = horas * conf.m3_hr_ha * conf.ha;
         }
         m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : 0;
         if (m3Hint) {
-          m3Hint.textContent = 'Calculado: ' + conf.m3_hr_ha + ' m³/h·ha × ' + conf.ha + ' ha × ' + horas + ' h';
+          var hint;
+          if (modoSel() === 'surcos') {
+            hint = (conf.m3_hr_surco || 40) + ' m³/h × ' + horas + ' h';
+            if (conf.surcos_total) {
+              hint += ' × (' + (parseFloat(surcosEl && surcosEl.value) || 0) + '/' + conf.surcos_total + ' surcos)';
+            }
+          } else {
+            hint = conf.m3_hr_ha + ' m³/h·ha × ' + conf.ha + ' ha (prorrateo) × ' + horas + ' h';
+          }
+          m3Hint.textContent = 'Calculado: ' + hint;
           m3Hint.style.display = horas > 0 ? 'block' : 'none';
         }
       }
@@ -168,8 +179,12 @@
         if (modoBlock) modoBlock.style.display = auto ? 'block' : 'none';
         if (surcosField) surcosField.style.display = auto && modoSel() === 'surcos' ? 'block' : 'none';
         if (coefHint && conf) {
-          coefHint.textContent = conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha'
-            + (conf.surcos_total ? ' · ' + conf.surcos_total + ' surcos' : ' · configure surcos en Link riego');
+          if (modoSel() === 'surcos') {
+            coefHint.textContent = (conf.m3_hr_surco || 40) + ' m³/h (surcos)'
+              + (conf.surcos_total ? ' · ' + conf.surcos_total + ' surcos' : ' · configure surcos en Link riego');
+          } else {
+            coefHint.textContent = conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
+          }
         }
         recalcM3();
       }
@@ -287,8 +302,9 @@
     <div class="mb-3">
       <h3 class="h6">Configuración cálculo m³ (surcos por huerto)</h3>
       <p class="small text-muted mb-2">
-        Cerezos 1/2 y Ciruelos: 18 m³/h·ha. Nogales Aparición: 34 m³/h·ha.
-        Superficie desde prorrateo. Indique total de surcos para riego parcial.
+        <strong>Todo el huerto:</strong> m³ = horas × m³/h·ha × superficie (prorrateo de costos).
+        Cerezos 1/2 y Ciruelos: 18 · Nogales Aparición: 34.
+        <strong>Por surcos:</strong> 40 m³/h × horas × (surcos regados / total surcos).
       </p>
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle mb-0">

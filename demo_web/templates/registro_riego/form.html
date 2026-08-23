@@ -289,19 +289,24 @@
       }
       m3El.readOnly = true;
       if (m3AutoTag) m3AutoTag.classList.remove('d-none');
-      var base = horas * conf.m3_hr_ha * conf.ha;
-      var m3 = base;
       var modo = modoSel();
+      var m3 = 0;
       if (modo === 'surcos') {
         var surcos = parseFloat(surcosEl && surcosEl.value) || 0;
         var total = conf.surcos_total || 0;
-        m3 = total > 0 && surcos > 0 ? base * (surcos / total) : 0;
+        var baseSurco = horas * (conf.m3_hr_surco || 40);
+        m3 = total > 0 && surcos > 0 ? baseSurco * (surcos / total) : 0;
+      } else {
+        m3 = horas * conf.m3_hr_ha * conf.ha;
       }
       m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : '';
       if (m3Hint) {
-        var txt = conf.ha + ' ha × ' + conf.m3_hr_ha + ' m³/h·ha × ' + horas + ' h';
+        var txt;
         if (modo === 'surcos') {
+          txt = (conf.m3_hr_surco || 40) + ' m³/h × ' + horas + ' h';
           txt += ' × (' + (parseFloat(surcosEl && surcosEl.value) || 0) + '/' + (conf.surcos_total || '?') + ' surcos)';
+        } else {
+          txt = conf.ha + ' ha (prorrateo) × ' + conf.m3_hr_ha + ' m³/h·ha × ' + horas + ' h';
         }
         m3Hint.textContent = 'm³ = ' + txt;
         m3Hint.classList.toggle('d-none', !(horas > 0));
@@ -314,8 +319,12 @@
       if (modoBlock) modoBlock.classList.toggle('d-none', !auto);
       if (surcosField) surcosField.classList.toggle('d-none', !auto || modoSel() !== 'surcos');
       if (coefHint && conf) {
-        coefHint.textContent = conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha'
-          + (conf.surcos_total ? ' · ' + conf.surcos_total + ' surcos en huerto' : ' · configure total surcos para riego parcial');
+        if (modoSel() === 'surcos') {
+          coefHint.textContent = (conf.m3_hr_surco || 40) + ' m³/h (surcos)'
+            + (conf.surcos_total ? ' · ' + conf.surcos_total + ' surcos en huerto' : ' · configure total surcos');
+        } else {
+          coefHint.textContent = conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
+        }
       }
       if (m3Hint) m3Hint.classList.toggle('d-none', !auto);
       recalcM3();
