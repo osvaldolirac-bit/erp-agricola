@@ -37,7 +37,7 @@ _FERTILIZANTE_NPK: tuple[tuple[tuple[str, ...], tuple[float, float, float]], ...
     (("NITRATO DE MAGNESIO", "MAGNESIO NITRATO"), (11.0, 0.0, 0.0)),
     (("NITRATO DE AMONIO", "AMMONIUM NITRATE"), (33.5, 0.0, 0.0)),
     (("SULFATO DE AMONIO", "SULFATO AMONIO", "(NH4)2SO4"), (21.0, 0.0, 0.0)),
-    (("UREA SOLUBLE", "UREA"), (46.0, 0.0, 0.0)),
+    (("UREA SOLUBLE", "UREA GRANULADA", "UREA"), (46.0, 0.0, 0.0)),
     # --- Fósforo (incl. ácido para pH / desincrustación) ---
     (("ACIDO FOSFORICO", "ÁCIDO FOSFORICO", "H3PO4", "FOSFORICO"), (0.0, 54.0, 0.0)),
     # --- Potasio ---
@@ -289,21 +289,39 @@ def _npk_desde_uan(nombre: str) -> tuple[float, float, float] | None:
     return (pct, 0.0, 0.0)
 
 
-def _npk_producto(nombre: str) -> tuple[float, float, float]:
-    """Retorna % N, P₂O₅, K₂O según nombre (fórmula, UAN o catálogo técnico)."""
+def _npk_catalogo(n: str) -> tuple[float, float, float] | None:
+    """Coincidencia por palabras clave; gana la clave más específica (más larga)."""
+    best: tuple[float, float, float] | None = None
+    best_len = 0
+    for keys, npk in _FERTILIZANTE_NPK:
+        for k in keys:
+            if k in n and len(k) > best_len:
+                best = npk
+                best_len = len(k)
+    return best
+
+
+def _npk_resolver(nombre: str) -> tuple[float, float, float, bool]:
+    """Análisis N-P₂O₅-K₂O y si el producto fue identificado (aunque aporte 0 NPK)."""
     n = _norm_nombre_fertilizante(nombre)
     if not n:
-        return (0.0, 0.0, 0.0)
+        return (0.0, 0.0, 0.0, False)
     parsed = _npk_desde_formula(n)
     if parsed:
-        return parsed
+        return (*parsed, True)
     uan = _npk_desde_uan(n)
     if uan:
-        return uan
-    for keys, npk in _FERTILIZANTE_NPK:
-        if any(k in n for k in keys):
-            return npk
-    return (0.0, 0.0, 0.0)
+        return (*uan, True)
+    cat = _npk_catalogo(n)
+    if cat is not None:
+        return (*cat, True)
+    return (0.0, 0.0, 0.0, False)
+
+
+def _npk_producto(nombre: str) -> tuple[float, float, float]:
+    """Retorna % N, P₂O₅, K₂O según nombre de bodega (sin renombrar productos)."""
+    n, p, k, _ = _npk_resolver(nombre)
+    return (n, p, k)
 
 
 def _kg_nutriente_aplicado(cantidad: float, unidad: str | None, pct: float) -> float:
@@ -337,11 +355,11 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
         h = str(huerto or "—").strip() or "—"
         prod = str(producto or "").strip()
         kg_fert = _cantidad_kg_fertilizante(float(cantidad or 0), unidad)
-        pct_n, pct_p, pct_k = _npk_producto(prod)
+        pct_n, pct_p, pct_k, reconocido = _npk_resolver(prod)
         n = _kg_nutriente_aplicado(kg_fert, "kg", pct_n)
         p = _kg_nutriente_aplicado(kg_fert, "kg", pct_p)
         k = _kg_nutriente_aplicado(kg_fert, "kg", pct_k)
-        if pct_n == pct_p == pct_k == 0.0 and kg_fert > 0:
+        if not reconocido and kg_fert > 0:
             sin_analisis[prod] = sin_analisis.get(prod, 0.0) + kg_fert
         bucket = por_huerto.setdefault(
             h,

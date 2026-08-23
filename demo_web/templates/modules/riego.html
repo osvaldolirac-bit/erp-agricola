@@ -388,14 +388,10 @@
   <div class="panel-card mb-3">
     <div class="alert alert-info py-2 small mb-3 riego-npk-ayuda">
       <strong>Balance NPK del historial.</strong>
-      Suma lo <em>aplicado</em> en fertirriego (registros autorizados), no lo que hay hoy en bodega.
-      El catálogo técnico incluye fuentes comunes de fertirriego — <strong>no todas están en bodega aún</strong>;
-      irán ingresando según se necesiten.
-      Cuando un producto nuevo se use en un riego, el ERP lo identifica automáticamente si:
-      (1) el nombre en bodega trae la fórmula (ej. <code>Kristalon 20-20-20</code>),
-      (2) coincide con un nombre estándar (UREA, MAP, nitrato de potasio…), o
-      (3) es UAN (<code>UAN-32</code>).
-      Los que no aporten N, P ni K (correctores, micronutrientes) no suman; los demás sin reconocer aparecen avisados abajo.
+      Suma lo <em>aplicado</em> en fertirriego (registros autorizados), no el stock actual de bodega.
+      El catálogo técnico cubre fuentes habituales de fertirriego; irán ingresando a bodega según se necesiten.
+      El módulo interpreta el <strong>nombre tal como está en bodega</strong> (sin renombrar) para imputar N, P₂O₅ o K₂O.
+      Correctores y micronutrientes sin macro NPK no suman; fertilizantes aún no mapeados se listan abajo.
     </div>
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
       <h2 class="h6 mb-0">Nutrientes aplicados (fertilización)</h2>
@@ -457,8 +453,8 @@
     {% endif %}
     {% if npk_resumen.sin_analisis %}
     <p class="small text-warning mb-0 mt-2">
-      <strong>Pendiente de análisis NPK:</strong> {{ npk_resumen.sin_analisis|join(', ') }}.
-      Al dar de alta en bodega, incluya la fórmula en el nombre (ej. 15-5-30) o solicite agregar el producto al catálogo.
+      <strong>Sin mapeo NPK aún:</strong> {{ npk_resumen.sin_analisis|join(', ') }}.
+      Al usarse en riego, avise para incorporar el producto al catálogo del módulo (sin cambiar el nombre en bodega).
     </p>
     {% endif %}
   </div>
