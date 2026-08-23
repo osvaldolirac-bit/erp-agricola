@@ -324,6 +324,152 @@ def _npk_producto(nombre: str) -> tuple[float, float, float]:
     return (n, p, k)
 
 
+def _ensure_riego_fertilizante_npk(conn: sqlite3.Connection) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS riego_fertilizante_npk (
+               producto_id INTEGER PRIMARY KEY,
+               producto TEXT NOT NULL,
+               n_pct REAL NOT NULL DEFAULT 0,
+               p_pct REAL NOT NULL DEFAULT 0,
+               k_pct REAL NOT NULL DEFAULT 0,
+               reconocido INTEGER NOT NULL DEFAULT 0,
+               actualizado_en TEXT NOT NULL DEFAULT (datetime('now'))
+           )"""
+    )
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(riego_fertilizantes)").fetchall()}
+    for col, ddl in (
+        ("n_pct", "ALTER TABLE riego_fertilizantes ADD COLUMN n_pct REAL"),
+        ("p_pct", "ALTER TABLE riego_fertilizantes ADD COLUMN p_pct REAL"),
+        ("k_pct", "ALTER TABLE riego_fertilizantes ADD COLUMN k_pct REAL"),
+        ("npk_reconocido", "ALTER TABLE riego_fertilizantes ADD COLUMN npk_reconocido INTEGER DEFAULT 0"),
+    ):
+        if col not in cols:
+            conn.execute(ddl)
+
+
+def _upsert_npk_producto(
+    conn: sqlite3.Connection,
+    producto_id: int,
+    nombre: str,
+    n_pct: float,
+    p_pct: float,
+    k_pct: float,
+) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn) or producto_id <= 0:
+        return
+    conn.execute(
+        """INSERT INTO riego_fertilizante_npk
+           (producto_id, producto, n_pct, p_pct, k_pct, reconocido, actualizado_en)
+           VALUES (?,?,?,?,?,1,datetime('now'))
+           ON CONFLICT(producto_id) DO UPDATE SET
+             producto=excluded.producto,
+             n_pct=excluded.n_pct,
+             p_pct=excluded.p_pct,
+             k_pct=excluded.k_pct,
+             reconocido=1,
+             actualizado_en=datetime('now')""",
+        (producto_id, str(nombre or "").strip(), float(n_pct), float(p_pct), float(k_pct)),
+    )
+
+
+def _npk_desde_inventario(
+    conn: sqlite3.Connection, producto_id: int
+) -> tuple[float, float, float] | None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(inventario)").fetchall()}
+    if not {"n_pct", "p_pct", "k_pct"}.issubset(cols):
+        return None
+    row = conn.execute(
+        "SELECT n_pct, p_pct, k_pct FROM inventario WHERE id=?",
+        (producto_id,),
+    ).fetchone()
+    if not row:
+        return None
+    n, p, k = (float(row[i] or 0) for i in range(3))
+    if n == p == k == 0.0:
+        return None
+    return (n, p, k)
+
+
+def _npk_desde_cache_producto(
+    conn: sqlite3.Connection, producto_id: int
+) -> tuple[float, float, float] | None:
+    row = conn.execute(
+        """SELECT n_pct, p_pct, k_pct FROM riego_fertilizante_npk
+           WHERE producto_id=? AND COALESCE(reconocido, 0)=1""",
+        (producto_id,),
+    ).fetchone()
+    if not row:
+        return None
+    return (float(row[0] or 0), float(row[1] or 0), float(row[2] or 0))
+
+
+def npk_para_producto(
+    conn: sqlite3.Connection, producto_id: int, nombre: str
+) -> tuple[float, float, float, bool]:
+    """Interpreta NPK al aplicar: caché por id → inventario → catálogo por nombre."""
+    pid = int(producto_id or 0)
+    nom = str(nombre or "").strip()
+    if pid > 0:
+        cached = _npk_desde_cache_producto(conn, pid)
+        if cached is not None:
+            return (*cached, True)
+        inv = _npk_desde_inventario(conn, pid)
+        if inv is not None:
+            _upsert_npk_producto(conn, pid, nom, *inv)
+            return (*inv, True)
+    n, p, k, recon = _npk_resolver(nom)
+    if recon and pid > 0:
+        _upsert_npk_producto(conn, pid, nom, n, p, k)
+    return (n, p, k, recon)
+
+
+def sincronizar_npk_fertilizantes_bodega(conn: sqlite3.Connection) -> int:
+    """Pre-mapea todos los fertilizantes de bodega (familia FERTILIZANTE)."""
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return 0
+    _ensure_riego_fertilizante_npk(conn)
+    placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+    rows = conn.execute(
+        f"""SELECT id, producto FROM inventario
+            WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})""",
+        _FAMILIAS_FERTILIZANTE,
+    ).fetchall()
+    n = 0
+    for pid, nombre in rows:
+        _, _, _, recon = npk_para_producto(conn, int(pid), str(nombre or ""))
+        if recon:
+            n += 1
+    return n
+
+
+def _backfill_npk_riego_fertilizantes(conn: sqlite3.Connection) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return
+    rows = conn.execute(
+        """SELECT id, producto_id, producto, COALESCE(npk_reconocido, 0)
+           FROM riego_fertilizantes
+           WHERE COALESCE(npk_reconocido, 0)=0 OR n_pct IS NULL"""
+    ).fetchall()
+    for rid, pid, nombre, _ in rows:
+        n, p, k, recon = npk_para_producto(conn, int(pid or 0), str(nombre or ""))
+        conn.execute(
+            """UPDATE riego_fertilizantes
+               SET n_pct=?, p_pct=?, k_pct=?, npk_reconocido=?
+               WHERE id=?""",
+            (n, p, k, 1 if recon else 0, rid),
+        )
+
+
 def _kg_nutriente_aplicado(cantidad: float, unidad: str | None, pct: float) -> float:
     """kg nutriente = kg fertilizante × (% riqueza / 100)."""
     kg = _cantidad_kg_fertilizante(cantidad, unidad)
@@ -369,20 +515,26 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
     demo = get_demo_module()
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
     rows = conn.execute(
-        """SELECT r.huerto, rf.producto, rf.cantidad, rf.unidad
+        """SELECT r.huerto, rf.producto, rf.producto_id, rf.cantidad, rf.unidad,
+                  rf.n_pct, rf.p_pct, rf.k_pct, COALESCE(rf.npk_reconocido, 0)
            FROM riego r
            INNER JOIN riego_fertilizantes rf ON rf.codigo = r.codigo
            WHERE COALESCE(rf.cantidad, 0) > 0"""
     ).fetchall()
     por_huerto: dict[str, dict[str, float]] = {}
     sin_analisis: dict[str, float] = {}
-    for huerto, producto, cantidad, unidad in rows:
+    for huerto, producto, producto_id, cantidad, unidad, n_pct, p_pct, k_pct, npk_rec in rows:
         h = _norm_cc(huerto)
         if not h or h == "—":
             continue
         prod = str(producto or "").strip()
+        pid = int(producto_id or 0)
         kg_fert = _cantidad_kg_fertilizante(float(cantidad or 0), unidad)
-        pct_n, pct_p, pct_k, reconocido = _npk_resolver(prod)
+        if int(npk_rec or 0) and n_pct is not None and p_pct is not None and k_pct is not None:
+            pct_n, pct_p, pct_k = float(n_pct), float(p_pct), float(k_pct)
+            reconocido = True
+        else:
+            pct_n, pct_p, pct_k, reconocido = npk_para_producto(conn, pid, prod)
         n = _kg_nutriente_aplicado(kg_fert, "kg", pct_n)
         p = _kg_nutriente_aplicado(kg_fert, "kg", pct_p)
         k = _kg_nutriente_aplicado(kg_fert, "kg", pct_k)
@@ -591,19 +743,28 @@ def _validar_lineas_fertilizantes(
 def _guardar_fertilizantes(
     conn: sqlite3.Connection, codigo: str, lineas: list[dict[str, Any]]
 ) -> None:
+    _ensure_riego_fertilizante_npk(conn)
     conn.execute("DELETE FROM riego_fertilizantes WHERE codigo=?", (codigo,))
     for ln in lineas:
+        pid = int(ln.get("producto_id") or 0)
+        nom = str(ln.get("producto") or "")
+        n_pct, p_pct, k_pct, recon = npk_para_producto(conn, pid, nom)
         conn.execute(
             """INSERT INTO riego_fertilizantes
-               (codigo, producto_id, producto, cantidad, dosis_ha, unidad)
-               VALUES (?,?,?,?,?,?)""",
+               (codigo, producto_id, producto, cantidad, dosis_ha, unidad,
+                n_pct, p_pct, k_pct, npk_reconocido)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 codigo,
-                ln["producto_id"],
-                ln["producto"],
+                pid,
+                nom,
                 float(ln["cantidad"]),
                 ln.get("dosis_ha"),
                 ln.get("unidad") or "kg",
+                n_pct,
+                p_pct,
+                k_pct,
+                1 if recon else 0,
             ),
         )
 
@@ -763,6 +924,9 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_riego_fert_codigo ON riego_fertilizantes(codigo)"
         )
+        _ensure_riego_fertilizante_npk(conn)
+        sincronizar_npk_fertilizantes_bodega(conn)
+        _backfill_npk_riego_fertilizantes(conn)
         for tabla in ("riego", "riego_bitacora"):
             cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tabla})").fetchall()}
             if "modo_riego" not in cols:

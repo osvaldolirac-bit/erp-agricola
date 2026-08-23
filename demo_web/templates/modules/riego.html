@@ -390,7 +390,7 @@
       <strong>Balance NPK por centro de costo.</strong>
       Acumulado del historial de fertirriego expresado en <strong>kg/ha</strong>:
       kg nutriente aplicados ÷ superficie (ha) del <strong>prorrateo CC</strong>.
-      El módulo interpreta el nombre de bodega tal cual (sin renombrar).
+      Cada fertilizante se interpreta al aplicar (por id de bodega + catálogo técnico) y queda registrado en el riego.
     </div>
     <h2 class="h6 mb-3">NPK aplicado (kg/ha por CC)</h2>
     <div class="table-responsive">
@@ -434,7 +434,7 @@
     {% if npk_resumen.sin_analisis %}
     <p class="small text-warning mb-0 mt-2">
       <strong>Sin mapeo NPK aún:</strong> {{ npk_resumen.sin_analisis|join(', ') }}.
-      Avise para incorporar al catálogo del módulo (sin cambiar el nombre en bodega).
+      El ERP debe identificar todo fertilizante al aplicarse; avise para agregar este producto al catálogo del módulo.
     </p>
     {% endif %}
   </div>
