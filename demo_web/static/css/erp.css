@@ -391,6 +391,13 @@ body.demo-body {
 .kpi-danger .kpi-value { color: #c62828; }
 .kpi-warn .kpi-value { color: #ef6c00; }
 
+.riego-npk-kpi { border-left-width: 4px; border-left-style: solid; }
+.riego-npk-n { border-left-color: #2e7d32; }
+.riego-npk-p { border-left-color: #1565c0; }
+.riego-npk-k { border-left-color: #ef6c00; }
+.riego-npk-tabla th,
+.riego-npk-tabla td { font-size: 0.875rem; }
+
 .panel-card {
   background: #fff;
   border: 1px solid #e0e0e0;
@@ -1982,6 +1989,20 @@ body.erp-ios .erp-pdf-viewer-object {
 .registro-riego-fert-toggle:has(input:focus-visible) {
   outline: 2px solid rgba(21, 101, 192, 0.45);
   outline-offset: 2px;
+}
+
+.riego-links-demo .riego-link-demo-row td,
+.riego-links-demo .js-link-personal {
+  opacity: 0.38;
+}
+
+.riego-links-demo .js-link-personal {
+  background-color: rgba(248, 249, 250, 0.6);
+  color: #6c757d;
+}
+
+.riego-links-demo .btn {
+  opacity: 0.45;
 }
 
 /* Petróleo — salida manual (formulario ordenado) */

@@ -14,6 +14,19 @@ from demo_web.services.demo_loader import get_demo_module, get_erp_app
 
 _CODIGO_RE = re.compile(r"^RIE-(\d+)$", re.I)
 _FAMILIAS_FERTILIZANTE = ("FERTILIZANTE",)
+# Análisis N-P₂O₅-K₂O (% en etiqueta) por palabras clave en nombre de producto.
+_FERTILIZANTE_NPK: tuple[tuple[tuple[str, ...], tuple[float, float, float]], ...] = (
+    (("UREA",), (46.0, 0.0, 0.0)),
+    (("MONOAMONIO", "MAP"), (11.0, 52.0, 0.0)),
+    (("DIAMONIO", "DAP"), (18.0, 46.0, 0.0)),
+    (("NITRATO DE CALCIO", "CALCINIT"), (15.5, 0.0, 0.0)),
+    (("NITRATO DE POTASIO", "NITRATO POTASIO"), (13.0, 0.0, 46.0)),
+    (("SULFATO DE POTASIO", "SOP"), (0.0, 0.0, 50.0)),
+    (("CLORURO DE POTASIO", "MOP"), (0.0, 0.0, 60.0)),
+    (("FOSFATO MONOPOTASICO", "MKP"), (0.0, 52.0, 34.0)),
+    (("NITROFOSFA", "NPK"), (15.0, 15.0, 15.0)),
+    (("CALCIO BORO", "BORO FOLIAR"), (0.0, 0.0, 0.0)),
+)
 
 
 def _conn() -> sqlite3.Connection:
@@ -231,11 +244,78 @@ def resolver_m3_registro(
     return float(m3_manual or 0), None
 
 
+def _norm_nombre_fertilizante(nombre: str) -> str:
+    return re.sub(r"\s+", " ", str(nombre or "").strip().upper())
+
+
+def _npk_producto(nombre: str) -> tuple[float, float, float]:
+    """Retorna % N, P₂O₅, K₂O según nombre de producto (0 si no reconocido)."""
+    n = _norm_nombre_fertilizante(nombre)
+    if not n:
+        return (0.0, 0.0, 0.0)
+    for keys, npk in _FERTILIZANTE_NPK:
+        if any(k in n for k in keys):
+            return npk
+    return (0.0, 0.0, 0.0)
+
+
+def _cantidad_kg_fertilizante(cantidad: float, unidad: str | None) -> float:
+    u = str(unidad or "kg").strip().lower()
+    if u in ("lt", "l", "litro", "litros"):
+        return float(cantidad or 0)
+    return float(cantidad or 0)
+
+
+def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Suma N, P₂O₅ y K₂O (kg) aplicados vía fertilización en historial de riego."""
+    migrar_tabla(conn)
+    demo = get_demo_module()
+    f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
+    rows = conn.execute(
+        """SELECT r.huerto, rf.producto, rf.cantidad, rf.unidad
+           FROM riego r
+           INNER JOIN riego_fertilizantes rf ON rf.codigo = r.codigo
+           WHERE COALESCE(rf.cantidad, 0) > 0"""
+    ).fetchall()
+    por_huerto: dict[str, dict[str, Any]] = {}
+    totales = {"n": 0.0, "p": 0.0, "k": 0.0}
+    for huerto, producto, cantidad, unidad in rows:
+        h = str(huerto or "—").strip() or "—"
+        kg = _cantidad_kg_fertilizante(float(cantidad or 0), unidad)
+        pct_n, pct_p, pct_k = _npk_producto(str(producto or ""))
+        n = kg * pct_n / 100.0
+        p = kg * pct_p / 100.0
+        k = kg * pct_k / 100.0
+        bucket = por_huerto.setdefault(
+            h,
+            {"huerto": h, "n": 0.0, "p": 0.0, "k": 0.0},
+        )
+        bucket["n"] += n
+        bucket["p"] += p
+        bucket["k"] += k
+        totales["n"] += n
+        totales["p"] += p
+        totales["k"] += k
+    filas = sorted(por_huerto.values(), key=lambda x: str(x["huerto"]))
+    for row in filas:
+        row["n_fmt"] = f_cant(row["n"])
+        row["p_fmt"] = f_cant(row["p"])
+        row["k_fmt"] = f_cant(row["k"])
+    return {
+        "filas": filas,
+        "totales": totales,
+        "n_fmt": f_cant(totales["n"]),
+        "p_fmt": f_cant(totales["p"]),
+        "k_fmt": f_cant(totales["k"]),
+        "tiene_datos": bool(filas),
+    }
+
+
 def _fmt_modo_riego(modo: str | None, surcos: float | None, demo) -> str:
     modo_n = (modo or "horas").strip().lower()
     if modo_n == "surcos":
-        return "Surcos (40 m³/h·ha)"
-    return "Horas"
+        return "Por surco"
+    return "Tecnificado"
 
 
 def fertilizantes_bodega_para_formulario() -> list[dict[str, Any]]:
@@ -1264,6 +1344,28 @@ def contar_pendientes(conn) -> int:
            WHERE LOWER(COALESCE(estado, 'pendiente')) = 'pendiente'"""
     ).fetchone()
     return int(row[0] or 0) if row else 0
+
+
+def links_personales_regadores_demo() -> list[dict[str, str]]:
+    """Enlaces visibles en DEMO — URL ficticia, no registra riego real."""
+    migrar_tabla()
+    out: list[dict[str, str]] = []
+    for r in regadores_autorizados_para_formulario():
+        op_id = str(r.get("id") or "").strip()
+        nombre = str(r.get("nombre") or "").strip()
+        if not op_id or not nombre:
+            continue
+        url = url_publica("demo-enlace-ejemplo-no-valido", op=op_id)
+        out.append(
+            {
+                "id": op_id,
+                "nombre": nombre,
+                "url": url,
+                "wa_url": "#",
+                "demo_falso": True,
+            }
+        )
+    return out
 
 
 def links_personales_regadores() -> list[dict[str, str]]:

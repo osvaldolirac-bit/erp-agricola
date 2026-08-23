@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import flash, render_template, request
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module
 from demo_web.services.native._helpers import hoy_demo, parse_date
 
@@ -23,9 +24,11 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         habilitado,
         huertos_para_formulario,
         links_personales_regadores,
+        links_personales_regadores_demo,
         listar_bitacora,
         listar_config_riego_cc,
         listar_historial,
+        resumen_npk_por_huerto,
     )
 
     sec = request.values.get("sec") or request.args.get("sec", "historial")
@@ -52,14 +55,23 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
 
         if sec == "historial":
             ctx["historial_rows"] = listar_historial(conn)
+            ctx["npk_resumen"] = resumen_npk_por_huerto(conn)
         elif sec == "bitacora" and habilitado():
+            es_demo = get_erp_app() == "demo"
             ctx.update(
                 {
                     "bitacora_habilitada": True,
                     "bitacora_admin_links": demo.es_super_admin(),
                     "bitacora_puede_autorizar": demo.es_admin() and not demo.es_solo_lectura(),
                     "bitacora_registros": listar_bitacora(conn),
-                    "bitacora_links": links_personales_regadores() if demo.es_super_admin() else [],
+                    "bitacora_links": (
+                        links_personales_regadores_demo()
+                        if es_demo and demo.es_super_admin()
+                        else links_personales_regadores()
+                        if demo.es_super_admin()
+                        else []
+                    ),
+                    "bitacora_links_demo": es_demo,
                     "riego_config_rows": listar_config_riego_cc() if demo.es_super_admin() else [],
                 }
             )

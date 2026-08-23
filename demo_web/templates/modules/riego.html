@@ -48,9 +48,9 @@
         <label class="form-label small d-block">Tipo de registro</label>
         <div class="btn-group btn-group-sm" role="group">
           <input type="radio" class="btn-check" name="modo_riego" id="manualModoHoras" value="horas" checked>
-          <label class="btn btn-outline-primary" for="manualModoHoras">Todo el huerto</label>
+          <label class="btn btn-outline-primary" for="manualModoHoras">Tecnificado</label>
           <input type="radio" class="btn-check" name="modo_riego" id="manualModoSurcos" value="surcos">
-          <label class="btn btn-outline-primary" for="manualModoSurcos">Por surcos (40 m³/h·ha)</label>
+          <label class="btn btn-outline-primary" for="manualModoSurcos">Por surco</label>
         </div>
         <p id="manualCoefHint" class="small text-muted mb-0 mt-1"></p>
       </div>
@@ -259,20 +259,27 @@
       e imputa el valor al mismo centro de costo.
     </div>
     {% if bitacora_admin_links %}
-    <div class="mb-3">
+    <div class="mb-3{% if bitacora_links_demo %} riego-links-demo{% endif %}">
       <h3 class="h6">Enlaces personales regador</h3>
+      {% if bitacora_links_demo %}
+      <p class="small text-muted mb-2">Vista demo: enlaces ficticios (solo referencia visual).</p>
+      {% endif %}
       {% if bitacora_links %}
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle mb-0">
           <thead><tr><th>Regador</th><th>Enlace</th><th></th></tr></thead>
           <tbody>
             {% for op in bitacora_links %}
-            <tr>
+            <tr class="{% if bitacora_links_demo %}riego-link-demo-row{% endif %}">
               <td><strong>{{ op.nombre }}</strong></td>
-              <td><input type="text" class="form-control form-control-sm font-monospace js-link-personal" id="linkRie-{{ loop.index }}" value="{{ op.url }}" readonly></td>
+              <td><input type="text" class="form-control form-control-sm font-monospace js-link-personal" id="linkRie-{{ loop.index }}" value="{{ op.url }}" readonly{% if bitacora_links_demo %} tabindex="-1"{% endif %}></td>
               <td class="text-nowrap">
-                <button type="button" class="btn btn-sm btn-outline-primary js-copiar-link" data-target="linkRie-{{ loop.index }}">Copiar</button>
+                <button type="button" class="btn btn-sm btn-outline-primary js-copiar-link" data-target="linkRie-{{ loop.index }}"{% if bitacora_links_demo %} disabled title="Solo demo"{% endif %}>Copiar</button>
+                {% if bitacora_links_demo %}
+                <span class="btn btn-sm btn-outline-success disabled" aria-disabled="true">WhatsApp</span>
+                {% else %}
                 <a class="btn btn-sm btn-outline-success" href="{{ op.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -287,7 +294,7 @@
     <div class="mb-3">
       <h3 class="h6">Parámetros de riego por huerto</h3>
       <p class="small text-muted mb-2">
-        <strong>Todo el huerto:</strong> m³ = horas × m³/h·ha × ha (prorrateo).
+        <strong>Tecnificado:</strong> m³ = horas × m³/h·ha × ha (prorrateo).
         <strong>Por surcos:</strong> m³ = horas × 40 m³/h·ha × ha (prorrateo).
       </p>
       <div class="table-responsive">
@@ -299,12 +306,12 @@
             {% for row in riego_config_rows %}
             <tr>
               <td><strong>{{ row.centro_costo }}</strong></td>
-              <td class="small">{% if row.solo_surco %}Solo surcos{% else %}Horas y surcos{% endif %}</td>
+              <td class="small">{% if row.solo_surco %}Solo surcos{% else %}Tecnificado y surcos{% endif %}</td>
               <td class="small">
                 {% if row.solo_surco %}
                   40 m³/h·ha
                 {% else %}
-                  {{ row.m3_hr_ha }} m³/h·ha (todo) · 40 m³/h·ha (surcos)
+                  {{ row.m3_hr_ha }} m³/h·ha (tecnificado) · 40 m³/h·ha (surcos)
                 {% endif %}
               </td>
               <td>{{ row.superficie_ha }}</td>
@@ -334,7 +341,7 @@
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha }}</td>
             <td>{{ r.huerto }}</td>
-            <td class="small">{{ r.modo_txt|default('Horas') }}</td>
+            <td class="small">{{ r.modo_txt|default('Tecnificado') }}</td>
             <td>{{ r.horas }}</td>
             <td>{{ r.m3 }}</td>
             <td class="small">{{ r.fert_txt }}</td>
@@ -377,6 +384,68 @@
   </div>
 
   {% elif sec_activa == 'historial' %}
+  {% if npk_resumen %}
+  <div class="panel-card mb-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+      <h2 class="h6 mb-0">Nutrientes aplicados (fertilización)</h2>
+      <span class="small text-muted">kg de N, P₂O₅ y K₂O según historial autorizado</span>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <div class="kpi-card riego-npk-kpi riego-npk-n">
+          <div class="kpi-label">Nitrógeno (N)</div>
+          <div class="kpi-value">{{ npk_resumen.n_fmt }} <span class="fs-6 fw-normal text-muted">kg</span></div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="kpi-card riego-npk-kpi riego-npk-p">
+          <div class="kpi-label">Fósforo (P₂O₅)</div>
+          <div class="kpi-value">{{ npk_resumen.p_fmt }} <span class="fs-6 fw-normal text-muted">kg</span></div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="kpi-card riego-npk-kpi riego-npk-k">
+          <div class="kpi-label">Potasio (K₂O)</div>
+          <div class="kpi-value">{{ npk_resumen.k_fmt }} <span class="fs-6 fw-normal text-muted">kg</span></div>
+        </div>
+      </div>
+    </div>
+    {% if npk_resumen.tiene_datos %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0 riego-npk-tabla">
+        <thead class="table-light">
+          <tr>
+            <th>Huerto (CC)</th>
+            <th class="text-end">N (kg)</th>
+            <th class="text-end">P₂O₅ (kg)</th>
+            <th class="text-end">K₂O (kg)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in npk_resumen.filas %}
+          <tr>
+            <td>{{ row.huerto }}</td>
+            <td class="text-end">{{ row.n_fmt }}</td>
+            <td class="text-end">{{ row.p_fmt }}</td>
+            <td class="text-end">{{ row.k_fmt }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          <tr class="fw-semibold">
+            <td>Total</td>
+            <td class="text-end">{{ npk_resumen.n_fmt }}</td>
+            <td class="text-end">{{ npk_resumen.p_fmt }}</td>
+            <td class="text-end">{{ npk_resumen.k_fmt }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted small mb-0">Sin fertilizantes registrados en el historial.</p>
+    {% endif %}
+  </div>
+  {% endif %}
   <div class="panel-card">
     <h2 class="h6">Historial de riego</h2>
     {% if historial_rows %}
@@ -395,7 +464,7 @@
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha }}</td>
             <td>{{ r.huerto }}</td>
-            <td class="small">{{ r.modo_txt|default('Horas') }}</td>
+            <td class="small">{{ r.modo_txt|default('Tecnificado') }}</td>
             <td>{{ r.horas }}</td>
             <td>{{ r.m3 }}</td>
             <td class="small">{{ r.fert_txt }}</td>
