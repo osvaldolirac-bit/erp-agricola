@@ -1,0 +1,185 @@
+"""Carga app_demo / app_concepcion según tenant de la petición (rubro agrícola)."""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+from demo_web.services.erp_compat import patch_erp_module
+from demo_web.services.streamlit_mock import bind_demo_session, clear_demo_session, install_streamlit_mock
+from demo_web.tenants import TENANTS, get_tenant, list_tenants
+
+_DEMO_WEB_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+if (_DEMO_WEB_ROOT / "app_demo.py").exists() or (_DEMO_WEB_ROOT / "app_concepcion.py").exists():
+    if str(_DEMO_WEB_ROOT) not in sys.path:
+        sys.path.insert(0, str(_DEMO_WEB_ROOT))
+elif (_REPO_ROOT / "app_demo.py").exists() or (_REPO_ROOT / "app_concepcion.py").exists():
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
+
+_erp_modules: dict[str, Any] = {}
+
+
+def _request_tenant_slug() -> str:
+    try:
+        from flask import g, has_request_context, session
+
+        if has_request_context():
+            slug = getattr(g, "tenant_slug", None) or session.get("tenant_slug")
+            if slug:
+                return str(slug).strip().lower()
+    except Exception:
+        pass
+    return ""
+
+
+def current_tenant() -> dict[str, Any] | None:
+    slug = _request_tenant_slug()
+    t = get_tenant(slug)
+    if t:
+        return t
+    # Fallback seguro solo fuera de request (CLI / init)
+    return TENANTS.get("concepcion") or next(iter(TENANTS.values()), None)
+
+
+def get_erp_app() -> str:
+    t = current_tenant()
+    if t:
+        return str(t.get("erp_app") or "demo")
+    return (os.environ.get("ERP_APP") or "demo").strip().lower()
+
+
+def _wrap_registrar_accion(erp: Any) -> None:
+    """Respeta flag bitácora por tenant (Master puede activarla/desactivarla)."""
+    if getattr(erp, "_bitacora_gate_wrapped", False):
+        return
+    original = getattr(erp, "registrar_accion", None)
+    if not callable(original):
+        return
+
+    def registrar_accion(accion, detalle=""):  # noqa: ANN001
+        try:
+            from demo_web.services.mantenimiento import bitacora_erp_activa
+
+            slug = _request_tenant_slug()
+            if not slug:
+                slug = "concepcion" if get_erp_app() == "concepcion" else "demo"
+            if not bitacora_erp_activa(slug):
+                return None
+        except Exception:
+            return None
+        return original(accion, detalle)
+
+    erp.registrar_accion = registrar_accion
+    erp._bitacora_gate_wrapped = True
+
+
+def _load_module(erp_app: str) -> Any:
+    install_streamlit_mock()
+    if erp_app == "concepcion":
+        import app_concepcion as erp  # noqa: WPS433
+    else:
+        import app_demo as erp  # noqa: WPS433
+    patch_erp_module(erp, erp_app)
+    _wrap_registrar_accion(erp)
+    return erp
+
+
+def get_erp_module() -> Any:
+    t = current_tenant()
+    erp_app = str((t or {}).get("erp_app") or get_erp_app())
+    if erp_app not in _erp_modules:
+        _erp_modules[erp_app] = _load_module(erp_app)
+    erp = _erp_modules[erp_app]
+    if t:
+        erp.NOMBRE_DB = t["db"]
+        erp.SECRETS_PATH = t["secrets"]
+        os.environ["ERP_DB"] = t["db"]
+        os.environ["ERP_DEMO_DB"] = t["db"]
+        os.environ["ERP_SECRETS"] = t["secrets"]
+        os.environ["ERP_DEMO_SECRETS"] = t["secrets"]
+        os.environ["ERP_APP"] = erp_app
+        try:
+            from demo_web.services.streamlit_mock import set_secrets_path
+
+            set_secrets_path(t["secrets"])
+        except Exception:
+            pass
+    return erp
+
+
+def get_erp_module_for(slug: str) -> Any:
+    """Carga módulo ligado a un tenant concreto (login multi-DB)."""
+    t = get_tenant(slug)
+    if not t:
+        raise KeyError(f"tenant desconocido: {slug}")
+    erp_app = t["erp_app"]
+    if erp_app not in _erp_modules:
+        _erp_modules[erp_app] = _load_module(erp_app)
+    erp = _erp_modules[erp_app]
+    erp.NOMBRE_DB = t["db"]
+    erp.SECRETS_PATH = t["secrets"]
+    return erp
+
+
+def bind_tenant_context(slug: str | None) -> dict[str, Any] | None:
+    """Fija g.tenant_slug y prepara módulo/DB para la petición."""
+    from flask import g
+
+    t = get_tenant(slug)
+    g.tenant_slug = t["slug"] if t else None
+    g.tenant = t
+    if t:
+        get_erp_module_for(t["slug"])
+        os.environ["ERP_APP"] = t["erp_app"]
+        os.environ["ERP_DB"] = t["db"]
+        os.environ["ERP_DEMO_DB"] = t["db"]
+    return t
+
+
+def invalidate_erp_module() -> None:
+    _erp_modules.clear()
+
+
+def init_erp_db() -> None:
+    for t in list_tenants():
+        erp = get_erp_module_for(t["slug"])
+        if t["erp_app"] == "demo":
+            try:
+                erp.inicializar_db()
+            except Exception:
+                pass
+
+
+def bind_user_session(email: str, rol: str, **extra: Any) -> Any:
+    erp = get_erp_module()
+    rol_norm = erp.normalizar_rol_usuario(rol, email) if hasattr(erp, "normalizar_rol_usuario") else rol
+    session_extra = dict(extra)
+    if get_erp_app() == "concepcion":
+        conn = erp.conectar_db()
+        try:
+            try:
+                row = conn.execute(
+                    "SELECT COALESCE(solo_lectura,0) FROM usuarios WHERE lower(email)=lower(?)",
+                    (email,),
+                ).fetchone()
+                solo_lectura = bool(row[0]) if row else False
+            except Exception:
+                solo_lectura = False
+            session_extra["solo_lectura"] = solo_lectura or rol_norm == "lector"
+        finally:
+            conn.close()
+    return bind_demo_session(email, rol_norm, **session_extra)
+
+
+def clear_user_session() -> None:
+    clear_demo_session()
+
+
+# Alias histórico demo
+get_demo_module = get_erp_module
+invalidate_demo_module = invalidate_erp_module
+init_demo_db = init_erp_db
