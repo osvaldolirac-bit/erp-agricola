@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Elegir empresa — {{ erp_title|default('ERP Agrícola', true) }}{% endblock %}
+{% block content %}
+<section class="login-page login-page--industrial" aria-label="Elegir empresa">
+  <div class="login-bg" aria-hidden="true">
+    <div class="login-bg-photo"></div>
+    <div class="login-bg-rows"></div>
+    <div class="login-bg-steel"></div>
+  </div>
+  <div class="login-scrim" aria-hidden="true"></div>
+
+  {% if logo_url %}
+  <div class="login-logo-corner">
+    <img src="{{ logo_url }}" alt="{{ erp_brand }}" class="logo-login">
+  </div>
+  {% endif %}
+
+  <main class="login-hero login-hero-select">
+    <h1>Elegir empresa</h1>
+    <p>{{ email }} tiene acceso a más de un ERP. ¿A cuál quieres entrar?</p>
+    <form method="post" class="tenant-pick">
+      {% for o in options %}
+      <button class="tenant-pick-item" type="submit" name="tenant_slug" value="{{ o.slug }}">
+        <strong>{{ o.nombre }}</strong>
+        <span>{{ o.descripcion or o.rol }}</span>
+      </button>
+      {% endfor %}
+    </form>
+    <p class="login-select-back"><a href="{{ url_for('auth.login') }}">Volver al acceso</a></p>
+  </main>
+</section>
+{% endblock %}
