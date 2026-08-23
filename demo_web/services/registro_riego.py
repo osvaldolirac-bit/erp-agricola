@@ -60,7 +60,7 @@ RIEGO_M3_HR_HA: dict[str, float] = {
     "CIRUELOS": 18.0,
     "NOGALES APARICION": 34.0,
 }
-# Solo riego por surco: m³ = horas × 40 (sin preguntar cantidad de surcos)
+# Riego por surco: m³ = horas × 40 m³/h·ha × ha (prorrateo)
 RIEGO_SOLO_SURCO: frozenset[str] = frozenset({"NOGALES CRUZ DEL SUR"})
 RIEGO_M3_HR_SURCO = 40.0
 
@@ -160,7 +160,7 @@ def config_riego_cc_para_formulario() -> dict[str, dict[str, float | bool]]:
             out[cc] = {
                 "m3_hr_ha": float(RIEGO_M3_HR_HA.get(cc, 0)),
                 "m3_hr_surco": float(RIEGO_M3_HR_SURCO),
-                "ha": _cargar_superficie_ha(conn, cc) if not solo else 0.0,
+                "ha": _cargar_superficie_ha(conn, cc),
                 "solo_surco": solo,
             }
         return out
@@ -180,7 +180,7 @@ def listar_config_riego_cc() -> list[dict[str, Any]]:
                     "centro_costo": cc,
                     "m3_hr_ha": RIEGO_M3_HR_HA.get(cc),
                     "m3_hr_surco": RIEGO_M3_HR_SURCO,
-                    "superficie_ha": _cargar_superficie_ha(conn, cc) if not solo else None,
+                    "superficie_ha": _cargar_superficie_ha(conn, cc),
                     "solo_surco": solo,
                 }
             )
@@ -202,15 +202,15 @@ def calcular_m3_riego(
         return 0.0, ""
     if horas <= 0:
         return 0.0, "Indique horas de riego mayores a cero."
-    modo_n = _modo_efectivo(cc, modo)
-    if modo_n == "surcos":
-        return round(horas * RIEGO_M3_HR_SURCO, 2), ""
-    coef = RIEGO_M3_HR_HA.get(cc)
-    if coef is None:
-        return round(horas * RIEGO_M3_HR_SURCO, 2), ""
     ha = _cargar_superficie_ha(conn, cc)
     if ha <= 0:
         return 0.0, f"No hay superficie (ha) en prorrateo de costos para {cc}."
+    modo_n = _modo_efectivo(cc, modo)
+    if modo_n == "surcos":
+        return round(horas * RIEGO_M3_HR_SURCO * ha, 2), ""
+    coef = RIEGO_M3_HR_HA.get(cc)
+    if coef is None:
+        return round(horas * RIEGO_M3_HR_SURCO * ha, 2), ""
     return round(horas * coef * ha, 2), ""
 
 
@@ -238,7 +238,7 @@ def resolver_m3_registro(
 def _fmt_modo_riego(modo: str | None, surcos: float | None, demo) -> str:
     modo_n = (modo or "horas").strip().lower()
     if modo_n == "surcos":
-        return "Surcos (40 m³/h)"
+        return "Surcos (40 m³/h·ha)"
     return "Horas"
 
 

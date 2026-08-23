@@ -50,12 +50,12 @@
           <input type="radio" class="btn-check" name="modo_riego" id="manualModoHoras" value="horas" checked>
           <label class="btn btn-outline-primary" for="manualModoHoras">Todo el huerto</label>
           <input type="radio" class="btn-check" name="modo_riego" id="manualModoSurcos" value="surcos">
-          <label class="btn btn-outline-primary" for="manualModoSurcos">Por surcos (40 m³/h)</label>
+          <label class="btn btn-outline-primary" for="manualModoSurcos">Por surcos (40 m³/h·ha)</label>
         </div>
         <p id="manualCoefHint" class="small text-muted mb-0 mt-1"></p>
       </div>
       <div class="col-12" id="manualSoloSurcoHint" style="display:none">
-        <div class="alert alert-info py-2 small mb-0">Este huerto es solo riego por surcos — ingrese horas; m³ = 40 × horas.</div>
+        <div class="alert alert-info py-2 small mb-0">Este huerto es solo riego por surcos — m³ = 40 m³/h·ha × ha (prorrateo) × horas.</div>
       </div>
       <div class="col-md-2">
         <label class="form-label small">Horas riego</label>
@@ -150,12 +150,12 @@
         m3El.readOnly = true;
         if (m3Tag) m3Tag.style.display = 'inline';
         var m3 = (modoSel() === 'surcos')
-          ? horas * (conf.m3_hr_surco || 40)
+          ? horas * (conf.m3_hr_surco || 40) * conf.ha
           : horas * conf.m3_hr_ha * conf.ha;
         m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : 0;
         if (m3Hint) {
           var hint = (modoSel() === 'surcos')
-            ? (conf.m3_hr_surco || 40) + ' m³/h × ' + horas + ' h'
+            ? conf.ha + ' ha × ' + (conf.m3_hr_surco || 40) + ' m³/h·ha × ' + horas + ' h'
             : conf.m3_hr_ha + ' m³/h·ha × ' + conf.ha + ' ha (prorrateo) × ' + horas + ' h';
           m3Hint.textContent = 'Calculado: ' + hint;
           m3Hint.style.display = horas > 0 ? 'block' : 'none';
@@ -169,7 +169,7 @@
         if (soloSurcoHint) soloSurcoHint.style.display = solo ? 'block' : 'none';
         if (coefHint && conf && !solo) {
           coefHint.textContent = (modoSel() === 'surcos')
-            ? (conf.m3_hr_surco || 40) + ' m³/h (surcos)'
+            ? (conf.m3_hr_surco || 40) + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)'
             : conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
         }
         recalcM3();
@@ -288,7 +288,7 @@
       <h3 class="h6">Parámetros de riego por huerto</h3>
       <p class="small text-muted mb-2">
         <strong>Todo el huerto:</strong> m³ = horas × m³/h·ha × ha (prorrateo).
-        <strong>Por surcos:</strong> m³ = 40 × horas (sin preguntar cantidad de surcos).
+        <strong>Por surcos:</strong> m³ = horas × 40 m³/h·ha × ha (prorrateo).
       </p>
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle mb-0">
@@ -302,12 +302,12 @@
               <td class="small">{% if row.solo_surco %}Solo surcos{% else %}Horas y surcos{% endif %}</td>
               <td class="small">
                 {% if row.solo_surco %}
-                  40 m³/h
+                  40 m³/h·ha
                 {% else %}
-                  {{ row.m3_hr_ha }} m³/h·ha · surcos 40 m³/h
+                  {{ row.m3_hr_ha }} m³/h·ha (todo) · 40 m³/h·ha (surcos)
                 {% endif %}
               </td>
-              <td>{{ row.superficie_ha if row.superficie_ha is not none else '—' }}</td>
+              <td>{{ row.superficie_ha }}</td>
             </tr>
             {% endfor %}
           </tbody>

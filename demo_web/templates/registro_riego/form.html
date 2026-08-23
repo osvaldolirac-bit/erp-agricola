@@ -76,13 +76,13 @@
           <label class="btn btn-outline-primary" for="modoHoras">Todo el huerto (horas)</label>
           <input type="radio" class="btn-check" name="modo_riego" id="modoSurcos" value="surcos"
                  {% if form_modo_riego == 'surcos' %}checked{% endif %}>
-          <label class="btn btn-outline-primary" for="modoSurcos">Por surcos (40 m³/h)</label>
+          <label class="btn btn-outline-primary" for="modoSurcos">Por surcos (40 m³/h·ha)</label>
         </div>
         <p id="riegoCoefHint" class="small text-muted mt-2 mb-0"></p>
       </div>
 
       <div id="riegoSoloSurcoHint" class="alert alert-info py-2 small mt-3 d-none">
-        <strong>Riego por surcos</strong> — ingrese solo las horas. m³ = 40 × horas.
+        <strong>Riego por surcos</strong> — ingrese las horas. m³ = 40 m³/h·ha × ha (prorrateo) × horas.
       </div>
 
       <label class="form-label mt-2" for="horas">Horas riego</label>
@@ -296,12 +296,12 @@
       if (m3AutoTag) m3AutoTag.classList.remove('d-none');
       var modo = modoSel();
       var m3 = (modo === 'surcos')
-        ? horas * (conf.m3_hr_surco || 40)
+        ? horas * (conf.m3_hr_surco || 40) * conf.ha
         : horas * conf.m3_hr_ha * conf.ha;
       m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : '';
       if (m3Hint) {
         var txt = (modo === 'surcos')
-          ? (conf.m3_hr_surco || 40) + ' m³/h × ' + horas + ' h'
+          ? conf.ha + ' ha × ' + (conf.m3_hr_surco || 40) + ' m³/h·ha × ' + horas + ' h'
           : conf.ha + ' ha (prorrateo) × ' + conf.m3_hr_ha + ' m³/h·ha × ' + horas + ' h';
         m3Hint.textContent = 'm³ = ' + txt;
         m3Hint.classList.toggle('d-none', !(horas > 0));
@@ -316,7 +316,7 @@
       if (soloSurcoHint) soloSurcoHint.classList.toggle('d-none', !solo);
       if (coefHint && conf && !solo) {
         coefHint.textContent = (modoSel() === 'surcos')
-          ? (conf.m3_hr_surco || 40) + ' m³/h (surcos)'
+          ? (conf.m3_hr_surco || 40) + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)'
           : conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
       }
       if (m3Hint) m3Hint.classList.toggle('d-none', !auto);
