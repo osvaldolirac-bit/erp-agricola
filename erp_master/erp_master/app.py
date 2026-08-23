@@ -265,7 +265,7 @@ def create_app(config_object: type = Config) -> Flask:
         msg = None
         msg_type = "ok"
         sec = (request.args.get("sec") or request.form.get("sec") or "usuarios").strip()
-        allowed_sec = {"usuarios", "modulos", "respaldo", "bitacora"}
+        allowed_sec = {"usuarios", "modulos", "respaldo", "prorrateo", "bitacora"}
         if tenant.get("kind") == "demo":
             allowed_sec.add("plataforma")
         if sec not in allowed_sec:
@@ -302,6 +302,8 @@ def create_app(config_object: type = Config) -> Flask:
                 sec = "modulos"
             elif action.startswith("respaldo"):
                 sec = "respaldo"
+            elif action.startswith("prorrateo"):
+                sec = "prorrateo"
             elif action.startswith("reseed") or action.startswith("bitacora_erp") or action == "plataforma":
                 sec = "plataforma" if tenant.get("kind") == "demo" else (
                     request.form.get("sec") or "usuarios"
@@ -313,6 +315,11 @@ def create_app(config_object: type = Config) -> Flask:
 
         users = tad.list_users(tenant["db"], tenant["kind"])
         respaldo = tad.get_respaldo_config(tenant["db"])
+        prorrateo = (
+            tad.get_prorrateo_cc(tenant["db"], tenant["kind"])
+            if sec == "prorrateo"
+            else None
+        )
         menu = tad.menu_for(tenant["kind"])
         roles = tad.roles_for(tenant["kind"])
         bitacora_rows = list_bitacora(tenant["slug"]) if sec == "bitacora" else []
@@ -356,6 +363,7 @@ def create_app(config_object: type = Config) -> Flask:
             roles=roles,
             menu=menu,
             respaldo=respaldo,
+            prorrateo=prorrateo,
             frecuencias=tad.FRECUENCIAS,
             mod_user_id=uid_int or "",
             mod_email=mod_email,
@@ -442,6 +450,9 @@ def _log_admin_action(
         activo = "activo" if request.form.get("activo") == "1" else "inactivo"
         detalle = f"{email or '—'} · {activo}"
         accion = "RESPALDO"
+    elif action == "prorrateo_guardar":
+        detalle = "Prorrateo CC actualizado"
+        accion = "PRORRATEO_CC"
     elif action == "reseed_demo":
         detalle = "Re-siembra datos ficticios DEMO"
         accion = "RESEED_DEMO"
@@ -547,5 +558,42 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
             request.form.get("freq_datos") or "diario",
             request.form.get("freq_codigo") or "semanal",
         )
+
+    if action == "prorrateo_guardar":
+        pcts: dict[str, float] = {}
+        for key, val in request.form.items():
+            if not key.startswith("pct_"):
+                continue
+            cc = key[4:].replace("_", " ").upper()
+            try:
+                pcts[cc] = float(str(val).replace(",", "."))
+            except (TypeError, ValueError):
+                return False, f"Porcentaje inválido en {cc}."
+        actual = tad.get_prorrateo_cc(db, kind)
+        mapped: dict[str, float] = {}
+        for row in actual.get("rows") or []:
+            cc = row["cc"]
+            key = "pct_" + cc.replace(" ", "_")
+            raw = request.form.get(key)
+            if raw is None or str(raw).strip() == "":
+                continue
+            try:
+                mapped[cc] = float(str(raw).replace(",", "."))
+            except (TypeError, ValueError):
+                return False, f"Porcentaje inválido en {cc}."
+        superficies: dict[str, float] = {}
+        for row in actual.get("rows") or []:
+            cc = row["cc"]
+            ha_key = "ha_" + cc.replace(" ", "_")
+            raw_ha = request.form.get(ha_key)
+            if raw_ha is None or str(raw_ha).strip() == "":
+                continue
+            try:
+                superficies[cc] = float(str(raw_ha).replace(",", "."))
+            except (TypeError, ValueError):
+                return False, f"Superficie inválida en {cc}."
+            if superficies[cc] < 0:
+                return False, f"Superficie negativa en {cc}."
+        return tad.save_prorrateo_cc(db, kind, mapped, superficies)
 
     return False, "Acción no reconocida."

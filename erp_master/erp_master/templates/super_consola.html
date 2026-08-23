@@ -43,6 +43,7 @@
       <nav class="tabs" aria-label="Poderes">
         <a class="{% if sec == 'usuarios' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios') }}">Usuarios</a>
         <a class="{% if sec == 'modulos' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='modulos') }}">Módulos</a>
+        <a class="{% if sec == 'prorrateo' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='prorrateo') }}">Prorrateo CC</a>
         <a class="{% if sec == 'respaldo' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='respaldo') }}">Respaldos</a>
         {% if tenant.kind == 'demo' %}
         <a class="{% if sec == 'plataforma' %}is-active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='plataforma') }}">Plataforma</a>
@@ -80,6 +81,24 @@
           <label class="check-inline">
             <input type="checkbox" name="enviar_invitacion" value="1" checked>
             Enviar invitación por correo
+          </label>
+          {% endif %}
+          <label class="check-inline">
+            <input type="checkbox" name="mail_tesoreria" value="1">
+            Mail tesorería
+          </label>
+          <label class="check-inline">
+            <input type="checkbox" name="mail_riego" value="1">
+            Mail riego (Link)
+          </label>
+          {% if tenant.kind == 'lc' %}
+          <label class="check-inline">
+            <input type="checkbox" name="mail_petroleo" value="1">
+            Mail petróleo (QR)
+          </label>
+          <label class="check-inline">
+            <input type="checkbox" name="solo_lectura" value="1">
+            Solo lectura
           </label>
           {% endif %}
           <div class="form-actions">
@@ -214,6 +233,62 @@
           })();
         </script>
         {% endif %}
+      </section>
+      {% endif %}
+
+      {% if sec == 'prorrateo' and prorrateo %}
+      <section class="admin-block">
+        <h3>Prorrateo CC</h3>
+        <p class="help">
+          Porcentajes de imputación de <strong>costos fijos</strong> (sueldos / RRHH y otros gastos prorrateados del fundo).
+          Deben sumar <strong>100 %</strong>.
+          Superficie en <strong>hectáreas reales</strong> (riego y otros cálculos; no usar % como ha).
+          {% if prorrateo.directos %}
+          Fuera de este reparto (imputación directa): <strong>{{ prorrateo.directos|join(', ') }}</strong>.
+          {% endif %}
+          Aplica a movimientos nuevos; no recalcula históricos.
+        </p>
+        <form method="post" class="form-grid">
+          <input type="hidden" name="action" value="prorrateo_guardar">
+          <input type="hidden" name="sec" value="prorrateo">
+          <div class="table-wrap" style="grid-column:1/-1;">
+            <table class="data">
+              <thead>
+                <tr>
+                  <th>Centro de costo</th>
+                  <th>Prorrateo %</th>
+                  <th>Superficie (ha)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in prorrateo.rows %}
+                <tr>
+                  <td><strong>{{ r.nombre }}</strong></td>
+                  <td>
+                    <input type="number" name="pct_{{ r.cc|replace(' ', '_') }}"
+                           value="{{ '%.4f'|format(r.porcentaje) }}" min="0" max="100" step="0.0001" required
+                           style="max-width:7rem;">
+                  </td>
+                  <td>
+                    <input type="number" name="ha_{{ r.cc|replace(' ', '_') }}"
+                           value="{{ '%.2f'|format(r.superficie_ha|default(0)) }}" min="0" step="0.01"
+                           style="max-width:7rem;" placeholder="ha">
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <p class="help">
+            Suma actual:
+            <strong style="color:{% if prorrateo.ok %}#1b5e20{% else %}#b71c1c{% endif %}">
+              {{ '%.2f'|format(prorrateo.suma) }} %
+            </strong>
+          </p>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Guardar prorrateo</button>
+          </div>
+        </form>
       </section>
       {% endif %}
 

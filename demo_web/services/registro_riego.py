@@ -99,10 +99,6 @@ def _cargar_superficie_ha(conn: sqlite3.Connection, huerto: str) -> float:
             return float(row[0])
     except sqlite3.OperationalError:
         pass
-    demo = get_demo_module()
-    defaults = getattr(demo, "PRORRATEO_CC_DEFAULT", {}) or {}
-    if cc in defaults:
-        return float(defaults[cc])
     return 0.0
 
 

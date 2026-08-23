@@ -653,3 +653,158 @@ def set_mantenimiento(slug: str, activo: bool) -> tuple[bool, str]:
         return False, f"No se pudo actualizar mantención: {exc}"
     estado = "activado" if activo else "desactivado"
     return True, f"Sitio en mantención {estado}."
+
+
+# Defaults de CC prorrateables (Master no depende de app_demo/app_concepcion).
+_PRORRATEO_DEFAULTS: dict[str, dict[str, Any]] = {
+    "demo": {
+        "cuarteles": [
+            "CUARTEL A",
+            "CUARTEL B",
+            "CUARTEL C",
+            "CUARTEL D",
+            "CUARTEL E",
+            "CUARTEL F",
+        ],
+        "default_pct": {},
+        "directos": ["CAMPO B"],
+    },
+    "lc": {
+        "cuarteles": [
+            "CEREZOS CORTE 1",
+            "CEREZOS CORTE 2",
+            "CIRUELOS",
+            "NOGALES APARICION",
+            "NOGALES CRUZ DEL SUR",
+        ],
+        "default_pct": {
+            "CEREZOS CORTE 1": 7.94,
+            "CEREZOS CORTE 2": 7.94,
+            "CIRUELOS": 32.71,
+            "NOGALES APARICION": 32.71,
+            "NOGALES CRUZ DEL SUR": 18.70,
+        },
+        "default_ha": {
+            "CEREZOS CORTE 1": 1.7,
+            "CEREZOS CORTE 2": 1.7,
+            "CIRUELOS": 7.0,
+            "NOGALES APARICION": 7.0,
+            "NOGALES CRUZ DEL SUR": 4.0,
+        },
+        "directos": ["EL ESPINO", "OTROS"],
+    },
+}
+
+
+def _prorrateo_meta(kind: str) -> dict[str, Any]:
+    return dict(_PRORRATEO_DEFAULTS.get(kind) or _PRORRATEO_DEFAULTS["demo"])
+
+
+def _ensure_prorrateo_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS prorrateo_cc (
+            centro_costo TEXT PRIMARY KEY,
+            porcentaje REAL NOT NULL,
+            superficie_ha REAL DEFAULT 0
+        )"""
+    )
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(prorrateo_cc)").fetchall()}
+    if "superficie_ha" not in cols:
+        try:
+            conn.execute(
+                "ALTER TABLE prorrateo_cc ADD COLUMN superficie_ha REAL DEFAULT 0"
+            )
+        except Exception:
+            pass
+
+
+def get_prorrateo_cc(db_path: str, kind: str) -> dict[str, Any]:
+    """Prorrateo % y superficie (ha) por centro de costo."""
+    meta = _prorrateo_meta(kind)
+    cuarteles = list(meta["cuarteles"])
+    default = dict(meta.get("default_pct") or {})
+    default_ha = dict(meta.get("default_ha") or {})
+    with tenant_conn(db_path) as conn:
+        _ensure_prorrateo_table(conn)
+        rows = conn.execute(
+            """SELECT centro_costo, porcentaje, COALESCE(superficie_ha, 0)
+               FROM prorrateo_cc ORDER BY centro_costo"""
+        ).fetchall()
+        pcts = {str(r[0]): float(r[1]) for r in rows} if rows else dict(default)
+        has_ha = {str(r[0]): float(r[2] or 0) for r in rows} if rows else {}
+        extras = [cc for cc in pcts if cc not in cuarteles]
+        if extras:
+            cuarteles = cuarteles + sorted(extras)
+    rows_out = []
+    for cc in cuarteles:
+        ha_val = has_ha.get(cc)
+        if ha_val is None or ha_val <= 0:
+            ha_val = float(default_ha.get(cc, 0) or 0)
+        rows_out.append(
+            {
+                "cc": cc,
+                "nombre": str(cc).title() if str(cc).isupper() else str(cc),
+                "porcentaje": float(pcts.get(cc, default.get(cc, 0)) or 0),
+                "superficie_ha": float(ha_val or 0),
+            }
+        )
+    suma = sum(r["porcentaje"] for r in rows_out)
+    return {
+        "rows": rows_out,
+        "suma": suma,
+        "ok": abs(suma - 100.0) < 0.05,
+        "directos": list(meta.get("directos") or []),
+    }
+
+
+def save_prorrateo_cc(
+    db_path: str,
+    kind: str,
+    porcentajes: dict[str, float],
+    superficies: dict[str, float] | None = None,
+) -> tuple[bool, str]:
+    """Guarda % (suma 100) y superficie ha por CC."""
+    _ = kind
+    if not porcentajes:
+        return False, "Sin centros de costo."
+    try:
+        vals = {str(k): float(v) for k, v in porcentajes.items()}
+    except (TypeError, ValueError):
+        return False, "Porcentajes inválidos."
+    if any(v < 0 for v in vals.values()):
+        return False, "No se permiten porcentajes negativos."
+    suma = sum(vals.values())
+    if abs(suma - 100.0) >= 0.05:
+        return False, f"Los porcentajes deben sumar 100 % (suma actual: {suma:.2f} %)."
+
+    with tenant_conn(db_path) as conn:
+        _ensure_prorrateo_table(conn)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(prorrateo_cc)").fetchall()}
+        has_ha = "superficie_ha" in cols
+        ha_map: dict[str, float] = {}
+        if has_ha:
+            for r in conn.execute(
+                "SELECT centro_costo, COALESCE(superficie_ha, 0) FROM prorrateo_cc"
+            ).fetchall():
+                ha_map[str(r[0])] = float(r[1] or 0)
+
+        superficies = superficies or {}
+        for cc, pct in vals.items():
+            ha = float(superficies.get(cc, ha_map.get(cc, 0)) or 0)
+            if has_ha:
+                conn.execute(
+                    """INSERT INTO prorrateo_cc (centro_costo, porcentaje, superficie_ha)
+                       VALUES (?,?,?)
+                       ON CONFLICT(centro_costo) DO UPDATE SET
+                         porcentaje=excluded.porcentaje,
+                         superficie_ha=excluded.superficie_ha""",
+                    (cc, float(pct), ha),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO prorrateo_cc (centro_costo, porcentaje) VALUES (?,?) "
+                    "ON CONFLICT(centro_costo) DO UPDATE SET porcentaje=excluded.porcentaje",
+                    (cc, float(pct)),
+                )
+    detalle = ", ".join(f"{k}={v:.2f}%" for k, v in vals.items())
+    return True, f"Prorrateo CC guardado ({detalle})."
