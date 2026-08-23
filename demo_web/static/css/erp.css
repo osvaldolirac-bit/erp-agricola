@@ -397,6 +397,7 @@ body.demo-body {
 .riego-npk-k { border-left-color: #ef6c00; }
 .riego-npk-tabla th,
 .riego-npk-tabla td { font-size: 0.875rem; }
+.riego-npk-ayuda code { font-size: 0.85em; }
 
 .panel-card {
   background: #fff;

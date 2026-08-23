@@ -21,7 +21,10 @@ _NPK_FORMULA_RE = re.compile(
 )
 # Solución UAN (ej. UAN-32 → 32 % N).
 _UAN_RE = re.compile(r"UAN[\s\-–]?(\d{2})", re.I)
-# Análisis N-P₂O₅-K₂O (% etiqueta). Orden: entradas más específicas primero.
+# Catálogo de referencia para fertirriego (N-P₂O₅-K₂O). No refleja el stock actual de
+# bodega: los productos irán ingresando según necesidad. Al registrarse un riego, el
+# cálculo identifica el análisis por nombre guardado en riego_fertilizantes (fórmula
+# en el nombre, UAN o coincidencia con este catálogo).
 _FERTILIZANTE_NPK: tuple[tuple[tuple[str, ...], tuple[float, float, float]], ...] = (
     # --- Binarios / compuestos (doble aporte) ---
     (("NITRATO DE POTASIO", "NITRATO POTASIO", "KNO3"), (13.0, 0.0, 46.0)),
