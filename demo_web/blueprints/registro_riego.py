@@ -26,7 +26,6 @@ from demo_web.services.registro_riego import (
     resolver_regador_por_id,
     token_valido,
 )
-
 bp = Blueprint("registro_riego", __name__)
 
 _HONEYPOT_FIELD = "sr_hp_x9f2"
@@ -63,7 +62,6 @@ def formulario():
     form_con_fert = False
     form_fert_lineas: list[dict] = []
     form_modo_riego = "horas"
-    form_surcos = ""
 
     if request.method == "POST":
         hp = (request.form.get(_HONEYPOT_FIELD) or "").strip()
@@ -74,7 +72,6 @@ def formulario():
         form_con_fert = request.form.get("con_fertilizacion") == "1"
         form_fert_lineas = parse_fertilizantes_request(request.form)
         form_modo_riego = (request.form.get("modo_riego") or "horas").strip().lower()
-        form_surcos = request.form.get("surcos") or ""
 
         try:
             horas = float((form_horas or "0").replace(",", "."))
@@ -84,12 +81,6 @@ def formulario():
             m3 = float((form_m3 or "0").replace(",", "."))
         except ValueError:
             m3 = 0.0
-        surcos = None
-        if form_modo_riego == "surcos" and form_surcos.strip():
-            try:
-                surcos = float(form_surcos.replace(",", "."))
-            except ValueError:
-                surcos = None
 
         fert_lineas_post = form_fert_lineas if form_con_fert else []
 
@@ -105,8 +96,6 @@ def formulario():
             error = "Seleccione un huerto válido."
         elif huerto_tiene_calculo_auto(form_huerto) and horas <= 0:
             error = "Indique horas de riego mayores a cero."
-        elif huerto_tiene_calculo_auto(form_huerto) and form_modo_riego == "surcos" and (surcos is None or surcos <= 0):
-            error = "Indique cantidad de surcos regados."
         elif not huerto_tiene_calculo_auto(form_huerto) and horas <= 0 and m3 <= 0:
             error = "Indique horas de riego o m³ mayores a cero."
         elif form_con_fert and not fertilizantes_opts:
@@ -125,7 +114,6 @@ def formulario():
                     (operador or {}).get("nombre", ""),
                     fertilizantes=fert_lineas_post if form_con_fert else None,
                     modo_riego=form_modo_riego,
-                    surcos=surcos,
                 )
             except Exception as exc:
                 error = f"No se pudo guardar: {exc}"
@@ -160,7 +148,6 @@ def formulario():
         form_con_fert=form_con_fert,
         form_fert_lineas=form_fert_lineas,
         form_modo_riego=form_modo_riego,
-        form_surcos=form_surcos,
         riego_cc_config=config_riego_cc_para_formulario(),
     )
     resp = make_response(html)

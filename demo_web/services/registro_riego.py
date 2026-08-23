@@ -53,19 +53,35 @@ def huertos_para_formulario() -> list[str]:
     return resto + otros
 
 
-# m³/h·ha por huerto (cálculo automático de volumen)
+# m³/h·ha por huerto — riego todo el huerto (horas × coef × ha prorrateo)
 RIEGO_M3_HR_HA: dict[str, float] = {
     "CEREZOS CORTE 1": 18.0,
     "CEREZOS CORTE 2": 18.0,
     "CIRUELOS": 18.0,
     "NOGALES APARICION": 34.0,
 }
-# Riego por surcos: caudal fijo m³/h (todos los huertos)
+# Solo riego por surco: m³ = horas × 40 (sin preguntar cantidad de surcos)
+RIEGO_SOLO_SURCO: frozenset[str] = frozenset({"NOGALES CRUZ DEL SUR"})
 RIEGO_M3_HR_SURCO = 40.0
 
 
+def _huertos_riego_auto() -> frozenset[str]:
+    return frozenset(RIEGO_M3_HR_HA.keys()) | RIEGO_SOLO_SURCO
+
+
 def huerto_tiene_calculo_auto(huerto: str) -> bool:
-    return (huerto or "").strip().upper() in RIEGO_M3_HR_HA
+    return _norm_cc(huerto) in _huertos_riego_auto()
+
+
+def huerto_solo_surco(huerto: str) -> bool:
+    return _norm_cc(huerto) in RIEGO_SOLO_SURCO
+
+
+def _modo_efectivo(huerto: str, modo: str | None) -> str:
+    if huerto_solo_surco(huerto):
+        return "surcos"
+    modo_n = (modo or "horas").strip().lower()
+    return "surcos" if modo_n == "surcos" else "horas"
 
 
 def _norm_cc(huerto: str) -> str:
@@ -126,44 +142,26 @@ def _ensure_riego_config_cc(conn: sqlite3.Connection) -> None:
             "UPDATE riego_config_cc SET m3_hr_ha=? WHERE centro_costo=?",
             (float(coef), cc),
         )
-
-
-def guardar_surcos_total_cc(centro_costo: str, surcos_total: int) -> tuple[bool, str]:
-    cc = _norm_cc(centro_costo)
-    if cc not in RIEGO_M3_HR_HA:
-        return False, "Centro de costo sin cálculo automático de riego."
-    try:
-        total = int(surcos_total)
-    except (TypeError, ValueError):
-        return False, "Indique un número entero de surcos."
-    if total <= 0:
-        return False, "El total de surcos debe ser mayor a cero."
-    conn = _conn()
-    try:
-        migrar_tabla(conn)
+    for cc in RIEGO_SOLO_SURCO:
         conn.execute(
-            """INSERT INTO riego_config_cc (centro_costo, m3_hr_ha, surcos_total)
-               VALUES (?,?,?)
-               ON CONFLICT(centro_costo) DO UPDATE SET surcos_total=excluded.surcos_total""",
-            (cc, float(RIEGO_M3_HR_HA[cc]), total),
+            """INSERT OR IGNORE INTO riego_config_cc (centro_costo, m3_hr_ha, surcos_total)
+               VALUES (?, ?, 0)""",
+            (cc, float(RIEGO_M3_HR_SURCO)),
         )
-        conn.commit()
-    finally:
-        conn.close()
-    return True, f"Total surcos {cc}: {total}."
 
 
-def config_riego_cc_para_formulario() -> dict[str, dict[str, float | int]]:
+def config_riego_cc_para_formulario() -> dict[str, dict[str, float | bool]]:
     conn = _conn()
     try:
         migrar_tabla(conn)
-        out: dict[str, dict[str, float | int]] = {}
-        for cc, coef in RIEGO_M3_HR_HA.items():
+        out: dict[str, dict[str, float | bool]] = {}
+        for cc in sorted(_huertos_riego_auto()):
+            solo = cc in RIEGO_SOLO_SURCO
             out[cc] = {
-                "m3_hr_ha": float(coef),
+                "m3_hr_ha": float(RIEGO_M3_HR_HA.get(cc, 0)),
                 "m3_hr_surco": float(RIEGO_M3_HR_SURCO),
-                "ha": _cargar_superficie_ha(conn, cc),
-                "surcos_total": _cargar_surcos_total(conn, cc),
+                "ha": _cargar_superficie_ha(conn, cc) if not solo else 0.0,
+                "solo_surco": solo,
             }
         return out
     finally:
@@ -175,13 +173,15 @@ def listar_config_riego_cc() -> list[dict[str, Any]]:
     try:
         migrar_tabla(conn)
         rows: list[dict[str, Any]] = []
-        for cc in sorted(RIEGO_M3_HR_HA.keys()):
+        for cc in sorted(_huertos_riego_auto()):
+            solo = cc in RIEGO_SOLO_SURCO
             rows.append(
                 {
                     "centro_costo": cc,
-                    "m3_hr_ha": RIEGO_M3_HR_HA[cc],
-                    "superficie_ha": _cargar_superficie_ha(conn, cc),
-                    "surcos_total": _cargar_surcos_total(conn, cc),
+                    "m3_hr_ha": RIEGO_M3_HR_HA.get(cc),
+                    "m3_hr_surco": RIEGO_M3_HR_SURCO,
+                    "superficie_ha": _cargar_superficie_ha(conn, cc) if not solo else None,
+                    "solo_surco": solo,
                 }
             )
         return rows
@@ -198,25 +198,16 @@ def calcular_m3_riego(
     surcos: float | None = None,
 ) -> tuple[float, str]:
     cc = _norm_cc(huerto)
-    if cc not in RIEGO_M3_HR_HA:
+    if cc not in _huertos_riego_auto():
         return 0.0, ""
     if horas <= 0:
         return 0.0, "Indique horas de riego mayores a cero."
-    modo_n = (modo or "horas").strip().lower()
+    modo_n = _modo_efectivo(cc, modo)
     if modo_n == "surcos":
-        surcos_n = float(surcos or 0)
-        if surcos_n <= 0:
-            return 0.0, "Indique cantidad de surcos regados."
-        base = horas * RIEGO_M3_HR_SURCO
-        total = _cargar_surcos_total(conn, cc)
-        if total <= 0:
-            return (
-                0.0,
-                f"Configure el total de surcos del huerto {cc} "
-                f"(Riego → Link riego → Configuración surcos).",
-            )
-        return round(base * (surcos_n / total), 2), ""
-    coef = RIEGO_M3_HR_HA[cc]
+        return round(horas * RIEGO_M3_HR_SURCO, 2), ""
+    coef = RIEGO_M3_HR_HA.get(cc)
+    if coef is None:
+        return round(horas * RIEGO_M3_HR_SURCO, 2), ""
     ha = _cargar_superficie_ha(conn, cc)
     if ha <= 0:
         return 0.0, f"No hay superficie (ha) en prorrateo de costos para {cc}."
@@ -234,7 +225,8 @@ def resolver_m3_registro(
 ) -> tuple[float, str | None]:
     cc = _norm_cc(huerto)
     if huerto_tiene_calculo_auto(cc):
-        m3, err = calcular_m3_riego(conn, cc, horas, modo=modo, surcos=surcos)
+        modo_eff = _modo_efectivo(cc, modo)
+        m3, err = calcular_m3_riego(conn, cc, horas, modo=modo_eff, surcos=surcos)
         if err:
             return 0.0, err
         return m3, None
@@ -245,8 +237,8 @@ def resolver_m3_registro(
 
 def _fmt_modo_riego(modo: str | None, surcos: float | None, demo) -> str:
     modo_n = (modo or "horas").strip().lower()
-    if modo_n == "surcos" and surcos and float(surcos) > 0:
-        return f"Surcos ({demo.f_decimal(surcos)})"
+    if modo_n == "surcos":
+        return "Surcos (40 m³/h)"
     return "Horas"
 
 
@@ -818,7 +810,7 @@ def registrar_link(
     demo = get_demo_module()
     huerto = _norm_cc(huerto)
     regador = (regador or "").strip()
-    modo_riego = (modo_riego or "horas").strip().lower()
+    modo_riego = _modo_efectivo(huerto, modo_riego)
     fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
     ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
 
@@ -859,7 +851,7 @@ def registrar_link(
                 ip or None,
                 fh,
                 modo_riego,
-                float(surcos) if surcos and modo_riego == "surcos" else None,
+                None,
             ),
         )
         if lineas_fert:
@@ -1086,7 +1078,7 @@ def registrar_manual(
     huerto_cc = _norm_cc(huerto)
     if not huerto_cc:
         return {"ok": False, "msg": "Seleccione huerto."}
-    modo_riego = (modo_riego or "horas").strip().lower()
+    modo_riego = _modo_efectivo(huerto_cc, modo_riego)
 
     conn = _conn()
     codigo = ""
@@ -1126,7 +1118,7 @@ def registrar_manual(
                 usuario,
                 fh,
                 modo_riego,
-                float(surcos) if surcos and modo_riego == "surcos" else None,
+                None,
             ),
         )
         if lineas_fert:

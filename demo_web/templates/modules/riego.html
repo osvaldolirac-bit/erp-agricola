@@ -50,13 +50,12 @@
           <input type="radio" class="btn-check" name="modo_riego" id="manualModoHoras" value="horas" checked>
           <label class="btn btn-outline-primary" for="manualModoHoras">Todo el huerto</label>
           <input type="radio" class="btn-check" name="modo_riego" id="manualModoSurcos" value="surcos">
-          <label class="btn btn-outline-primary" for="manualModoSurcos">Por surcos</label>
+          <label class="btn btn-outline-primary" for="manualModoSurcos">Por surcos (40 m³/h)</label>
         </div>
         <p id="manualCoefHint" class="small text-muted mb-0 mt-1"></p>
       </div>
-      <div class="col-md-2" id="manualSurcosField" style="display:none">
-        <label class="form-label small">Surcos</label>
-        <input type="number" name="surcos" id="manualSurcos" class="form-control form-control-sm" min="0" step="1">
+      <div class="col-12" id="manualSoloSurcoHint" style="display:none">
+        <div class="alert alert-info py-2 small mb-0">Este huerto es solo riego por surcos — ingrese horas; m³ = 40 × horas.</div>
       </div>
       <div class="col-md-2">
         <label class="form-label small">Horas riego</label>
@@ -124,22 +123,23 @@
       var huertoEl = document.getElementById('manualHuerto');
       var horasEl = document.getElementById('manualHoras');
       var m3El = document.getElementById('manualM3');
-      var surcosEl = document.getElementById('manualSurcos');
       var modoBlock = document.getElementById('manualModoBlock');
-      var surcosField = document.getElementById('manualSurcosField');
+      var soloSurcoHint = document.getElementById('manualSoloSurcoHint');
       var coefHint = document.getElementById('manualCoefHint');
       var m3Hint = document.getElementById('manualM3Hint');
       var m3Tag = document.getElementById('manualM3Tag');
       var modoInputs = document.querySelectorAll('#formManualRiego input[name="modo_riego"]');
       function ccSel() { return huertoEl ? (huertoEl.value || '').trim().toUpperCase() : ''; }
+      function confSel() { return riegoCfg[ccSel()] || null; }
+      function esSoloSurco() { var c = confSel(); return !!(c && c.solo_surco); }
       function modoSel() {
+        if (esSoloSurco()) return 'surcos';
         var m = 'horas';
         modoInputs.forEach(function (inp) { if (inp.checked) m = inp.value; });
         return m;
       }
       function recalcM3() {
-        var cc = ccSel();
-        var conf = riegoCfg[cc];
+        var conf = confSel();
         var horas = parseFloat(horasEl && horasEl.value) || 0;
         if (!conf || !m3El) {
           if (m3El) m3El.readOnly = false;
@@ -149,48 +149,33 @@
         }
         m3El.readOnly = true;
         if (m3Tag) m3Tag.style.display = 'inline';
-        var m3 = 0;
-        if (modoSel() === 'surcos') {
-          var surcos = parseFloat(surcosEl && surcosEl.value) || 0;
-          var total = conf.surcos_total || 0;
-          var baseSurco = horas * (conf.m3_hr_surco || 40);
-          m3 = total > 0 && surcos > 0 ? baseSurco * (surcos / total) : 0;
-        } else {
-          m3 = horas * conf.m3_hr_ha * conf.ha;
-        }
+        var m3 = (modoSel() === 'surcos')
+          ? horas * (conf.m3_hr_surco || 40)
+          : horas * conf.m3_hr_ha * conf.ha;
         m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : 0;
         if (m3Hint) {
-          var hint;
-          if (modoSel() === 'surcos') {
-            hint = (conf.m3_hr_surco || 40) + ' m³/h × ' + horas + ' h';
-            if (conf.surcos_total) {
-              hint += ' × (' + (parseFloat(surcosEl && surcosEl.value) || 0) + '/' + conf.surcos_total + ' surcos)';
-            }
-          } else {
-            hint = conf.m3_hr_ha + ' m³/h·ha × ' + conf.ha + ' ha (prorrateo) × ' + horas + ' h';
-          }
+          var hint = (modoSel() === 'surcos')
+            ? (conf.m3_hr_surco || 40) + ' m³/h × ' + horas + ' h'
+            : conf.m3_hr_ha + ' m³/h·ha × ' + conf.ha + ' ha (prorrateo) × ' + horas + ' h';
           m3Hint.textContent = 'Calculado: ' + hint;
           m3Hint.style.display = horas > 0 ? 'block' : 'none';
         }
       }
       function refreshUi() {
-        var conf = riegoCfg[ccSel()];
+        var conf = confSel();
         var auto = !!conf;
-        if (modoBlock) modoBlock.style.display = auto ? 'block' : 'none';
-        if (surcosField) surcosField.style.display = auto && modoSel() === 'surcos' ? 'block' : 'none';
-        if (coefHint && conf) {
-          if (modoSel() === 'surcos') {
-            coefHint.textContent = (conf.m3_hr_surco || 40) + ' m³/h (surcos)'
-              + (conf.surcos_total ? ' · ' + conf.surcos_total + ' surcos' : ' · configure surcos en Link riego');
-          } else {
-            coefHint.textContent = conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
-          }
+        var solo = esSoloSurco();
+        if (modoBlock) modoBlock.style.display = auto && !solo ? 'block' : 'none';
+        if (soloSurcoHint) soloSurcoHint.style.display = solo ? 'block' : 'none';
+        if (coefHint && conf && !solo) {
+          coefHint.textContent = (modoSel() === 'surcos')
+            ? (conf.m3_hr_surco || 40) + ' m³/h (surcos)'
+            : conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
         }
         recalcM3();
       }
       if (huertoEl) huertoEl.addEventListener('change', refreshUi);
       if (horasEl) horasEl.addEventListener('input', recalcM3);
-      if (surcosEl) surcosEl.addEventListener('input', recalcM3);
       modoInputs.forEach(function (inp) { inp.addEventListener('change', refreshUi); });
       var formManual = document.getElementById('formManualRiego');
       if (formManual) {
@@ -300,34 +285,29 @@
     </div>
     {% if riego_config_rows %}
     <div class="mb-3">
-      <h3 class="h6">Configuración cálculo m³ (surcos por huerto)</h3>
+      <h3 class="h6">Parámetros de riego por huerto</h3>
       <p class="small text-muted mb-2">
-        <strong>Todo el huerto:</strong> m³ = horas × m³/h·ha × superficie (prorrateo de costos).
-        Cerezos 1/2 y Ciruelos: 18 · Nogales Aparición: 34.
-        <strong>Por surcos:</strong> 40 m³/h × horas × (surcos regados / total surcos).
+        <strong>Todo el huerto:</strong> m³ = horas × m³/h·ha × ha (prorrateo).
+        <strong>Por surcos:</strong> m³ = 40 × horas (sin preguntar cantidad de surcos).
       </p>
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle mb-0">
           <thead>
-            <tr><th>Huerto</th><th>m³/h·ha</th><th>Superficie ha</th><th>Total surcos</th><th></th></tr>
+            <tr><th>Huerto</th><th>Modo</th><th>Parámetro</th><th>Superficie ha</th></tr>
           </thead>
           <tbody>
             {% for row in riego_config_rows %}
             <tr>
               <td><strong>{{ row.centro_costo }}</strong></td>
-              <td>{{ row.m3_hr_ha }}</td>
-              <td>{{ row.superficie_ha }}</td>
-              <td>
-                <form method="post" class="d-flex gap-1 align-items-center">
-                  <input type="hidden" name="action" value="guardar_surcos_riego">
-                  <input type="hidden" name="sec" value="bitacora">
-                  <input type="hidden" name="centro_costo" value="{{ row.centro_costo }}">
-                  <input type="number" name="surcos_total" class="form-control form-control-sm" style="max-width:6rem"
-                         min="1" step="1" value="{{ row.surcos_total or '' }}" placeholder="Ej. 120">
-                  <button type="submit" class="btn btn-sm btn-outline-primary">Guardar</button>
-                </form>
+              <td class="small">{% if row.solo_surco %}Solo surcos{% else %}Horas y surcos{% endif %}</td>
+              <td class="small">
+                {% if row.solo_surco %}
+                  40 m³/h
+                {% else %}
+                  {{ row.m3_hr_ha }} m³/h·ha · surcos 40 m³/h
+                {% endif %}
               </td>
-              <td class="small text-muted">{% if row.surcos_total %}OK{% else %}Pendiente{% endif %}</td>
+              <td>{{ row.superficie_ha if row.superficie_ha is not none else '—' }}</td>
             </tr>
             {% endfor %}
           </tbody>

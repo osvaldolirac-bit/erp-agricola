@@ -76,16 +76,13 @@
           <label class="btn btn-outline-primary" for="modoHoras">Todo el huerto (horas)</label>
           <input type="radio" class="btn-check" name="modo_riego" id="modoSurcos" value="surcos"
                  {% if form_modo_riego == 'surcos' %}checked{% endif %}>
-          <label class="btn btn-outline-primary" for="modoSurcos">Por surcos</label>
+          <label class="btn btn-outline-primary" for="modoSurcos">Por surcos (40 m³/h)</label>
         </div>
         <p id="riegoCoefHint" class="small text-muted mt-2 mb-0"></p>
       </div>
 
-      <div id="surcosField" class="mt-2 d-none">
-        <label class="form-label" for="surcos">Surcos regados</label>
-        <input id="surcos" name="surcos" type="number" class="form-control form-control-lg"
-               min="0" step="1" inputmode="numeric" placeholder="Cantidad de surcos"
-               value="{{ form_surcos }}">
+      <div id="riegoSoloSurcoHint" class="alert alert-info py-2 small mt-3 d-none">
+        <strong>Riego por surcos</strong> — ingrese solo las horas. m³ = 40 × horas.
       </div>
 
       <label class="form-label mt-2" for="horas">Horas riego</label>
@@ -254,9 +251,8 @@
     var huertoEl = document.getElementById('huerto');
     var horasEl = document.getElementById('horas');
     var m3El = document.getElementById('m3');
-    var surcosEl = document.getElementById('surcos');
     var modoBlock = document.getElementById('riegoModoBlock');
-    var surcosField = document.getElementById('surcosField');
+    var soloSurcoHint = document.getElementById('riegoSoloSurcoHint');
     var coefHint = document.getElementById('riegoCoefHint');
     var m3Hint = document.getElementById('m3CalcHint');
     var m3AutoTag = document.getElementById('m3AutoTag');
@@ -266,20 +262,29 @@
       return huertoEl ? (huertoEl.value || '').trim().toUpperCase() : '';
     }
 
+    function confSel() {
+      return riegoCfg[ccSel()] || null;
+    }
+
+    function esSoloSurco() {
+      var c = confSel();
+      return !!(c && c.solo_surco);
+    }
+
     function modoSel() {
+      if (esSoloSurco()) return 'surcos';
       var m = 'horas';
       modoInputs.forEach(function (inp) { if (inp.checked) m = inp.value; });
       return m;
     }
 
     function esAutoCc() {
-      return !!riegoCfg[ccSel()];
+      return !!confSel();
     }
 
     function recalcM3() {
       if (!m3El || !horasEl) return;
-      var cc = ccSel();
-      var conf = riegoCfg[cc];
+      var conf = confSel();
       var horas = parseFloat(horasEl.value) || 0;
       if (!conf) {
         m3El.readOnly = false;
@@ -290,41 +295,29 @@
       m3El.readOnly = true;
       if (m3AutoTag) m3AutoTag.classList.remove('d-none');
       var modo = modoSel();
-      var m3 = 0;
-      if (modo === 'surcos') {
-        var surcos = parseFloat(surcosEl && surcosEl.value) || 0;
-        var total = conf.surcos_total || 0;
-        var baseSurco = horas * (conf.m3_hr_surco || 40);
-        m3 = total > 0 && surcos > 0 ? baseSurco * (surcos / total) : 0;
-      } else {
-        m3 = horas * conf.m3_hr_ha * conf.ha;
-      }
+      var m3 = (modo === 'surcos')
+        ? horas * (conf.m3_hr_surco || 40)
+        : horas * conf.m3_hr_ha * conf.ha;
       m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : '';
       if (m3Hint) {
-        var txt;
-        if (modo === 'surcos') {
-          txt = (conf.m3_hr_surco || 40) + ' m³/h × ' + horas + ' h';
-          txt += ' × (' + (parseFloat(surcosEl && surcosEl.value) || 0) + '/' + (conf.surcos_total || '?') + ' surcos)';
-        } else {
-          txt = conf.ha + ' ha (prorrateo) × ' + conf.m3_hr_ha + ' m³/h·ha × ' + horas + ' h';
-        }
+        var txt = (modo === 'surcos')
+          ? (conf.m3_hr_surco || 40) + ' m³/h × ' + horas + ' h'
+          : conf.ha + ' ha (prorrateo) × ' + conf.m3_hr_ha + ' m³/h·ha × ' + horas + ' h';
         m3Hint.textContent = 'm³ = ' + txt;
         m3Hint.classList.toggle('d-none', !(horas > 0));
       }
     }
 
     function refreshUi() {
-      var auto = esAutoCc();
-      var conf = riegoCfg[ccSel()];
-      if (modoBlock) modoBlock.classList.toggle('d-none', !auto);
-      if (surcosField) surcosField.classList.toggle('d-none', !auto || modoSel() !== 'surcos');
-      if (coefHint && conf) {
-        if (modoSel() === 'surcos') {
-          coefHint.textContent = (conf.m3_hr_surco || 40) + ' m³/h (surcos)'
-            + (conf.surcos_total ? ' · ' + conf.surcos_total + ' surcos en huerto' : ' · configure total surcos');
-        } else {
-          coefHint.textContent = conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
-        }
+      var conf = confSel();
+      var auto = !!conf;
+      var solo = esSoloSurco();
+      if (modoBlock) modoBlock.classList.toggle('d-none', !auto || solo);
+      if (soloSurcoHint) soloSurcoHint.classList.toggle('d-none', !solo);
+      if (coefHint && conf && !solo) {
+        coefHint.textContent = (modoSel() === 'surcos')
+          ? (conf.m3_hr_surco || 40) + ' m³/h (surcos)'
+          : conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
       }
       if (m3Hint) m3Hint.classList.toggle('d-none', !auto);
       recalcM3();
@@ -332,7 +325,6 @@
 
     if (huertoEl) huertoEl.addEventListener('change', refreshUi);
     if (horasEl) horasEl.addEventListener('input', recalcM3);
-    if (surcosEl) surcosEl.addEventListener('input', recalcM3);
     modoInputs.forEach(function (inp) { inp.addEventListener('change', refreshUi); });
     refreshUi();
 

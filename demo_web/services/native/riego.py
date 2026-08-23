@@ -20,7 +20,6 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         contar_pendientes,
         config_riego_cc_para_formulario,
         fertilizantes_bodega_para_formulario,
-        guardar_surcos_total_cc,
         habilitado,
         huertos_para_formulario,
         links_personales_regadores,
@@ -86,13 +85,6 @@ def _post_manual(demo, conn, user_email: str) -> dict:
     except ValueError:
         m3 = 0.0
     modo_riego = (request.form.get("modo_riego") or "horas").strip().lower()
-    surcos_raw = (request.form.get("surcos") or "").strip()
-    surcos = None
-    if modo_riego == "surcos" and surcos_raw:
-        try:
-            surcos = float(surcos_raw.replace(",", "."))
-        except ValueError:
-            surcos = None
     regador = (request.form.get("regador") or user_email).strip()
     con_fert = request.form.get("con_fertilizacion") == "1"
     fert_lineas = parse_fertilizantes_request(request.form) if con_fert else None
@@ -109,7 +101,6 @@ def _post_manual(demo, conn, user_email: str) -> dict:
         user_email,
         fertilizantes=fert_lineas,
         modo_riego=modo_riego,
-        surcos=surcos,
     )
 
 
@@ -132,21 +123,6 @@ def view(user_email: str, user_rol: str):
                 conn.close()
             flash(result["msg"], "success" if result["ok"] else "danger")
             return redirect_module("riego", sec="manual")
-
-        if action == "guardar_surcos_riego":
-            if not demo.es_super_admin():
-                flash("Solo super-admin puede configurar surcos.", "danger")
-            else:
-                from demo_web.services.registro_riego import guardar_surcos_total_cc
-
-                cc = (request.form.get("centro_costo") or "").strip()
-                try:
-                    total = int(request.form.get("surcos_total") or "0")
-                except ValueError:
-                    total = 0
-                result = guardar_surcos_total_cc(cc, total)
-                flash(result["msg"], "success" if result["ok"] else "danger")
-            return redirect_module("riego", sec="bitacora")
 
         if action == "autorizar_riego":
             if not demo.es_admin():
