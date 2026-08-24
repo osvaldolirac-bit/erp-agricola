@@ -1006,28 +1006,32 @@ def aplicar_badge_menu_maquinaria(opts, conn):
 
 
 MAQ_WIDGET_CSS = """
-.maq-widget-petroleo-wrap{background:linear-gradient(135deg,#FFF8F0 0%,#FFF3E0 100%);border:1px solid #FFCC80;border-radius:14px;padding:0.75rem 0.9rem 0.7rem;text-align:right;max-width:440px;margin-left:auto;box-shadow:0 6px 16px rgba(230,81,0,0.12);}
-.maq-widget-petroleo-wrap .maq-widget-kicker{font-size:0.78rem;font-weight:700;color:#E65100;margin-bottom:0.35rem;}
-.maq-widget-petroleo-wrap .maq-donut-duo{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:0.45rem;margin:0.15rem 0 0.25rem;}
-.maq-widget-petroleo-wrap .maq-donut-duo .maq-mini-donut{text-align:center;flex:0 0 auto;}
-.maq-widget-petroleo-wrap .maq-mini-ring{width:92px;height:92px;border-radius:50%;position:relative;margin:0 auto;}
-.maq-widget-petroleo-wrap .maq-donut-duo .maq-mini-ring{width:84px;height:84px;}
-.maq-widget-petroleo-wrap .maq-mini-hole{position:absolute;width:58px;height:58px;background:#fff;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:inset 0 0 0 1px rgba(230,81,0,0.12);}
-.maq-widget-petroleo-wrap .maq-donut-duo .maq-mini-hole{width:52px;height:52px;}
-.maq-widget-petroleo-wrap .maq-donut-duo .maq-mini-num{font-size:0.72rem;}
+.maq-widget-petroleo-wrap{background:linear-gradient(135deg,#FFF8F0 0%,#FFF3E0 100%);border:1px solid #FFCC80;border-radius:14px;padding:0.85rem 0.95rem;text-align:center;max-width:100%;margin-left:auto;box-shadow:0 6px 16px rgba(230,81,0,0.12);}
+.maq-widget-petroleo-wrap .maq-widget-kicker{font-size:0.8rem;font-weight:800;color:#E65100;margin-bottom:0.55rem;text-align:left;letter-spacing:0.02em;}
+.maq-widget-petroleo-wrap .maq-donut-trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0.55rem;align-items:start;}
+.maq-widget-petroleo-wrap .maq-pet-col{background:rgba(255,255,255,0.72);border:1px solid #FFE0B2;border-radius:10px;padding:0.45rem 0.35rem 0.5rem;min-width:0;}
+.maq-widget-petroleo-wrap .maq-pet-col-head{margin-bottom:0.35rem;padding-bottom:0.3rem;border-bottom:1px solid #FFE0B2;}
+.maq-widget-petroleo-wrap .maq-pet-col-tit{font-size:0.68rem;font-weight:800;color:#BF360C;line-height:1.25;text-transform:uppercase;letter-spacing:0.03em;}
+.maq-widget-petroleo-wrap .maq-pet-col-sub{font-size:0.62rem;font-weight:600;color:#5F6B7A;margin-top:0.12rem;line-height:1.2;}
+.maq-widget-petroleo-wrap .maq-pet-col .maq-mini-donut{text-align:center;margin:0.15rem auto 0.25rem;}
+.maq-widget-petroleo-wrap .maq-mini-ring{width:84px;height:84px;border-radius:50%;position:relative;margin:0 auto;}
+.maq-widget-petroleo-wrap .maq-mini-hole{position:absolute;width:52px;height:52px;background:#fff;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:inset 0 0 0 1px rgba(230,81,0,0.12);}
 .maq-widget-petroleo-wrap .maq-mini-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:2;line-height:1.05;}
-.maq-widget-petroleo-wrap .maq-mini-num{font-size:0.82rem;font-weight:800;color:#E65100;}
+.maq-widget-petroleo-wrap .maq-mini-num{font-size:0.72rem;font-weight:800;color:#E65100;}
 .maq-widget-petroleo-wrap .maq-mini-lbl{font-size:0.52rem;font-weight:700;color:#6B7B8C;text-transform:uppercase;}
-.maq-widget-petroleo-wrap .maq-mini-cap{font-size:0.58rem;font-weight:700;color:#5F6B7A;margin-top:0.2rem;line-height:1.15;}
-.maq-widget-petroleo-wrap .maq-leyenda-pet{margin-top:0.15rem;text-align:right;}
-.maq-widget-petroleo-wrap .maq-ley-bloque{margin-bottom:0.2rem;}
-.maq-widget-petroleo-wrap .maq-ley-tit{font-size:0.56rem;font-weight:800;color:#6B7B8C;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:0.08rem;}
-.maq-widget-petroleo-wrap .maq-ley-fila{display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;font-size:0.58rem;line-height:1.4;color:#37474F;}
-.maq-widget-petroleo-wrap .maq-ley-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
-.maq-widget-petroleo-wrap .maq-ley-nom{max-width:4.5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.maq-widget-petroleo-wrap .maq-ley-pct{font-weight:800;color:#E65100;min-width:1.6rem;text-align:right;}
-.maq-widget-petroleo-wrap .maq-widget-meta{font-size:0.72rem;color:#6B7B8C;margin-top:0.35rem;line-height:1.3;}
-.maq-widget-petroleo-wrap .maq-leyenda-vacia{font-size:0.65rem;color:#90A4AE;font-style:italic;text-align:right;}
+.maq-widget-petroleo-wrap .maq-ley-col{margin-top:0.1rem;text-align:left;padding:0 0.15rem;}
+.maq-widget-petroleo-wrap .maq-ley-fila{display:flex;align-items:center;gap:0.25rem;font-size:0.6rem;line-height:1.35;color:#37474F;margin-bottom:0.1rem;}
+.maq-widget-petroleo-wrap .maq-ley-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.maq-widget-petroleo-wrap .maq-ley-nom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.maq-widget-petroleo-wrap .maq-ley-pct{font-weight:800;color:#E65100;min-width:1.5rem;text-align:right;flex-shrink:0;}
+.maq-widget-petroleo-wrap .maq-pet-col-total{font-size:0.64rem;font-weight:700;color:#37474F;margin-top:0.35rem;padding-top:0.3rem;border-top:1px dashed #FFCC80;}
+.maq-widget-petroleo-wrap .maq-pet-col-total b{color:#E65100;font-weight:800;}
+.maq-widget-petroleo-wrap .maq-leyenda-vacia{font-size:0.6rem;color:#90A4AE;font-style:italic;text-align:center;padding:0.25rem 0;}
+.maq-widget-petroleo-wrap .maq-widget-foot{font-size:0.62rem;color:#78909C;margin-top:0.5rem;line-height:1.35;text-align:left;border-top:1px solid #FFE0B2;padding-top:0.4rem;}
+@media (max-width:991px){
+.maq-widget-petroleo-wrap .maq-donut-trio{grid-template-columns:1fr;}
+.maq-widget-petroleo-wrap{max-width:280px;}
+}
 """
 
 
@@ -1195,6 +1199,11 @@ def _html_mini_donut(segs, total_valor, etiqueta_centro, unidad="L", fmt_fn=None
     total_txt = html_lib.escape(str(fmt_fn(total_valor)))
     lbl = html_lib.escape(str(unidad or ""))
     lbl_html = f'<div class="maq-mini-lbl">{lbl}</div>' if lbl else ""
+    cap_html = (
+        f'<div class="maq-mini-cap">{etiqueta}</div>'
+        if str(etiqueta_centro or "").strip()
+        else ""
+    )
     return (
         f'<div class="maq-mini-donut" title="{etiqueta}">'
         f'<div class="maq-mini-ring" style="background:conic-gradient({gradiente});">'
@@ -1203,19 +1212,19 @@ def _html_mini_donut(segs, total_valor, etiqueta_centro, unidad="L", fmt_fn=None
         f'<div class="maq-mini-num">{total_txt}</div>'
         f"{lbl_html}"
         f"</div></div>"
-        f'<div class="maq-mini-cap">{etiqueta}</div>'
+        f"{cap_html}"
         f"</div>"
     )
 
 
-def _html_leyenda_bloque_petroleo(titulo, segs):
+def _html_leyenda_columna_petroleo(segs):
     import html as html_lib
 
     if not segs:
-        return ""
+        return '<div class="maq-leyenda-vacia">Sin despachos</div>'
     lineas = []
     for s in segs[:5]:
-        nom = html_lib.escape(str(s["nombre"] or s["codigo"])[:16])
+        nom = html_lib.escape(str(s["nombre"] or s["codigo"])[:18])
         lineas.append(
             f'<div class="maq-ley-fila">'
             f'<span class="maq-ley-dot" style="background:{s["color"]};"></span>'
@@ -1223,26 +1232,40 @@ def _html_leyenda_bloque_petroleo(titulo, segs):
             f'<span class="maq-ley-pct">{s["pct"]:.0f}%</span>'
             f"</div>"
         )
+    return f'<div class="maq-ley-col">{"".join(lineas)}</div>'
+
+
+def _html_columna_widget_petroleo(
+    titulo: str,
+    subtitulo: str,
+    segs,
+    total_valor: float,
+    *,
+    unidad: str = "L",
+    fmt_fn=None,
+    total_etiqueta: str = "Total",
+):
+    import html as html_lib
+
+    fmt_fn = fmt_fn or _fmt_litros_chile
     tit = html_lib.escape(str(titulo))
+    sub = html_lib.escape(str(subtitulo))
+    tot_txt = html_lib.escape(str(fmt_fn(total_valor)))
+    uni = html_lib.escape(str(unidad))
+    tot_lbl = html_lib.escape(str(total_etiqueta))
+    donut = _html_mini_donut(segs, total_valor, "", unidad, fmt_fn)
+    leyenda = _html_leyenda_columna_petroleo(segs)
     return (
-        f'<div class="maq-ley-bloque">'
-        f'<div class="maq-ley-tit">{tit}</div>'
-        f'{"".join(lineas)}'
+        f'<div class="maq-pet-col">'
+        f'<div class="maq-pet-col-head">'
+        f'<div class="maq-pet-col-tit">{tit}</div>'
+        f'<div class="maq-pet-col-sub">{sub}</div>'
+        f"</div>"
+        f"{donut}"
+        f"{leyenda}"
+        f'<div class="maq-pet-col-total">{tot_lbl}: <b>{tot_txt}</b> {uni}</div>'
         f"</div>"
     )
-
-
-def _html_leyenda_petroleo_maq(segs_temp, segs_mes, segs_cc=None):
-    bloques = []
-    if segs_temp:
-        bloques.append(_html_leyenda_bloque_petroleo("Litros · temporada", segs_temp))
-    if segs_mes:
-        bloques.append(_html_leyenda_bloque_petroleo("Litros · mes", segs_mes))
-    if segs_cc:
-        bloques.append(_html_leyenda_bloque_petroleo("Gasto CC · temp.", segs_cc))
-    if not bloques:
-        return '<div class="maq-leyenda-vacia">Sin despachos en el período</div>'
-    return f'<div class="maq-leyenda-pet">{"".join(bloques)}</div>'
 
 
 def _mes_etiqueta_es(ref):
@@ -1285,23 +1308,45 @@ def html_widget_petroleo_maquinaria(conn, temporada_nombre, temporada_desde, tem
     mes_nombre = _mes_etiqueta_es(ref)
     temp_nombre = str(temporada_nombre or "Temporada")
 
+    col_temp = _html_columna_widget_petroleo(
+        "Litros por maquinaria",
+        temp_nombre,
+        segs_temp,
+        tot_temp,
+        unidad="L",
+        fmt_fn=_fmt_litros_chile,
+        total_etiqueta="Despachado",
+    )
+    col_mes = _html_columna_widget_petroleo(
+        "Litros por maquinaria",
+        f"Mes · {mes_nombre}",
+        segs_mes,
+        tot_mes,
+        unidad="L",
+        fmt_fn=_fmt_litros_chile,
+        total_etiqueta="Despachado",
+    )
+    col_cc = _html_columna_widget_petroleo(
+        "Gasto por CC",
+        f"Temporada · {temp_nombre}",
+        segs_cc,
+        tot_cc,
+        unidad="neto",
+        fmt_fn=_fmt_gasto_centro,
+        total_etiqueta="Imputado",
+    )
+
     return (
         f"<style>{MAQ_WIDGET_CSS}</style>"
-        f'<div class="maq-widget-petroleo-wrap" title="Despachos de petróleo por equipo y gasto neto por centro de costo (salidas)">'
-        f'<div class="maq-widget-kicker">⛽ Despachos y gasto CC</div>'
-        f'<div class="maq-donut-duo">'
-        f"{_html_mini_donut(segs_temp, tot_temp, temp_nombre)}"
-        f"{_html_mini_donut(segs_mes, tot_mes, mes_nombre)}"
-        f"{_html_mini_donut(segs_cc, tot_cc, 'Gasto CC', unidad='neto', fmt_fn=_fmt_gasto_centro)}"
+        f'<div class="maq-widget-petroleo-wrap">'
+        f'<div class="maq-widget-kicker">⛽ Resumen petróleo</div>'
+        f'<div class="maq-donut-trio">'
+        f"{col_temp}{col_mes}{col_cc}"
         f"</div>"
-        f"{_html_leyenda_petroleo_maq(segs_temp, segs_mes, segs_cc)}"
-        f'<div class="maq-widget-meta">'
-        f"Temporada: <b>{_fmt_litros_chile(tot_temp)} L</b> despachados · "
-        f"Mes: <b>{_fmt_litros_chile(tot_mes)} L</b> · "
-        f"Gasto CC (temp.): <b>{_fmt_peso_chile(tot_cc)}</b> neto<br>"
-        f'<span style="font-size:0.62rem;color:#8D6E63">'
-        f"Litros por equipo · gasto CC = valor neto imputado (PMP). Saldo estanque = cargas − salidas."
-        f"</span></div></div>"
+        f'<div class="maq-widget-foot">'
+        f"<strong>Columna 1 y 2:</strong> litros despachados por equipo (salidas). "
+        f"<strong>Columna 3:</strong> gasto neto imputado por centro de costo (PMP)."
+        f"</div></div>"
     )
 
 
