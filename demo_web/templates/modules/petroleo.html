@@ -231,10 +231,8 @@
               <span class="small text-muted">Solo admin</span>
               {% elif r.rechazado %}
               <span class="small text-muted">Sin imputación</span>
-              {% elif r.costos_cc %}
+              {% elif r.autorizado %}
               <a class="btn btn-sm btn-outline-primary" href="{{ url_for('modules.costos', vista=r.costos_cc) }}">Ver en Costos</a>
-              {% else %}
-              <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('modules.petroleo', sec='historial') }}">Historial</a>
               {% endif %}
             </td>
           </tr>

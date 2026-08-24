@@ -952,6 +952,14 @@ def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
         cc_imputados = ", ".join(
             f"{i['cc']} ({i['litros']} L · {i['monto']})" for i in imputaciones
         )
+        if est == "autorizado":
+            if len(imputaciones) == 1:
+                costos_cc = imputaciones[0]["cc"]
+            else:
+                # Varios CC (prorrateo Administración u otro reparto): abrir resumen Costos
+                costos_cc = "resumen"
+        else:
+            costos_cc = ""
         out.append(
             {
                 "codigo": codigo or "—",
@@ -971,7 +979,7 @@ def listar_registros(conn, limite: int = 50) -> list[dict[str, Any]]:
                 "rechazo_motivo": rej_mot,
                 "imputaciones": imputaciones,
                 "cc_imputados": cc_imputados,
-                "costos_cc": (imputaciones[0]["cc"] if len(imputaciones) == 1 else ""),
+                "costos_cc": costos_cc,
             }
         )
     return out
