@@ -52,13 +52,13 @@ MANUAL_COMPLETO_HTML = """
 <h3>1.1 Producción — La Concepción</h3>
 <table>
 <tr><th>Perfil</th><th>Qué puede hacer</th></tr>
-<tr><td><b>Administrador</b></td><td>Acceso total: todos los módulos, Administración, corrección/eliminación de datos, ajustes en Costos, gestión de usuarios. Autoriza salidas de petróleo por link.</td></tr>
+<tr><td><b>Administrador</b></td><td>Acceso total: todos los módulos, Administración, corrección/eliminación de datos, ajustes en Costos, gestión de usuarios. Autoriza Salida Link (petróleo y riego).</td></tr>
 <tr><td><b>Operador</b></td><td>Módulos operativos asignados en Administración → Módulos operador. Registra compras, bodega, RRHH, etc., según lo habilitado.</td></tr>
 <tr><td><b>Certificación GlobalGAP</b></td><td>Solo GlobalGAP, Libro de Campo, Bodega (PPPL y consulta), Soporte y Manual. Manual dedicado a su perfil.</td></tr>
 <tr><td><b>Lector</b></td><td>Consulta con menú acotado (módulos asignados). <b>Sin</b> guardar cambios ni exportar PDF. Manual dedicado a su perfil.</td></tr>
 <tr><td><b>Solo lectura</b> (casilla)</td><td>Puede aplicarse a operador u otros perfiles (excepto administrador): misma restricción que lector en formularios y PDF.</td></tr>
 </table>
-<p>El administrador crea usuarios en <b>Administración → Usuarios y perfiles</b>, define perfil, casilla solo lectura y mail de respaldo Tesorería. Los perfiles <b>operador</b> y <b>lector</b> requieren asignación de módulos en <b>Módulos operador</b>.</p>
+<p>El administrador crea usuarios en <b>Administración → Usuarios y perfiles</b> (o en la <b>Consola Master</b> de plataforma para tenants LC/DEMO), define perfil, casilla solo lectura y correos de alerta (tesorería, petróleo, riego). Los perfiles <b>operador</b> y <b>lector</b> requieren asignación de módulos en <b>Módulos operador</b>.</p>
 
 <h3>1.2 Cupos de usuarios (planes)</h3>
 <ul>
