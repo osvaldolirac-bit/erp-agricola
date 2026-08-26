@@ -3,10 +3,11 @@ from __future__ import annotations
 from io import BytesIO
 from urllib.parse import urlparse
 
-from flask import Blueprint, Response, abort, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, Response, abort, redirect, render_template, request, send_file, session, url_for
 from werkzeug.utils import secure_filename
 
 from demo_web.auth.decorators import login_required, module_required
+from demo_web.auth.login_next import default_landing_url
 from demo_web.services import module_runner as mr
 from demo_web.services.native_registry import run_native_or_capture
 
@@ -38,21 +39,25 @@ for _slug in mr.MODULES:
 
 @bp.route("/")
 def index():
-    return redirect(url_for("modules.dashboard"))
+    return redirect(default_landing_url())
 
 
 def _safe_back_url(raw: str | None) -> str:
     if not raw:
-        return url_for("modules.dashboard")
+        return default_landing_url()
     if raw.startswith("/") and not raw.startswith("//"):
+        if (session.get("rol") or "").strip().lower() == "certificacion" and "/dashboard" in raw:
+            return url_for("modules.globalgap")
         return raw
     try:
         parsed = urlparse(raw)
         if parsed.netloc and parsed.netloc != request.host:
-            return url_for("modules.dashboard")
+            return default_landing_url()
+        if (session.get("rol") or "").strip().lower() == "certificacion" and "/dashboard" in raw:
+            return url_for("modules.globalgap")
         return raw
     except Exception:
-        return url_for("modules.dashboard")
+        return default_landing_url()
 
 
 def _pdf_safe_name(name: str | None) -> str:
@@ -112,6 +117,17 @@ def pdf_download(token: str, download_name: str | None = None):
         f'{disp}; filename="{safe}"; filename*=UTF-8\'\'{encoded}'
     )
     return resp
+
+
+@bp.route("/flujo/excel")
+@login_required
+@module_required("Flujo financiero")
+def flujo_excel():
+    from flask import g
+
+    from demo_web.services.native.flujo import export_flujo_excel
+
+    return export_flujo_excel(g.user["email"], g.user["rol"])
 
 
 @bp.route("/fitosanitarios/<especie>/pdf")

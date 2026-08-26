@@ -58,7 +58,12 @@
   <div class="panel-card mb-3">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
       <h2 class="h6 panel-title mb-0">Flujo mensual</h2>
-      {{ pdf_btn(pdf_flujo_url, '📥 PDF FLUJO FINANCIERO') }}
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        {% if excel_flujo_url %}
+        <a class="btn btn-outline-success btn-sm" href="{{ excel_flujo_url }}">📥 Excel planilla</a>
+        {% endif %}
+        {{ pdf_btn(pdf_flujo_url, '📥 PDF FLUJO FINANCIERO') }}
+      </div>
     </div>
     <div class="table-responsive flujo-tabla-principal">
       <table class="table table-sm table-bordered w-100 mb-0">

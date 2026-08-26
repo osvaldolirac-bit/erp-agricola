@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import pandas as pd
-from flask import render_template, url_for
+from flask import render_template, send_file, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.flujo_excel import build_flujo_mensual_xlsx, filename_flujo_excel
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.native._helpers import (
     hoy_demo,
@@ -41,6 +42,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         flujo_cols = []
         kpis = {}
         pdf_flujo_url = None
+        excel_flujo_url = None
         flujo_detalle_rows = []
         flujo_detalle_cols = ["MES", "Teso. real", "Teso. proy. (EERR)", "RRHH real", "RRHH proy."]
         meta_info = ""
@@ -107,6 +109,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             if blob:
                 token = store_pdf(blob, f"flujo_financiero_{nombre}.pdf")
                 pdf_flujo_url = url_for("modules.pdf_download", token=token)
+            excel_flujo_url = url_for("modules.flujo_excel", temp=nombre)
 
             if meta.get("meses_historial") or meta.get("mes_inicio_eerr"):
                 ini = meta.get("mes_inicio_eerr") or meta.get("mes_inicio_proyeccion") or "el primer mes con ingresos"
@@ -179,10 +182,45 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             "meta_caption": meta_info,
             "caja_info": caja_info,
             "pdf_flujo_url": pdf_flujo_url,
+            "excel_flujo_url": excel_flujo_url,
             "sin_datos": df_flujo is None or df_flujo.empty,
         }
     finally:
         conn.close()
+
+
+def export_flujo_excel(user_email: str, user_rol: str):
+    """Descarga planilla Excel del flujo mensual (fórmulas en totales y columnas derivadas)."""
+    from io import BytesIO
+
+    demo = get_demo_module()
+    bind_user_session(user_email, user_rol)
+    nombre, fi, ff = temporada_sel(demo)
+    hoy = hoy_demo(demo)
+    conn = demo.conectar_db()
+    try:
+        from erp_flujo_financiero import armar_flujo_financiero
+
+        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        df_flujo, _, _, _ = armar_flujo_financiero(
+            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+        )
+    finally:
+        conn.close()
+
+    if df_flujo is None or df_flujo.empty:
+        from flask import abort
+
+        abort(404)
+
+    blob = build_flujo_mensual_xlsx(df_flujo, temporada=nombre, fi=fi, ff=ff)
+    fname = filename_flujo_excel(nombre)
+    return send_file(
+        BytesIO(blob),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=fname,
+    )
 
 
 def view(user_email: str, user_rol: str):
