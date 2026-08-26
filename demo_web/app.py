@@ -122,7 +122,9 @@ def create_app(config_class=Config) -> Flask:
     @app.route("/")
     def root():
         if session.get("email") and session.get("tenant_slug"):
-            return redirect(url_for("modules.dashboard"))
+            from demo_web.auth.login_next import default_landing_url
+
+            return redirect(default_landing_url())
         return redirect(url_for("auth.login"))
 
     @app.route("/assets/logo")
@@ -182,7 +184,9 @@ def create_app(config_class=Config) -> Flask:
 
         if session.get("email") and session.get("tenant_slug"):
             flash("Ya tienes una sesión activa.", "ok")
-            return redirect(url_for("modules.dashboard"))
+            from demo_web.auth.login_next import default_landing_url
+
+            return redirect(default_landing_url())
 
         dias = DEMO_DIAS_PRUEBA
         clave_demo = CLAVE_DEMO
@@ -292,6 +296,17 @@ def create_app(config_class=Config) -> Flask:
                                 )
                             except Exception:
                                 pass
+                            try:
+                                from demo_web.master_bitacora import log_master_bitacora
+
+                                log_master_bitacora(
+                                    "demo",
+                                    email_u,
+                                    "PRUEBA_INICIO",
+                                    f"{nombre_u} · {telefono_u} · vence {exp}",
+                                )
+                            except Exception:
+                                pass
                             ok = True
                             usuario_demo = email_u
                             login_url = f"{url_for('auth.login')}?acceso={quote(email_u)}"
@@ -398,8 +413,12 @@ def create_app(config_class=Config) -> Flask:
         menu = []
         nav_ops: list = []
         nav_sistema: list = []
+        home_url = url_for("auth.login")
         tenant = get_tenant(session.get("tenant_slug"))
         if session.get("email") and tenant:
+            from demo_web.auth.login_next import default_landing_url
+
+            home_url = default_landing_url()
             user = {
                 "email": session["email"],
                 "rol": session.get("rol", "operador"),
@@ -442,6 +461,7 @@ def create_app(config_class=Config) -> Flask:
             "nav_menu": menu,
             "nav_ops": nav_ops,
             "nav_sistema": nav_sistema,
+            "home_url": home_url,
             "url_prefix": prefix,
             "request": request,
             "erp_title": title,

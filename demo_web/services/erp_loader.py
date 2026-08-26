@@ -61,12 +61,21 @@ def _wrap_registrar_accion(erp: Any) -> None:
         return
 
     def registrar_accion(accion, detalle=""):  # noqa: ANN001
+        slug = _request_tenant_slug()
+        if not slug:
+            slug = "concepcion" if get_erp_app() == "concepcion" else "demo"
+        if slug == "demo":
+            try:
+                from demo_web.master_bitacora import log_master_bitacora
+                from flask import session
+
+                user = (session.get("email") or "sistema").strip() or "sistema"
+                log_master_bitacora(slug, user, str(accion or "ACCION"), str(detalle or ""))
+            except Exception:
+                pass
         try:
             from demo_web.services.mantenimiento import bitacora_erp_activa
 
-            slug = _request_tenant_slug()
-            if not slug:
-                slug = "concepcion" if get_erp_app() == "concepcion" else "demo"
             if not bitacora_erp_activa(slug):
                 return None
         except Exception:

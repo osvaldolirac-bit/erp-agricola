@@ -25,6 +25,7 @@ from rmweb.tenants import get_tenant, list_tenants
 from rmweb.pricing import pricing_context
 from rmweb.mail_alertas import enviar_correo_alerta, enviar_correo_alerta_pago
 from rmweb.master_bitacora import log_master_bitacora
+from rmweb.demo_bitacora import log_movimiento_demo
 
 app = Flask(
     __name__,
@@ -790,6 +791,10 @@ def clientes_form(cid: int | None = None):
                         (*data, core.hoy_chile().isoformat()),
                     )
                 db.commit()
+                log_movimiento_demo(
+                    "CLIENTE",
+                    f"{'Editado' if row else 'Nuevo'}: {data[1]}",
+                )
                 flash("Cliente guardado", "ok")
                 db.close()
                 return redirect(url_for("clientes_list"))
@@ -1075,6 +1080,7 @@ def cotizaciones_form(cot_id: int | None = None):
                 msg += f" · {stock_msg}"
             if arriendo_msg and "ya existe" not in arriendo_msg:
                 msg += f" · {arriendo_msg}"
+            log_movimiento_demo("COTIZACION", msg)
             flash(msg, "ok")
             db.close()
             return redirect(url_for("cotizaciones_detalle", cot_id=cid))
@@ -1218,6 +1224,7 @@ def cotizaciones_borrar(cot_id: int):
         db.execute("DELETE FROM cotizacion_items WHERE cotizacion_id=?", (cot_id,))
         db.execute("DELETE FROM cotizaciones WHERE id=?", (cot_id,))
         db.commit()
+        log_movimiento_demo("COTIZACION", f"Eliminada {row['folio']}")
         flash(f"{row['folio']} eliminada", "ok")
     db.close()
     return redirect(url_for("cotizaciones_list"))
@@ -1270,8 +1277,10 @@ def cotizaciones_estado(cot_id: int):
             msg += f" · {stock_msg}"
         if ppto_msg:
             msg += f" · {ppto_msg}"
+        log_movimiento_demo("COTIZACION", msg)
         flash(msg, "ok")
     else:
+        log_movimiento_demo("COTIZACION", f"Estado → {estado} (id {cot_id})")
         flash("Estado actualizado", "ok")
     return redirect(url_for("cotizaciones_detalle", cot_id=cot_id))
 
@@ -1544,6 +1553,7 @@ def cuentas_form(cuenta_id: int | None = None):
                 )
                 core.recalc_cuenta(db, edit["id"])
                 db.commit()
+                log_movimiento_demo("CXC", f"Documento actualizado id {edit['id']}")
                 flash("Documento actualizado", "ok")
                 db.close()
                 return redirect(url_for("cuentas_detalle", cuenta_id=edit["id"]))
@@ -1561,6 +1571,7 @@ def cuentas_form(cuenta_id: int | None = None):
                 )
                 new_id = cur.lastrowid
                 db.commit()
+                log_movimiento_demo("CXC", f"Documento {doc} creado")
                 flash(f"Documento {doc} creado", "ok")
                 db.close()
                 return redirect(url_for("cuentas_detalle", cuenta_id=new_id))
@@ -1789,6 +1800,10 @@ def cuentas_abono(cuenta_id: int):
             nuevo = db.execute("SELECT saldo FROM cuentas WHERE id=?", (cuenta_id,)).fetchone()
             saldo_nuevo = float(nuevo["saldo"] or 0) if nuevo else 0.0
             pagado_total = saldo_nuevo <= 0
+            log_movimiento_demo(
+                "CXC",
+                f"{'Pago total' if pagado_total else 'Abono'} {core.clp(monto)} · doc {cuenta['documento']}",
+            )
             if pagado_total:
                 flash(f"Pago de {core.clp(monto)} registrado. Documento pagado.", "ok")
             else:
@@ -1853,6 +1868,7 @@ def cuentas_borrar(cuenta_id: int):
     db.execute("DELETE FROM cuentas WHERE id=?", (cuenta_id,))
     db.commit()
     db.close()
+    log_movimiento_demo("CXC", f"Documento eliminado id {cuenta_id}")
     flash("Documento eliminado", "ok")
     return redirect(url_for("cuentas_list"))
 
@@ -2078,6 +2094,7 @@ def planes_contratar():
             conn.close()
         except Exception:
             pass
+        log_movimiento_demo("PLAN", f"Solicitud contratar: {nombre_plan}")
         flash(f"Solicitud de «{nombre_plan}» enviada. Te contactaremos pronto.", "ok")
     else:
         flash(msg, "danger")

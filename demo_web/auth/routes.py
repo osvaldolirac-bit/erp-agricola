@@ -14,7 +14,7 @@ from flask import (
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from demo_web.auth.login_next import pop_login_next, safe_next, stash_login_next
+from demo_web.auth.login_next import default_landing_url, pop_login_next, safe_next, stash_login_next
 from demo_web.auth.user_db import fetch_bridge_user, fetch_login_row
 from demo_web.services.erp_loader import bind_tenant_context, get_erp_module_for
 from demo_web.tenants import get_tenant, list_tenants
@@ -51,6 +51,13 @@ def _activate_session(
     session["tenant_slug"] = tenant_slug
     if from_master:
         session["from_master_console"] = True
+    elif tenant_slug == "demo":
+        try:
+            from demo_web.master_bitacora import log_master_bitacora
+
+            log_master_bitacora(tenant_slug, email, "INGRESO_ERP", "Ingreso al ERP Agrícola DEMO")
+        except Exception:
+            pass
     session.permanent = False
     try:
         from demo_web.services.mantenimiento import (
@@ -173,7 +180,7 @@ def master_entry():
         tenant_slug=token_slug,
         from_master=True,
     )
-    return redirect(url_for("modules.dashboard"))
+    return redirect(default_landing_url())
 
 
 @bp.route("/login", methods=["GET", "POST"])
@@ -201,6 +208,17 @@ def login():
             error = "Acceso denegado o periodo de prueba vencido."
             open_panel = True
             flash(error, "danger")
+            try:
+                from demo_web.master_bitacora import log_master_bitacora
+
+                log_master_bitacora(
+                    "demo",
+                    email or "desconocido",
+                    "INGRESO_FALLIDO",
+                    "Intento de acceso rechazado",
+                )
+            except Exception:
+                pass
         elif len(matches) == 1:
             m = matches[0]
             _maybe_alert_login(email=email, exitoso=True, tenant_slug=m["slug"])
