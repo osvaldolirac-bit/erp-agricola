@@ -109,7 +109,9 @@ def create_app(config_object: type = Config) -> Flask:
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        if session.get("master_email"):
+        if request.args.get("out") == "1":
+            session.clear()
+        elif session.get("master_email"):
             return redirect(url_for("home"))
 
         error = None
@@ -130,17 +132,19 @@ def create_app(config_object: type = Config) -> Flask:
                 return redirect(nxt)
             error = "Usuario o clave incorrectos."
 
+        info = "Sesión cerrada." if request.args.get("out") == "1" else None
         return render_template(
             "login.html",
             brand=app.config["BRAND_NAME"],
             tagline="Super consola · facultades separadas",
             error=error,
+            info=info,
         )
 
-    @app.route("/logout", methods=["POST"])
+    @app.route("/logout", methods=["GET", "POST"])
     def logout():
         session.clear()
-        return redirect(url_for("login"))
+        return redirect(url_for("login", out=1))
 
     @app.route("/")
     @login_required

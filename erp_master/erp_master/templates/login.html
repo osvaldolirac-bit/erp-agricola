@@ -19,6 +19,9 @@
       </header>
 
       <form class="panel" method="post" autocomplete="off">
+        {% if info %}
+        <p class="banner banner-ok" role="status">{{ info }}</p>
+        {% endif %}
         {% if error %}
         <p class="error" role="alert">{{ error }}</p>
         {% endif %}
