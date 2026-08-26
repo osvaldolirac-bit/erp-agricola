@@ -2,6 +2,14 @@
 """Restaura tenants comercial/constructora y tenant_admin completo en consola VPS."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from deploy_guard import require_safe_patch
+
+require_safe_patch(__file__)
+
 import shutil
 from datetime import datetime
 from pathlib import Path

@@ -2,6 +2,14 @@
 """Limpieza total de sesión/correo pegado en Super Consola."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from deploy_guard import require_safe_patch
+
+require_safe_patch(__file__)
+
 import hashlib
 import re
 import sqlite3
@@ -180,12 +188,15 @@ LOGIN_HTML = """<!doctype html>
 
 
 def ensure_imports(app_text: str) -> str:
-    if "make_response" not in app_text.split("from flask import")[1].split(")")[0]:
-        app_text = app_text.replace(
-            "from flask import (\n    Flask,\n    redirect,\n    render_template,\n    request,\n    session,\n    url_for,\n)",
-            "from flask import (\n    Flask,\n    make_response,\n    redirect,\n    render_template,\n    request,\n    session,\n    url_for,\n)",
+    if "make_response" in app_text:
+        return app_text
+    if "from flask import (" in app_text:
+        return app_text.replace(
+            "    Flask,\n",
+            "    Flask,\n    make_response,\n",
+            1,
         )
-    return app_text
+    raise SystemExit("flask imports not found")
 
 
 def main() -> None:
