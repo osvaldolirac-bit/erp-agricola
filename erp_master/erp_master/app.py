@@ -33,29 +33,23 @@ from erp_master.db import (
 
 
 def _expire_legacy_session_cookies(response):
-    """Invalida cookies viejas de consola (nombre anterior + actual)."""
-    from flask import current_app
-
-    names = {
-        "erp_master_session",
-        "erp_master_session_v2",
-        current_app.config.get("SESSION_COOKIE_NAME") or "erp_master_session_v2",
-    }
-    for name in names:
-        if not name:
-            continue
-        response.delete_cookie(name, path="/")
-        response.delete_cookie(name, path="/consola")
+    """Invalida solo la cookie antigua erp_master_session (no la sesión activa)."""
+    for path in ("/", "/consola"):
+        response.delete_cookie("erp_master_session", path=path)
     return response
 
 
 def _clear_master_session(response=None):
-    from flask import make_response, session
+    from flask import current_app, make_response, session
 
     session.clear()
     if response is None:
         response = make_response()
-    return _expire_legacy_session_cookies(response)
+    current_name = current_app.config.get("SESSION_COOKIE_NAME") or "erp_master_session_v2"
+    for name in ("erp_master_session", current_name):
+        for path in ("/", "/consola"):
+            response.delete_cookie(name, path=path)
+    return response
 
 
 def login_required(view):
