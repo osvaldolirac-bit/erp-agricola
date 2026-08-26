@@ -15,6 +15,9 @@ Environment=ERP_COOKIE_SECURE=1
 Environment=ERP_DEMO_SECRET_KEY=change-me-agricola-production
 Environment=ERP_LC_DB=/root/erp_concepcion_v6.db
 Environment=ERP_DEMO_DB=/root/demo/erp_demo.db
+Environment=ERP_GLOBALGAP_DB=/root/globalgap/erp_globalgap.db
+Environment=ERP_GLOBALGAP_SECRETS=/root/globalgap/.streamlit/secrets.toml
+Environment=ERP_GLOBALGAP_DOCS=/root/globalgap/docs
 Environment=ERP_SECRETS=/root/.streamlit/secrets.toml
 Environment=ERP_DEMO_SECRETS=/root/demo/.streamlit/secrets.toml
 Environment=ERP_LOGO_DIR=/root/static
