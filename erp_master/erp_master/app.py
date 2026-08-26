@@ -129,7 +129,7 @@ def create_app(config_object: type = Config) -> Flask:
                 nxt = request.args.get("next") or url_for("home")
                 if not str(nxt).startswith("/"):
                     nxt = url_for("home")
-                return redirect(nxt)
+                return redirect(nxt, code=303)
             error = "Usuario o clave incorrectos."
 
         info = "Sesión cerrada." if request.args.get("out") == "1" else None
@@ -144,9 +144,9 @@ def create_app(config_object: type = Config) -> Flask:
     @app.route("/logout", methods=["GET", "POST"])
     def logout():
         session.clear()
-        return redirect(url_for("login", out=1))
+        return redirect(url_for("login", out=1), code=303)
 
-    @app.route("/")
+    @app.route("/", methods=["GET", "POST"])
     @login_required
     def home():
         admin_map = _admin_tenant_map(app)
