@@ -833,6 +833,17 @@ def _cotizacion_revert_aprobacion(db, cid: int) -> None:
     db.execute("UPDATE cotizaciones SET estado='borrador' WHERE id=?", (cid,))
 
 
+def _form_pct(name: str, default: float) -> float:
+    """Lee % del formulario; «0» es válido (no cae al default por falsy)."""
+    raw = request.form.get(name)
+    if raw is None or str(raw).strip() == "":
+        return float(default)
+    try:
+        return float(str(raw).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return float(default)
+
+
 @app.route("/cotizaciones/")
 @login_required
 def cotizaciones_list():
@@ -929,13 +940,9 @@ def cotizaciones_form(cot_id: int | None = None):
         estado = request.form.get("estado") or "borrador"
         fecha = (request.form.get("fecha") or "").strip() or core.hoy_chile().isoformat()
         validez = int(request.form.get("validez") or validez_def)
-        gg_pct = float(request.form.get("gg_pct") or gg_def)
-        utilidad_pct = float(request.form.get("utilidad_pct") or util_def)
-        # Permite ajustar IVA por cotización; si no viene, usa parámetro
-        try:
-            iva_pct = float(request.form.get("iva_pct") or iva_def) / 100.0
-        except (TypeError, ValueError):
-            iva_pct = float(iva_def) / 100.0
+        gg_pct = _form_pct("gg_pct", gg_def)
+        utilidad_pct = _form_pct("utilidad_pct", util_def)
+        iva_pct = _form_pct("iva_pct", iva_def) / 100.0
         notas = (request.form.get("notas") or "").strip() or None
         tipo_venta = (request.form.get("tipo_venta") or "servicio").strip().lower()
         if tipo_venta not in {"servicio", "producto", "arriendo"}:

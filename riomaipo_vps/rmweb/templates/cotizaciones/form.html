@@ -295,26 +295,24 @@
   }
 
   document.getElementById('cotForm').addEventListener('input', recalc);
-  document.getElementById('cotForm').addEventListener('submit', function (ev) {
-    let hasItem = false;
+  document.getElementById('cotForm').addEventListener('submit', function () {
     const arr = isArriendo();
     document.querySelectorAll('#itemsTable .item-row').forEach(function (row) {
       const desc = (row.querySelector('.js-desc').value || '').trim();
       const valor = Number(row.querySelector('.js-valor').value || 0);
-      const cantRaw = row.querySelector('.js-cant').value;
+      const cantEl = row.querySelector('.js-cant');
+      const cantRaw = cantEl.value;
       let cant = cantRaw === '' ? 0 : Number(cantRaw || 0);
       if (desc && cant <= 0 && valor > 0) {
-        cant = 1;
-        row.querySelector('.js-cant').value = '1';
+        cantEl.value = '1';
       }
-      const diasEl = row.querySelector('.js-dias');
-      const dias = arr ? Number(diasEl ? diasEl.value || 0 : 0) : 1;
-      if (desc && cant > 0 && (!arr || dias > 0)) hasItem = true;
+      if (arr && desc && cant > 0) {
+        const diasEl = row.querySelector('.js-dias');
+        if (diasEl && Number(diasEl.value || 0) <= 0) {
+          diasEl.value = '1';
+        }
+      }
     });
-    if (!hasItem) {
-      ev.preventDefault();
-      alert('Agrega al menos un ítem con descripción, cantidad y valor (en arriendo también indica días).');
-    }
   });
   syncModo();
   recalc();
