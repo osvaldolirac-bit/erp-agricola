@@ -10,7 +10,7 @@ Group=root
 WorkingDirectory=/root/erp_master
 Environment=PYTHONPATH=/root/erp_master
 Environment=ERP_MASTER_DB=/root/erp_master.db
-Environment=ERP_MASTER_SESSION_COOKIE=erp_master_session
+Environment=ERP_MASTER_SESSION_COOKIE=erp_master_session_v2
 Environment=ERP_MASTER_COOKIE_SECURE=1
 Environment=ERP_MASTER_SECRET_KEY=fab008332102d0fa94251aca081f1a1fbb7f602d5a8f2fdce0d6d2d5d534a543
 Environment=ERP_MASTER_BRIDGE_SECRET=change-me-bridge-shared-with-erp

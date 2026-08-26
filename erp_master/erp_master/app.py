@@ -5,6 +5,7 @@ from functools import wraps
 
 from flask import (
     Flask,
+    make_response,
     redirect,
     render_template,
     request,
@@ -29,6 +30,32 @@ from erp_master.db import (
     log_bitacora,
     set_master_user_activo,
 )
+
+
+def _expire_legacy_session_cookies(response):
+    """Invalida cookies viejas de consola (nombre anterior + actual)."""
+    from flask import current_app
+
+    names = {
+        "erp_master_session",
+        "erp_master_session_v2",
+        current_app.config.get("SESSION_COOKIE_NAME") or "erp_master_session_v2",
+    }
+    for name in names:
+        if not name:
+            continue
+        response.delete_cookie(name, path="/")
+        response.delete_cookie(name, path="/consola")
+    return response
+
+
+def _clear_master_session(response=None):
+    from flask import make_response, session
+
+    session.clear()
+    if response is None:
+        response = make_response()
+    return _expire_legacy_session_cookies(response)
 
 
 def login_required(view):
@@ -109,10 +136,9 @@ def create_app(config_object: type = Config) -> Flask:
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        if request.args.get("out") == "1":
-            session.clear()
-
         error = None
+        info = None
+
         if request.method == "POST":
             email = (request.form.get("email") or "").strip()
             password = request.form.get("password") or ""
@@ -127,24 +153,38 @@ def create_app(config_object: type = Config) -> Flask:
                 nxt = request.args.get("next") or url_for("home")
                 if not str(nxt).startswith("/"):
                     nxt = url_for("home")
-                return redirect(nxt, code=303)
+                resp = redirect(nxt, code=303)
+                return _expire_legacy_session_cookies(resp)
             error = "Usuario o clave incorrectos."
-        elif session.get("master_email"):
-            return redirect(url_for("home"), code=303)
+        else:
+            if request.args.get("out") == "1":
+                info = "Sesión cerrada. Ingrese de nuevo."
+            resp = make_response(
+                render_template(
+                    "login.html",
+                    brand=app.config["BRAND_NAME"],
+                    tagline="Super consola · facultades separadas",
+                    error=error,
+                    info=info,
+                )
+            )
+            return _clear_master_session(resp)
 
-        info = "Sesión cerrada." if request.args.get("out") == "1" else None
-        return render_template(
-            "login.html",
-            brand=app.config["BRAND_NAME"],
-            tagline="Super consola · facultades separadas",
-            error=error,
-            info=info,
+        resp = make_response(
+            render_template(
+                "login.html",
+                brand=app.config["BRAND_NAME"],
+                tagline="Super consola · facultades separadas",
+                error=error,
+                info=info,
+            )
         )
+        return _clear_master_session(resp)
 
     @app.route("/logout", methods=["GET", "POST"])
     def logout():
-        session.clear()
-        return redirect(url_for("login", out=1), code=303)
+        resp = redirect(url_for("login", out=1), code=303)
+        return _clear_master_session(resp)
 
     @app.route("/", methods=["GET", "POST"])
     @login_required
