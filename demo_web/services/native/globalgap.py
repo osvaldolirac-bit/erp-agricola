@@ -299,7 +299,19 @@ def _docs_static_root() -> Path:
     return Path(__file__).resolve().parents[2] / "static" / "globalgap" / "docs"
 
 
+def _consultor_ctx(demo):
+    return getattr(demo, "_gap_consultor_ctx", None)
+
+
 def _docs_especie_dir(especie: str) -> Path:
+    try:
+        from demo_web.services.demo_loader import get_demo_module
+
+        ctx = _consultor_ctx(get_demo_module())
+        if ctx and especie == ctx.especie_key and ctx.docs_root.is_dir():
+            return ctx.docs_root
+    except Exception:
+        pass
     slug = _ESPECIE_DOC_SLUG.get((especie or "").strip(), "cerezos")
     env_root = (os.environ.get("ERP_GAP_DOCS") or "").strip()
     candidates = []
@@ -319,6 +331,21 @@ def _docs_especie_dir(especie: str) -> Path:
 
 
 def _catalog_path(especie: str) -> Path | None:
+    ctx = None
+    try:
+        from demo_web.services.demo_loader import get_demo_module
+
+        ctx = _consultor_ctx(get_demo_module())
+    except Exception:
+        pass
+    if ctx and especie == ctx.especie_key:
+        for name in (
+            f"catalogo_{ctx.plantilla}.json",
+            "catalogo.json",
+        ):
+            p = ctx.docs_root / name
+            if p.is_file():
+                return p
     slug = _ESPECIE_DOC_SLUG.get((especie or "").strip(), "cerezos")
     for p in (
         _docs_static_root() / f"catalogo_{slug}.json",
@@ -330,6 +357,21 @@ def _catalog_path(especie: str) -> Path | None:
 
 
 def _doc_map_path(especie: str) -> Path | None:
+    ctx = None
+    try:
+        from demo_web.services.demo_loader import get_demo_module
+
+        ctx = _consultor_ctx(get_demo_module())
+    except Exception:
+        pass
+    if ctx and especie == ctx.especie_key:
+        for name in (
+            f"doc_checklist_map_{ctx.plantilla}.json",
+            "doc_checklist_map.json",
+        ):
+            p = ctx.docs_root / name
+            if p.is_file():
+                return p
     slug = _ESPECIE_DOC_SLUG.get((especie or "").strip(), "cerezos")
     for p in (
         _docs_static_root() / f"doc_checklist_map_{slug}.json",
@@ -3700,16 +3742,43 @@ def _post_planilla_import(demo, conn, especie: str) -> dict:
 
 
 def gather_globalgap(user_email: str, user_rol: str) -> dict:
+    from demo_web.services.gap_scope import (
+        ensure_demo_especies,
+        is_globalgap_tenant,
+        load_scope,
+        session_ambito_id,
+    )
+
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
-    especie = _especie_sel(demo)
+    consultor_label = ""
+    scope = None
+    if is_globalgap_tenant():
+        conn_pre = demo.conectar_db()
+        try:
+            if session_ambito_id():
+                scope = load_scope(conn_pre)
+            if scope:
+                ensure_demo_especies(demo, scope)
+                consultor_label = getattr(demo, "_gap_ambito_label", "")
+                especie = scope.especie_key
+            else:
+                especie = demo.GAP_ESPECIES[0] if getattr(demo, "GAP_ESPECIES", None) else "ESPECIE 1"
+        finally:
+            conn_pre.close()
+    else:
+        especie = _especie_sel(demo)
+
     sec = request.args.get("sec", "gantt")
     if sec not in {k for k, _ in SECCIONES}:
         sec = "gantt"
 
     conn = demo.conectar_db()
     try:
-        cuarteles = demo.cuarteles_gap_especie(especie)
+        if scope:
+            cuarteles = [scope.huerto]
+        else:
+            cuarteles = demo.cuarteles_gap_especie(especie)
         res = demo.resumen_globalgap(conn, especie)
 
         df_res = pd.DataFrame([
@@ -3735,6 +3804,9 @@ def gather_globalgap(user_email: str, user_rol: str) -> dict:
             "especie_sel": especie,
             "especies": demo.GAP_ESPECIES,
             "cuarteles_esp": cuarteles,
+            "consultor_label": consultor_label,
+            "is_consultor_tenant": bool(scope),
+            "panel_url": "",
             "kpis": res,
             "alertas": {
                 "nc": res["nc_abiertas"] > 0,
@@ -3743,6 +3815,10 @@ def gather_globalgap(user_email: str, user_rol: str) -> dict:
             },
             "pdf_resumen_url": pdf_resumen,
         }
+        if scope:
+            from flask import url_for
+
+            ctx["panel_url"] = url_for("globalgap_portal.panel")
 
         loaders = {
             "gantt": _section_gantt,
@@ -3764,8 +3840,15 @@ def gather_globalgap(user_email: str, user_rol: str) -> dict:
 
 
 def view(user_email: str, user_rol: str):
+    from flask import redirect, url_for
+
+    from demo_web.services.gap_scope import is_globalgap_tenant, session_ambito_id
+
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
+
+    if is_globalgap_tenant() and not session_ambito_id():
+        return redirect(url_for("globalgap_portal.panel"))
 
     if request.method == "GET" and request.args.get("clima") == "1":
         from demo_web.services.weather import fetch_daily_weather

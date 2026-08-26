@@ -28,8 +28,31 @@ def parse_next(raw: str | None) -> str | None:
     return nxt
 
 
+def default_landing_url() -> str:
+    """Destino post-login según perfil y tenant."""
+    from demo_web.tenants import get_tenant
+
+    slug = session.get("tenant_slug") or ""
+    tenant = get_tenant(slug)
+    if tenant and tenant.get("kind") == "globalgap":
+        from demo_web.blueprints.globalgap_portal import default_landing_for_globalgap
+
+        url = default_landing_for_globalgap()
+        if url:
+            return url
+    rol = (session.get("rol") or "").strip().lower()
+    if rol == "certificacion":
+        return url_for("modules.globalgap")
+    return url_for("modules.dashboard")
+
+
 def safe_next(raw: str | None) -> str:
-    return parse_next(raw) or url_for("modules.dashboard")
+    nxt = parse_next(raw)
+    if not nxt:
+        return default_landing_url()
+    if (session.get("rol") or "").strip().lower() == "certificacion" and "/dashboard" in nxt:
+        return url_for("modules.globalgap")
+    return nxt
 
 
 def stash_login_next(raw: str | None) -> None:

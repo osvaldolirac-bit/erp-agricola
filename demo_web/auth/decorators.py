@@ -146,6 +146,39 @@ def request_path() -> str:
 
 
 def build_menu(user_email: str, rol: str) -> list[dict]:
+    from demo_web.tenants import get_tenant
+    from flask import session
+
+    tenant = get_tenant(session.get("tenant_slug"))
+    if tenant and tenant.get("kind") == "globalgap":
+        items = [
+            {
+                "label": "Panel consultor",
+                "key": "PanelGlobalGAP",
+                "endpoint": "globalgap_portal.panel",
+                "icon": "bi-grid-1x2",
+            },
+            {
+                "label": "Certificación",
+                "key": "GlobalGAP",
+                "endpoint": "modules.globalgap",
+                "icon": "bi-patch-check",
+            },
+            {
+                "label": "Soporte",
+                "key": "Soporte",
+                "endpoint": "modules.soporte",
+                "icon": "bi-life-preserver",
+            },
+            {
+                "label": "Manual",
+                "key": "Manual",
+                "endpoint": "modules.manual",
+                "icon": "bi-book",
+            },
+        ]
+        return items
+
     demo = get_demo_module()
     bind_user_session(user_email, rol)
     opts = demo.construir_menu_usuario(user_email, rol)

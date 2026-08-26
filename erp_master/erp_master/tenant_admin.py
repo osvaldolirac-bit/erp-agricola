@@ -59,6 +59,14 @@ MENU_DEMO = [
 
 ROLES_LC = ("admin", "operador", "certificacion", "lector")
 ROLES_DEMO = ("super_admin", "admin_cliente", "admin", "operador", "certificacion")
+ROLES_GLOBALGAP = ("admin",)
+
+MENU_GLOBALGAP = [
+    ("Panel consultor", "PanelGlobalGAP"),
+    ("GlobalGAP", "GlobalGAP"),
+    ("Soporte", "Soporte"),
+    ("Manual", "Manual"),
+]
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -71,14 +79,20 @@ def hash_password(password: str, kind: str) -> str:
 
 
 def menu_for(kind: str) -> list[tuple[str, str]]:
+    if kind == "globalgap":
+        return list(MENU_GLOBALGAP)
     return list(MENU_LC if kind == "lc" else MENU_DEMO)
 
 
 def roles_for(kind: str) -> tuple[str, ...]:
+    if kind == "globalgap":
+        return ROLES_GLOBALGAP
     return ROLES_LC if kind == "lc" else ROLES_DEMO
 
 
 def protected_role(kind: str) -> str:
+    if kind == "globalgap":
+        return "admin"
     return "admin" if kind == "lc" else "super_admin"
 
 

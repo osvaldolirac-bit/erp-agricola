@@ -11,6 +11,12 @@
   </div>
 
   <div class="mb-3">
+    {% if is_consultor_tenant %}
+    <div class="alert alert-success small mb-2">
+      <strong>{{ consultor_label }}</strong>
+      {% if panel_url %} · <a href="{{ panel_url }}">← Volver al panel clientes</a>{% endif %}
+    </div>
+    {% else %}
     <div class="small text-muted mb-1">Especie / cultivo activo</div>
     <div class="btn-group flex-wrap">
       {% for esp in especies %}
@@ -20,12 +26,20 @@
       </a>
       {% endfor %}
     </div>
+    {% endif %}
   </div>
 
+  {% if not is_consultor_tenant %}
   <div class="alert alert-success small mb-3">
     Trabajando con <strong>{{ especie_sel }}</strong> · Cuarteles: {{ cuarteles_esp|join(', ') }}
   </div>
+  {% elif cuarteles_esp %}
+  <div class="alert alert-light border small mb-3">
+    Huerto: <strong>{{ cuarteles_esp|join(', ') }}</strong>
+  </div>
+  {% endif %}
 
+  {% if sec_activa != 'gantt' %}
   <div class="row g-2 mb-3">
     <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Cumplimiento checklist</div><div class="kpi-value">{{ kpis.pct }}%</div></div></div>
     <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Ítems cumpliendo</div><div class="kpi-value">{{ kpis.cumple }}/{{ kpis.total_chk }}</div></div></div>
@@ -42,6 +56,7 @@
   {% endif %}
   {% if alertas.agua %}
   <div class="alert alert-warning">Revise análisis de agua de riego (más de 12 meses).</div>
+  {% endif %}
   {% endif %}
 
   {% if sec_activa != 'gantt' and pdf_resumen_url %}

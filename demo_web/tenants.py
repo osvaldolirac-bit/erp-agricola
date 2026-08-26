@@ -37,6 +37,15 @@ def _build_tenants() -> dict[str, dict[str, Any]]:
             "secrets": _env("ERP_DEMO_SECRETS", "/root/demo/.streamlit/secrets.toml"),
             "descripcion": "Entorno de prueba e invitaciones",
         },
+        "globalgap": {
+            "slug": "globalgap",
+            "erp_app": "demo",
+            "kind": "globalgap",
+            "nombre": "GlobalGAP Consultor",
+            "db": _env("ERP_GLOBALGAP_DB", "/root/globalgap/erp_globalgap.db"),
+            "secrets": _env("ERP_GLOBALGAP_SECRETS", "/root/globalgap/.streamlit/secrets.toml"),
+            "descripcion": "Certificación multi-cliente · consultor",
+        },
     }
 
 
@@ -44,7 +53,7 @@ TENANTS: dict[str, dict[str, Any]] = _build_tenants()
 
 
 def list_tenants() -> list[dict[str, Any]]:
-    return [TENANTS[k] for k in ("concepcion", "demo") if k in TENANTS]
+    return [TENANTS[k] for k in ("concepcion", "demo", "globalgap") if k in TENANTS]
 
 
 def get_tenant(slug: str | None) -> dict[str, Any] | None:

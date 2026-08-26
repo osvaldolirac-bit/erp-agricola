@@ -39,6 +39,10 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(modules_bp)
 
+    from demo_web.blueprints.globalgap_portal import bp as globalgap_portal_bp
+
+    app.register_blueprint(globalgap_portal_bp)
+
     from demo_web.blueprints.registro_riego import bp as registro_riego_bp
     from demo_web.blueprints.salida_petroleo import bp as salida_petroleo_bp
 
@@ -60,6 +64,29 @@ def create_app(config_class=Config) -> Flask:
 
 
     @app.before_request
+    def _globalgap_tenant_guard():
+        if session.get("tenant_slug") != "globalgap" or not session.get("email"):
+            return None
+        endpoint = request.endpoint or ""
+        allowed_prefixes = (
+            "globalgap_portal.",
+            "modules.globalgap",
+            "modules.soporte",
+            "modules.manual",
+            "modules.pdf_download",
+            "static",
+        )
+        if endpoint in {"session_status", "session_continue", "tenant_logo_asset", "logo_asset"}:
+            return None
+        if any(endpoint.startswith(p) for p in allowed_prefixes):
+            return None
+        if endpoint == "modules.dashboard":
+            return redirect(url_for("globalgap_portal.panel"))
+        if endpoint.startswith("modules."):
+            return redirect(url_for("globalgap_portal.panel"))
+        return None
+
+    @app.before_request
     def _agricola_session_idle():
         if not session.get("email"):
             return None
@@ -69,6 +96,10 @@ def create_app(config_class=Config) -> Flask:
             "auth.logout",
             "auth.master_entry",
             "auth.select_tenant",
+            "auth.elegir_empresa",
+            "globalgap_portal.login",
+            "globalgap_portal.logout",
+            "globalgap_portal.root",
             "logo_asset",
         }:
             return None
@@ -84,6 +115,8 @@ def create_app(config_class=Config) -> Flask:
                 "/api/session-status"
             ) or (request.path or "").endswith("/api/session-continue"):
                 return {"ok": False, "error": "session_expired"}, 401
+            if session.get("tenant_slug") == "globalgap":
+                return redirect(url_for("globalgap_portal.login"))
             return redirect(url_for("auth.login"))
         if endpoint == "session_continue":
             session["last_activity"] = now

@@ -40,6 +40,14 @@ class Config:
             "estado": "activo",
         },
         {
+            "slug": "globalgap",
+            "nombre": "GlobalGAP Consultor",
+            "descripcion": "Certificación multi-cliente",
+            "url": "/agricola/globalgap/",
+            "url_dashboard": "/agricola/globalgap/panel",
+            "estado": "activo",
+        },
+        {
             "slug": "riomaipo",
             "nombre": "Río Maipo",
             "descripcion": "Cotizaciones y cobranza",
@@ -65,6 +73,14 @@ class Config:
             "db": _env("ERP_DEMO_DB", "/root/demo/erp_demo.db"),
             "url": "/agricola/",
             "url_admin": "/agricola/m/admin",
+        },
+        {
+            "slug": "globalgap",
+            "nombre": "GlobalGAP Consultor",
+            "kind": "globalgap",
+            "db": _env("ERP_GLOBALGAP_DB", "/root/globalgap/erp_globalgap.db"),
+            "url": "/agricola/globalgap/",
+            "url_admin": "/agricola/globalgap/panel",
         },
     ]
 
