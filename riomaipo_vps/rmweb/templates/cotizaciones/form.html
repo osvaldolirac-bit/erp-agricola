@@ -15,7 +15,7 @@
 </div>
 
 <div class="panel">
-  <form method="post" id="cotForm">
+  <form method="post" id="cotForm" novalidate>
     <div class="row g-3 mb-3">
       <div class="col-md-2">
         <label class="form-label fw-bold">Fecha</label>
@@ -128,7 +128,7 @@
             <td><input class="form-control form-control-sm" name="obs" value="{{ it.obs if it and it.obs else '' }}"></td>
             <td><input class="form-control form-control-sm js-und" name="und" value="{{ it.unidad if it else 'un' }}"></td>
             <td><input class="form-control form-control-sm js-cant" type="number" step="0.01" min="0" name="cant" placeholder="1" value="{{ it.cantidad if it else '' }}"></td>
-            <td class="cell-dias d-none"><input class="form-control form-control-sm js-dias" type="number" step="1" min="1" name="dias" value="{{ it.dias_arriendo if it and it.dias_arriendo else 0 }}"></td>
+            <td class="cell-dias d-none"><input class="form-control form-control-sm js-dias" type="number" step="1" min="1" name="dias" disabled placeholder="1" value="{{ it.dias_arriendo if it and it.dias_arriendo else '' }}"></td>
             <td><input class="form-control form-control-sm js-valor" type="number" step="1" name="valor" value="{{ it.precio_unitario if it else 0 }}"></td>
             <td class="text-end fw-bold js-line-total text-muted">$0</td>
           </tr>
@@ -234,8 +234,13 @@
     document.querySelectorAll('.cell-dias').forEach(el => el.classList.toggle('d-none', !arr));
     document.querySelectorAll('.js-prod').forEach(el => {
       el.classList.toggle('d-none', !arr);
+      el.disabled = !arr;
       if (arr) el.closest('.cell-desc').querySelector('.js-desc').classList.add('d-none');
       else el.closest('.cell-desc').querySelector('.js-desc').classList.remove('d-none');
+    });
+    document.querySelectorAll('.js-dias').forEach(el => {
+      el.disabled = !arr;
+      if (!arr) el.value = '';
     });
     const sin = document.getElementById('arrSinProd');
     if (sin) sin.classList.toggle('d-none', !arr);
@@ -295,8 +300,10 @@
   }
 
   document.getElementById('cotForm').addEventListener('input', recalc);
-  document.getElementById('cotForm').addEventListener('submit', function () {
+  document.getElementById('cotForm').addEventListener('submit', function (ev) {
+    syncModo();
     const arr = isArriendo();
+    let hasItem = false;
     document.querySelectorAll('#itemsTable .item-row').forEach(function (row) {
       const desc = (row.querySelector('.js-desc').value || '').trim();
       const valor = Number(row.querySelector('.js-valor').value || 0);
@@ -305,6 +312,7 @@
       let cant = cantRaw === '' ? 0 : Number(cantRaw || 0);
       if (desc && cant <= 0 && valor > 0) {
         cantEl.value = '1';
+        cant = 1;
       }
       if (arr && desc && cant > 0) {
         const diasEl = row.querySelector('.js-dias');
@@ -312,7 +320,12 @@
           diasEl.value = '1';
         }
       }
+      if (desc && (cant > 0 || valor > 0 || (!arr && desc))) hasItem = true;
     });
+    if (!hasItem) {
+      ev.preventDefault();
+      alert('Agrega al menos un ítem con descripción y valor o cantidad.');
+    }
   });
   syncModo();
   recalc();
