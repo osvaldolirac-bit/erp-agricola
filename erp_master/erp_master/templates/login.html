@@ -59,6 +59,14 @@
 
     if (window.location.search.indexOf('out=1') >= 0) {
       try { localStorage.removeItem(storageKey); } catch (e) {}
+    } else {
+      fetch('/consola/api/session-status', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function (res) {
+          if (res.status === 401) {
+            window.location.replace('/consola/login?out=1');
+          }
+        })
+        .catch(function () {});
     }
 
     try {

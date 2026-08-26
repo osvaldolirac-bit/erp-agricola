@@ -35,7 +35,7 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not session.get("master_email"):
-            return redirect(url_for("login", next=request.path))
+            return redirect(url_for("login", next=request.path, out=1))
         return view(*args, **kwargs)
 
     return wrapped
@@ -45,7 +45,7 @@ def super_admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not session.get("master_email"):
-            return redirect(url_for("login", next=request.path))
+            return redirect(url_for("login", next=request.path, out=1))
         if session.get("master_rol") != "super_admin":
             return redirect(url_for("home"))
         return view(*args, **kwargs)
@@ -111,8 +111,6 @@ def create_app(config_object: type = Config) -> Flask:
     def login():
         if request.args.get("out") == "1":
             session.clear()
-        elif session.get("master_email"):
-            return redirect(url_for("home"))
 
         error = None
         if request.method == "POST":
@@ -131,6 +129,8 @@ def create_app(config_object: type = Config) -> Flask:
                     nxt = url_for("home")
                 return redirect(nxt, code=303)
             error = "Usuario o clave incorrectos."
+        elif session.get("master_email"):
+            return redirect(url_for("home"), code=303)
 
         info = "Sesión cerrada." if request.args.get("out") == "1" else None
         return render_template(
