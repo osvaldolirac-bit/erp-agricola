@@ -807,6 +807,32 @@ def clientes_form(cid: int | None = None):
 # ---------------------------------------------------------------------------
 # Cotizaciones
 # ---------------------------------------------------------------------------
+def _cotizacion_aprobar_side_effects(db, cid: int, tipo_venta: str) -> tuple[bool, str | None, str | None, str | None]:
+    """CxC + bodega/arriendo al aprobar. Retorna (ok, cxc_doc, stock_msg, arriendo_msg)."""
+    from rmweb import ops as _ops
+    from rmweb import ops_arriendo as _arr
+
+    _ops.ensure_ops_schema(db)
+    cxc_doc = core.ensure_cxc_from_cotizacion(db, cid)
+    tv = (tipo_venta or "servicio").strip().lower()
+    if tv == "arriendo":
+        ok_a, arriendo_msg = _arr.crear_contrato_desde_cotizacion(db, cid)
+        return ok_a, cxc_doc, None, arriendo_msg
+    ok_s, stock_msg = _ops.aplicar_salida_cotizacion_producto(db, cid)
+    return ok_s, cxc_doc, stock_msg, None
+
+
+def _cotizacion_revert_aprobacion(db, cid: int) -> None:
+    """Deja la cotización en borrador y quita CxC generada en un intento fallido de aprobación."""
+    row = db.execute("SELECT cxc_id FROM cotizaciones WHERE id=?", (cid,)).fetchone()
+    if row and row["cxc_id"]:
+        cxc_id = int(row["cxc_id"])
+        db.execute("DELETE FROM abonos WHERE cuenta_id=?", (cxc_id,))
+        db.execute("DELETE FROM cuentas WHERE id=?", (cxc_id,))
+        db.execute("UPDATE cotizaciones SET cxc_id=NULL WHERE id=?", (cid,))
+    db.execute("UPDATE cotizaciones SET estado='borrador' WHERE id=?", (cid,))
+
+
 @app.route("/cotizaciones/")
 @login_required
 def cotizaciones_list():
@@ -949,6 +975,8 @@ def cotizaciones_form(cot_id: int | None = None):
             cant = float(cants[i] or 0)
             pu = float(valores[i] or 0)
             if tipo_venta == "arriendo":
+                if cant <= 0 and (pu > 0 or pid):
+                    cant = 1.0
                 if cant <= 0:
                     continue
                 if dias_arr <= 0:
@@ -969,6 +997,8 @@ def cotizaciones_form(cot_id: int | None = None):
             else:
                 if cant < 0:
                     continue
+                if cant <= 0 and pu > 0:
+                    cant = 1.0
                 if cant == 0 and pu == 0:
                     cant = 1.0
                     pu = 0.0
@@ -996,7 +1026,10 @@ def cotizaciones_form(cot_id: int | None = None):
                 )
             )
         if not lineas:
-            flash("Agrega al menos un ítem con cantidad > 0", "danger")
+            flash(
+                "Agrega al menos un ítem con descripción y cantidad (o valor unitario).",
+                "danger",
+            )
         else:
             tots = core.calc_cotizacion_totales(
                 sum(x[7] for x in lineas), gg_pct, utilidad_pct, iva_pct
@@ -1050,38 +1083,35 @@ def cotizaciones_form(cot_id: int | None = None):
                 """,
                 [(cid, *ln) for ln in lineas],
             )
+            db.commit()
             cxc_doc = None
             stock_msg = None
             arriendo_msg = None
-            if estado == "aprobada":
-                from rmweb import ops as _ops
-                from rmweb import ops_arriendo as _arr
-                _ops.ensure_ops_schema(db)
-                cxc_doc = core.ensure_cxc_from_cotizacion(db, cid)
-                if tipo_venta == "arriendo":
-                    ok_a, arriendo_msg = _arr.crear_contrato_desde_cotizacion(db, cid)
-                    if not ok_a:
-                        db.rollback()
-                        flash(arriendo_msg, "danger")
-                        db.close()
-                        return redirect(url_for("cotizaciones_form", cot_id=cid) if edit else url_for("cotizaciones_form"))
-                else:
-                    ok_s, stock_msg = _ops.aplicar_salida_cotizacion_producto(db, cid)
-                    if not ok_s:
-                        db.rollback()
-                        flash(stock_msg, "danger")
-                        db.close()
-                        return redirect(url_for("cotizaciones_form", cot_id=cid) if edit else url_for("cotizaciones_form"))
-            db.commit()
             msg = f"{folio} guardada · total {core.clp(tots['total'])}"
-            if cxc_doc:
-                msg += f" · CxC {cxc_doc} generada"
-            if stock_msg and "Sin impacto" not in stock_msg and "ya aplicada" not in stock_msg:
-                msg += f" · {stock_msg}"
-            if arriendo_msg and "ya existe" not in arriendo_msg:
-                msg += f" · {arriendo_msg}"
-            log_movimiento_demo("COTIZACION", msg)
-            flash(msg, "ok")
+            if estado == "aprobada":
+                ok_apr, cxc_doc, stock_msg, arriendo_msg = _cotizacion_aprobar_side_effects(
+                    db, cid, tipo_venta
+                )
+                if not ok_apr:
+                    _cotizacion_revert_aprobacion(db, cid)
+                    db.commit()
+                    err = stock_msg or arriendo_msg or "No se pudo completar la aprobación"
+                    msg = f"{folio} guardada como borrador · total {core.clp(tots['total'])} · {err}"
+                    log_movimiento_demo("COTIZACION", msg)
+                    flash(msg, "warning")
+                else:
+                    db.commit()
+                    if cxc_doc:
+                        msg += f" · CxC {cxc_doc} generada"
+                    if stock_msg and "Sin impacto" not in stock_msg and "ya aplicada" not in stock_msg:
+                        msg += f" · {stock_msg}"
+                    if arriendo_msg and "ya existe" not in arriendo_msg:
+                        msg += f" · {arriendo_msg}"
+                    log_movimiento_demo("COTIZACION", msg)
+                    flash(msg, "ok")
+            else:
+                log_movimiento_demo("COTIZACION", msg)
+                flash(msg, "ok")
             db.close()
             return redirect(url_for("cotizaciones_detalle", cot_id=cid))
 
@@ -1237,30 +1267,33 @@ def cotizaciones_estado(cot_id: int):
     db = core.conn()
     from rmweb import ops as _ops
     _ops.ensure_ops_schema(db)
+    prev = db.execute("SELECT estado FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
+    prev_estado = (prev["estado"] if prev else "borrador") or "borrador"
     db.execute("UPDATE cotizaciones SET estado=? WHERE id=?", (estado, cot_id))
+    db.commit()
     cxc_doc = None
     stock_msg = None
+    arriendo_msg = None
     ppto_msg = None
     if estado == "aprobada":
-        cxc_doc = core.ensure_cxc_from_cotizacion(db, cot_id)
         cot_row = db.execute("SELECT tipo_venta FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
         tv = (cot_row["tipo_venta"] if cot_row else "servicio") or "servicio"
-        if str(tv).strip().lower() == "arriendo":
-            from rmweb import ops_arriendo as _arr
-            ok_a, arriendo_msg = _arr.crear_contrato_desde_cotizacion(db, cot_id)
-            if not ok_a:
-                db.rollback()
-                flash(arriendo_msg, "danger")
-                db.close()
-                return redirect(url_for("cotizaciones_detalle", cot_id=cot_id))
-            stock_msg = arriendo_msg
-        else:
-            ok_s, stock_msg = _ops.aplicar_salida_cotizacion_producto(db, cot_id)
-            if not ok_s:
-                db.rollback()
-                flash(stock_msg, "danger")
-                db.close()
-                return redirect(url_for("cotizaciones_detalle", cot_id=cot_id))
+        ok_apr, cxc_doc, stock_msg, arriendo_msg = _cotizacion_aprobar_side_effects(db, cot_id, tv)
+        if not ok_apr:
+            row = db.execute("SELECT cxc_id FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
+            if row and row["cxc_id"]:
+                cxc_id = int(row["cxc_id"])
+                db.execute("DELETE FROM abonos WHERE cuenta_id=?", (cxc_id,))
+                db.execute("DELETE FROM cuentas WHERE id=?", (cxc_id,))
+            db.execute(
+                "UPDATE cotizaciones SET estado=?, cxc_id=NULL WHERE id=?",
+                (prev_estado, cot_id),
+            )
+            db.commit()
+            err = stock_msg or arriendo_msg or "No se pudo aprobar"
+            flash(err, "danger")
+            db.close()
+            return redirect(url_for("cotizaciones_detalle", cot_id=cot_id))
         try:
             from rmweb import constructora as _cst
             _cst.ensure_constructora_schema(db)
@@ -1269,7 +1302,7 @@ def cotizaciones_estado(cot_id: int):
                 ppto_msg = None
         except Exception:
             ppto_msg = None
-    db.commit()
+        db.commit()
     db.close()
     if cxc_doc:
         msg = f"Estado actualizado · CxC {cxc_doc} generada automáticamente"

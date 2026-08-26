@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if edit else 'Nueva' }} cotización{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if edit %}Modificar {{ edit.folio }}{% else %}Nueva cotización{% endif %}</h1>
+    <p>Ítems de obra · subtotal · gastos generales · utilidad · IVA · total.</p>
+  </div>
+  <div class="d-flex gap-2">
+    {% if edit %}
+    <a class="btn btn-info text-white" href="{{ url_for('cotizaciones_pdf', cot_id=edit.id) }}"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="{{ url_for('cotizaciones_list') }}">Volver</a>
+  </div>
+</div>
+
+<div class="panel">
+  <form method="post" id="cotForm">
+    <div class="row g-3 mb-3">
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Fecha</label>
+        <input class="form-control" type="date" name="fecha" required
+               value="{{ edit.fecha if edit and edit.fecha else hoy }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Versión</label>
+        <input class="form-control" name="version" value="{{ edit.version if edit and edit.version else '1' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Cliente</label>
+        <select class="form-select" name="cliente_id" id="cliente_id" required>
+          {% for c in clientes %}
+          <option value="{{ c.id }}"
+            data-nombre="{{ c.razon_social }}"
+            {% if edit and edit.cliente_id==c.id %}selected{% elif not edit and loop.first %}selected{% endif %}>
+            {{ c.razon_social }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Título cotización (barra PDF)</label>
+        <input class="form-control" name="titulo" id="titulo" value="{{ titulo_default }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Proyecto / obra</label>
+        <input class="form-control" name="proyecto" value="{{ edit.proyecto if edit else '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Asunto</label>
+        <input class="form-control" name="asunto" value="{{ edit.asunto if edit else '' }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Validez (días)</label>
+        <input class="form-control" type="number" name="validez" value="{{ edit.validez_dias if edit else validez_def }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Estado</label>
+        <select class="form-select" name="estado">
+          {% for e, label in estados_cot %}
+          <option value="{{ e }}" {% if edit and edit.estado==e %}selected{% elif not edit and e=='borrador' %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Tipo de venta</label>
+        {% set tv = (edit.tipo_venta if edit and edit.tipo_venta else 'servicio') %}
+        <div class="d-flex flex-wrap gap-3 pt-1">
+          <div class="form-check">
+            <input class="form-check-input js-tipo-venta" type="radio" name="tipo_venta" id="tvServ" value="servicio" {% if tv == 'servicio' %}checked{% endif %}>
+            <label class="form-check-label" for="tvServ">Servicio</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input js-tipo-venta" type="radio" name="tipo_venta" id="tvProd" value="producto" {% if tv == 'producto' %}checked{% endif %}>
+            <label class="form-check-label" for="tvProd">Producto</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input js-tipo-venta" type="radio" name="tipo_venta" id="tvArr" value="arriendo" {% if tv == 'arriendo' %}checked{% endif %}>
+            <label class="form-check-label" for="tvArr">Arriendo</label>
+          </div>
+        </div>
+        <div class="form-text" id="tvHint">
+          Servicio → solo CxC. Producto → CxC + salida bodega. Arriendo → CxC + contrato (despacho aparte).
+        </div>
+      </div>
+    </div>
+
+    <h6 class="fw-bold mb-2">Ítems</h6>
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle" id="itemsTable">
+        <thead>
+          <tr id="itemsHeadNormal">
+            <th style="width:52px">Item</th>
+            <th>Especificación</th>
+            <th style="width:18%">Obs</th>
+            <th style="width:70px">Und</th>
+            <th style="width:90px">Cant</th>
+            <th style="width:120px">Valor</th>
+            <th style="width:120px" class="text-end">Total</th>
+          </tr>
+          <tr id="itemsHeadArriendo" class="d-none">
+            <th style="width:52px">Item</th>
+            <th style="width:28%">Activo (catálogo)</th>
+            <th style="width:18%">Obs</th>
+            <th style="width:70px">Und</th>
+            <th style="width:80px">Cant.</th>
+            <th style="width:80px">Días</th>
+            <th style="width:100px">$/día</th>
+            <th style="width:120px" class="text-end">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in range(slots) %}
+          {% set it = items[i] if i < items|length else None %}
+          <tr class="item-row">
+            <td class="text-muted">1.{{ i+1 }}</td>
+            <td class="cell-desc">
+              <select class="form-select form-select-sm js-prod d-none" name="producto_id">
+                <option value="">— texto libre —</option>
+                {% for p in productos_arriendo|default([]) %}
+                <option value="{{ p.id }}" data-nombre="{{ p.nombre }}" data-unidad="{{ p.unidad }}"
+                        data-tarifa="{{ p.tarifa }}"
+                        {% if it and it.producto_id==p.id %}selected{% endif %}>{{ p.codigo or '' }} {{ p.nombre }}</option>
+                {% endfor %}
+              </select>
+              <input class="form-control form-control-sm js-desc" name="desc" value="{{ it.descripcion if it else '' }}">
+            </td>
+            <td><input class="form-control form-control-sm" name="obs" value="{{ it.obs if it and it.obs else '' }}"></td>
+            <td><input class="form-control form-control-sm js-und" name="und" value="{{ it.unidad if it else 'un' }}"></td>
+            <td><input class="form-control form-control-sm js-cant" type="number" step="0.01" min="0" name="cant" placeholder="1" value="{{ it.cantidad if it else '' }}"></td>
+            <td class="cell-dias d-none"><input class="form-control form-control-sm js-dias" type="number" step="1" min="1" name="dias" value="{{ it.dias_arriendo if it and it.dias_arriendo else 0 }}"></td>
+            <td><input class="form-control form-control-sm js-valor" type="number" step="1" name="valor" value="{{ it.precio_unitario if it else 0 }}"></td>
+            <td class="text-end fw-bold js-line-total text-muted">$0</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not productos_arriendo|default([]) %}
+    <p class="small text-warning d-none" id="arrSinProd">No hay activos de arriendo en catálogo. Créelos en Bodega → productos (tipo Arriendo).</p>
+    {% endif %}
+
+    <div class="cot-totals">
+      <div class="cot-totals-note">
+        <label class="form-label fw-bold">Notas internas</label>
+        <textarea class="form-control" name="notas" rows="4">{{ edit.notas if edit and edit.notas else '' }}</textarea>
+      </div>
+
+      <div class="cot-totals-box">
+        <div class="cot-tot-row">
+          <span>Subtotal neto</span>
+          <strong id="totSubtotal">$0</strong>
+        </div>
+
+        <div class="cot-tot-row cot-tot-edit">
+          <label for="gg_pct">Gastos generales</label>
+          <div class="cot-tot-pct">
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0"
+                   name="gg_pct" id="gg_pct"
+                   value="{{ edit.gg_pct if edit and edit.gg_pct is not none else gg_def }}">
+            <span>%</span>
+          </div>
+          <strong id="totGg">$0</strong>
+        </div>
+
+        <div class="cot-tot-row cot-tot-edit">
+          <label for="utilidad_pct">Utilidad</label>
+          <div class="cot-tot-pct">
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0"
+                   name="utilidad_pct" id="utilidad_pct"
+                   value="{{ edit.utilidad_pct if edit and edit.utilidad_pct is not none else util_def }}">
+            <span>%</span>
+          </div>
+          <strong id="totUtil">$0</strong>
+        </div>
+
+        <div class="cot-tot-row cot-tot-neto">
+          <span>Valor neto</span>
+          <strong id="totNeto">$0</strong>
+        </div>
+
+        <div class="cot-tot-row cot-tot-edit">
+          <label for="iva_pct">IVA</label>
+          <div class="cot-tot-pct">
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0"
+                   name="iva_pct" id="iva_pct" value="{{ iva_def }}">
+            <span>%</span>
+          </div>
+          <strong id="totIva">$0</strong>
+        </div>
+
+        <div class="cot-tot-row cot-tot-final">
+          <span>Total</span>
+          <strong id="totTotal">$0</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-3">
+      <button class="btn btn-primary fw-bold" type="submit">Guardar cotización</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('cotizaciones_list') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const sel = document.getElementById('cliente_id');
+  const tit = document.getElementById('titulo');
+  let locked = {{ 'true' if edit else 'false' }};
+  if (sel && tit) {
+    sel.addEventListener('change', function () {
+      if (locked) return;
+      const opt = sel.options[sel.selectedIndex];
+      tit.value = (opt.getAttribute('data-nombre') || '').toUpperCase();
+    });
+  }
+
+  function clp(n) {
+    const v = Math.round(Number(n) || 0);
+    return '$' + v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
+
+  function isArriendo() {
+    return document.getElementById('tvArr') && document.getElementById('tvArr').checked;
+  }
+
+  function syncModo() {
+    const arr = isArriendo();
+    document.getElementById('itemsHeadNormal').classList.toggle('d-none', arr);
+    document.getElementById('itemsHeadArriendo').classList.toggle('d-none', !arr);
+    document.querySelectorAll('.cell-dias').forEach(el => el.classList.toggle('d-none', !arr));
+    document.querySelectorAll('.js-prod').forEach(el => {
+      el.classList.toggle('d-none', !arr);
+      if (arr) el.closest('.cell-desc').querySelector('.js-desc').classList.add('d-none');
+      else el.closest('.cell-desc').querySelector('.js-desc').classList.remove('d-none');
+    });
+    const sin = document.getElementById('arrSinProd');
+    if (sin) sin.classList.toggle('d-none', !arr);
+  }
+
+  document.querySelectorAll('.js-tipo-venta').forEach(r => r.addEventListener('change', function () {
+    syncModo();
+    recalc();
+  }));
+
+  document.querySelectorAll('.js-prod').forEach(sel => {
+    sel.addEventListener('change', function () {
+      const row = sel.closest('.item-row');
+      const opt = sel.selectedOptions[0];
+      if (!opt || !opt.value) return;
+      row.querySelector('.js-desc').value = opt.dataset.nombre || '';
+      row.querySelector('.js-und').value = opt.dataset.unidad || 'un';
+      row.querySelector('.js-valor').value = opt.dataset.tarifa || 0;
+      recalc();
+    });
+  });
+
+  function recalc() {
+    let subtotal = 0;
+    const arr = isArriendo();
+    document.querySelectorAll('#itemsTable .item-row').forEach(function (row) {
+      const valor = Number(row.querySelector('.js-valor').value || 0);
+      const cantRaw = row.querySelector('.js-cant').value;
+      let cant = cantRaw === '' ? 0 : Number(cantRaw || 0);
+      const desc = (row.querySelector('.js-desc').value || '').trim();
+      const diasEl = row.querySelector('.js-dias');
+      const dias = arr ? Number(diasEl ? diasEl.value || 0 : 0) : 1;
+      if (desc && cant <= 0 && valor > 0) cant = 1;
+      const line = (desc && cant > 0) ? (arr ? (cant * dias * valor) : (cant * valor)) : 0;
+      subtotal += line;
+      const cell = row.querySelector('.js-line-total');
+      cell.textContent = clp(line);
+      cell.classList.toggle('text-muted', line <= 0);
+    });
+
+    const ggPct = Number(document.getElementById('gg_pct').value || 0);
+    const utilPct = Number(document.getElementById('utilidad_pct').value || 0);
+    const ivaPct = Number(document.getElementById('iva_pct').value || 0);
+
+    const gg = Math.round(subtotal * ggPct / 100);
+    const util = Math.round(subtotal * utilPct / 100);
+    const neto = Math.round(subtotal + gg + util);
+    const iva = Math.round(neto * ivaPct / 100);
+    const total = neto + iva;
+
+    document.getElementById('totSubtotal').textContent = clp(subtotal);
+    document.getElementById('totGg').textContent = clp(gg);
+    document.getElementById('totUtil').textContent = clp(util);
+    document.getElementById('totNeto').textContent = clp(neto);
+    document.getElementById('totIva').textContent = clp(iva);
+    document.getElementById('totTotal').textContent = clp(total);
+  }
+
+  document.getElementById('cotForm').addEventListener('input', recalc);
+  document.getElementById('cotForm').addEventListener('submit', function (ev) {
+    let hasItem = false;
+    const arr = isArriendo();
+    document.querySelectorAll('#itemsTable .item-row').forEach(function (row) {
+      const desc = (row.querySelector('.js-desc').value || '').trim();
+      const valor = Number(row.querySelector('.js-valor').value || 0);
+      const cantRaw = row.querySelector('.js-cant').value;
+      let cant = cantRaw === '' ? 0 : Number(cantRaw || 0);
+      if (desc && cant <= 0 && valor > 0) {
+        cant = 1;
+        row.querySelector('.js-cant').value = '1';
+      }
+      const diasEl = row.querySelector('.js-dias');
+      const dias = arr ? Number(diasEl ? diasEl.value || 0 : 0) : 1;
+      if (desc && cant > 0 && (!arr || dias > 0)) hasItem = true;
+    });
+    if (!hasItem) {
+      ev.preventDefault();
+      alert('Agrega al menos un ítem con descripción, cantidad y valor (en arriendo también indica días).');
+    }
+  });
+  syncModo();
+  recalc();
+})();
+</script>
+{% endblock %}
