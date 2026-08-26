@@ -99,9 +99,15 @@ def migrar_gap_consultor(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             continue
         if "ambito_id" not in cols:
-            conn.execute(f"ALTER TABLE {tbl} ADD COLUMN ambito_id INTEGER")
+            try:
+                conn.execute(f"ALTER TABLE {tbl} ADD COLUMN ambito_id INTEGER")
+            except sqlite3.OperationalError:
+                pass
         if "etiqueta_id" not in cols:
-            conn.execute(f"ALTER TABLE {tbl} ADD COLUMN etiqueta_id INTEGER")
+            try:
+                conn.execute(f"ALTER TABLE {tbl} ADD COLUMN etiqueta_id INTEGER")
+            except sqlite3.OperationalError:
+                pass
     conn.commit()
 
 
