@@ -281,6 +281,24 @@ def _patch_excel_header_content(content: str, membrete: Membrete) -> tuple[str, 
     orig = content
     sep = "\n" if "\n" in content else "\r"
     block = _excel_header_block(membrete, sep)
+
+    # Espino: encabezado Excel ya tiene razón social pero arrastra dirección LC → reconstruir &L.
+    if (
+        membrete.slug == "espino"
+        and "&amp;C" in content
+        and _excel_header_has_lc(content)
+    ):
+        left, _, right = content.partition("&amp;C")
+        if "EL ESPINO" in left.upper():
+            razon_idx = left.upper().find(membrete.razon.upper())
+            if razon_idx < 0:
+                razon_idx = left.upper().find("EL ESPINO")
+            prefix = left[:razon_idx] if razon_idx > 0 else '&amp;L&amp;"-,Negrita"'
+            sep_left = "\n" if "\n" in left else "\r"
+            rebuilt = prefix + _excel_header_block(membrete, sep_left) + "&amp;C" + right
+            if rebuilt != orig:
+                return rebuilt, True
+
     patterns = (
         r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTD\s*[\r\n]+PARC\.\s*EL SAUCE LOTE 4\s*[\r\n]+LA APARICION\s*PAINE\s*",
         r"LA CONCEPCION SOC\.\s*AGRICOLA\s+LTDA\.?\s*[\r\n]+\s*EL SAUCE LOTE 4\s*[\r\n]+\s*LA APARICION\s*",
@@ -301,6 +319,13 @@ def _patch_excel_header_content(content: str, membrete: Membrete) -> tuple[str, 
         m = re.match(r"((?:&amp;L.*?))(\s*&amp;C)", content, re.S | re.I)
         if m and "EL ESPINO" not in m.group(1).upper():
             content = block + m.group(2) + content[m.end() :]
+        elif "&amp;C" not in content:
+            content = re.sub(
+                r"PARC\.\s*EL SAUCE LOTE 4\s*(?:\r\n|\n|\\r\\n)\s*LA APARICION\s*PAINE\s*",
+                "",
+                content,
+                flags=re.I,
+            )
     if membrete.slug == "ciruelos":
         content = re.sub(
             r"CAMINO LAS LILAS PARC\.?\s*44\s*PAINE",
