@@ -11,17 +11,57 @@ from pathlib import Path
 
 _PLANTILLAS = ("cerezos", "ciruelos")
 _ESPECIE_LABEL = {"cerezos": "Cerezos", "ciruelos": "Ciruelos"}
-_PANEL_PALETTE = (
-    {"bg": "#E8F4FD", "border": "#1565C0", "accent": "#1976D2", "badge": "#BBDEFB"},
-    {"bg": "#E8F5E9", "border": "#2E7D32", "accent": "#388E3C", "badge": "#C8E6C9"},
-    {"bg": "#FFF3E0", "border": "#E65100", "accent": "#F57C00", "badge": "#FFE0B2"},
-    {"bg": "#F3E5F5", "border": "#6A1B9A", "accent": "#7B1FA2", "badge": "#E1BEE7"},
-    {"bg": "#E0F7FA", "border": "#006064", "accent": "#00838F", "badge": "#B2EBF2"},
-    {"bg": "#FCE4EC", "border": "#AD1457", "accent": "#C2185B", "badge": "#F8BBD0"},
-    {"bg": "#FFFDE7", "border": "#F9A825", "accent": "#FBC02D", "badge": "#FFF9C4"},
-    {"bg": "#EDE7F6", "border": "#4527A0", "accent": "#5E35B1", "badge": "#D1C4E9"},
-    {"bg": "#E0F2F1", "border": "#00695C", "accent": "#00897B", "badge": "#B2DFDB"},
-    {"bg": "#FBE9E7", "border": "#BF360C", "accent": "#D84315", "badge": "#FFCCBC"},
+_CLIENT_THEMES = (
+    {
+        "primary": "#1565C0",
+        "bg": "#E8F4FD",
+        "accent": "#1976D2",
+        "huerto": (
+            {"bg": "#FAFCFE", "border": "#D6E8F8", "accent": "#90CAF9", "badge": "#F0F7FD"},
+            {"bg": "#F7FAFD", "border": "#C8DFF5", "accent": "#A5D6FA", "badge": "#EBF4FC"},
+            {"bg": "#F3F8FC", "border": "#BBD9F2", "accent": "#B3E0FC", "badge": "#E6F2FA"},
+        ),
+    },
+    {
+        "primary": "#2E7D32",
+        "bg": "#E8F5E9",
+        "accent": "#388E3C",
+        "huerto": (
+            {"bg": "#FAFDFA", "border": "#D5EAD7", "accent": "#A5D6A7", "badge": "#F1F8F1"},
+            {"bg": "#F6FBF6", "border": "#C8E6C9", "accent": "#B9DFBA", "badge": "#EBF5EB"},
+            {"bg": "#F2F9F2", "border": "#BDDDBF", "accent": "#C8E6C9", "badge": "#E5F2E6"},
+        ),
+    },
+    {
+        "primary": "#6A1B9A",
+        "bg": "#F3E5F5",
+        "accent": "#7B1FA2",
+        "huerto": (
+            {"bg": "#FDFAFF", "border": "#E1D5E7", "accent": "#CE93D8", "badge": "#F8F2FA"},
+            {"bg": "#FBF7FC", "border": "#D9CCE3", "accent": "#DAB6E4", "badge": "#F3ECF6"},
+            {"bg": "#F9F4FB", "border": "#D1C4D9", "accent": "#E1BEE7", "badge": "#EFE6F2"},
+        ),
+    },
+    {
+        "primary": "#00838F",
+        "bg": "#E0F7FA",
+        "accent": "#0097A7",
+        "huerto": (
+            {"bg": "#FAFEFE", "border": "#CCEEF1", "accent": "#80DEEA", "badge": "#EDFAFB"},
+            {"bg": "#F6FCFD", "border": "#BFE8EC", "accent": "#9FE8F0", "badge": "#E6F7F9"},
+            {"bg": "#F2FAFB", "border": "#B2DFE5", "accent": "#B2EBF2", "badge": "#E0F4F6"},
+        ),
+    },
+    {
+        "primary": "#E65100",
+        "bg": "#FFF3E0",
+        "accent": "#EF6C00",
+        "huerto": (
+            {"bg": "#FFFDFA", "border": "#FFE0B2", "accent": "#FFCC80", "badge": "#FFF8F0"},
+            {"bg": "#FFFBF5", "border": "#FFD9A8", "accent": "#FFD699", "badge": "#FFF4E8"},
+            {"bg": "#FFF9F2", "border": "#FFD099", "accent": "#FFE0B2", "badge": "#FFF0E0"},
+        ),
+    },
 )
 
 
@@ -613,43 +653,54 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
     alertas = 0
     cards = []
     cards_by_ambito: dict[int, dict] = {}
-    legend: list[dict] = []
-    color_i = 0
-    for et in etiquetas:
-        for amb in et["ambitos"]:
-            pct = _ambito_checklist_pct(conn, amb["id"], especie_key_for_ambito(amb["id"]))
-            nc = _ambito_nc_abiertas(conn, amb["id"])
-            alertas += nc
-            csg_label = amb.get("csg_codigo") or "—"
-            colors = _PANEL_PALETTE[color_i % len(_PANEL_PALETTE)]
-            color_i += 1
-            card = {
-                "etiqueta_id": et["id"],
-                "etiqueta_nombre": et["nombre"],
-                "csg_id": amb.get("csg_id"),
-                "csg_codigo": csg_label,
-                "ambito_id": amb["id"],
-                "huerto": amb["nombre_huerto"],
-                "especie": amb["especie_cultivo"],
-                "label": f"{et['nombre']} · {csg_label} · {amb['nombre_huerto']} · {amb['especie_cultivo']}",
-                "pct_checklist": pct,
-                "pct_pendiente": round(max(0.0, 100.0 - pct), 1),
-                "nc_abiertas": nc,
-                "colors": colors,
+    client_blocks: list[dict] = []
+    for ci, et in enumerate(etiquetas):
+        theme = _CLIENT_THEMES[ci % len(_CLIENT_THEMES)]
+        block = {
+            "id": et["id"],
+            "nombre": et["nombre"],
+            "n_csg": et["n_csg"],
+            "n_ambitos": et["n_ambitos"],
+            "theme": theme,
+            "csgs": [],
+        }
+        hi = 0
+        for csg in et.get("csgs") or []:
+            csg_block = {
+                "id": csg["id"],
+                "codigo_csg": csg["codigo_csg"],
+                "nombre_predio": csg["nombre_predio"],
+                "direccion": csg.get("direccion") or "",
+                "ambitos": [],
             }
-            cards.append(card)
-            cards_by_ambito[int(amb["id"])] = card
-            legend.append(
-                {
+            for amb in csg.get("ambitos") or []:
+                pct = _ambito_checklist_pct(conn, amb["id"], especie_key_for_ambito(amb["id"]))
+                nc = _ambito_nc_abiertas(conn, amb["id"])
+                alertas += nc
+                colors = theme["huerto"][hi % len(theme["huerto"])]
+                hi += 1
+                card = {
                     "etiqueta_id": et["id"],
                     "etiqueta_nombre": et["nombre"],
-                    "csg_id": amb.get("csg_id"),
-                    "csg_codigo": csg_label,
+                    "csg_id": csg["id"],
+                    "csg_codigo": csg["codigo_csg"],
+                    "ambito_id": amb["id"],
                     "huerto": amb["nombre_huerto"],
                     "especie": amb["especie_cultivo"],
+                    "label": f"{et['nombre']} · {csg['codigo_csg']} · {amb['nombre_huerto']} · {amb['especie_cultivo']}",
+                    "pct_checklist": pct,
+                    "pct_pendiente": round(max(0.0, 100.0 - pct), 1),
+                    "nc_abiertas": nc,
                     "colors": colors,
+                    "client_theme": theme,
                 }
-            )
+                csg_block["ambitos"].append(card)
+                cards.append(card)
+                cards_by_ambito[int(amb["id"])] = card
+            if csg_block["ambitos"]:
+                block["csgs"].append(csg_block)
+        if block["csgs"]:
+            client_blocks.append(block)
     return {
         "n_clientes": len(etiquetas),
         "n_csg": n_csg,
@@ -659,7 +710,7 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
         "etiquetas": etiquetas,
         "cards": cards,
         "cards_by_ambito": cards_by_ambito,
-        "legend": legend,
+        "client_blocks": client_blocks,
     }
 
 
