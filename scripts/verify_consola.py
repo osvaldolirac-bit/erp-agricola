@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8507").rstrip("/")
+BASE = os.environ.get("BASE_URL", "https://erpmaster.cl/consola").rstrip("/")
 PREFIX = os.environ.get("CONSOLA_PREFIX", "/consola")
 LOCAL_PORT = os.environ.get("PORT", "8507")
 
@@ -43,12 +43,20 @@ def _url(path: str) -> str:
         if path.startswith(PREFIX):
             return f"{BASE}{path[len(PREFIX):] or '/'}"
         return f"{BASE}{path}"
-    return f"http://127.0.0.1:{LOCAL_PORT}{path}"
+    ext = path if path.startswith(PREFIX) else f"{PREFIX}{path}"
+    return f"http://127.0.0.1:{LOCAL_PORT}{ext}"
+
+
+def _consola_headers(extra: dict | None = None) -> dict:
+    hdrs = dict(extra or {})
+    if not BASE.startswith("http") and PREFIX:
+        hdrs.setdefault("X-Forwarded-Prefix", PREFIX)
+    return hdrs
 
 
 def http(method: str, path: str, data: dict | None = None, headers: dict | None = None):
     body = None
-    hdrs = dict(headers or {})
+    hdrs = _consola_headers(headers)
     if data is not None:
         body = urllib.parse.urlencode(data).encode("utf-8")
         hdrs.setdefault("Content-Type", "application/x-www-form-urlencoded")
@@ -157,10 +165,15 @@ def check_super_consola_route() -> None:
     cj = cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
     login_body = urllib.parse.urlencode({"email": email, "password": password}).encode()
-    login_req = urllib.request.Request(_url("/login"), data=login_body, method="POST")
+    login_req = urllib.request.Request(
+        _url("/login"),
+        data=login_body,
+        headers=_consola_headers({"Content-Type": "application/x-www-form-urlencoded"}),
+        method="POST",
+    )
     opener.open(login_req)
-    for path in ("/admin/concepcion", "/consola/concepcion"):
-        req = urllib.request.Request(_url(path))
+    for path in ("/admin/concepcion",):
+        req = urllib.request.Request(_url(path), headers=_consola_headers())
         try:
             resp = opener.open(req)
             body = resp.read(12000)
@@ -171,6 +184,16 @@ def check_super_consola_route() -> None:
             raise CheckFailed(f"{path} redirected to login (session/route broken)")
         if b"Super Consola" not in body and b"Usuarios" not in body:
             raise CheckFailed(f"{path} missing expected super consola content")
+    legacy_req = urllib.request.Request(_url("/consola/concepcion"), headers=_consola_headers())
+    try:
+        legacy_resp = opener.open(legacy_req)
+        legacy_final = legacy_resp.geturl()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (301, 302, 303, 307, 308):
+            raise CheckFailed(f"legacy /consola/<tenant> status {exc.code}") from exc
+        legacy_final = exc.headers.get("Location", "")
+    if "/admin/concepcion" not in legacy_final:
+        raise CheckFailed(f"legacy redirect expected /admin/concepcion, got {legacy_final!r}")
     print("OK  super consola route")
 
 

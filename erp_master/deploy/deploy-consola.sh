@@ -82,7 +82,7 @@ systemctl is-active --quiet "$SERVICE" || die "$SERVICE not active"
 # 5. Verify
 if [[ -f "$VERIFY_SCRIPT" ]]; then
   log "Verify"
-  ERP_MASTER_ROOT="$DEPLOY_ROOT" python3 "$VERIFY_SCRIPT" || die "verification failed"
+  ERP_MASTER_ROOT="$DEPLOY_ROOT" BASE_URL=https://erpmaster.cl/consola python3 "$VERIFY_SCRIPT" || die "verification failed"
 else
   log "WARN: verify script not found at $VERIFY_SCRIPT"
   curl -sf "http://127.0.0.1:${PORT}/health" | grep -q '"ok"' || die "health check failed"
