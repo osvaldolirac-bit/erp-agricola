@@ -42,13 +42,20 @@ class Membrete:
 
     def has_foreign(self, text: str) -> bool:
         u = text.upper()
+        if self.markers_ok(text):
+            # Membrete correcto: solo importa otra razón social explícita en encabezado.
+            for m in MEMBRETES.values():
+                if m.slug == self.slug:
+                    continue
+                if m.razon.upper() in u:
+                    return True
+            return False
         foreign = []
         for m in MEMBRETES.values():
             if m.slug == self.slug:
                 continue
             if m.razon.upper() in u:
                 foreign.append(m.razon)
-            # LC clonado en espino: líneas sueltas
             if self.slug == "espino" and "LA CONCEPCION" in u and "EL ESPINO" not in u:
                 foreign.append("LA CONCEPCION")
             if self.slug == "ciruelos" and "LA CONCEPCION AGRICOLA" in u:
@@ -99,8 +106,13 @@ _TRIPLE_DOC = re.compile(
 )
 
 
+def _is_ooxml_zip(path: Path) -> bool:
+    """Solo .docx/.xlsx son ZIP OOXML; .doc/.xls OLE a veces dan falso positivo."""
+    return path.suffix.lower() in {".docx", ".xlsx", ".xlsm"}
+
+
 def _file_text(path: Path) -> str:
-    if zipfile.is_zipfile(path):
+    if _is_ooxml_zip(path) and zipfile.is_zipfile(path):
         with zipfile.ZipFile(path) as z:
             parts = [
                 z.read(n).decode("utf-8", errors="ignore")
@@ -123,6 +135,18 @@ def needs_patch(path: Path, membrete: Membrete) -> tuple[bool, str]:
         return False, "bak-skip"
     text = _file_text(path)
     if membrete.markers_ok(text) and not membrete.has_foreign(text):
+        if (
+            membrete.slug == "espino"
+            and (
+                "LA CONCEPCION SOCIEDAD AGRICOLA" in text.upper()
+                or re.search(
+                    r"LA CONCEPCION SOCIEDAD AGRICOLA\s*[\r\n]+CHADA PC",
+                    text,
+                    re.I,
+                )
+            )
+        ):
+            return True, "foreign-lc-variant"
         return False, "ok"
     if membrete.has_foreign(text):
         return True, "foreign-membrete"
@@ -131,16 +155,67 @@ def needs_patch(path: Path, membrete: Membrete) -> tuple[bool, str]:
     return False, "ok"
 
 
+def _pad_latin(value: str, size: int) -> str:
+    if len(value) >= size:
+        return value[:size]
+    return value + " " * (size - len(value))
+
+
+def _foreign_razones(membrete: Membrete) -> tuple[str, ...]:
+    return tuple(m.razon for m in MEMBRETES.values() if m.slug != membrete.slug)
+
+
+def _foreign_direcciones(membrete: Membrete) -> tuple[str, ...]:
+    return tuple(m.direccion for m in MEMBRETES.values() if m.slug != membrete.slug)
+
+
 def _apply_legacy_replacements(data: bytes | str, membrete: Membrete) -> bytes | str:
     is_bytes = isinstance(data, bytes)
     text = data.decode("latin-1", errors="ignore") if is_bytes else data
     for old, new in _LEGACY_RAZON:
         text = re.sub(re.escape(old), membrete.razon, text, flags=re.I)
+    for foreign in _foreign_razones(membrete):
+        text = re.sub(re.escape(foreign), membrete.razon, text, flags=re.I)
+        text = re.sub(re.escape(foreign.rstrip(".")), membrete.razon, text, flags=re.I)
     for old, new in _LEGACY_DIR:
         if membrete.slug == "ciruelos":
             text = re.sub(re.escape(old), membrete.direccion, text, flags=re.I)
         elif membrete.slug == "cerezos" and "SAUCE" in old.upper():
             text = re.sub(re.escape(old), membrete.direccion, text, flags=re.I)
+    for foreign in _foreign_direcciones(membrete):
+        text = re.sub(re.escape(foreign), membrete.direccion, text, flags=re.I)
+    text = re.sub(
+        r"PARC\.\s*EL SAUCE LOTE 4\s*(?:\r|\n|<[^>]+>)?\s*LA APARICION\s*PAINE",
+        membrete.direccion,
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r"PARC\.\s*EL SAUCE LOTE 4\s*LA APARICION\s*PAINE",
+        membrete.direccion,
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        rf"({re.escape(membrete.razon)}[^\r\n<]{{0,24}}(?:\r|\n|</w:t>).*?RUT:\s*{re.escape(membrete.rut)}\.?)\s*(?:\r|\n|</w:t>)?\s*PARC\.\s*EL SAUCE[^\r\n<]{{0,48}}",
+        rf"\1\r{membrete.direccion}",
+        text,
+        count=1,
+        flags=re.I | re.S,
+    )
+    if membrete.slug == "espino":
+        text = re.sub(
+            r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?",
+            membrete.razon,
+            text,
+            flags=re.I,
+        )
+        text = re.sub(
+            r"ORGANIGRAMA INOCUIDAD\s+LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?",
+            f"ORGANIGRAMA INOCUIDAD {membrete.razon}",
+            text,
+            flags=re.I,
+        )
     # Insertar RUT si falta cerca de razón social
     if membrete.rut not in text and membrete.razon.upper() in text.upper():
         text = re.sub(
@@ -153,6 +228,106 @@ def _apply_legacy_replacements(data: bytes | str, membrete: Membrete) -> bytes |
     if is_bytes:
         return text.encode("latin-1", errors="ignore")
     return text
+
+
+def _patch_excel_header_content(content: str, membrete: Membrete) -> tuple[str, bool]:
+    orig = content
+    block = (
+        f"{membrete.razon}\r"
+        f"RUT: {membrete.rut}\r"
+        f"{membrete.direccion} "
+    )
+    patterns = (
+        r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?\s*[\r\n]+PARC\.\s*EL SAUCE LOTE 4\s*[\r\n]+LA APARICION\s*PAINE\s*",
+        r"LA CONCEPCION SOCIEDAD AGRICOLA\s*[\r\n]+CHADA PC 60 LT C PAINE\s*",
+        r"SOCIEDAD AGRICOLA LA CONCEPCION LTDA\.?\s*(?:[\r\n]+RUT:[^\r\n]*)?[\r\n]+PARC\.\s*EL SAUCE[^\r\n]*[\r\n]+(?:LA APARICION\s*)?PAINE\s*",
+        r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?\s*PARC\.\s*EL SAUCE LOTE 4\s*LA APARICION\s*PAINE\s*",
+        r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?\s*",
+        r"SOCIEDAD AGRICOLA LA CONCEPCION LTDA\.?\s*",
+    )
+    for pat in patterns:
+        if membrete.slug != "cerezos":
+            content = re.sub(pat, block, content, flags=re.I)
+    if membrete.slug == "ciruelos":
+        content = re.sub(
+            r"CAMINO LAS LILAS PARC\.?\s*44\s*PAINE",
+            membrete.direccion,
+            content,
+            flags=re.I,
+        )
+    for foreign in _foreign_razones(membrete):
+        content = re.sub(re.escape(foreign), membrete.razon, content, flags=re.I)
+    for foreign in _foreign_direcciones(membrete):
+        content = re.sub(re.escape(foreign), membrete.direccion, content, flags=re.I)
+    return content, content != orig
+
+
+def _patch_binary_membrete(data: bytes, membrete: Membrete) -> tuple[bytes, list[str]]:
+    notes: list[str] = []
+    patched = data
+    block = (
+        f"{membrete.razon}\rRUT: {membrete.rut}\r{membrete.direccion}"
+    ).encode("latin-1")
+    replacements: list[tuple[bytes, bytes]] = []
+    if membrete.slug != "cerezos":
+        replacements.extend(
+            [
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA   LTDA.\rPARC. EL SAUCE LOTE 4\rLA APARICION PAINE",
+                    block,
+                ),
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA LTDA.\rPARC. EL SAUCE LOTE 4\rLA APARICION PAINE",
+                    block,
+                ),
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA LTDA. CHADA PC 60 LT C PAINE",
+                    f"{membrete.razon} RUT: {membrete.rut} {membrete.direccion}".encode("latin-1"),
+                ),
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA LTDA.\rCHADA PC 60 LT C PAINE",
+                    block,
+                ),
+                (
+                    b"SOCIEDAD AGRICOLA LA CONCEPCION LTDA.",
+                    membrete.razon.encode("latin-1"),
+                ),
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA \r\nCHADA PC 60 LT C PAINE",
+                    block,
+                ),
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA \nCHADA PC 60 LT C PAINE",
+                    block,
+                ),
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA \rCHADA PC 60 LT C PAINE",
+                    block,
+                ),
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA  LTDA.\rCHADA PC 60 LT C PAINE",
+                    block,
+                ),
+                (
+                    b"LA CONCEPCION SOCIEDAD AGRICOLA  LTDA.",
+                    membrete.razon.encode("latin-1"),
+                ),
+            ]
+        )
+    lc_addr = b"PARC. EL SAUCE LOTE 4\rLA APARICION PAINE"
+    espino_addr = membrete.direccion.encode("latin-1")
+    if membrete.slug == "espino" and lc_addr in patched:
+        patched = patched.replace(lc_addr, _pad_latin(membrete.direccion, len(lc_addr)).encode("latin-1"))
+        notes.append("addr-lc")
+    for old, new in replacements:
+        if old in patched and patched != patched.replace(old, new):
+            patched = patched.replace(old, new)
+            notes.append("binary")
+    new = _apply_legacy_replacements(patched, membrete)
+    if isinstance(new, bytes) and new != patched:
+        patched = new
+        notes.append("legacy")
+    return patched, notes
 
 
 def patch_doc(path: Path, membrete: Membrete) -> tuple[bool, str]:
@@ -171,10 +346,10 @@ def patch_doc(path: Path, membrete: Membrete) -> tuple[bool, str]:
         else:
             notes.append("triple-block-skip-len")
 
-    new = _apply_legacy_replacements(patched, membrete)
-    if isinstance(new, bytes) and new != patched:
-        patched = new
-        notes.append("legacy")
+    bin_patched, bin_notes = _patch_binary_membrete(patched, membrete)
+    if bin_patched != patched:
+        patched = bin_patched
+        notes.extend(bin_notes)
 
     # Quitar otras razones sociales en regiones de membrete (.doc)
     for other in MEMBRETES.values():
@@ -189,11 +364,54 @@ def patch_doc(path: Path, membrete: Membrete) -> tuple[bool, str]:
     if patched == raw:
         return False, "sin-cambios-doc"
     path.write_bytes(patched)
-    return True, ";".join(notes) or "doc"
+    return True, ";".join(dict.fromkeys(notes)) or "doc"
+
+
+def _collapse_split_lc_header(xml: str, membrete: Membrete) -> tuple[str, bool]:
+    """Docx clonados LC: 'La Concepcion' + 'Sociedad' + 'Agricola' + 'Ltda.' en varios w:t."""
+    if membrete.slug != "espino":
+        return xml, False
+    if not re.search(r">La Concepcion\s*</w:t>", xml, re.I):
+        return xml, False
+    orig = xml
+    xml = re.sub(
+        r">La Concepcion\s*</w:t>",
+        f">{membrete.razon}</w:t>",
+        xml,
+        count=1,
+        flags=re.I,
+    )
+    for frag in (
+        r">Sociedad\s*</w:t>",
+        r">\s*Agricola\s*</w:t>",
+        r">\s*Ltda\.?\s*</w:t>",
+    ):
+        xml = re.sub(frag, "></w:t>", xml, flags=re.I)
+    return xml, xml != orig
 
 
 def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
     orig = xml
+    changed = False
+    for tag in (
+        "oddHeader",
+        "evenHeader",
+        "firstHeader",
+        "oddFooter",
+        "evenFooter",
+        "firstFooter",
+    ):
+        pat = rf"(<{tag}[^>]*>)(.*?)(</{tag}>)"
+
+        def _sub(m: re.Match, _tag=tag) -> str:
+            nonlocal changed
+            new_body, ch = _patch_excel_header_content(m.group(2), membrete)
+            if ch:
+                changed = True
+            return m.group(1) + new_body + m.group(3)
+
+        xml = re.sub(pat, _sub, xml, flags=re.S)
+
     # Unificar razón social (mayúsculas)
     for old, new in _LEGACY_RAZON:
         xml = re.sub(re.escape(old), membrete.razon, xml, flags=re.I)
@@ -246,6 +464,13 @@ def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
             count=1,
             flags=re.I | re.S,
         )
+        xml = re.sub(
+            r">La Concepcion\s*</w:t>\s*<w:.*?>\s*<w:t[^>]*>\s*Sociedad Agricola Ltda\.?\s*</w:t>",
+            f">{membrete.razon}</w:t>",
+            xml,
+            count=1,
+            flags=re.I | re.S,
+        )
         # Clon desde cerezos: limpiar líneas sueltas LC
         xml = xml.replace(">LA CONCEPCION </w:t>", f">{membrete.razon}</w:t>", 1)
         xml = xml.replace(">SOCIEDAD AGRICOLA LTDA.</w:t>", "></w:t>", 1)
@@ -275,7 +500,27 @@ def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
         xml = re.sub(re.escape(other.razon), "", xml, flags=re.I)
         xml = re.sub(re.escape(other.razon.rstrip(".")), "", xml, flags=re.I)
 
-    return xml, xml != orig
+    xml, split_ch = _collapse_split_lc_header(xml, membrete)
+    if split_ch:
+        changed = True
+
+    legacy_xml = _apply_legacy_replacements(xml, membrete)
+    if isinstance(legacy_xml, str) and legacy_xml != xml:
+        xml = legacy_xml
+        changed = True
+
+    if xml != orig:
+        changed = True
+    return xml, changed
+
+
+def patch_xls(path: Path, membrete: Membrete) -> tuple[bool, str]:
+    raw = path.read_bytes()
+    patched, notes = _patch_binary_membrete(raw, membrete)
+    if patched == raw:
+        return False, "sin-cambios-xls"
+    path.write_bytes(patched)
+    return True, ";".join(dict.fromkeys(notes)) or "xls"
 
 
 def patch_zip_office(path: Path, membrete: Membrete) -> tuple[bool, str]:
@@ -293,8 +538,9 @@ def patch_zip_office(path: Path, membrete: Membrete) -> tuple[bool, str]:
                 patchable = (
                     "header" in fn
                     or "footer" in fn
+                    or fn.endswith("document.xml")
                     or fn.endswith("sharedstrings.xml")
-                    or (fn.startswith("xl/worksheets/") and fn.endswith(".xml"))
+                    or (fn.startswith("xl/") and fn.endswith(".xml"))
                 )
                 if patchable:
                     try:
@@ -319,7 +565,9 @@ def patch_file(path: Path, membrete: Membrete) -> tuple[bool, str]:
     ext = path.suffix.lower()
     if ext == ".doc":
         return patch_doc(path, membrete)
-    if ext in {".docx", ".xlsx", ".xls"}:
+    if ext == ".xls":
+        return patch_xls(path, membrete)
+    if ext in {".docx", ".xlsx"}:
         return patch_zip_office(path, membrete)
     return False, "ext-skip"
 
