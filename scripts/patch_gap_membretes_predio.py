@@ -565,8 +565,11 @@ def _patch_docx_header_xml_safe(xml: str, membrete: Membrete) -> tuple[str, bool
             "LA CONCEPCION SOCIEDAD AGRICOLA LTDA",
             "LA CONCEPCION SOCIEDAD AGRICOLA  LTDA.",
             "LA CONCEPCION SOCIEDAD AGRICOLA",
+            "LA CONCEPCION SOCIEDAD",
         ):
             out, ch = _replace_wt_content(out, old, membrete.razon)
+            changed = changed or ch
+            out, ch = _remove_wr_runs_only_text(out, old)
             changed = changed or ch
         for frag in (
             "PARC. EL SAUCE LOTE 4 LA APARICION PAINE",
@@ -576,6 +579,10 @@ def _patch_docx_header_xml_safe(xml: str, membrete: Membrete) -> tuple[str, bool
         ):
             out, ch = _remove_wr_runs_only_text(out, frag)
             changed = changed or ch
+        if "EL ESPINO" in out.upper():
+            for frag in ("LA CONCEPCION", "LA APARICION", "EL SAUCE LOTE 4"):
+                out, ch = _remove_wr_runs_only_text(out, frag)
+                changed = changed or ch
         out, ch = _replace_wt_content(
             out, "PARC. EL SAUCE LOTE 4 LA APARICION PAINE", membrete.direccion
         )
