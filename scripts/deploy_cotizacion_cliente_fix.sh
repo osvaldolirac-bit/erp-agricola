@@ -6,6 +6,7 @@ ROOT="${RIOMAIPO_ROOT:-/root/riomaipo}"
 REPO="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 cp "$REPO/riomaipo_vps/rmweb/app.py" "$ROOT/rmweb/app.py"
+cp "$REPO/riomaipo_vps/rmweb/core.py" "$ROOT/rmweb/core.py"
 cp "$REPO/riomaipo_vps/rmweb/templates/cotizaciones/form.html" "$ROOT/rmweb/templates/cotizaciones/form.html"
 
 if systemctl is-active --quiet erp-riomaipo; then

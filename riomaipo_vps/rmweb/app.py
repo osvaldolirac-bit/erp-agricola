@@ -35,6 +35,8 @@ app = Flask(
 )
 app.secret_key = os.getenv("SECRET_KEY", "riomaipo-web-change-me")
 
+_TENANT_DB_INIT: set[str] = set()
+
 # Prefijo público detrás de nginx (/comercial)
 try:
     from werkzeug.middleware.proxy_fix import ProxyFix
@@ -227,10 +229,11 @@ p{margin:0;color:#5f6b64;font-size:1.02rem;line-height:1.45}
                 session.clear()
                 if request.endpoint not in {"login", "master_entry"}:
                     return redirect(url_for("login"))
-        if not getattr(g, "_db_ready", False):
-            ten = get_tenant(slug) or {}
+        ten = get_tenant(slug) or {}
+        init_key = f'{slug}:{ten.get("db") or ""}'
+        if init_key not in _TENANT_DB_INIT:
             core.init_db(ten.get("db"), ten.get("empresa_default"))
-            g._db_ready = True
+            _TENANT_DB_INIT.add(init_key)
 
 
 

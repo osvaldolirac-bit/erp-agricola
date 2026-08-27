@@ -164,9 +164,14 @@ except ImportError:  # pragma: no cover
 def conn(db_path: str | Path | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(path, check_same_thread=False)
+    c = sqlite3.connect(path, check_same_thread=False, timeout=30)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA foreign_keys = ON")
+    c.execute("PRAGMA busy_timeout = 30000")
+    try:
+        c.execute("PRAGMA journal_mode = WAL")
+    except Exception:
+        pass
     return c
 
 
