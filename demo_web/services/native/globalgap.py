@@ -54,10 +54,10 @@ _DOC_LINK_EXTRA_COLS = [
 _ESPECIE_DOC_SLUG = {
     "Cerezos": "cerezos",
     "Ciruelos": "ciruelos",
-    "Nogales": "cerezos",
+    "Nogales": "espino",
     "LA CONCEPCION": "cerezos",
     "CARLOS LIRA": "ciruelos",
-    "EL ESPINO": "cerezos",
+    "EL ESPINO": "espino",
     "ESPECIE 1": "cerezos",
     "ESPECIE 2": "ciruelos",
 }
