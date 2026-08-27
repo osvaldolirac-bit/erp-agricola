@@ -76,6 +76,24 @@ _LC_CUARTEL_ESPECIE = {
     "NOGALES CRUZ DEL SUR": "EL ESPINO",
 }
 
+# Carpetas de registros en disco vs catálogo clonado (La Concepción → predio).
+_DOC_REGISTROS_FOLDER = {
+    "LA CONCEPCION": "Registros La Concepcion",
+    "CARLOS LIRA": "Registros Carlos Lira",
+    "EL ESPINO": "Registros El Espino",
+    "Cerezos": "Registros La Concepcion",
+    "Ciruelos": "Registros Carlos Lira",
+    "Nogales": "Registros El Espino",
+}
+_DOC_REGISTROS_FOLDER_ALIASES = {
+    "Registros La Concepcion": (
+        "Registros La Concepcion",
+        "Registros La Concepción",
+    ),
+    "Registros Carlos Lira": ("Registros Carlos Lira",),
+    "Registros El Espino": ("Registros El Espino",),
+}
+
 # Ancla de cosecha para Gantt GlobalGAP (Planificación).
 _PLANIF_COSECHA = {
     "Cerezos": date(2026, 11, 1),
@@ -458,17 +476,73 @@ def _load_doc_checklist_map(especie: str) -> dict[str, list[str]]:
     return out
 
 
+def _normalize_doc_relpath(especie: str, relpath: str) -> str:
+    """Ajusta carpeta Registros * al predio activo (p. ej. clon espino)."""
+    rel = (relpath or "").replace("\\", "/").lstrip("/")
+    if not rel:
+        return rel
+    target = _DOC_REGISTROS_FOLDER.get((especie or "").strip())
+    if not target:
+        return rel
+    parts = rel.split("/", 1)
+    if len(parts) == 2 and parts[0].startswith("Registros "):
+        return f"{target}/{parts[1]}"
+    return rel
+
+
+def _doc_relpath_candidates(especie: str, relpath: str) -> list[str]:
+    rel = (relpath or "").replace("\\", "/").lstrip("/")
+    if not rel:
+        return []
+    out: list[str] = []
+    for cand in (
+        _normalize_doc_relpath(especie, rel),
+        rel,
+    ):
+        if cand and cand not in out:
+            out.append(cand)
+    parts = rel.split("/", 1)
+    if len(parts) == 2:
+        head, tail = parts
+        for aliases in _DOC_REGISTROS_FOLDER_ALIASES.values():
+            if head in aliases:
+                for alias in aliases:
+                    variant = f"{alias}/{tail}"
+                    if variant not in out:
+                        out.append(variant)
+                target = _DOC_REGISTROS_FOLDER.get((especie or "").strip())
+                if target:
+                    variant = f"{target}/{tail}"
+                    if variant not in out:
+                        out.append(variant)
+                break
+    return out
+
+
 def _safe_doc_file(especie: str, relpath: str) -> Path | None:
     rel = (relpath or "").replace("\\", "/").lstrip("/")
     if not rel or ".." in rel.split("/"):
         return None
     root = _docs_especie_dir(especie).resolve()
-    full = (root / rel).resolve()
-    try:
-        full.relative_to(root)
-    except ValueError:
-        return None
-    return full if full.is_file() else None
+    for candidate in _doc_relpath_candidates(especie, rel):
+        full = (root / candidate).resolve()
+        try:
+            full.relative_to(root)
+        except ValueError:
+            continue
+        if full.is_file():
+            return full
+    # Último recurso: buscar por nombre de archivo dentro del predio.
+    name = Path(rel).name
+    if name:
+        for hit in root.rglob(name):
+            try:
+                hit.resolve().relative_to(root)
+            except ValueError:
+                continue
+            if hit.is_file():
+                return hit
+    return None
 
 
 def _doc_download_url(doc_id: int, especie: str) -> str:
@@ -2300,6 +2374,7 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
         origen = str(item.get("origen") or "Propio").strip()
         formato = str(item.get("formato") or "Digital").strip()
         rel = str(item.get("archivo_relpath") or "").replace("\\", "/").lstrip("/")
+        rel = _normalize_doc_relpath(especie, rel)
         nombre = str(item.get("nombre_archivo") or "").strip()
         if rel and not nombre:
             nombre = Path(rel).name

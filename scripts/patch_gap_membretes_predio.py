@@ -127,6 +127,42 @@ def _file_text(path: Path) -> str:
     return " ".join(raw.split())
 
 
+def _xlsx_headers_text(path: Path) -> str:
+    if path.suffix.lower() != ".xlsx" or not zipfile.is_zipfile(path):
+        return ""
+    parts: list[str] = []
+    with zipfile.ZipFile(path) as z:
+        for name in z.namelist():
+            if not (name.startswith("xl/worksheets/") and name.endswith(".xml")):
+                continue
+            xml = z.read(name).decode("utf-8", errors="ignore")
+            for m in re.finditer(
+                r"<(?:odd|even|first)(?:Header|Footer)[^>]*>(.*?)</(?:odd|even|first)(?:Header|Footer)>",
+                xml,
+                re.S | re.I,
+            ):
+                parts.append(m.group(1))
+    return "\n".join(parts)
+
+
+def _excel_header_has_lc(text: str) -> bool:
+    u = text.upper()
+    if not u.strip():
+        return False
+    left = u.split("&C")[0]
+    if "EL ESPINO" in left and "LA CONCEPCION" not in left and "EL SAUCE" not in left:
+        return False
+    return any(
+        k in left
+        for k in (
+            "LA CONCEPCION",
+            "SOCIEDAD AGRICOLA LA CONCEPCION",
+            "PARC. EL SAUCE",
+            " EL SAUCE LOTE",
+        )
+    )
+
+
 def needs_patch(path: Path, membrete: Membrete) -> tuple[bool, str]:
     if path.suffix.lower() == ".pdf" and SKIP_PDF_SUBSTR in path.name:
         return False, "pdf-politica-global-skip"
@@ -134,6 +170,12 @@ def needs_patch(path: Path, membrete: Membrete) -> tuple[bool, str]:
         return False, "ext-skip"
     if path.name.endswith(".bak"):
         return False, "bak-skip"
+    if path.suffix.lower() == ".xlsx":
+        hx = _xlsx_headers_text(path)
+        if hx and _excel_header_has_lc(hx):
+            return True, "excel-header-lc"
+        if membrete.slug == "espino" and hx and membrete.markers_ok(hx):
+            return False, "ok"
     text = _file_text(path)
     if membrete.markers_ok(text) and not membrete.has_foreign(text):
         if (
@@ -240,16 +282,25 @@ def _patch_excel_header_content(content: str, membrete: Membrete) -> tuple[str, 
     sep = "\n" if "\n" in content else "\r"
     block = _excel_header_block(membrete, sep)
     patterns = (
+        r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTD\s*[\r\n]+PARC\.\s*EL SAUCE LOTE 4\s*[\r\n]+LA APARICION\s*PAINE\s*",
+        r"LA CONCEPCION SOC\.\s*AGRICOLA\s+LTDA\.?\s*[\r\n]+\s*EL SAUCE LOTE 4\s*[\r\n]+\s*LA APARICION\s*",
         r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?\s*[\r\n]+PARC\.\s*EL SAUCE LOTE 4\s*[\r\n]+LA APARICION\s*PAINE\s*",
+        r"LA CONCEPCION SOCIEDAD AGRICOLA\s*[\r\n]+\s*CHADA PC 60 LT C PAINE\s*",
         r"LA CONCEPCION SOCIEDAD AGRICOLA\s*[\r\n]+CHADA PC 60 LT C PAINE\s*",
         r"SOCIEDAD AGRICOLA LA CONCEPCION LTDA\.?\s*(?:[\r\n]+RUT:[^\r\n]*)?[\r\n]+PARC\.\s*EL SAUCE[^\r\n]*[\r\n]+(?:LA APARICION\s*)?PAINE\s*",
         r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?\s*PARC\.\s*EL SAUCE LOTE 4\s*LA APARICION\s*PAINE\s*",
+        r"LA CONCEPCION SOCIEDAD AGRICOLA\s*[\r\n]+",
         r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?\s*",
+        r"LA CONCEPCION SOC\.\s*AGRICOLA\s+LTDA\.?\s*",
         r"SOCIEDAD AGRICOLA LA CONCEPCION LTDA\.?\s*",
     )
     for pat in patterns:
         if membrete.slug != "cerezos":
             content = re.sub(pat, block, content, flags=re.I)
+    if membrete.slug == "espino" and _excel_header_has_lc(content):
+        m = re.match(r"((?:&amp;L.*?))(\s*&amp;C)", content, re.S | re.I)
+        if m and "EL ESPINO" not in m.group(1).upper():
+            content = block + m.group(2) + content[m.end() :]
     if membrete.slug == "ciruelos":
         content = re.sub(
             r"CAMINO LAS LILAS PARC\.?\s*44\s*PAINE",
