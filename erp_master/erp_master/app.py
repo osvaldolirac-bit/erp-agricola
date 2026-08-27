@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from functools import wraps
 
 from flask import (
@@ -32,9 +33,27 @@ from erp_master.db import (
 )
 
 
+def _safe_next_url(nxt: str | None) -> str:
+    target = (nxt or "").strip()
+    if not target or target == "/":
+        return url_for("home")
+    if not target.startswith("/") or target.startswith("//"):
+        return url_for("home")
+    if not target.startswith("/consola"):
+        return url_for("home")
+    return target
+
+
+def _session_cookie_paths() -> tuple[str, ...]:
+    from flask import current_app
+
+    primary = (current_app.config.get("SESSION_COOKIE_PATH") or "/consola").rstrip("/") or "/consola"
+    return (primary, "/")
+
+
 def _expire_legacy_session_cookies(response):
     """Invalida solo la cookie antigua erp_master_session (no la sesión activa)."""
-    for path in ("/", "/consola"):
+    for path in _session_cookie_paths():
         response.delete_cookie("erp_master_session", path=path)
     return response
 
@@ -47,7 +66,7 @@ def _clear_master_session(response=None):
         response = make_response()
     current_name = current_app.config.get("SESSION_COOKIE_NAME") or "erp_master_session_v2"
     for name in ("erp_master_session", current_name):
-        for path in ("/", "/consola"):
+        for path in _session_cookie_paths():
             response.delete_cookie(name, path=path)
     return response
 
@@ -143,10 +162,9 @@ def create_app(config_object: type = Config) -> Flask:
                 session["master_nombre"] = user.get("nombre") or ""
                 session["master_rol"] = user.get("rol") or "admin"
                 session["master_tenant"] = user.get("tenant_slug") or ""
+                session["last_activity"] = time.time()
                 session.permanent = True
-                nxt = request.args.get("next") or url_for("home")
-                if not str(nxt).startswith("/"):
-                    nxt = url_for("home")
+                nxt = _safe_next_url(request.args.get("next"))
                 resp = redirect(nxt, code=303)
                 return _expire_legacy_session_cookies(resp)
             error = "Usuario o clave incorrectos."

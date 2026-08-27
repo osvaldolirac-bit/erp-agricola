@@ -100,14 +100,14 @@ def check_login_ui() -> None:
     if code != 200:
         raise CheckFailed(f"login GET status {code}")
     html = body.decode("utf-8", errors="replace")
-    if "dropdown-toggle" not in html or "Acceso" not in html:
-        raise CheckFailed("login missing Acceso dropdown")
+    if 'class="shell"' not in html:
+        raise CheckFailed("login missing visible shell layout")
+    if "Ingresar a la consola" not in html and "Ingresar" not in html:
+        raise CheckFailed("login missing submit button")
     if "Recordar usuario" not in html:
         raise CheckFailed("login missing Recordar usuario")
-    if "bootstrap.Dropdown(btn).show()" in html:
-        raise CheckFailed("login auto-opens dropdown (must stay closed on load)")
-    if "login-center" in html and 'class="login-panel' in html:
-        raise CheckFailed("login uses always-visible center panel (deprecated)")
+    if "dropdown login-access" in html:
+        raise CheckFailed("login still uses hidden Acceso dropdown")
     print("OK  login UI")
 
 
