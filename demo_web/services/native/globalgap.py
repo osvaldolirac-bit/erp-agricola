@@ -194,6 +194,19 @@ def _especie_gap_key(especie: str) -> str:
     return _LC_GAP_ESPECIE_LEGACY.get(e, e)
 
 
+def _especie_doc_aliases(especie: str) -> tuple[str, ...]:
+    """Predio activo + etiquetas legacy equivalentes (p. ej. LA CONCEPCION / Cerezos)."""
+    e = (especie or "").strip() or "ESPECIE 1"
+    aliases: list[str] = [e]
+    legacy = _LC_GAP_ESPECIE_LEGACY.get(e)
+    if legacy and legacy not in aliases:
+        aliases.append(legacy)
+    for new, old in _LC_GAP_ESPECIE_LEGACY.items():
+        if old == e and new not in aliases:
+            aliases.append(new)
+    return tuple(aliases)
+
+
 def _gap_pdf_pref(especie: str) -> str:
     key = _especie_gap_key(especie)
     if key in ("ESPECIE 1", "Cerezos"):
@@ -393,7 +406,9 @@ def _catalog_path(especie: str) -> Path | None:
                 return p
     slug = _ESPECIE_DOC_SLUG.get((especie or "").strip(), "cerezos")
     for p in (
+        _docs_static_root() / slug / f"catalogo_{slug}.json",
         _docs_static_root() / f"catalogo_{slug}.json",
+        Path(f"/root/demo-web/demo_web/static/globalgap/docs/{slug}/catalogo_{slug}.json"),
         Path(f"/root/demo-web/demo_web/static/globalgap/docs/catalogo_{slug}.json"),
     ):
         if p.is_file():
@@ -560,13 +575,15 @@ def _sync_checklist_cumple_from_docs(conn, demo, especie: str, checklist_codigo:
 def _section_documentos(demo, conn, especie: str) -> dict:
     _ensure_gap_documentos_schema(conn)
     filtro_tipo = (request.args.get("tipo") or "TODOS").strip()
-    q = """SELECT id, COALESCE(codigo,'') AS codigo, tipo, titulo, version, fecha_vigencia,
+    esp_aliases = _especie_doc_aliases(especie)
+    esp_ph = ",".join("?" for _ in esp_aliases)
+    q = f"""SELECT id, COALESCE(codigo,'') AS codigo, tipo, titulo, version, fecha_vigencia,
                   responsable, notas, COALESCE(archivo_relpath,'') AS archivo_relpath,
                   COALESCE(nombre_archivo,'') AS nombre_archivo, COALESCE(origen,'') AS origen,
                   COALESCE(formato,'Digital') AS formato
            FROM gap_documentos
-           WHERE COALESCE(especie,'ESPECIE 1')=?"""
-    params: list = [especie]
+           WHERE COALESCE(especie,'ESPECIE 1') IN ({esp_ph})"""
+    params: list = list(esp_aliases)
     if filtro_tipo and filtro_tipo != "TODOS":
         q += " AND tipo=?"
         params.append(filtro_tipo)
@@ -2229,6 +2246,31 @@ def _post_doc_add(demo, conn, especie: str) -> dict:
     return {"ok": True, "msg": msg}
 
 
+def _find_gap_documento_catalog_row(
+    conn, aliases: tuple[str, ...], codigo: str, titulo: str
+):
+    for alias in aliases:
+        if codigo:
+            row = conn.execute(
+                """SELECT id FROM gap_documentos
+                   WHERE COALESCE(especie,'')=? AND COALESCE(codigo,'')=?
+                   LIMIT 1""",
+                (alias, codigo),
+            ).fetchone()
+            if row:
+                return row
+        if titulo:
+            row = conn.execute(
+                """SELECT id FROM gap_documentos
+                   WHERE COALESCE(especie,'')=? AND UPPER(TRIM(titulo))=UPPER(TRIM(?))
+                   LIMIT 1""",
+                (alias, titulo),
+            ).fetchone()
+            if row:
+                return row
+    return None
+
+
 def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
     _ensure_gap_documentos_schema(conn)
     path = _catalog_path(especie)
@@ -2241,6 +2283,7 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
     if not isinstance(catalog, list):
         return {"ok": False, "msg": "Catálogo inválido."}
 
+    esp_aliases = _especie_doc_aliases(especie)
     inserted = 0
     updated = 0
     linked_total = 0
@@ -2261,29 +2304,14 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
         if rel and not nombre:
             nombre = Path(rel).name
         mime = mimetypes.guess_type(nombre)[0] or "" if nombre else ""
-        esp = str(item.get("especie") or especie).strip() or especie
 
-        existing = None
-        if codigo:
-            existing = conn.execute(
-                """SELECT id FROM gap_documentos
-                   WHERE COALESCE(especie,'')=? AND COALESCE(codigo,'')=?
-                   LIMIT 1""",
-                (esp, codigo),
-            ).fetchone()
-        if not existing and titulo:
-            existing = conn.execute(
-                """SELECT id FROM gap_documentos
-                   WHERE COALESCE(especie,'')=? AND UPPER(TRIM(titulo))=UPPER(TRIM(?))
-                   LIMIT 1""",
-                (esp, titulo),
-            ).fetchone()
+        existing = _find_gap_documento_catalog_row(conn, esp_aliases, codigo, titulo)
 
         if existing:
             doc_id = int(existing[0])
             conn.execute(
                 """UPDATE gap_documentos SET
-                       tipo=?, titulo=?, version=?,
+                       especie=?, tipo=?, titulo=?, version=?,
                        fecha_vigencia=COALESCE(?, fecha_vigencia),
                        origen=?, formato=?,
                        archivo_relpath=CASE WHEN ?!='' THEN ? ELSE archivo_relpath END,
@@ -2292,6 +2320,7 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
                        codigo=CASE WHEN ?!='' THEN ? ELSE codigo END
                    WHERE id=?""",
                 (
+                    especie,
                     tipo,
                     titulo or codigo,
                     version,
@@ -2324,7 +2353,7 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
                     "",
                     "Importado desde Listado Maestro / Drive",
                     str(hoy_demo(demo)),
-                    esp,
+                    especie,
                     codigo,
                     rel,
                     nombre,
@@ -2335,7 +2364,19 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
             )
             doc_id = int(cur.lastrowid)
             inserted += 1
-        linked_total += _link_doc_checklist(conn, doc_id, codigo, esp)
+        linked_total += _link_doc_checklist(conn, doc_id, codigo, especie)
+
+    for alias in esp_aliases:
+        if alias == especie:
+            continue
+        conn.execute(
+            "UPDATE gap_documentos SET especie=? WHERE COALESCE(especie,'')=?",
+            (especie, alias),
+        )
+        conn.execute(
+            "UPDATE gap_doc_checklist SET especie=? WHERE COALESCE(especie,'')=?",
+            (especie, alias),
+        )
 
     conn.commit()
     demo.registrar_accion(
