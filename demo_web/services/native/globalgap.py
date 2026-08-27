@@ -54,26 +54,56 @@ _DOC_LINK_EXTRA_COLS = [
 _ESPECIE_DOC_SLUG = {
     "Cerezos": "cerezos",
     "Ciruelos": "ciruelos",
+    "Nogales": "cerezos",
+    "LA CONCEPCION": "cerezos",
+    "CARLOS LIRA": "ciruelos",
+    "EL ESPINO": "cerezos",
     "ESPECIE 1": "cerezos",
     "ESPECIE 2": "ciruelos",
+}
+
+# Etiquetas GlobalGAP La Concepción (predio / titular).
+_LC_GAP_ESPECIE_LEGACY = {
+    "LA CONCEPCION": "Cerezos",
+    "CARLOS LIRA": "Ciruelos",
+    "EL ESPINO": "Nogales",
+}
+_LC_CUARTEL_ESPECIE = {
+    "CEREZOS CORTE 1": "LA CONCEPCION",
+    "CEREZOS CORTE 2": "LA CONCEPCION",
+    "CIRUELOS": "CARLOS LIRA",
+    "NOGALES APARICION": "EL ESPINO",
+    "NOGALES CRUZ DEL SUR": "EL ESPINO",
 }
 
 # Ancla de cosecha para Gantt GlobalGAP (Planificación).
 _PLANIF_COSECHA = {
     "Cerezos": date(2026, 11, 1),
     "Ciruelos": date(2027, 1, 15),
+    "Nogales": date(2027, 3, 1),
+    "LA CONCEPCION": date(2026, 11, 1),
+    "CARLOS LIRA": date(2027, 1, 15),
+    "EL ESPINO": date(2027, 3, 1),
     "ESPECIE 1": date(2026, 11, 1),
     "ESPECIE 2": date(2027, 1, 15),
 }
 _PLANIF_COSECHA_FIN = {
     "Cerezos": date(2026, 11, 22),
     "Ciruelos": date(2027, 2, 7),
+    "Nogales": date(2027, 3, 22),
+    "LA CONCEPCION": date(2026, 11, 22),
+    "CARLOS LIRA": date(2027, 2, 7),
+    "EL ESPINO": date(2027, 3, 22),
     "ESPECIE 1": date(2026, 11, 22),
     "ESPECIE 2": date(2027, 2, 7),
 }
 _PLANIF_CUARTEL = {
     "Cerezos": "CEREZOS CORTE 1",
     "Ciruelos": "CIRUELOS",
+    "Nogales": "NOGALES APARICION",
+    "LA CONCEPCION": "CEREZOS CORTE 1",
+    "CARLOS LIRA": "CIRUELOS",
+    "EL ESPINO": "NOGALES APARICION",
     "ESPECIE 1": "CEREZOS CORTE 1",
     "ESPECIE 2": "CIRUELOS",
 }
@@ -159,8 +189,23 @@ _CHECKLIST_CSS = {
 }
 
 
+def _especie_gap_key(especie: str) -> str:
+    e = (especie or "").strip()
+    return _LC_GAP_ESPECIE_LEGACY.get(e, e)
+
+
+def _gap_pdf_pref(especie: str) -> str:
+    key = _especie_gap_key(especie)
+    if key in ("ESPECIE 1", "Cerezos"):
+        return "esp1"
+    if key == "Nogales":
+        return "esp3"
+    return "especie2"
+
+
 def _especie_sel(demo) -> str:
-    esp = request.form.get("especie") or request.args.get("especie", "ESPECIE 1")
+    default = demo.GAP_ESPECIES[0] if getattr(demo, "GAP_ESPECIES", None) else "ESPECIE 1"
+    esp = request.form.get("especie") or request.args.get("especie", default)
     if esp not in demo.GAP_ESPECIES:
         esp = demo.GAP_ESPECIES[0]
     return esp
@@ -234,7 +279,7 @@ def _section_pppl(demo, conn, especie: str) -> dict:
         params=(demo.GAP_ESPECIE_GENERAL, especie),
     )
     cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df,
@@ -568,7 +613,7 @@ def _section_documentos(demo, conn, especie: str) -> dict:
     pdf_df = df[["tipo", "codigo", "titulo", "version", "fecha_vigencia", "responsable"]].copy() if not df.empty else df
     if not pdf_df.empty:
         pdf_df.columns = ["TIPO", "CÓDIGO", "TÍTULO", "VER", "VIGENTE", "RESPONSABLE"]
-    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo, pdf_df, f"GLOBALGAP — {especie.upper()} — Documentos", f"globalgap_{pref}_documentos.pdf",
     )
@@ -637,7 +682,7 @@ def _section_autoeval(demo, conn, especie: str) -> dict:
             }
         )
 
-    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df[["CODIGO", "CAPÍTULO", "DESCRIPCIÓN", "ESTADO", "REVISIÓN", "RESPONSABLE"]] if not df.empty else df,
@@ -669,7 +714,7 @@ def _section_nc(demo, conn, especie: str) -> dict:
         params=(especie, *cuarteles),
     )
     cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df,
@@ -723,7 +768,7 @@ def _section_capacitaciones(demo, conn, especie: str) -> dict:
                 "row_class": "table-warning" if vencida else "",
             }
         )
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df,
@@ -756,7 +801,7 @@ def _section_cosecha(demo, conn, especie: str) -> dict:
         params=(especie.upper(),),
     )
     cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo, df, f"GLOBALGAP — {especie.upper()} — Cosecha y lotes", f"globalgap_{pref}_cosecha.pdf",
     )
@@ -808,7 +853,7 @@ def _section_agua(demo, conn, especie: str) -> dict:
     if not show.empty and "CONFORME" in show.columns:
         show["CONFORME"] = show["CONFORME"].apply(lambda v: "Sí" if v in (1, "1", True) else "No")
     cols, rows = df_to_records(show, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         show,
@@ -827,7 +872,7 @@ def _section_calibracion(demo, conn, especie: str) -> dict:
         conn,
     )
     cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df,
@@ -1932,7 +1977,7 @@ def _section_gantt(demo, conn, especie: str) -> dict:
     try:
         blob = _pdf_tablero_gantt_bytes(demo, payload, especie)
         if blob:
-            pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+            pref = _gap_pdf_pref(especie)
             pdf_tablero_url = url_for(
                 "modules.pdf_download",
                 token=store_pdf(blob, f"globalgap_{pref}_tablero_gantt.pdf"),
@@ -2008,7 +2053,7 @@ def _section_planificacion(demo, conn, especie: str) -> dict:
             }
         )
 
-    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf_show = show.drop(columns=["NOTAS"], errors="ignore")
     pdf = _pdf_url(
         demo,
@@ -2674,14 +2719,21 @@ def _planilla_cuarteles_activos() -> list[str]:
 
 
 def _especie_desde_cuartel(cuartel: str, fallback: str = "Cerezos") -> str:
-    return _PLANILLA_ESPECIE_POR_CUARTEL.get((cuartel or "").strip().upper(), fallback)
+    cu = (cuartel or "").strip().upper()
+    from demo_web.services.erp_loader import get_erp_app
+
+    if get_erp_app() == "concepcion":
+        return _LC_CUARTEL_ESPECIE.get(cu, fallback)
+    return _PLANILLA_ESPECIE_POR_CUARTEL.get(cu, fallback)
 
 
 def _cuartel_default_planilla(especie: str) -> str:
-    esp = (especie or "").strip().lower()
-    if esp.startswith("ciruel"):
+    esp = (especie or "").strip().upper()
+    if esp in ("CARLOS LIRA", "CIRUELOS") or esp.startswith("CIRUEL"):
         return "CIRUELOS"
-    if esp.startswith("cerez"):
+    if esp in ("EL ESPINO", "NOGALES") or esp.startswith("NOGAL"):
+        return "NOGALES APARICION"
+    if esp in ("LA CONCEPCION",) or esp.startswith("CEREZ"):
         return "CEREZOS CORTE 1"
     return "TODOS"
 
@@ -3790,7 +3842,7 @@ def gather_globalgap(user_email: str, user_rol: str) -> dict:
             {"Indicador": "Cuarteles", "Valor": ", ".join(cuarteles)},
             {"Indicador": "Fecha informe", "Valor": str(hoy_demo(demo))},
         ])
-        pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+        pref = _gap_pdf_pref(especie)
         pdf_resumen = _pdf_url(
             demo,
             df_res,
