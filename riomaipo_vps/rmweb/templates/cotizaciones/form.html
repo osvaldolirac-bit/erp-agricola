@@ -28,12 +28,13 @@
       </div>
       <div class="col-md-4">
         <label class="form-label fw-bold">Cliente</label>
-        <select class="form-select" name="cliente_id" id="cliente_id" required>
+        <select class="form-select" name="cliente_id" id="cliente_id" required
+                {% if edit and edit.cliente_id %}data-expected-cliente="{{ edit.cliente_id|int }}"{% endif %}>
           {% for c in clientes %}
           <option value="{{ c.id }}"
             data-nombre="{{ c.razon_social }}"
-            {% if edit and edit.cliente_id==c.id %}selected{% elif not edit and loop.first %}selected{% endif %}>
-            {{ c.razon_social }}
+            {% if edit and edit.cliente_id|int == c.id|int %}selected{% elif not edit and loop.first %}selected{% endif %}>
+            {{ c.razon_social }}{% if edit and c.activo|int == 0 %} (inactivo){% endif %}
           </option>
           {% endfor %}
         </select>
@@ -210,6 +211,17 @@
   const sel = document.getElementById('cliente_id');
   const tit = document.getElementById('titulo');
   let locked = {{ 'true' if edit else 'false' }};
+  if (sel) {
+    const expected = sel.getAttribute('data-expected-cliente');
+    if (expected) {
+      for (const opt of sel.options) {
+        if (opt.value === expected) {
+          opt.selected = true;
+          break;
+        }
+      }
+    }
+  }
   if (sel && tit) {
     sel.addEventListener('change', function () {
       if (locked) return;

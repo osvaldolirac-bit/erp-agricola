@@ -833,6 +833,52 @@ def _cotizacion_revert_aprobacion(db, cid: int) -> None:
     db.execute("UPDATE cotizaciones SET estado='borrador' WHERE id=?", (cid,))
 
 
+def _clientes_para_cotizacion(db, cliente_id: int | None = None):
+    """Clientes activos y, al editar, el cliente actual aunque esté inactivo."""
+    if cliente_id:
+        cid = int(cliente_id)
+        rows = db.execute(
+            """
+            SELECT id, razon_social, COALESCE(activo, 1) AS activo
+            FROM clientes
+            WHERE activo=1 OR id=?
+            ORDER BY razon_social
+            """,
+            (cid,),
+        ).fetchall()
+        if not any(int(r["id"]) == cid for r in rows):
+            orphan = db.execute(
+                "SELECT id, razon_social FROM clientes WHERE id=?",
+                (cid,),
+            ).fetchone()
+            label = (orphan["razon_social"] if orphan else None) or f"Cliente #{cid}"
+            rows = list(rows) + [{"id": cid, "razon_social": label, "activo": 0}]
+        return rows
+    return db.execute(
+        """
+        SELECT id, razon_social, COALESCE(activo, 1) AS activo
+        FROM clientes WHERE activo=1 ORDER BY razon_social
+        """
+    ).fetchall()
+
+
+def _resolve_cliente_cotizacion_post(edit, clientes) -> int:
+    """Conserva el cliente original si el select no venía marcado al guardar."""
+    allowed = {int(r["id"]) for r in clientes}
+    if edit:
+        orig = int(edit["cliente_id"] or 0)
+        try:
+            posted = int(request.form.get("cliente_id") or 0)
+        except (TypeError, ValueError):
+            posted = 0
+        if posted and posted in allowed:
+            return posted
+        if orig:
+            return orig
+        raise ValueError("cliente_id inválido")
+    return int(request.form["cliente_id"])
+
+
 def _form_pct(name: str, default: float) -> float:
     """Lee % del formulario; «0» es válido (no cae al default por falsy)."""
     raw = request.form.get(name)
@@ -894,9 +940,6 @@ def cotizaciones_list():
 @login_required
 def cotizaciones_form(cot_id: int | None = None):
     db = core.conn()
-    clientes = db.execute(
-        "SELECT id, razon_social FROM clientes WHERE activo=1 ORDER BY razon_social"
-    ).fetchall()
     edit = None
     items = []
     if cot_id:
@@ -925,6 +968,9 @@ def cotizaciones_form(cot_id: int | None = None):
             if not core._is_gg_line(it["descripcion"]) and not core._is_util_line(it["descripcion"])
         ]
 
+    cliente_actual = int(edit["cliente_id"]) if edit and edit["cliente_id"] else None
+    clientes = _clientes_para_cotizacion(db, cliente_actual)
+
     iva_def = core.param(db, "iva", 19)
     iva_pct = float(iva_def) / 100.0
     gg_def = core.param(db, "gg_pct", 5)
@@ -932,7 +978,12 @@ def cotizaciones_form(cot_id: int | None = None):
     validez_def = int(core.param(db, "validez_cotizacion", 30))
 
     if request.method == "POST":
-        cliente_id = int(request.form["cliente_id"])
+        try:
+            cliente_id = _resolve_cliente_cotizacion_post(edit, clientes)
+        except (TypeError, ValueError, KeyError):
+            flash("Seleccione un cliente válido", "danger")
+            db.close()
+            return redirect(url_for("cotizaciones_form", cot_id=cot_id) if edit else url_for("cotizaciones_form"))
         version = (request.form.get("version") or "1").strip().lstrip("Vv") or "1"
         titulo = (request.form.get("titulo") or "").strip() or None
         proyecto = (request.form.get("proyecto") or "").strip() or None
@@ -1274,8 +1325,12 @@ def cotizaciones_estado(cot_id: int):
     db = core.conn()
     from rmweb import ops as _ops
     _ops.ensure_ops_schema(db)
-    prev = db.execute("SELECT estado FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
+    prev = db.execute(
+        "SELECT estado, cliente_id FROM cotizaciones WHERE id=?",
+        (cot_id,),
+    ).fetchone()
     prev_estado = (prev["estado"] if prev else "borrador") or "borrador"
+    prev_cliente_id = int(prev["cliente_id"] or 0) if prev else 0
     db.execute("UPDATE cotizaciones SET estado=? WHERE id=?", (estado, cot_id))
     db.commit()
     cxc_doc = None
@@ -1310,6 +1365,14 @@ def cotizaciones_estado(cot_id: int):
         except Exception:
             ppto_msg = None
         db.commit()
+    if prev_cliente_id:
+        cur_cli = db.execute("SELECT cliente_id FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
+        if cur_cli and int(cur_cli["cliente_id"] or 0) != prev_cliente_id:
+            db.execute(
+                "UPDATE cotizaciones SET cliente_id=? WHERE id=?",
+                (prev_cliente_id, cot_id),
+            )
+            db.commit()
     db.close()
     if cxc_doc:
         msg = f"Estado actualizado · CxC {cxc_doc} generada automáticamente"
