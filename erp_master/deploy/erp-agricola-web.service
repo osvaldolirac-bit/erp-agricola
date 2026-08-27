@@ -23,7 +23,7 @@ Environment=ERP_DEMO_SECRETS=/root/demo/.streamlit/secrets.toml
 Environment=ERP_LOGO_DIR=/root/static
 Environment=ERP_PDF_CACHE=/tmp/erp_pdf_cache
 Environment=ERP_STATUS_DIR=/root/erp_status
-Environment=ERP_MASTER_BRIDGE_SECRET=change-me-bridge-shared-with-master
+Environment=ERP_MASTER_BRIDGE_SECRET=7b2b56c51a86a65e35cee151f21a1a5987bb4519a70963dddf6e65adc9148e75
 ExecStart=/root/demo-web/.venv/bin/gunicorn --chdir /root/demo-web --bind 127.0.0.1:8508 --workers 2 --timeout 120 demo_web.wsgi:app
 Restart=always
 RestartSec=3
