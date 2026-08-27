@@ -429,17 +429,6 @@ def create_app(config_object: type = Config) -> Flask:
             msg_type=msg_type,
         )
 
-    @app.route("/consola/<slug>", methods=["GET", "POST"])
-    @login_required
-    def super_consola_legacy(slug: str):
-        """Compat: URLs antiguas /consola/<tenant> → /admin/<tenant>."""
-        params: dict[str, str] = {"slug": slug}
-        if request.args.get("sec"):
-            params["sec"] = request.args.get("sec", "")
-        if request.args.get("uid"):
-            params["uid"] = request.args.get("uid", "")
-        return redirect(url_for("super_consola", **params), code=301)
-
     @app.get("/health")
     def health():
         return {"ok": True, "app": "erp_master"}
