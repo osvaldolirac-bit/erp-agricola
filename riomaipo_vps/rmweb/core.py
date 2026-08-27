@@ -421,7 +421,17 @@ def param(c: sqlite3.Connection, clave: str, default: float = 0.0) -> float:
 
 
 def next_code(c: sqlite3.Connection, table: str, field: str, prefix: str) -> str:
-    n = c.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"] + 1
+    """Siguiente correlativo PREFIX-NNNN según el máximo existente (no COUNT)."""
+    start = len(prefix) + 2  # tras «COT-»
+    row = c.execute(
+        f"""
+        SELECT MAX(CAST(substr({field}, ?) AS INTEGER)) AS m
+        FROM {table}
+        WHERE {field} LIKE ?
+        """,
+        (start, f"{prefix}-%"),
+    ).fetchone()
+    n = int(row["m"] or 0) + 1
     return f"{prefix}-{n:04d}"
 
 

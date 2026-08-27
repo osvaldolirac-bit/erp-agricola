@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import time
 from datetime import date, timedelta
 from functools import wraps
@@ -882,6 +883,19 @@ def _resolve_cliente_cotizacion_post(edit, clientes) -> int:
     return int(request.form["cliente_id"])
 
 
+def _fecha_cotizacion_form(raw: str | None) -> str:
+    s = (raw or "").strip()
+    if not s:
+        return core.hoy_chile().isoformat()
+    try:
+        d = date.fromisoformat(s)
+    except ValueError:
+        raise ValueError("fecha inválida")
+    if d.year < 1990 or d.year > 2100:
+        raise ValueError("fecha inválida")
+    return d.isoformat()
+
+
 def _form_pct(name: str, default: float) -> float:
     """Lee % del formulario; «0» es válido (no cae al default por falsy)."""
     raw = request.form.get(name)
@@ -992,7 +1006,12 @@ def cotizaciones_form(cot_id: int | None = None):
         proyecto = (request.form.get("proyecto") or "").strip() or None
         asunto = (request.form.get("asunto") or "").strip() or None
         estado = request.form.get("estado") or "borrador"
-        fecha = (request.form.get("fecha") or "").strip() or core.hoy_chile().isoformat()
+        try:
+            fecha = _fecha_cotizacion_form(request.form.get("fecha"))
+        except ValueError:
+            flash("Fecha inválida. Use formato AAAA-MM-DD (ej. 2026-08-27).", "danger")
+            db.close()
+            return redirect(url_for("cotizaciones_form", cot_id=cot_id) if edit else url_for("cotizaciones_form"))
         validez = int(request.form.get("validez") or validez_def)
         gg_pct = _form_pct("gg_pct", gg_def)
         utilidad_pct = _form_pct("utilidad_pct", util_def)
@@ -1118,22 +1137,28 @@ def cotizaciones_form(cot_id: int | None = None):
             else:
                 folio = core.next_code(db, "cotizaciones", "folio", "COT")
                 cur = db.cursor()
-                cur.execute(
-                    """
-                    INSERT INTO cotizaciones
-                    (folio, cliente_id, asunto, proyecto, estado, fecha, validez_dias,
-                     version, titulo, gg_pct, utilidad_pct,
-                     gg_monto, utilidad_monto, valor_neto, subtotal, iva, total, notas, tipo_venta)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """,
-                    (
-                        folio, cliente_id, asunto, proyecto, estado,
-                        fecha, validez,
-                        version, titulo, gg_pct, utilidad_pct,
-                        tots["gg_monto"], tots["utilidad_monto"], tots["valor_neto"],
-                        tots["subtotal"], tots["iva"], tots["total"], notas, tipo_venta,
-                    ),
-                )
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO cotizaciones
+                        (folio, cliente_id, asunto, proyecto, estado, fecha, validez_dias,
+                         version, titulo, gg_pct, utilidad_pct,
+                         gg_monto, utilidad_monto, valor_neto, subtotal, iva, total, notas, tipo_venta)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """,
+                        (
+                            folio, cliente_id, asunto, proyecto, estado,
+                            fecha, validez,
+                            version, titulo, gg_pct, utilidad_pct,
+                            tots["gg_monto"], tots["utilidad_monto"], tots["valor_neto"],
+                            tots["subtotal"], tots["iva"], tots["total"], notas, tipo_venta,
+                        ),
+                    )
+                except sqlite3.IntegrityError:
+                    db.rollback()
+                    flash("No se pudo guardar: folio duplicado. Intente nuevamente.", "danger")
+                    db.close()
+                    return redirect(url_for("cotizaciones_form"))
                 cid = cur.lastrowid
             db.executemany(
                 """
