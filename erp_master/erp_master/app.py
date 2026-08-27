@@ -191,7 +191,7 @@ def create_app(config_object: type = Config) -> Flask:
                 info=info,
             )
         )
-        return _clear_master_session(resp)
+        return resp
 
     @app.route("/logout", methods=["GET", "POST"])
     def logout():
