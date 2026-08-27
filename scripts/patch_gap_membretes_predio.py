@@ -450,73 +450,164 @@ def patch_doc(path: Path, membrete: Membrete) -> tuple[bool, str]:
     return True, ";".join(dict.fromkeys(notes)) or "doc"
 
 
-def _strip_lc_header_fragments(xml: str, membrete: Membrete) -> tuple[str, bool]:
-    """Vacía w:t sueltos de membrete LC cuando ya está el predio Espino."""
-    if membrete.slug != "espino":
-        return xml, False
-    if membrete.razon.upper() not in xml.upper():
-        return xml, False
-    orig = xml
-    for frag in (
-        "SOCIEDAD AGRICOLA LTDA.",
-        "SOCIEDAD AGRICOLA LTDA",
-        "AGRICOLA LTDA",
-        "PARC. EL SAUCE LOTE 4 ",
-        "PARC. ",
-        "EL SAUCE LOTE 4",
-        "LA APARICION ",
-    ):
-        xml = re.sub(rf">{re.escape(frag)}</w:t>", "></w:t>", xml, flags=re.I)
-    xml = re.sub(r">PAINE\s*</w:t>", "></w:t>", xml, flags=re.I)
-    if membrete.rut not in xml and f">{membrete.razon}</w:t>" in xml:
-        xml = xml.replace(
-            f">{membrete.razon}</w:t>",
-            f">{membrete.razon}</w:t></w:r><w:r><w:rPr/><w:t xml:space=\"preserve\">RUT: {membrete.rut}\r{membrete.direccion}</w:t>",
-            1,
-        )
-    return xml, xml != orig
+_HEADER_TITLE_KWS = (
+    "PROCEDIMIENTO",
+    "PLAN",
+    "INSTRUCTIVO",
+    "REGISTRO",
+    "CHECKLIST",
+    "GGPR",
+    "GGPL",
+    "GGRG",
+    "GGIN",
+    "CÓD.",
+    "COD.",
+)
 
 
-def _inject_espino_header_if_lc_only(xml: str, membrete: Membrete) -> tuple[str, bool]:
-    """Encabezado solo con restos LC (sin EL ESPINO): inserta membrete Espino."""
-    if membrete.slug != "espino" or "EL ESPINO" in xml.upper():
-        return xml, False
-    if "SAUCE" not in xml.upper() and "AGRICOLA LTDA" not in xml.upper():
-        return xml, False
-    orig = xml
-    block = f"{membrete.razon}\rRUT: {membrete.rut}\r{membrete.direccion}"
-    for pat in (
-        r"(<w:t[^>]*>)\s*AGRICOLA LTDA\s*(</w:t>)",
-        r"(<w:t[^>]*>)\s*SOCIEDAD AGRICOLA LTDA\.?\s*(</w:t>)",
-        r"(<w:t[^>]*>)\s*LA CONCEPCION\s*(</w:t>)",
-    ):
-        xml2 = re.sub(pat, rf"\1{block}\2", xml, count=1, flags=re.I)
-        if xml2 != xml:
-            return xml2, True
-    return xml, xml != orig
+def _xml_plain_text(xml: str) -> str:
+    return " ".join(re.sub(r"<[^>]+>", " ", xml).split())
 
 
-def _collapse_split_lc_header(xml: str, membrete: Membrete) -> tuple[str, bool]:
-    """Docx clonados LC: 'La Concepcion' + 'Sociedad' + 'Agricola' + 'Ltda.' en varios w:r."""
-    if membrete.slug != "espino":
+def _xml_well_formed(xml: str) -> bool:
+    try:
+        ET.fromstring(xml.encode("utf-8"))
+        return True
+    except ET.ParseError:
+        return False
+
+
+def _header_titles_preserved(before: str, after: str) -> bool:
+    bu, au = before.upper(), after.upper()
+    for kw in _HEADER_TITLE_KWS:
+        if kw in bu and kw not in au:
+            return False
+    return True
+
+
+def _replace_wt_content(xml: str, old: str, new: str) -> tuple[str, bool]:
+    if not old.strip():
         return xml, False
-    if not re.search(r">La Concepcion\s*</w:t>", xml, re.I):
+    changed = False
+
+    def repl(m: re.Match) -> str:
+        nonlocal changed
+        body = m.group(2)
+        if old.upper() not in body.upper():
+            return m.group(0)
+        nb = re.sub(re.escape(old), new, body, count=1, flags=re.I)
+        if nb == body:
+            return m.group(0)
+        changed = True
+        return m.group(1) + nb + m.group(3)
+
+    out = re.sub(r"(<w:t(?:\s[^>]*)?>)(.*?)(</w:t>)", repl, xml, flags=re.S)
+    return out, changed
+
+
+def _remove_wr_runs_only_text(xml: str, text: str) -> tuple[str, bool]:
+    if not text.strip():
         return xml, False
-    orig = xml
-    xml = re.sub(
-        r">La Concepcion\s*</w:t>",
-        f">{membrete.razon}</w:t>",
-        xml,
-        count=1,
-        flags=re.I,
-    )
-    run_pat = (
+    pat = (
         r"<w:r\b[^>]*>\s*(?:<w:rPr\b.*?</w:rPr>\s*)?"
-        r"<w:t\b[^>]*>\s*{frag}\s*</w:t>\s*</w:r>"
+        rf"<w:t\b[^>]*>\s*{re.escape(text)}\s*</w:t>\s*</w:r>"
     )
-    for frag in ("Sociedad", "Agricola", "Ltda\\.?"):
-        xml = re.sub(run_pat.format(frag=frag), "", xml, count=1, flags=re.I | re.S)
-    return xml, xml != orig
+    out, n = re.subn(pat, "", xml, flags=re.I | re.S)
+    return out, n > 0
+
+
+def _append_rut_to_razon_wt(xml: str, membrete: Membrete) -> tuple[str, bool]:
+    if membrete.rut in xml:
+        return xml, False
+    changed = False
+
+    def repl(m: re.Match) -> str:
+        nonlocal changed
+        body = m.group(2)
+        if membrete.razon.upper() not in body.upper() or membrete.rut in body:
+            return m.group(0)
+        changed = True
+        suffix = f"\rRUT: {membrete.rut}\r{membrete.direccion}"
+        return m.group(1) + body.rstrip() + suffix + m.group(3)
+
+    out = re.sub(r"(<w:t(?:\s[^>]*)?>)(.*?)(</w:t>)", repl, xml, count=1, flags=re.S)
+    return out, changed
+
+
+def _patch_docx_header_xml_safe(xml: str, membrete: Membrete) -> tuple[str, bool]:
+    """Parche membrete solo en w:t de encabezados/pies Word — sin tocar document.xml."""
+    orig = xml
+    plain_before = _xml_plain_text(xml)
+    out = xml
+    changed = False
+
+    for other in MEMBRETES.values():
+        if other.slug == membrete.slug:
+            continue
+        for label in (other.razon, other.razon.rstrip(".")):
+            out, ch = _replace_wt_content(out, label, membrete.razon)
+            changed = changed or ch
+
+    for old, new in _LEGACY_RAZON:
+        if new.upper() == membrete.razon.upper() or membrete.razon.upper() in old.upper():
+            out, ch = _replace_wt_content(out, old, membrete.razon)
+            changed = changed or ch
+
+    if membrete.slug == "espino":
+        if re.search(r">La Concepcion\s*</w:t>", out, re.I):
+            out, ch = _replace_wt_content(out, "La Concepcion", membrete.razon)
+            changed = changed or ch
+            for frag in ("Sociedad", "Agricola", "Ltda.", "Ltda"):
+                out, ch = _remove_wr_runs_only_text(out, frag)
+                changed = changed or ch
+        for old in (
+            "LA CONCEPCION SOCIEDAD AGRICOLA LTDA.",
+            "LA CONCEPCION SOCIEDAD AGRICOLA LTDA",
+            "LA CONCEPCION SOCIEDAD AGRICOLA  LTDA.",
+            "LA CONCEPCION SOCIEDAD AGRICOLA",
+        ):
+            out, ch = _replace_wt_content(out, old, membrete.razon)
+            changed = changed or ch
+        for frag in (
+            "PARC. EL SAUCE LOTE 4 LA APARICION PAINE",
+            "PARC. EL SAUCE LOTE 4",
+            "LA APARICION PAINE",
+            "EL SAUCE LOTE 4",
+        ):
+            out, ch = _remove_wr_runs_only_text(out, frag)
+            changed = changed or ch
+        out, ch = _replace_wt_content(
+            out, "PARC. EL SAUCE LOTE 4 LA APARICION PAINE", membrete.direccion
+        )
+        changed = changed or ch
+
+    if membrete.slug == "cerezos":
+        out, ch = _replace_wt_content(out, "LA CONCEPCION", membrete.razon)
+        changed = changed or ch
+        for frag in ("SOCIEDAD AGRICOLA LTDA.", "SOCIEDAD AGRICOLA LTDA"):
+            out, ch = _remove_wr_runs_only_text(out, frag)
+            changed = changed or ch
+
+    for foreign in _foreign_direcciones(membrete):
+        out, ch = _replace_wt_content(out, foreign, membrete.direccion)
+        changed = changed or ch
+
+    if membrete.slug == "ciruelos":
+        out, ch = _replace_wt_content(
+            out, "CAMINO LAS LILAS PARC. 44 PAINE", membrete.direccion
+        )
+        changed = changed or ch
+        out, ch = _replace_wt_content(out, "CAMINO LAS LILAS PARC.44", membrete.direccion)
+        changed = changed or ch
+
+    out, ch = _append_rut_to_razon_wt(out, membrete)
+    changed = changed or ch
+
+    if not _xml_well_formed(out):
+        return orig, False
+    if not _header_titles_preserved(plain_before, _xml_plain_text(out)):
+        return orig, False
+    return out, changed and out != orig
 
 
 def _ooxml_bytes_valid(data: bytes, xlsx: bool = False) -> bool:
@@ -546,13 +637,8 @@ def _ooxml_bytes_valid(data: bytes, xlsx: bool = False) -> bool:
 
 
 def _patch_xlsx_xml(filename: str, xml: str, membrete: Membrete) -> tuple[str, bool]:
-    """Solo encabezados Excel y sharedStrings — sin lógica Word."""
+    """Solo encabezados/pies de hoja Excel — no sharedStrings (evita pisar celdas)."""
     fn = filename.lower()
-    if fn.endswith("sharedstrings.xml"):
-        new = _apply_legacy_replacements(xml, membrete)
-        if isinstance(new, str) and new != xml:
-            return new, True
-        return xml, False
     if fn.startswith("xl/worksheets/") and fn.endswith(".xml"):
         changed = False
 
@@ -582,119 +668,10 @@ def _patch_xlsx_xml(filename: str, xml: str, membrete: Membrete) -> tuple[str, b
 
 
 def _patch_docx_xml(filename: str, xml: str, membrete: Membrete) -> tuple[str, bool]:
-    _ = filename
-    return _patch_header_footer_xml(xml, membrete)
-
-
-def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
-    orig = xml
-    changed = False
-    for tag in (
-        "oddHeader",
-        "evenHeader",
-        "firstHeader",
-        "oddFooter",
-        "evenFooter",
-        "firstFooter",
-    ):
-        pat = rf"(<{tag}[^>]*>)(.*?)(</{tag}>)"
-
-        def _sub(m: re.Match, _tag=tag) -> str:
-            nonlocal changed
-            new_body, ch = _patch_excel_header_content(m.group(2), membrete)
-            if ch:
-                changed = True
-            return m.group(1) + new_body + m.group(3)
-
-        xml = re.sub(pat, _sub, xml, flags=re.S)
-
-    # Unificar razón social (mayúsculas)
-    for old, new in _LEGACY_RAZON:
-        xml = re.sub(re.escape(old), membrete.razon, xml, flags=re.I)
-    xml = re.sub(re.escape(membrete.razon.rstrip(".")), membrete.razon, xml, flags=re.I)
-
-    # docx LC: fusionar "LA CONCEPCION" + "SOCIEDAD AGRICOLA LTDA."
-    if membrete.slug == "cerezos":
-        xml = re.sub(
-            r">LA CONCEPCION\s*</w:t>",
-            f">{membrete.razon}</w:t>",
-            xml,
-            flags=re.I,
-        )
-        xml = re.sub(r">SOCIEDAD AGRICOLA LTDA\.?\s*</w:t>", "></w:t>", xml, flags=re.I)
-
-    # Dirección por predio
-    if membrete.slug == "ciruelos":
-        xml = re.sub(
-            r">CAMINO LAS LILAS PARC\.?\s*44\s*</w:t>\s*<w:.*?>\s*<w:t[^>]*>\s*PAINE\s*</w:t>",
-            f">{membrete.direccion}</w:t>",
-            xml,
-            count=1,
-            flags=re.I | re.S,
-        )
-        xml = re.sub(
-            r"CAMINO LAS LILAS PARC\.?\s*44\s*PAINE",
-            membrete.direccion,
-            xml,
-            flags=re.I,
-        )
-    elif membrete.slug == "cerezos":
-        xml = re.sub(
-            r">PARC\.\s*</w:t>.*?<w:t[^>]*>\s*PAINE\s*</w:t>",
-            f">{membrete.direccion}</w:t>",
-            xml,
-            count=1,
-            flags=re.I | re.S,
-        )
-    elif membrete.slug == "espino":
-        for old in (
-            "PARC. EL SAUCE LOTE 4 LA APARICION PAINE",
-            "CAMINO LAS LILAS PARC. 44 CHADA PAINE",
-            "CAMINO LAS LILAS PARC.44",
-        ):
-            xml = re.sub(re.escape(old), membrete.direccion, xml, flags=re.I)
-        xml = re.sub(
-            r">LA CONCEPCION\s*</w:t>\s*<w:.*?>\s*<w:t[^>]*>\s*SOCIEDAD AGRICOLA LTDA\.?\s*</w:t>",
-            f">{membrete.razon}</w:t>",
-            xml,
-            count=1,
-            flags=re.I | re.S,
-        )
-        xml = re.sub(
-            r">La Concepcion\s*</w:t>\s*<w:.*?>\s*<w:t[^>]*>\s*Sociedad Agricola Ltda\.?\s*</w:t>",
-            f">{membrete.razon}</w:t>",
-            xml,
-            count=1,
-            flags=re.I | re.S,
-        )
-
-    # Quitar otras razones sociales del encabezado
-    for other in MEMBRETES.values():
-        if other.slug == membrete.slug:
-            continue
-        xml = re.sub(re.escape(other.razon), "", xml, flags=re.I)
-        xml = re.sub(re.escape(other.razon.rstrip(".")), "", xml, flags=re.I)
-
-    xml, split_ch = _collapse_split_lc_header(xml, membrete)
-    if split_ch:
-        changed = True
-
-    xml, inject_ch = _inject_espino_header_if_lc_only(xml, membrete)
-    if inject_ch:
-        changed = True
-
-    xml, strip_ch = _strip_lc_header_fragments(xml, membrete)
-    if strip_ch:
-        changed = True
-
-    legacy_xml = _apply_legacy_replacements(xml, membrete)
-    if isinstance(legacy_xml, str) and legacy_xml != xml:
-        xml = legacy_xml
-        changed = True
-
-    if xml != orig:
-        changed = True
-    return xml, changed
+    fn = filename.lower()
+    if not (fn.endswith(".xml") and ("header" in fn or "footer" in fn)):
+        return xml, False
+    return _patch_docx_header_xml_safe(xml, membrete)
 
 
 def patch_xls(path: Path, membrete: Membrete) -> tuple[bool, str]:
@@ -720,15 +697,9 @@ def patch_zip_office(path: Path, membrete: Membrete) -> tuple[bool, str]:
                 data = zin.read(item.filename)
                 fn = item.filename.lower()
                 if is_xlsx:
-                    patchable = fn.endswith("sharedstrings.xml") or (
-                        fn.startswith("xl/worksheets/") and fn.endswith(".xml")
-                    )
+                    patchable = fn.startswith("xl/worksheets/") and fn.endswith(".xml")
                 else:
-                    patchable = (
-                        "header" in fn
-                        or "footer" in fn
-                        or fn.endswith("document.xml")
-                    )
+                    patchable = ("header" in fn or "footer" in fn) and fn.endswith(".xml")
                 if patchable:
                     try:
                         text = data.decode("utf-8")
