@@ -875,12 +875,21 @@ def main() -> int:
         help="Restaura carpeta slug desde tar.gz (globalgap/docs/{slug}/...)",
     )
     parser.add_argument(
+        "--docs-root",
+        type=Path,
+        default=None,
+        help="Raíz globalgap/docs (contiene subcarpeta espino|cerezos|...)",
+    )
+    parser.add_argument(
         "--restore-excel-only",
         action="store_true",
         help="Con --restore-from-backup: solo .xlsx/.xls",
     )
     parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args()
+    global DOCS_ROOT
+    if args.docs_root is not None:
+        DOCS_ROOT = args.docs_root
 
     slugs = args.slug or ["cerezos", "ciruelos", "espino"]
 
