@@ -101,6 +101,14 @@ def login():
     )
 
 
+@bp.route("/login/master")
+def master_entry():
+    """Puente Super Consola → portal GlobalGAP (/agricola/globalgap/login/master)."""
+    from demo_web.auth.routes import master_entry as auth_master_entry
+
+    return auth_master_entry()
+
+
 @bp.route("/logout", methods=["POST"])
 def logout():
     session.clear()
