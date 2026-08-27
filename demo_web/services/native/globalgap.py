@@ -889,27 +889,78 @@ def _section_calibracion(demo, conn, especie: str) -> dict:
     }
 
 
-def _cosecha_ancla(especie: str) -> date:
-    return _PLANIF_COSECHA.get((especie or "").strip(), date(2026, 11, 1))
+def _ensure_gap_cosecha_planif(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS gap_cosecha_planif (
+            especie TEXT PRIMARY KEY,
+            fecha_inicio TEXT NOT NULL,
+            fecha_fin TEXT NOT NULL,
+            actualizado_en TEXT DEFAULT ''
+        )"""
+    )
 
 
-def _cosecha_fin(especie: str) -> date:
-    return _PLANIF_COSECHA_FIN.get((especie or "").strip(), date(2026, 11, 22))
+def _especie_planif_key(especie: str) -> str:
+    return (especie or "").strip()
+
+
+def _especie_soporta_planif(especie: str) -> bool:
+    key = _especie_planif_key(especie)
+    return key in _PLANIF_COSECHA or key in (
+        "Cerezos",
+        "Ciruelos",
+        "Nogales",
+        "ESPECIE 1",
+        "ESPECIE 2",
+    )
+
+
+def _cosecha_planif_db(conn: sqlite3.Connection, especie: str) -> tuple[date, date] | None:
+    _ensure_gap_cosecha_planif(conn)
+    row = conn.execute(
+        "SELECT fecha_inicio, fecha_fin FROM gap_cosecha_planif WHERE especie=?",
+        (_especie_planif_key(especie),),
+    ).fetchone()
+    if not row:
+        return None
+    ini = _parse_iso_date(row[0])
+    fin = _parse_iso_date(row[1])
+    if ini and fin:
+        return ini, fin
+    return None
+
+
+def _cosecha_ancla(especie: str, conn: sqlite3.Connection | None = None) -> date:
+    key = _especie_planif_key(especie)
+    if conn is not None:
+        cfg = _cosecha_planif_db(conn, key)
+        if cfg:
+            return cfg[0]
+    return _PLANIF_COSECHA.get(key, date(2026, 11, 1))
+
+
+def _cosecha_fin(especie: str, conn: sqlite3.Connection | None = None) -> date:
+    key = _especie_planif_key(especie)
+    if conn is not None:
+        cfg = _cosecha_planif_db(conn, key)
+        if cfg:
+            return cfg[1]
+    return _PLANIF_COSECHA_FIN.get(key, date(2026, 11, 22))
 
 
 def _d(base: date, days: int) -> str:
     return (base + timedelta(days=days)).isoformat()
 
 
-def _planif_proyecto_nombre(especie: str) -> str:
-    h = _cosecha_ancla(especie)
+def _planif_proyecto_nombre(especie: str, conn: sqlite3.Connection | None = None) -> str:
+    h = _cosecha_ancla(especie, conn)
     return f"{_PLANIF_PROYECTO_PREF} — {especie} (cosecha {h.strftime('%b %Y')})"
 
 
-def _planif_tasks_certificacion(especie: str) -> list[dict]:
+def _planif_tasks_certificacion(especie: str, conn: sqlite3.Connection | None = None) -> list[dict]:
     """Gantt de certificación alineada a documentos + autoevaluación, anclada a cosecha."""
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
     cierre = h_fin + timedelta(days=14)
     cuartel = _PLANIF_CUARTEL.get(especie, "")
     return [
@@ -1121,12 +1172,12 @@ def _sync_gantt_avances(conn, especie: str) -> int:
 
 def _ensure_planificacion_certificacion(conn, demo, especie: str, force: bool = False) -> dict:
     """Crea/actualiza el proyecto Gantt de certificación para la especie (anclado a cosecha)."""
-    if especie not in _PLANIF_COSECHA and especie not in ("Cerezos", "Ciruelos", "ESPECIE 1", "ESPECIE 2"):
+    if not _especie_soporta_planif(especie):
         return {"ok": False, "msg": "Especie sin ancla de cosecha.", "proyecto_id": None}
 
-    nombre = _planif_proyecto_nombre(especie)
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
+    nombre = _planif_proyecto_nombre(especie, conn)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
     inicio = h - timedelta(days=120)
     cuartel = _PLANIF_CUARTEL.get(especie, "")
     desc = (
@@ -1220,7 +1271,7 @@ def _ensure_planificacion_certificacion(conn, demo, especie: str, force: bool = 
     ).fetchone()[0]
     if force or int(existing or 0) == 0:
         conn.execute("DELETE FROM gantt_tareas WHERE proyecto_id=?", (proyecto_id,))
-        for t in _planif_tasks_certificacion(especie):
+        for t in _planif_tasks_certificacion(especie, conn):
             pct = _avance_sync_from_notas(conn, especie, t["notas"]) or 0.0
             estado = "Completada" if pct >= 100 else ("En curso" if pct > 0 else "Pendiente")
             conn.execute(
@@ -1310,10 +1361,10 @@ def _parse_iso_date(val) -> date | None:
         return None
 
 
-def _timeline_span(especie: str) -> tuple[date, date, date]:
+def _timeline_span(especie: str, conn: sqlite3.Connection | None = None) -> tuple[date, date, date]:
     """Inicio planificación → fin cosecha(+cierre)."""
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
     start = h - timedelta(days=120)
     end = h_fin + timedelta(days=14)
     return start, end, h
@@ -1824,9 +1875,9 @@ def _section_gantt(demo, conn, especie: str) -> dict:
     _sync_gantt_avances(conn, especie)
 
     hoy = hoy_demo(demo)
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
-    t0, t1, _ = _timeline_span(especie)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
+    t0, t1, _ = _timeline_span(especie, conn)
     dias_a_cosecha = (h - hoy).days
     dias_a_fin = (h_fin - hoy).days
     if hoy < h:
@@ -1948,7 +1999,7 @@ def _section_gantt(demo, conn, especie: str) -> dict:
         "gantt_cosecha_fin": h_fin.isoformat(),
         "gantt_cosecha_label": f"{h.strftime('%d-%m-%Y')} → {h_fin.strftime('%d-%m-%Y')}",
         "gantt_cuartel": _PLANIF_CUARTEL.get(especie, ""),
-        "gantt_proyecto": _planif_proyecto_nombre(especie),
+        "gantt_proyecto": _planif_proyecto_nombre(especie, conn),
         "gantt_dias_cosecha": dias_a_cosecha,
         "gantt_dias_fin": dias_a_fin,
         "gantt_fase": fase,
@@ -1996,14 +2047,17 @@ def _section_planificacion(demo, conn, especie: str) -> dict:
     df = demo.cargar_tareas_gantt(conn, especie=especie)
     form_ctx = _gantt_form_ctx(demo, conn, especie, df)
 
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
+    custom = _cosecha_planif_db(conn, especie) is not None
     cosecha_ctx = {
         "planif_cosecha_inicio": h.isoformat(),
         "planif_cosecha_fin": h_fin.isoformat(),
         "planif_cosecha_label": f"{h.strftime('%d-%m-%Y')} → {h_fin.strftime('%d-%m-%Y')}",
+        "planif_cosecha_custom": custom,
+        "planif_admin": bool(demo.es_admin()),
         "planif_cuartel": _PLANIF_CUARTEL.get(especie, ""),
-        "planif_proyecto": _planif_proyecto_nombre(especie),
+        "planif_proyecto": _planif_proyecto_nombre(especie, conn),
         "planif_docs_url": url_for("modules.globalgap", sec="documentos", especie=especie),
         "planif_autoeval_url": url_for("modules.globalgap", sec="autoeval", especie=especie),
         "planif_planilla_url": url_for(
@@ -2584,6 +2638,45 @@ def _post_cal_add(demo, conn) -> dict:
     return {"ok": True, "msg": "Calibración registrada."}
 
 
+def _post_cosecha_planif_save(demo, conn, especie: str) -> dict:
+    denied = _require_admin_gap(demo)
+    if denied:
+        return denied
+    if not _especie_soporta_planif(especie):
+        return {"ok": False, "msg": "Este predio no tiene planificación de cosecha."}
+    hoy = hoy_demo(demo)
+    fi = parse_date(request.form.get("cosecha_inicio"), _cosecha_ancla(especie, conn))
+    ff = parse_date(request.form.get("cosecha_fin"), _cosecha_fin(especie, conn))
+    if ff < fi:
+        return {"ok": False, "msg": "La fecha fin debe ser igual o posterior al inicio."}
+    _ensure_gap_cosecha_planif(conn)
+    conn.execute(
+        """INSERT INTO gap_cosecha_planif (especie, fecha_inicio, fecha_fin, actualizado_en)
+           VALUES (?,?,?,?)
+           ON CONFLICT(especie) DO UPDATE SET
+             fecha_inicio=excluded.fecha_inicio,
+             fecha_fin=excluded.fecha_fin,
+             actualizado_en=excluded.actualizado_en""",
+        (_especie_planif_key(especie), fi.isoformat(), ff.isoformat(), hoy.isoformat()),
+    )
+    conn.commit()
+    res = _ensure_planificacion_certificacion(conn, demo, especie, force=True)
+    if not res.get("ok"):
+        return {"ok": False, "msg": res.get("msg") or "Fechas guardadas, pero no se pudo reconstruir la Gantt."}
+    n = conn.execute(
+        "SELECT COUNT(*) FROM gantt_tareas WHERE proyecto_id=?",
+        (res["proyecto_id"],),
+    ).fetchone()[0]
+    demo.registrar_accion(
+        "GLOBALGAP COSECHA PLANIF",
+        f"{especie}: {fi.isoformat()} → {ff.isoformat()}",
+    )
+    return {
+        "ok": True,
+        "msg": f"Cosecha planificada guardada ({fi.strftime('%d-%m-%Y')} → {ff.strftime('%d-%m-%Y')}) y Gantt reconstruida ({n} actividades).",
+    }
+
+
 def _post_gantt_rebuild(demo, conn, especie: str) -> dict:
     res = _ensure_planificacion_certificacion(conn, demo, especie, force=True)
     if res.get("ok"):
@@ -2594,7 +2687,7 @@ def _post_gantt_rebuild(demo, conn, especie: str) -> dict:
         demo.registrar_accion("GLOBALGAP GANTT REBUILD", f"{especie}: {n} actividades")
         return {
             "ok": True,
-            "msg": f"Gantt {especie} reconstruida ({n} actividades) anclada a cosecha {_cosecha_ancla(especie).isoformat()}.",
+            "msg": f"Gantt {especie} reconstruida ({n} actividades) anclada a cosecha {_cosecha_ancla(especie, conn).isoformat()}.",
         }
     return {"ok": False, "msg": res.get("msg") or "No se pudo reconstruir la Gantt."}
 
@@ -3948,6 +4041,7 @@ def view(user_email: str, user_rol: str):
                 "agua_add": _post_agua_add,
                 "cal_add": _post_cal_add,
                 "gantt_rebuild": lambda d, c: _post_gantt_rebuild(d, c, especie),
+                "cosecha_planif_save": lambda d, c: _post_cosecha_planif_save(d, c, especie),
                 "gantt_actividad": _post_gantt_actividad,
                 "gantt_avance": _post_gantt_avance,
             }
