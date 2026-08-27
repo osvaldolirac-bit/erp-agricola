@@ -701,6 +701,27 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
                 block["csgs"].append(csg_block)
         if block["csgs"]:
             client_blocks.append(block)
+    summary_rows: list[dict] = []
+    prev_client_id = None
+    prev_csg_key = None
+    for block in client_blocks:
+        theme = block["theme"]
+        for csg in block["csgs"]:
+            csg_key = (block["id"], csg["id"])
+            for card in csg["ambitos"]:
+                summary_rows.append(
+                    {
+                        **card,
+                        "cliente_id": block["id"],
+                        "cliente_nombre": block["nombre"],
+                        "csg_predio": csg["nombre_predio"],
+                        "theme": theme,
+                        "show_client": prev_client_id != block["id"],
+                        "show_csg": prev_csg_key != csg_key,
+                    }
+                )
+                prev_client_id = block["id"]
+                prev_csg_key = csg_key
     return {
         "n_clientes": len(etiquetas),
         "n_csg": n_csg,
@@ -711,6 +732,7 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
         "cards": cards,
         "cards_by_ambito": cards_by_ambito,
         "client_blocks": client_blocks,
+        "summary_rows": summary_rows,
     }
 
 
