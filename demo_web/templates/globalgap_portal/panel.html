@@ -41,28 +41,60 @@
     </div>
   </div>
   {% else %}
-  <div class="row g-3 mb-4">
-    {% for card in resumen.cards %}
-    <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
-      <div class="panel-card gap-panel-donut h-100">
-        <div class="gap-panel-donut-chart-wrap">
-          <canvas id="gapDonut{{ card.ambito_id }}" aria-label="Checklist {{ card.pct_checklist }}%"></canvas>
-          <div class="gap-panel-donut-pct">{{ card.pct_checklist }}%</div>
-        </div>
-        <div class="gap-panel-donut-legend small">
-          <div><strong>{{ card.etiqueta_nombre }}</strong></div>
-          <div class="text-muted">CSG {{ card.csg_codigo }}</div>
-          <div>{{ card.huerto }} · {{ card.especie }}</div>
-          {% if card.nc_abiertas %}
-          <div class="text-danger mt-1">{{ card.nc_abiertas }} NC abierta{{ 's' if card.nc_abiertas != 1 else '' }}</div>
-          {% endif %}
-        </div>
-        <a class="btn btn-outline-success btn-sm w-100 mt-2"
-           href="{{ url_for('globalgap_portal.entrar_ambito', ambito_id=card.ambito_id) }}">Abrir certificación</a>
-      </div>
+
+  {% if resumen.legend %}
+  <div class="panel-card gap-panel-legend mb-3">
+    <div class="small text-muted text-uppercase fw-semibold mb-2">Leyenda por ámbito</div>
+    <div class="d-flex flex-wrap gap-2">
+      {% for lg in resumen.legend %}
+      <span class="gap-panel-legend-chip"
+            style="--chip-bg: {{ lg.colors.bg }}; --chip-border: {{ lg.colors.border }};">
+        <span class="gap-panel-legend-swatch" style="background: {{ lg.colors.border }};"></span>
+        <span><strong>{{ lg.etiqueta_nombre }}</strong> · CSG {{ lg.csg_codigo }} · {{ lg.huerto }} · {{ lg.especie }}</span>
+      </span>
+      {% endfor %}
     </div>
-    {% endfor %}
   </div>
+  {% endif %}
+
+  {% for et in resumen.etiquetas %}
+  {% set et_cards = resumen.cards | selectattr('etiqueta_id', 'equalto', et.id) | list %}
+  {% if et_cards %}
+  <div class="gap-panel-client-block mb-4">
+    <h2 class="h5 mb-3 gap-panel-client-title">{{ et.nombre }}
+      <span class="text-muted fw-normal fs-6">— {{ et.n_csg }} CSG · {{ et.n_ambitos }} ámbito{{ 's' if et.n_ambitos != 1 else '' }}</span>
+    </h2>
+    <div class="row g-3">
+      {% for card in et_cards %}
+      <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+        <div class="panel-card gap-panel-donut h-100"
+             style="--gap-card-bg: {{ card.colors.bg }}; --gap-card-border: {{ card.colors.border }}; --gap-card-accent: {{ card.colors.accent }}; --gap-card-badge: {{ card.colors.badge }};">
+          <div class="gap-panel-donut-head">
+            <span class="gap-panel-donut-client">{{ card.etiqueta_nombre }}</span>
+            <span class="gap-panel-donut-csg">CSG {{ card.csg_codigo }}</span>
+          </div>
+          <div class="gap-panel-donut-body">
+            <div class="gap-panel-donut-chart-wrap">
+              <canvas id="gapDonut{{ card.ambito_id }}" aria-label="Checklist {{ card.pct_checklist }}%"></canvas>
+              <div class="gap-panel-donut-pct">{{ card.pct_checklist }}%</div>
+            </div>
+            <div class="gap-panel-donut-legend small">
+              <div class="gap-panel-ambito-tag">{{ card.huerto }} · {{ card.especie }}</div>
+              <div class="text-muted">Checklist certificación</div>
+              {% if card.nc_abiertas %}
+              <div class="text-danger mt-1 fw-semibold">{{ card.nc_abiertas }} NC abierta{{ 's' if card.nc_abiertas != 1 else '' }}</div>
+              {% endif %}
+            </div>
+            <a class="btn btn-sm w-100 mt-2 gap-panel-donut-btn"
+               href="{{ url_for('globalgap_portal.entrar_ambito', ambito_id=card.ambito_id) }}">Abrir certificación</a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
   {% endif %}
 </div>
 {% endblock %}
@@ -77,14 +109,14 @@
   cards.forEach(function (card) {
     const el = document.getElementById('gapDonut' + card.ambito_id);
     if (!el) return;
-    const tone = card.pct_checklist >= 75 ? '#2e7d32' : (card.pct_checklist >= 40 ? '#0F8FA8' : '#ef6c00');
+    const accent = (card.colors && card.colors.accent) ? card.colors.accent : '#1976D2';
     new Chart(el, {
       type: 'doughnut',
       data: {
         labels: ['Cumple', 'Pendiente'],
         datasets: [{
           data: [card.pct_checklist, card.pct_pendiente],
-          backgroundColor: [tone, '#E8EEF4'],
+          backgroundColor: [accent, '#FFFFFF'],
           borderWidth: 0
         }]
       },

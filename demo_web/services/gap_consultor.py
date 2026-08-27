@@ -11,6 +11,18 @@ from pathlib import Path
 
 _PLANTILLAS = ("cerezos", "ciruelos")
 _ESPECIE_LABEL = {"cerezos": "Cerezos", "ciruelos": "Ciruelos"}
+_PANEL_PALETTE = (
+    {"bg": "#E8F4FD", "border": "#1565C0", "accent": "#1976D2", "badge": "#BBDEFB"},
+    {"bg": "#E8F5E9", "border": "#2E7D32", "accent": "#388E3C", "badge": "#C8E6C9"},
+    {"bg": "#FFF3E0", "border": "#E65100", "accent": "#F57C00", "badge": "#FFE0B2"},
+    {"bg": "#F3E5F5", "border": "#6A1B9A", "accent": "#7B1FA2", "badge": "#E1BEE7"},
+    {"bg": "#E0F7FA", "border": "#006064", "accent": "#00838F", "badge": "#B2EBF2"},
+    {"bg": "#FCE4EC", "border": "#AD1457", "accent": "#C2185B", "badge": "#F8BBD0"},
+    {"bg": "#FFFDE7", "border": "#F9A825", "accent": "#FBC02D", "badge": "#FFF9C4"},
+    {"bg": "#EDE7F6", "border": "#4527A0", "accent": "#5E35B1", "badge": "#D1C4E9"},
+    {"bg": "#E0F2F1", "border": "#00695C", "accent": "#00897B", "badge": "#B2DFDB"},
+    {"bg": "#FBE9E7", "border": "#BF360C", "accent": "#D84315", "badge": "#FFCCBC"},
+)
 
 
 @dataclass
@@ -601,12 +613,16 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
     alertas = 0
     cards = []
     cards_by_ambito: dict[int, dict] = {}
+    legend: list[dict] = []
+    color_i = 0
     for et in etiquetas:
         for amb in et["ambitos"]:
             pct = _ambito_checklist_pct(conn, amb["id"], especie_key_for_ambito(amb["id"]))
             nc = _ambito_nc_abiertas(conn, amb["id"])
             alertas += nc
             csg_label = amb.get("csg_codigo") or "—"
+            colors = _PANEL_PALETTE[color_i % len(_PANEL_PALETTE)]
+            color_i += 1
             card = {
                 "etiqueta_id": et["id"],
                 "etiqueta_nombre": et["nombre"],
@@ -619,9 +635,21 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
                 "pct_checklist": pct,
                 "pct_pendiente": round(max(0.0, 100.0 - pct), 1),
                 "nc_abiertas": nc,
+                "colors": colors,
             }
             cards.append(card)
             cards_by_ambito[int(amb["id"])] = card
+            legend.append(
+                {
+                    "etiqueta_id": et["id"],
+                    "etiqueta_nombre": et["nombre"],
+                    "csg_id": amb.get("csg_id"),
+                    "csg_codigo": csg_label,
+                    "huerto": amb["nombre_huerto"],
+                    "especie": amb["especie_cultivo"],
+                    "colors": colors,
+                }
+            )
     return {
         "n_clientes": len(etiquetas),
         "n_csg": n_csg,
@@ -631,6 +659,7 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
         "etiquetas": etiquetas,
         "cards": cards,
         "cards_by_ambito": cards_by_ambito,
+        "legend": legend,
     }
 
 

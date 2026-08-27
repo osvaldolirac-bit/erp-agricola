@@ -2928,6 +2928,37 @@ body.demo-body.planes-page .planes-cards.planes-cards-5 {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  background: var(--gap-card-bg, #fff) !important;
+  border: 2px solid var(--gap-card-border, #cfd8dc) !important;
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 0 !important;
+  box-shadow: 0 2px 8px rgba(22, 58, 95, 0.08);
+}
+.gap-panel-donut-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  background: var(--gap-card-border, #1565C0);
+  color: #fff;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.gap-panel-donut-client {
+  text-transform: uppercase;
+  opacity: 0.95;
+}
+.gap-panel-donut-csg {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+}
+.gap-panel-donut-body {
+  padding: 0.85rem 0.75rem 0.75rem;
 }
 .gap-panel-donut-chart-wrap {
   position: relative;
@@ -2945,13 +2976,60 @@ body.demo-body.planes-page .planes-cards.planes-cards-5 {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 1.1rem;
-  color: #163A5F;
+  color: var(--gap-card-border, #163A5F);
   pointer-events: none;
 }
 .gap-panel-donut-legend {
   text-align: center;
   line-height: 1.35;
+}
+.gap-panel-ambito-tag {
+  display: inline-block;
+  background: var(--gap-card-badge, #e3f2fd);
+  color: var(--gap-card-border, #1565C0);
+  border: 1px solid var(--gap-card-border, #1565C0);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+.gap-panel-donut-btn {
+  background: var(--gap-card-border, #1565C0);
+  border-color: var(--gap-card-border, #1565C0);
+  color: #fff;
+  font-weight: 600;
+}
+.gap-panel-donut-btn:hover {
+  background: var(--gap-card-accent, #1976D2);
+  border-color: var(--gap-card-accent, #1976D2);
+  color: #fff;
+}
+.gap-panel-client-block + .gap-panel-client-block {
+  border-top: 1px dashed #cfd8dc;
+  padding-top: 1rem;
+}
+.gap-panel-client-title {
+  color: #163A5F;
+}
+.gap-panel-legend {
+  padding: 0.85rem 1rem !important;
+}
+.gap-panel-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--chip-bg, #f5f5f5);
+  border: 2px solid var(--chip-border, #90a4ae);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem 0.25rem 0.45rem;
+  font-size: 0.82rem;
+}
+.gap-panel-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
