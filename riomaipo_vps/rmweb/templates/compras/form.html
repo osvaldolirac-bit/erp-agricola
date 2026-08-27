@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if row else 'Emitir' }} compra{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if row %}Editar compra{% elif directo %}Nueva compra directa{% else %}Emitir compra desde OC{% endif %}</h1>
+    <p>{% if row %}Documento de proveedor{% if row.orden_compra_id %} vinculado a orden de compra{% endif %}.{% elif directo %}Registro directo sin orden de compra previa.{% else %}Puede emitir desde una <strong>Orden de compra</strong> o registrar una <strong>compra directa</strong>.{% endif %}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('compras_list') }}">Volver</a>
+</div>
+
+{% if not row and not oc and not directo %}
+<div class="panel">
+  <h2 class="h6 mb-3">Seleccione la orden de compra</h2>
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <a class="btn btn-outline-primary" href="{{ url_for('compras_form', directo=1) }}">
+      <i class="bi bi-receipt-cutoff"></i> Compra directa (sin OC)
+    </a>
+  </div>
+  {% if ocs_disponibles %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead><tr><th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        {% for o in ocs_disponibles %}
+        <tr>
+          <td><span class="cot-num">{{ o.folio }}</span></td>
+          <td><strong>{{ o.proveedor or '—' }}</strong></td>
+          <td>{{ fmt_dmy(o.fecha) }}</td>
+          <td>{{ clp(o.total) }}</td>
+          <td><span class="estado {{ oc_estado_class(o.estado) }}">{{ oc_estado_label(o.estado) }}</span></td>
+          <td class="actions-cell">
+            <a class="btn btn-sm btn-primary" href="{{ url_for('compras_form', oc=o.id) }}">Usar esta OC</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted mb-2">No hay OC disponibles (borrador o emitida) para convertir.</p>
+  <a class="btn btn-primary" href="{{ url_for('oc_form') }}"><i class="bi bi-plus-lg"></i> Crear orden de compra</a>
+  {% endif %}
+</div>
+{% else %}
+<div class="panel">
+  <form method="post" class="row g-3" id="formCompra">
+    {% if directo and not row %}
+    <input type="hidden" name="compra_directa" value="1">
+    <div class="col-12">
+      <div class="alert alert-secondary mb-0">
+        Compra <strong>sin orden de compra</strong>. Complete proveedor, documento e ítems manualmente.
+      </div>
+    </div>
+    {% elif not row %}
+    <input type="hidden" name="orden_compra_id" value="{{ oc.id }}">
+    <div class="col-12">
+      <div class="alert alert-info mb-0">
+        Origen: <strong>{{ oc.folio }}</strong>
+        · {{ oc.proveedor or '' }}
+        · Total OC {{ clp(oc.total) }}
+        · <a href="{{ url_for('oc_detalle', oid=oc.id) }}">Ver OC</a>
+      </div>
+    </div>
+    {% elif row.orden_compra_id %}
+    <div class="col-12">
+      <div class="alert alert-secondary mb-0">
+        Vinculada a OC
+        {% if oc %}
+        <strong><a href="{{ url_for('oc_detalle', oid=oc.id) }}">{{ oc.folio }}</a></strong>
+        {% else %}
+        #{{ row.orden_compra_id }}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="col-12">
+      <h2 class="h6 mb-0">Documento del proveedor</h2>
+      <p class="text-muted small mb-0">Anote el Nº de factura (u otro documento) una vez recibido.</p>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold">Nº factura proveedor <span class="text-danger">*</span></label>
+      <input class="form-control form-control-lg" name="documento"
+             value="{{ row.documento if row else '' }}"
+             placeholder="Ej: F-12345 / 33-9876"
+             autocomplete="off" required
+             {% if not row %}autofocus{% endif %}>
+      <div class="form-text">{% if oc and not row %}Obligatorio al emitir la compra desde la OC.{% else %}Nº del documento del proveedor.{% endif %}</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold">Tipo documento</label>
+      <select class="form-select" name="tipo_documento">
+        {% set tipo_actual = row.tipo_documento if row and row.tipo_documento else 'factura' %}
+        <option value="factura" {% if tipo_actual=='factura' %}selected{% endif %}>Factura</option>
+        <option value="boleta" {% if tipo_actual=='boleta' %}selected{% endif %}>Boleta</option>
+        <option value="guia" {% if tipo_actual=='guia' %}selected{% endif %}>Guía de despacho</option>
+        <option value="otro" {% if tipo_actual=='otro' %}selected{% endif %}>Otro</option>
+      </select>
+    </div>
+    <div class="col-md-5">
+      <label class="form-label fw-bold">Proveedor</label>
+      {% if oc and not row %}
+      <input type="hidden" name="proveedor_id" value="{{ oc.proveedor_id }}">
+      <input class="form-control" value="{{ oc.proveedor or '' }}" disabled>
+      {% else %}
+      <select class="form-select" name="proveedor_id" required>
+        <option value="">— Seleccione —</option>
+        {% for p in proveedores %}
+        <option value="{{ p.id }}" {% if row and row.proveedor_id==p.id %}selected{% endif %}>{{ p.razon_social }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+    </div>
+    <div class="col-md-4"><label class="form-label fw-bold">Concepto</label><input class="form-control" name="concepto" value="{{ row.concepto if row and row.concepto else (oc.concepto if oc and oc.concepto else '') }}"></div>
+    <div class="col-md-2"><label class="form-label fw-bold">Emisión</label><input type="date" class="form-control" name="fecha_emision" value="{{ row.fecha_emision if row else hoy }}"></div>
+    <div class="col-md-2"><label class="form-label fw-bold">Vencimiento</label><input type="date" class="form-control" name="fecha_vencimiento" value="{{ row.fecha_vencimiento if row else '' }}"></div>
+    <div class="col-md-2"><label class="form-label fw-bold">Días crédito</label><input type="number" class="form-control" name="dias_credito" value="30" min="0"></div>
+    <div class="col-md-2 d-flex align-items-end">
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="afecta_stock" value="1" id="stk" {% if row and row.afecta_stock %}checked{% endif %}>
+        <label class="form-check-label" for="stk">Entrar a bodega</label>
+      </div>
+    </div>
+    <div class="col-md-5">
+      <label class="form-label fw-bold">Rubro de gasto <span class="text-danger">*</span></label>
+      <select class="form-select" name="rubro_id" required>
+        <option value="">— Seleccione —</option>
+        {% for r in rubros %}
+        <option value="{{ r.id }}" {% if row and row.rubro_id==r.id %}selected{% endif %}>{{ r.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-7">
+      <label class="form-label fw-bold">Centro de costo <span class="text-danger">*</span></label>
+      <div class="border rounded p-2" style="max-height:9rem;overflow:auto">
+        {% if centros %}
+          {% for cc in centros %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="centro_costo_id" value="{{ cc.id }}" id="cc{{ cc.id }}"
+              {% if cc_selected and cc.id == cc_selected[0] %}checked{% endif %} required>
+            <label class="form-check-label" for="cc{{ cc.id }}">{{ cc.nombre }}</label>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="small text-danger mb-0">No hay centros activos. Cree uno en <a href="{{ url_for('admin', tab='centros') }}">Administración</a>.</p>
+        {% endif %}
+      </div>
+      <div class="form-check mt-2">
+        {% set base_bruto = row and row.cc_base == 'bruto' %}
+        <input class="form-check-input" type="checkbox" name="imputar_bruto" value="1" id="imputarBruto"
+               {% if base_bruto %}checked{% endif %}>
+        <label class="form-check-label" for="imputarBruto">Imputar sobre el <strong>bruto</strong> del documento (total c/IVA)</label>
+      </div>
+      <div class="form-text">Si no marca la casilla, se imputa el <strong>neto</strong>. El monto se asigna al centro seleccionado.</div>
+    </div>
+    <div class="col-12"><label class="form-label fw-bold">Notas</label><input class="form-control" name="notas" value="{{ row.notas if row and row.notas else (oc.notas if oc and oc.notas else '') }}"></div>
+
+    <div class="col-12"><h2 class="h6 mt-2">Ítems {% if oc and not row %}<span class="text-muted fw-normal">(según OC — puede ajustar)</span>{% endif %}</h2></div>
+    <div class="col-12">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle" id="tblItems">
+          <thead><tr><th>Catálogo</th><th>Descripción</th><th>Un</th><th>Cant</th><th>Costo</th><th>Servicio</th><th></th></tr></thead>
+          <tbody>
+            {% if items %}
+              {% for it in items %}
+              <tr>
+                <td>
+                  <select class="form-select form-select-sm" name="item_producto_id">
+                    <option value="">—</option>
+                    {% for p in productos %}
+                    <option value="{{ p.id }}" {% if it.producto_id==p.id %}selected{% endif %}>{{ p.nombre }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td><input class="form-control form-control-sm" name="item_desc" value="{{ it.descripcion }}" required></td>
+                <td><input class="form-control form-control-sm" name="item_unidad" value="{{ it.unidad or 'un' }}" style="width:4.5rem"></td>
+                <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_cant" value="{{ it.cantidad }}" style="width:5.5rem"></td>
+                <td><input class="form-control form-control-sm" type="number" step="any" name="item_costo" value="{{ it.costo_unitario }}" style="width:7rem"></td>
+                <td class="text-center"><input class="form-check-input" type="checkbox" name="item_servicio_{{ loop.index0 }}" value="1" {% if it.es_servicio %}checked{% endif %}></td>
+                <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()">×</button></td>
+              </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItemRow()">+ Ítem</button>
+    </div>
+    <div class="col-12"><button class="btn btn-primary fw-bold" type="submit">{% if row %}Guardar compra{% elif directo %}Guardar compra directa{% else %}Emitir compra desde OC{% endif %}</button></div>
+  </form>
+</div>
+<template id="rowTpl">
+  <tr>
+    <td>
+      <select class="form-select form-select-sm" name="item_producto_id" onchange="fillFromProd(this)">
+        <option value="">—</option>
+        {% for p in productos %}
+        <option value="{{ p.id }}" data-nombre="{{ p.nombre }}" data-unidad="{{ p.unidad }}" data-precio="{{ p.precio }}" data-serv="{{ p.es_servicio }}">{{ p.codigo or '' }} {{ p.nombre }}</option>
+        {% endfor %}
+      </select>
+    </td>
+    <td><input class="form-control form-control-sm" name="item_desc" required></td>
+    <td><input class="form-control form-control-sm" name="item_unidad" value="un" style="width:4.5rem"></td>
+    <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_cant" value="1" style="width:5.5rem"></td>
+    <td><input class="form-control form-control-sm" type="number" step="any" name="item_costo" value="0" style="width:7rem"></td>
+    <td class="text-center"><input class="form-check-input item-serv" type="checkbox" value="1"></td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()">×</button></td>
+  </tr>
+</template>
+<script>
+function reindexServ(){
+  document.querySelectorAll('#tblItems tbody tr').forEach((tr,i)=>{
+    const cb=tr.querySelector('.item-serv, input[type=checkbox]');
+    if(cb){ cb.name='item_servicio_'+i; cb.classList.add('item-serv'); }
+  });
+}
+function addItemRow(){
+  const tpl=document.getElementById('rowTpl');
+  const node=tpl.content.cloneNode(true);
+  document.querySelector('#tblItems tbody').appendChild(node);
+  reindexServ();
+}
+function fillFromProd(sel){
+  const opt=sel.selectedOptions[0];
+  if(!opt||!opt.value) return;
+  const tr=sel.closest('tr');
+  tr.querySelector('[name=item_desc]').value=opt.dataset.nombre||'';
+  tr.querySelector('[name=item_unidad]').value=opt.dataset.unidad||'un';
+  tr.querySelector('[name=item_costo]').value=opt.dataset.precio||0;
+  const cb=tr.querySelector('.item-serv');
+  if(cb) cb.checked=String(opt.dataset.serv)==='1';
+}
+document.getElementById('formCompra').addEventListener('submit', reindexServ);
+{% if not items %}addItemRow();{% else %}reindexServ();{% endif %}
+</script>
+{% endif %}
+{% endblock %}
