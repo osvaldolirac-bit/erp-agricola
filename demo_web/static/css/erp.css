@@ -2924,3 +2924,34 @@ body.demo-body.planes-page .planes-cards.planes-cards-5 {
   }
 }
 
+.gap-panel-donut {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.gap-panel-donut-chart-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 140px;
+  margin: 0 auto 0.75rem;
+}
+.gap-panel-donut-chart-wrap canvas {
+  width: 100% !important;
+  height: auto !important;
+}
+.gap-panel-donut-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #163A5F;
+  pointer-events: none;
+}
+.gap-panel-donut-legend {
+  text-align: center;
+  line-height: 1.35;
+}
+

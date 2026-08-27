@@ -1,4 +1,4 @@
-"""Tenant GlobalGAP consultor: etiquetas (clientes), ámbitos (huerto+especie) y panel."""
+"""Tenant GlobalGAP consultor: clientes, CSG (predio SAG), ámbitos (huerto+especie) y panel."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,9 @@ _ESPECIE_LABEL = {"cerezos": "Cerezos", "ciruelos": "Ciruelos"}
 class GapAmbitoCtx:
     etiqueta_id: int
     ambito_id: int
+    csg_id: int | None
     etiqueta_nombre: str
+    csg_codigo: str
     huerto: str
     especie_cultivo: str
     plantilla: str
@@ -66,9 +68,25 @@ def migrar_gap_consultor(conn: sqlite3.Connection) -> None:
         )"""
     )
     conn.execute(
+        """CREATE TABLE IF NOT EXISTS gap_csg (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            etiqueta_id INTEGER NOT NULL,
+            codigo_csg TEXT NOT NULL,
+            nombre_predio TEXT NOT NULL,
+            direccion TEXT DEFAULT '',
+            comuna TEXT DEFAULT '',
+            region TEXT DEFAULT '',
+            notas TEXT DEFAULT '',
+            activo INTEGER DEFAULT 1,
+            creado_en TEXT DEFAULT '',
+            FOREIGN KEY (etiqueta_id) REFERENCES gap_etiquetas(id)
+        )"""
+    )
+    conn.execute(
         """CREATE TABLE IF NOT EXISTS gap_ambitos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             etiqueta_id INTEGER NOT NULL,
+            csg_id INTEGER,
             nombre_huerto TEXT NOT NULL,
             slug TEXT NOT NULL,
             especie_cultivo TEXT NOT NULL,
@@ -79,9 +97,17 @@ def migrar_gap_consultor(conn: sqlite3.Connection) -> None:
             activo INTEGER DEFAULT 1,
             creado_en TEXT DEFAULT '',
             UNIQUE(etiqueta_id, slug),
-            FOREIGN KEY (etiqueta_id) REFERENCES gap_etiquetas(id)
+            FOREIGN KEY (etiqueta_id) REFERENCES gap_etiquetas(id),
+            FOREIGN KEY (csg_id) REFERENCES gap_csg(id)
         )"""
     )
+    ambito_cols = {r[1] for r in conn.execute("PRAGMA table_info(gap_ambitos)").fetchall()}
+    if "csg_id" not in ambito_cols:
+        try:
+            conn.execute("ALTER TABLE gap_ambitos ADD COLUMN csg_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
+
     gap_tables = (
         "gap_documentos",
         "gap_evaluacion",
@@ -109,32 +135,40 @@ def migrar_gap_consultor(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError:
                 pass
     conn.commit()
+    _migrate_legacy_csg(conn)
 
 
-def list_etiquetas(conn: sqlite3.Connection, *, activos_only: bool = True) -> list[dict]:
-    migrar_gap_consultor(conn)
-    q = "SELECT id, nombre, slug, notas, activo, creado_en FROM gap_etiquetas"
-    if activos_only:
-        q += " WHERE activo=1"
-    q += " ORDER BY nombre COLLATE NOCASE"
-    rows = conn.execute(q).fetchall()
-    out = []
-    for r in rows:
-        eid = int(r[0])
-        ambitos = list_ambitos(conn, eid, activos_only=activos_only)
-        out.append(
-            {
-                "id": eid,
-                "nombre": r[1],
-                "slug": r[2],
-                "notas": r[3] or "",
-                "activo": int(r[4] or 0),
-                "creado_en": r[5] or "",
-                "ambitos": ambitos,
-                "n_ambitos": len(ambitos),
-            }
+def _migrate_legacy_csg(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        "SELECT DISTINCT etiqueta_id FROM gap_ambitos WHERE csg_id IS NULL"
+    ).fetchall()
+    if not rows:
+        return
+    for (eid,) in rows:
+        et = get_etiqueta(conn, int(eid))
+        if not et:
+            continue
+        cur = conn.execute(
+            """INSERT INTO gap_csg
+               (etiqueta_id, codigo_csg, nombre_predio, direccion, comuna, region, notas, activo, creado_en)
+               VALUES (?,?,?,?,?,?,?,1,?)""",
+            (
+                int(eid),
+                "SIN-CSG",
+                f"Predio {et['nombre']}",
+                "",
+                "",
+                "",
+                "CSG generado automáticamente (datos previos)",
+                date.today().isoformat(),
+            ),
         )
-    return out
+        csg_id = int(cur.lastrowid)
+        conn.execute(
+            "UPDATE gap_ambitos SET csg_id=? WHERE etiqueta_id=? AND csg_id IS NULL",
+            (csg_id, int(eid)),
+        )
+    conn.commit()
 
 
 def get_etiqueta(conn: sqlite3.Connection, etiqueta_id: int) -> dict | None:
@@ -155,29 +189,124 @@ def get_etiqueta(conn: sqlite3.Connection, etiqueta_id: int) -> dict | None:
     }
 
 
-def list_ambitos(
+def list_csg(
     conn: sqlite3.Connection,
     etiqueta_id: int,
     *,
     activos_only: bool = True,
 ) -> list[dict]:
     migrar_gap_consultor(conn)
-    q = """SELECT id, etiqueta_id, nombre_huerto, slug, especie_cultivo, plantilla_docs,
-                  razon_social, direccion, logo_relpath, activo, creado_en
-           FROM gap_ambitos WHERE etiqueta_id=?"""
+    q = """SELECT id, etiqueta_id, codigo_csg, nombre_predio, direccion, comuna, region,
+                  notas, activo, creado_en
+           FROM gap_csg WHERE etiqueta_id=?"""
     if activos_only:
         q += " AND activo=1"
-    q += " ORDER BY nombre_huerto COLLATE NOCASE, especie_cultivo COLLATE NOCASE"
+    q += " ORDER BY codigo_csg COLLATE NOCASE, nombre_predio COLLATE NOCASE"
     rows = conn.execute(q, (int(etiqueta_id),)).fetchall()
+    out = []
+    for r in rows:
+        cid = int(r[0])
+        ambitos = list_ambitos(conn, etiqueta_id, csg_id=cid, activos_only=activos_only)
+        out.append(_csg_row(r, ambitos))
+    return out
+
+
+def get_csg(conn: sqlite3.Connection, csg_id: int) -> dict | None:
+    migrar_gap_consultor(conn)
+    r = conn.execute(
+        """SELECT id, etiqueta_id, codigo_csg, nombre_predio, direccion, comuna, region,
+                  notas, activo, creado_en
+           FROM gap_csg WHERE id=?""",
+        (int(csg_id),),
+    ).fetchone()
+    if not r:
+        return None
+    eid = int(r[1])
+    ambitos = list_ambitos(conn, eid, csg_id=int(r[0]))
+    return _csg_row(r, ambitos)
+
+
+def _csg_row(r, ambitos: list[dict]) -> dict:
+    return {
+        "id": int(r[0]),
+        "etiqueta_id": int(r[1]),
+        "codigo_csg": r[2],
+        "nombre_predio": r[3],
+        "direccion": r[4] or "",
+        "comuna": r[5] or "",
+        "region": r[6] or "",
+        "notas": r[7] or "",
+        "activo": int(r[8] or 0),
+        "creado_en": r[9] or "",
+        "ambitos": ambitos,
+        "n_ambitos": len(ambitos),
+        "label": f"{r[2]} · {r[3]}",
+    }
+
+
+def list_etiquetas(conn: sqlite3.Connection, *, activos_only: bool = True) -> list[dict]:
+    migrar_gap_consultor(conn)
+    q = "SELECT id, nombre, slug, notas, activo, creado_en FROM gap_etiquetas"
+    if activos_only:
+        q += " WHERE activo=1"
+    q += " ORDER BY nombre COLLATE NOCASE"
+    rows = conn.execute(q).fetchall()
+    out = []
+    for r in rows:
+        eid = int(r[0])
+        csgs = list_csg(conn, eid, activos_only=activos_only)
+        ambitos = list_ambitos(conn, eid, activos_only=activos_only)
+        out.append(
+            {
+                "id": eid,
+                "nombre": r[1],
+                "slug": r[2],
+                "notas": r[3] or "",
+                "activo": int(r[4] or 0),
+                "creado_en": r[5] or "",
+                "csgs": csgs,
+                "ambitos": ambitos,
+                "n_csg": len(csgs),
+                "n_ambitos": len(ambitos),
+            }
+        )
+    return out
+
+
+def list_ambitos(
+    conn: sqlite3.Connection,
+    etiqueta_id: int,
+    *,
+    csg_id: int | None = None,
+    activos_only: bool = True,
+) -> list[dict]:
+    migrar_gap_consultor(conn)
+    q = """SELECT a.id, a.etiqueta_id, a.csg_id, a.nombre_huerto, a.slug, a.especie_cultivo,
+                  a.plantilla_docs, a.razon_social, a.direccion, a.logo_relpath, a.activo, a.creado_en,
+                  COALESCE(c.codigo_csg, '')
+           FROM gap_ambitos a
+           LEFT JOIN gap_csg c ON c.id = a.csg_id
+           WHERE a.etiqueta_id=?"""
+    params: list = [int(etiqueta_id)]
+    if csg_id is not None:
+        q += " AND a.csg_id=?"
+        params.append(int(csg_id))
+    if activos_only:
+        q += " AND a.activo=1"
+    q += " ORDER BY a.nombre_huerto COLLATE NOCASE, a.especie_cultivo COLLATE NOCASE"
+    rows = conn.execute(q, params).fetchall()
     return [_ambito_row(r) for r in rows]
 
 
 def get_ambito(conn: sqlite3.Connection, ambito_id: int) -> dict | None:
     migrar_gap_consultor(conn)
     r = conn.execute(
-        """SELECT id, etiqueta_id, nombre_huerto, slug, especie_cultivo, plantilla_docs,
-                  razon_social, direccion, logo_relpath, activo, creado_en
-           FROM gap_ambitos WHERE id=?""",
+        """SELECT a.id, a.etiqueta_id, a.csg_id, a.nombre_huerto, a.slug, a.especie_cultivo,
+                  a.plantilla_docs, a.razon_social, a.direccion, a.logo_relpath, a.activo, a.creado_en,
+                  COALESCE(c.codigo_csg, '')
+           FROM gap_ambitos a
+           LEFT JOIN gap_csg c ON c.id = a.csg_id
+           WHERE a.id=?""",
         (int(ambito_id),),
     ).fetchone()
     if not r:
@@ -186,19 +315,23 @@ def get_ambito(conn: sqlite3.Connection, ambito_id: int) -> dict | None:
 
 
 def _ambito_row(r) -> dict:
+    csg_id = int(r[2]) if r[2] is not None else None
+    csg_codigo = r[12] if len(r) > 12 else ""
     return {
         "id": int(r[0]),
         "etiqueta_id": int(r[1]),
-        "nombre_huerto": r[2],
-        "slug": r[3],
-        "especie_cultivo": r[4],
-        "plantilla_docs": r[5] or "cerezos",
-        "razon_social": r[6] or "",
-        "direccion": r[7] or "",
-        "logo_relpath": r[8] or "",
-        "activo": int(r[9] or 0),
-        "creado_en": r[10] or "",
-        "label": f"{r[2]} · {r[4]}",
+        "csg_id": csg_id,
+        "csg_codigo": csg_codigo or "",
+        "nombre_huerto": r[3],
+        "slug": r[4],
+        "especie_cultivo": r[5],
+        "plantilla_docs": r[6] or "cerezos",
+        "razon_social": r[7] or "",
+        "direccion": r[8] or "",
+        "logo_relpath": r[9] or "",
+        "activo": int(r[10] or 0),
+        "creado_en": r[11] or "",
+        "label": f"{r[3]} · {r[5]}",
     }
 
 
@@ -261,10 +394,107 @@ def create_etiqueta(conn: sqlite3.Connection, nombre: str, notas: str = "") -> t
         return False, "Ya existe un cliente con ese identificador.", None
 
 
+def update_etiqueta(
+    conn: sqlite3.Connection,
+    etiqueta_id: int,
+    *,
+    nombre: str,
+    notas: str = "",
+    activo: bool = True,
+) -> tuple[bool, str]:
+    migrar_gap_consultor(conn)
+    if not get_etiqueta(conn, etiqueta_id):
+        return False, "Cliente no encontrado."
+    nombre = (nombre or "").strip()
+    if not nombre:
+        return False, "Indique el nombre del cliente."
+    conn.execute(
+        "UPDATE gap_etiquetas SET nombre=?, notas=?, activo=? WHERE id=?",
+        (nombre, (notas or "").strip(), 1 if activo else 0, int(etiqueta_id)),
+    )
+    conn.commit()
+    return True, f"Cliente «{nombre}» actualizado."
+
+
+def create_csg(
+    conn: sqlite3.Connection,
+    *,
+    etiqueta_id: int,
+    codigo_csg: str,
+    nombre_predio: str,
+    direccion: str = "",
+    comuna: str = "",
+    region: str = "",
+    notas: str = "",
+) -> tuple[bool, str, int | None]:
+    migrar_gap_consultor(conn)
+    if not get_etiqueta(conn, etiqueta_id):
+        return False, "Cliente no encontrado.", None
+    codigo = (codigo_csg or "").strip()
+    predio = (nombre_predio or "").strip()
+    if not codigo or not predio:
+        return False, "Código CSG y nombre del predio son obligatorios.", None
+    cur = conn.execute(
+        """INSERT INTO gap_csg
+           (etiqueta_id, codigo_csg, nombre_predio, direccion, comuna, region, notas, activo, creado_en)
+           VALUES (?,?,?,?,?,?,?,1,?)""",
+        (
+            int(etiqueta_id),
+            codigo,
+            predio,
+            (direccion or "").strip(),
+            (comuna or "").strip(),
+            (region or "").strip(),
+            (notas or "").strip(),
+            date.today().isoformat(),
+        ),
+    )
+    conn.commit()
+    return True, f"CSG «{codigo}» creado.", int(cur.lastrowid)
+
+
+def update_csg(
+    conn: sqlite3.Connection,
+    csg_id: int,
+    *,
+    codigo_csg: str,
+    nombre_predio: str,
+    direccion: str = "",
+    comuna: str = "",
+    region: str = "",
+    notas: str = "",
+    activo: bool = True,
+) -> tuple[bool, str]:
+    migrar_gap_consultor(conn)
+    if not get_csg(conn, csg_id):
+        return False, "CSG no encontrado."
+    codigo = (codigo_csg or "").strip()
+    predio = (nombre_predio or "").strip()
+    if not codigo or not predio:
+        return False, "Código CSG y nombre del predio son obligatorios."
+    conn.execute(
+        """UPDATE gap_csg SET codigo_csg=?, nombre_predio=?, direccion=?, comuna=?, region=?,
+           notas=?, activo=? WHERE id=?""",
+        (
+            codigo,
+            predio,
+            (direccion or "").strip(),
+            (comuna or "").strip(),
+            (region or "").strip(),
+            (notas or "").strip(),
+            1 if activo else 0,
+            int(csg_id),
+        ),
+    )
+    conn.commit()
+    return True, f"CSG «{codigo}» actualizado."
+
+
 def create_ambito(
     conn: sqlite3.Connection,
     *,
     etiqueta_id: int,
+    csg_id: int,
     nombre_huerto: str,
     especie_cultivo: str,
     plantilla_docs: str,
@@ -275,6 +505,9 @@ def create_ambito(
     etiqueta = get_etiqueta(conn, etiqueta_id)
     if not etiqueta:
         return False, "Cliente no encontrado.", None
+    csg = get_csg(conn, csg_id)
+    if not csg or int(csg["etiqueta_id"]) != int(etiqueta_id):
+        return False, "CSG no encontrado para este cliente.", None
     huerto = (nombre_huerto or "").strip()
     especie = (especie_cultivo or "").strip()
     plantilla = (plantilla_docs or "cerezos").strip().lower()
@@ -291,19 +524,22 @@ def create_ambito(
     ).fetchone():
         n += 1
         slug = f"{base}-{n}"
+    membrete_dir = (direccion or "").strip() or csg.get("direccion") or ""
+    membrete_razon = (razon_social or "").strip() or etiqueta["nombre"]
     cur = conn.execute(
         """INSERT INTO gap_ambitos
-           (etiqueta_id, nombre_huerto, slug, especie_cultivo, plantilla_docs,
+           (etiqueta_id, csg_id, nombre_huerto, slug, especie_cultivo, plantilla_docs,
             razon_social, direccion, activo, creado_en)
-           VALUES (?,?,?,?,?,?,?,1,?)""",
+           VALUES (?,?,?,?,?,?,?,?,1,?)""",
         (
             int(etiqueta_id),
+            int(csg_id),
             huerto,
             slug,
             especie,
             plantilla,
-            (razon_social or "").strip(),
-            (direccion or "").strip(),
+            membrete_razon,
+            membrete_dir,
             date.today().isoformat(),
         ),
     )
@@ -311,7 +547,7 @@ def create_ambito(
     ambito_id = int(cur.lastrowid)
     docs = ambito_docs_dir(etiqueta["slug"], slug)
     _clone_plantilla_docs(docs, plantilla)
-    _write_membrete_json(docs / "membrete.json", razon_social or etiqueta["nombre"], direccion)
+    _write_membrete_json(docs / "membrete.json", membrete_razon, membrete_dir)
     return True, f"Ámbito «{huerto} · {especie}» creado.", ambito_id
 
 
@@ -330,7 +566,9 @@ def load_ambito_ctx(conn: sqlite3.Connection, ambito_id: int) -> GapAmbitoCtx | 
     return GapAmbitoCtx(
         etiqueta_id=int(et["id"]),
         ambito_id=int(amb["id"]),
+        csg_id=amb.get("csg_id"),
         etiqueta_nombre=et["nombre"],
+        csg_codigo=amb.get("csg_codigo") or "",
         huerto=amb["nombre_huerto"],
         especie_cultivo=amb["especie_cultivo"],
         plantilla=amb["plantilla_docs"],
@@ -345,6 +583,7 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
     migrar_gap_consultor(conn)
     etiquetas = list_etiquetas(conn)
     n_amb = sum(e["n_ambitos"] for e in etiquetas)
+    n_csg = sum(e["n_csg"] for e in etiquetas)
     nc_abiertas = 0
     try:
         nc_abiertas = int(
@@ -363,18 +602,25 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
             pct = _ambito_checklist_pct(conn, amb["id"], especie_key_for_ambito(amb["id"]))
             nc = _ambito_nc_abiertas(conn, amb["id"])
             alertas += nc
+            csg_label = amb.get("csg_codigo") or "—"
             card = {
                 "etiqueta_id": et["id"],
                 "etiqueta_nombre": et["nombre"],
+                "csg_id": amb.get("csg_id"),
+                "csg_codigo": csg_label,
                 "ambito_id": amb["id"],
-                "label": f"{amb['nombre_huerto']} · {amb['especie_cultivo']}",
+                "huerto": amb["nombre_huerto"],
+                "especie": amb["especie_cultivo"],
+                "label": f"{et['nombre']} · {csg_label} · {amb['nombre_huerto']} · {amb['especie_cultivo']}",
                 "pct_checklist": pct,
+                "pct_pendiente": round(max(0.0, 100.0 - pct), 1),
                 "nc_abiertas": nc,
             }
             cards.append(card)
             cards_by_ambito[int(amb["id"])] = card
     return {
         "n_clientes": len(etiquetas),
+        "n_csg": n_csg,
         "n_ambitos": n_amb,
         "nc_abiertas": nc_abiertas,
         "alertas": alertas,

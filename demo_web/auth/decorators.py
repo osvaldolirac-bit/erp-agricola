@@ -159,6 +159,12 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
                 "icon": "bi-grid-1x2",
             },
             {
+                "label": "Clientes",
+                "key": "ClientesGlobalGAP",
+                "endpoint": "globalgap_portal.clientes_list",
+                "icon": "bi-people",
+            },
+            {
                 "label": "Certificación",
                 "key": "GlobalGAP",
                 "endpoint": "modules.globalgap",
