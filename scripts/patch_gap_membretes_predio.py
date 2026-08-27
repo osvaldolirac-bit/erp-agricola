@@ -231,13 +231,14 @@ def _apply_legacy_replacements(data: bytes | str, membrete: Membrete) -> bytes |
     return text
 
 
+def _excel_header_block(membrete: Membrete, sep: str) -> str:
+    return f"{membrete.razon}{sep}RUT: {membrete.rut}{sep}{membrete.direccion} "
+
+
 def _patch_excel_header_content(content: str, membrete: Membrete) -> tuple[str, bool]:
     orig = content
-    block = (
-        f"{membrete.razon}\r"
-        f"RUT: {membrete.rut}\r"
-        f"{membrete.direccion} "
-    )
+    sep = "\n" if "\n" in content else "\r"
+    block = _excel_header_block(membrete, sep)
     patterns = (
         r"LA CONCEPCION SOCIEDAD AGRICOLA\s+LTDA\.?\s*[\r\n]+PARC\.\s*EL SAUCE LOTE 4\s*[\r\n]+LA APARICION\s*PAINE\s*",
         r"LA CONCEPCION SOCIEDAD AGRICOLA\s*[\r\n]+CHADA PC 60 LT C PAINE\s*",
@@ -266,9 +267,14 @@ def _patch_excel_header_content(content: str, membrete: Membrete) -> tuple[str, 
 def _patch_binary_membrete(data: bytes, membrete: Membrete) -> tuple[bytes, list[str]]:
     notes: list[str] = []
     patched = data
+    sep = b"\n" if b"\n" in data else b"\r"
     block = (
-        f"{membrete.razon}\rRUT: {membrete.rut}\r{membrete.direccion}"
-    ).encode("latin-1")
+        membrete.razon.encode("latin-1")
+        + sep
+        + f"RUT: {membrete.rut}".encode("latin-1")
+        + sep
+        + membrete.direccion.encode("latin-1")
+    )
     replacements: list[tuple[bytes, bytes]] = []
     if membrete.slug != "cerezos":
         replacements.extend(
@@ -437,7 +443,7 @@ def _collapse_split_lc_header(xml: str, membrete: Membrete) -> tuple[str, bool]:
     return xml, xml != orig
 
 
-def _ooxml_bytes_valid(data: bytes) -> bool:
+def _ooxml_bytes_valid(data: bytes, xlsx: bool = False) -> bool:
     """Verifica ZIP OOXML y XML bien formado en partes críticas."""
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
@@ -453,9 +459,55 @@ def _ooxml_bytes_valid(data: bytes) -> bool:
                 ):
                     continue
                 ET.fromstring(z.read(name))
+        if xlsx:
+            import openpyxl
+
+            wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True)
+            wb.close()
         return True
     except Exception:
         return False
+
+
+def _patch_xlsx_xml(filename: str, xml: str, membrete: Membrete) -> tuple[str, bool]:
+    """Solo encabezados Excel y sharedStrings — sin lógica Word."""
+    fn = filename.lower()
+    if fn.endswith("sharedstrings.xml"):
+        new = _apply_legacy_replacements(xml, membrete)
+        if isinstance(new, str) and new != xml:
+            return new, True
+        return xml, False
+    if fn.startswith("xl/worksheets/") and fn.endswith(".xml"):
+        changed = False
+
+        def _hf_sub(m: re.Match) -> str:
+            nonlocal changed
+            body, ch = _patch_excel_header_content(m.group(2), membrete)
+            if ch:
+                changed = True
+            return m.group(1) + body + m.group(3)
+
+        for tag in (
+            "oddHeader",
+            "evenHeader",
+            "firstHeader",
+            "oddFooter",
+            "evenFooter",
+            "firstFooter",
+        ):
+            xml = re.sub(
+                rf"(<{tag}[^>]*>)(.*?)(</{tag}>)",
+                _hf_sub,
+                xml,
+                flags=re.S,
+            )
+        return xml, changed
+    return xml, False
+
+
+def _patch_docx_xml(filename: str, xml: str, membrete: Membrete) -> tuple[str, bool]:
+    _ = filename
+    return _patch_header_footer_xml(xml, membrete)
 
 
 def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
@@ -581,40 +633,46 @@ def patch_xls(path: Path, membrete: Membrete) -> tuple[bool, str]:
 def patch_zip_office(path: Path, membrete: Membrete) -> tuple[bool, str]:
     if not zipfile.is_zipfile(path):
         return False, "no-zip"
+    is_xlsx = path.suffix.lower() == ".xlsx"
     notes: list[str] = []
     in_buf = path.read_bytes()
     out_buf = io.BytesIO()
     changed = False
     with zipfile.ZipFile(io.BytesIO(in_buf)) as zin:
-        with zipfile.ZipFile(out_buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        with zipfile.ZipFile(out_buf, "w") as zout:
             for item in zin.infolist():
                 data = zin.read(item.filename)
                 fn = item.filename.lower()
-                patchable = (
-                    "header" in fn
-                    or "footer" in fn
-                    or fn.endswith("document.xml")
-                    or fn.endswith("sharedstrings.xml")
-                    or (fn.startswith("xl/worksheets/") and fn.endswith(".xml"))
-                )
+                if is_xlsx:
+                    patchable = fn.endswith("sharedstrings.xml") or (
+                        fn.startswith("xl/worksheets/") and fn.endswith(".xml")
+                    )
+                else:
+                    patchable = (
+                        "header" in fn
+                        or "footer" in fn
+                        or fn.endswith("document.xml")
+                    )
                 if patchable:
                     try:
                         text = data.decode("utf-8")
                     except UnicodeDecodeError:
                         zout.writestr(item, data)
                         continue
-                    new_text, ch = _patch_header_footer_xml(text, membrete)
+                    if is_xlsx:
+                        new_text, ch = _patch_xlsx_xml(item.filename, text, membrete)
+                    else:
+                        new_text, ch = _patch_docx_xml(item.filename, text, membrete)
                     if ch:
                         changed = True
                         notes.append(Path(item.filename).name)
-                    zout.writestr(item, new_text.encode("utf-8"))
-                else:
-                    zout.writestr(item, data)
+                        data = new_text.encode("utf-8")
+                zout.writestr(item, data)
     if not changed:
         return False, "sin-cambios-zip"
     out_data = out_buf.getvalue()
-    if not _ooxml_bytes_valid(out_data):
-        return False, "xml-invalido-revertido"
+    if not _ooxml_bytes_valid(out_data, xlsx=is_xlsx):
+        return False, "ooxml-invalido-revertido"
     path.write_bytes(out_data)
     return True, ";".join(notes[:5])
 
@@ -690,17 +748,22 @@ def backup_tree(slugs: list[str]) -> Path:
     return bak
 
 
-def restore_slug_from_backup(slug: str, backup: Path) -> None:
+def restore_slug_from_backup(slug: str, backup: Path, excel_only: bool = False) -> None:
     import tarfile
 
     if not backup.is_file():
         raise SystemExit(f"No existe backup {backup}")
     prefix = f"globalgap/docs/{slug}/"
     dest = DOCS_ROOT / slug
-    if dest.exists():
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        shutil.move(str(dest), str(dest.with_name(f"{slug}_pre_restore_{ts}")))
-    dest.mkdir(parents=True, exist_ok=True)
+    if excel_only:
+        if not dest.is_dir():
+            raise SystemExit(f"No existe {dest}")
+    else:
+        if dest.exists():
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            shutil.move(str(dest), str(dest.with_name(f"{slug}_pre_restore_{ts}")))
+        dest.mkdir(parents=True, exist_ok=True)
+    n = 0
     with tarfile.open(backup) as tar:
         for member in tar.getmembers():
             if not member.name.startswith(prefix) or member.isdir():
@@ -708,15 +771,18 @@ def restore_slug_from_backup(slug: str, backup: Path) -> None:
             rel = member.name[len(prefix) :]
             if not rel or rel.endswith(".bak"):
                 continue
+            if excel_only and Path(rel).suffix.lower() not in {".xlsx", ".xls"}:
+                continue
             out = dest / rel
             out.parent.mkdir(parents=True, exist_ok=True)
             with tar.extractfile(member) as src:
                 out.write_bytes(src.read())
-    print(f"RESTORE\t{slug}\tfrom {backup.name}\t-> {dest}")
+            n += 1
+    kind = "excel" if excel_only else "full"
+    print(f"RESTORE-{kind}\t{slug}\tfrom {backup.name}\tfiles={n}")
 
 
 def validate_slug(slug: str) -> int:
-    root = DOCS_ROOT / slug
     bad: list[tuple[str, str]] = []
     ok = 0
     for path in collect_files(slug):
@@ -724,7 +790,7 @@ def validate_slug(slug: str) -> int:
         ext = path.suffix.lower()
         if ext in {".docx", ".xlsx", ".xlsm"}:
             data = path.read_bytes()
-            if not _ooxml_bytes_valid(data):
+            if not _ooxml_bytes_valid(data, xlsx=(ext == ".xlsx")):
                 bad.append((rel, "ooxml-invalid"))
             else:
                 ok += 1
@@ -757,6 +823,11 @@ def main() -> int:
         type=Path,
         help="Restaura carpeta slug desde tar.gz (globalgap/docs/{slug}/...)",
     )
+    parser.add_argument(
+        "--restore-excel-only",
+        action="store_true",
+        help="Con --restore-from-backup: solo .xlsx/.xls",
+    )
     parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args()
 
@@ -764,7 +835,9 @@ def main() -> int:
 
     if args.restore_from_backup:
         for slug in slugs:
-            restore_slug_from_backup(slug, args.restore_from_backup)
+            restore_slug_from_backup(
+                slug, args.restore_from_backup, excel_only=args.restore_excel_only
+            )
         return 0
 
     if args.validate_only:
