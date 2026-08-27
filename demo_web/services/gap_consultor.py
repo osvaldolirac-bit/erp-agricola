@@ -145,8 +145,12 @@ def _migrate_legacy_csg(conn: sqlite3.Connection) -> None:
     if not rows:
         return
     for (eid,) in rows:
-        et = get_etiqueta(conn, int(eid))
-        if not et:
+        # Consulta directa: get_etiqueta() llama migrar_gap_consultor() → recursión.
+        r = conn.execute(
+            "SELECT nombre FROM gap_etiquetas WHERE id=?",
+            (int(eid),),
+        ).fetchone()
+        if not r:
             continue
         cur = conn.execute(
             """INSERT INTO gap_csg
@@ -155,7 +159,7 @@ def _migrate_legacy_csg(conn: sqlite3.Connection) -> None:
             (
                 int(eid),
                 "SIN-CSG",
-                f"Predio {et['nombre']}",
+                f"Predio {r[0]}",
                 "",
                 "",
                 "",
