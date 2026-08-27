@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Cuentas por cobrar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Cuentas por cobrar</h1>
+    <p>Cartera de cobranza · documentos, saldos y pagos.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-info text-white fw-bold shadow-sm px-3" href="{{ url_for('cuentas_360') }}"><i class="bi bi-radar"></i> Vista 360</a>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi blue"><div class="label">Total documentos</div><div class="value">{{ kpis.total_docs }} Documentos</div><div class="hint">{{ clp(kpis.total_monto) }}</div></div>
+  <div class="kpi pink"><div class="label">Pendientes</div><div class="value">{{ kpis.pend_n }} Documentos</div><div class="hint">Saldo {{ clp(kpis.pend_m) }}</div></div>
+  <div class="kpi cyan"><div class="label">Abonados</div><div class="value">{{ kpis.abon_n }} Documentos</div><div class="hint">Saldo {{ clp(kpis.abon_m) }}</div></div>
+  <div class="kpi green"><div class="label">Pagados</div><div class="value">{{ kpis.pag_n }} Documentos</div><div class="hint">{{ clp(kpis.pag_m) }}</div></div>
+  <div class="kpi orange"><div class="label">Tasa de Cobranza</div><div class="value">{{ '%.1f'|format(kpis.tasa) }} %</div><div class="hint">{{ kpis.pag_n }} de {{ kpis.total_docs }}</div></div>
+</div>
+
+<div class="totals-bar">
+  <div><span>Total</span>{{ clp(kpis.sum_total) }}</div>
+  <div><span>Abonos</span>{{ clp(kpis.sum_abonos) }}</div>
+  <div><span>Saldo</span>{{ clp(kpis.sum_saldo) }}</div>
+</div>
+
+<div class="panel">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle datatable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Cliente</th>
+          <th>Documento</th>
+          <th>Nº Factura</th>
+          <th>Emisión</th>
+          <th>Vence</th>
+          <th>Total</th>
+          <th>Abonos</th>
+          <th>Saldo</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><strong>{{ r.cliente or '—' }}</strong></td>
+          <td><span class="cot-num">{{ r.doc_display }}</span></td>
+          <td>{{ r.factura_display }}</td>
+          <td>{{ fmt_dmy(r.fecha_emision) }}</td>
+          <td>{{ fmt_dmy(r.fecha_vencimiento) }}</td>
+          <td>{{ clp(r.monto) }}</td>
+          <td>{{ clp(r.abonado) }}</td>
+          <td><strong>{{ clp(r.saldo) }}</strong></td>
+          <td><span class="estado {{ cxc_estado_class(r.estado) }}">{{ cxc_estado_label(r.estado) }}</span></td>
+          <td class="actions-cell">
+            <a class="btn-act ver" href="{{ url_for('cuentas_detalle', cuenta_id=r.id) }}" title="Visualizar"><i class="bi bi-eye"></i></a>
+            <a class="btn-act pdf" href="{{ url_for('cuentas_pdf', cuenta_id=r.id) }}" title="PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+            <a class="btn-act edit" href="{{ url_for('cuentas_form', cuenta_id=r.id) }}" title="Modificar"><i class="bi bi-pencil-square"></i></a>
+            {% if r.saldo and r.saldo > 0 %}
+            <a class="btn-act abono" href="{{ url_for('cuentas_abono', cuenta_id=r.id) }}" title="Abonar"><i class="bi bi-cash"></i></a>
+            {% endif %}
+            <form class="d-inline" method="post" action="{{ url_for('cuentas_borrar', cuenta_id=r.id) }}" onsubmit="return confirm('¿Eliminar {{ r.documento }}?');">
+              <button class="btn-act del" type="submit" title="Eliminar"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
