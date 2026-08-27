@@ -13,6 +13,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8507").rstrip("/")
 PREFIX = os.environ.get("CONSOLA_PREFIX", "/consola")
@@ -100,14 +101,29 @@ def check_login_ui() -> None:
     if code != 200:
         raise CheckFailed(f"login GET status {code}")
     html = body.decode("utf-8", errors="replace")
-    if 'class="shell"' not in html:
-        raise CheckFailed("login missing visible shell layout")
-    if "Ingresar a la consola" not in html and "Ingresar" not in html:
-        raise CheckFailed("login missing submit button")
+    if "login-page" not in html:
+        raise CheckFailed("login missing login-page layout")
+    if "login-watermark" not in html:
+        raise CheckFailed("login missing watermark")
+    if "Acceso" not in html:
+        raise CheckFailed("login missing Acceso button")
     if "Recordar usuario" not in html:
         raise CheckFailed("login missing Recordar usuario")
-    if "dropdown login-access" in html:
-        raise CheckFailed("login still uses hidden Acceso dropdown")
+    if "Ingresar" not in html:
+        raise CheckFailed("login missing submit button")
+
+    css_path = os.path.join(
+        os.environ.get("ERP_MASTER_ROOT", "/root/erp_master"),
+        "erp_master",
+        "static",
+        "master.css",
+    )
+    try:
+        css = Path(css_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise CheckFailed(f"cannot read master.css: {exc}") from exc
+    if ".login-page" not in css or "bg_login_master.png" not in css:
+        raise CheckFailed("master.css missing login-page styles (page would look broken)")
     print("OK  login UI")
 
 
