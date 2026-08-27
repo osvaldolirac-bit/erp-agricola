@@ -48,6 +48,11 @@ class Membrete:
                 continue
             if m.razon.upper() in u:
                 foreign.append(m.razon)
+            # LC clonado en espino: líneas sueltas
+            if self.slug == "espino" and "LA CONCEPCION" in u and "EL ESPINO" not in u:
+                foreign.append("LA CONCEPCION")
+            if self.slug == "ciruelos" and "LA CONCEPCION AGRICOLA" in u:
+                foreign.append("LA CONCEPCION")
         return bool(foreign)
 
 
@@ -241,13 +246,27 @@ def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
             count=1,
             flags=re.I | re.S,
         )
+        # Clon desde cerezos: limpiar líneas sueltas LC
+        xml = xml.replace(">LA CONCEPCION </w:t>", f">{membrete.razon}</w:t>", 1)
+        xml = xml.replace(">SOCIEDAD AGRICOLA LTDA.</w:t>", "></w:t>", 1)
+        xml = xml.replace(">SOCIEDAD AGRICOLA LTDA. </w:t>", "></w:t>", 1)
+        xml = re.sub(r">PARC\.\s*</w:t>", "></w:t>", xml, count=1)
+        xml = re.sub(r">EL SAUCE LOTE 4\s*</w:t>", f">{membrete.direccion}</w:t>", xml, count=1)
+        xml = re.sub(r">LA APARICION\s*</w:t>", "></w:t>", xml, count=1)
+        xml = re.sub(r">PAINE\s*</w:t>", "></w:t>", xml, count=1)
 
-    # RUT
+    # ciruelos / espino / cerezos: RUT tras razón social
     if membrete.rut not in xml:
-        rut_block = (
-            f"</w:t></w:r><w:r><w:rPr/><w:t>RUT: {membrete.rut}</w:t></w:r><w:r><w:rPr/><w:t>"
+        xml = xml.replace(
+            f">{membrete.razon}</w:t>",
+            f">{membrete.razon}</w:t></w:r><w:r><w:rPr/><w:t>RUT: {membrete.rut}</w:t></w:r><w:r><w:rPr/><w:t>",
+            1,
         )
-        xml = xml.replace(f">{membrete.razon}</w:t>", f">{membrete.razon}{rut_block}", 1)
+        xml = xml.replace(
+            f">{membrete.razon} </w:t>",
+            f">{membrete.razon}</w:t></w:r><w:r><w:rPr/><w:t>RUT: {membrete.rut}</w:t></w:r><w:r><w:rPr/><w:t>",
+            1,
+        )
 
     # Quitar otras razones sociales del encabezado
     for other in MEMBRETES.values():
