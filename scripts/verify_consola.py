@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import http.cookiejar as cookiejar
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -150,6 +151,29 @@ def check_logout_clears() -> None:
     print("OK  logout clears session cookie")
 
 
+def check_super_consola_route() -> None:
+    email = os.environ.get("ERP_MASTER_SEED_EMAIL", "osvaldolirac@gmail.com")
+    password = os.environ.get("ERP_MASTER_SEED_PASSWORD", "Erpmaster2026")
+    cj = cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    login_body = urllib.parse.urlencode({"email": email, "password": password}).encode()
+    login_req = urllib.request.Request(_url("/login"), data=login_body, method="POST")
+    opener.open(login_req)
+    for path in ("/admin/concepcion", "/consola/concepcion"):
+        req = urllib.request.Request(_url(path))
+        try:
+            resp = opener.open(req)
+            body = resp.read(12000)
+            final = resp.geturl()
+        except urllib.error.HTTPError as exc:
+            raise CheckFailed(f"{path} status {exc.code}") from exc
+        if final.rstrip("/").endswith("/login"):
+            raise CheckFailed(f"{path} redirected to login (session/route broken)")
+        if b"Super Consola" not in body and b"Usuarios" not in body:
+            raise CheckFailed(f"{path} missing expected super consola content")
+    print("OK  super consola route")
+
+
 def main() -> int:
     checks = [
         check_health,
@@ -157,6 +181,7 @@ def main() -> int:
         check_login_ui,
         check_login_flow,
         check_logout_clears,
+        check_super_consola_route,
     ]
     failed = 0
     for fn in checks:

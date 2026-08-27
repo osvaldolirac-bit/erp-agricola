@@ -252,12 +252,8 @@ def create_app(config_object: type = Config) -> Flask:
         return redirect(f"{base}/login/master?t={quote(token)}")
 
     @app.route("/admin")
-    @app.route("/admin/<slug>")
     @login_required
-    def admin_legacy(slug: str | None = None):
-        """Compat: /admin → inicio; /admin/<slug> → Super Consola."""
-        if slug and _can_manage_tenant(slug) and _get_admin_tenant(app, slug):
-            return redirect(url_for("super_consola", slug=slug, sec=request.args.get("sec")))
+    def admin_index():
         return redirect(url_for("home"))
 
     @app.route("/plataforma/usuarios", methods=["GET", "POST"])
@@ -311,7 +307,7 @@ def create_app(config_object: type = Config) -> Flask:
             msg_type=msg_type,
         )
 
-    @app.route("/consola/<slug>", methods=["GET", "POST"])
+    @app.route("/admin/<slug>", methods=["GET", "POST"])
     @login_required
     def super_consola(slug: str):
         tenant = _get_admin_tenant(app, slug)
@@ -432,6 +428,17 @@ def create_app(config_object: type = Config) -> Flask:
             msg=msg,
             msg_type=msg_type,
         )
+
+    @app.route("/consola/<slug>", methods=["GET", "POST"])
+    @login_required
+    def super_consola_legacy(slug: str):
+        """Compat: URLs antiguas /consola/<tenant> → /admin/<tenant>."""
+        params: dict[str, str] = {"slug": slug}
+        if request.args.get("sec"):
+            params["sec"] = request.args.get("sec", "")
+        if request.args.get("uid"):
+            params["uid"] = request.args.get("uid", "")
+        return redirect(url_for("super_consola", **params), code=301)
 
     @app.get("/health")
     def health():
