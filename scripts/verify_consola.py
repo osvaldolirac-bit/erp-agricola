@@ -118,8 +118,8 @@ def check_login_ui() -> None:
         raise CheckFailed("login missing Acceso button")
     if "Recordar usuario" not in html:
         raise CheckFailed("login missing Recordar usuario")
-    if "Ingresar" not in html:
-        raise CheckFailed("login missing submit button")
+    if "fake_user" in html or "fake_pass" in html:
+        raise CheckFailed("login still has autofill honeypot fields")
 
     css_path = os.path.join(
         os.environ.get("ERP_MASTER_ROOT", "/root/erp_master"),
@@ -172,7 +172,7 @@ def check_super_consola_route() -> None:
         method="POST",
     )
     opener.open(login_req)
-    for path in ("/admin/concepcion",):
+    for path in ("/cliente/concepcion",):
         req = urllib.request.Request(_url(path), headers=_consola_headers())
         try:
             resp = opener.open(req)
@@ -182,9 +182,9 @@ def check_super_consola_route() -> None:
             raise CheckFailed(f"{path} status {exc.code}") from exc
         if final.rstrip("/").endswith("/login"):
             raise CheckFailed(f"{path} redirected to login (session/route broken)")
-        if b"Super Consola" not in body and b"Usuarios" not in body:
+        if b"Super Consola" not in body and b"Usuarios" not in body and b"app-shell" not in body:
             raise CheckFailed(f"{path} missing expected super consola content")
-    legacy_req = urllib.request.Request(_url("/consola/concepcion"), headers=_consola_headers())
+    legacy_req = urllib.request.Request(_url("/concepcion"), headers=_consola_headers())
     try:
         legacy_resp = opener.open(legacy_req)
         legacy_final = legacy_resp.geturl()
@@ -192,8 +192,8 @@ def check_super_consola_route() -> None:
         if exc.code not in (301, 302, 303, 307, 308):
             raise CheckFailed(f"legacy /consola/<tenant> status {exc.code}") from exc
         legacy_final = exc.headers.get("Location", "")
-    if "/admin/concepcion" not in legacy_final:
-        raise CheckFailed(f"legacy redirect expected /admin/concepcion, got {legacy_final!r}")
+    if "/cliente/concepcion" not in legacy_final:
+        raise CheckFailed(f"legacy redirect expected /cliente/concepcion, got {legacy_final!r}")
     print("OK  super consola route")
 
 

@@ -86,11 +86,6 @@
         }
       } catch (err) {}
     });
-
-    {% if error or info %}
-    const btn = document.querySelector('.login-access-btn');
-    if (btn && window.bootstrap) new bootstrap.Dropdown(btn).show();
-    {% endif %}
   })();
   </script>
 </body>

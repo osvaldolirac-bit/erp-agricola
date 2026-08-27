@@ -1,83 +1,359 @@
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ brand }} — Clientes</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
-</head>
-<body>
-  <div class="shell">
-    <main class="console">
-      {% include "_topbar.html" %}
+{% extends "_base_app.html" %}
+{% set nav_active = 'tenants' %}
+{% block title %}{{ brand }} — Admin. tenants{% endblock %}
+{% block breadcrumb %}
+<span>{{ brand }}</span><span>›</span><span class="current">Admin. tenants</span>
+{% endblock %}
+{% block content %}
+{% set n_total = tenants|length %}
+{% set n_maint = tenants|selectattr('en_mantenimiento')|list|length %}
+{% set n_activos = n_total - n_maint %}
+{% set n_agricola = tenants|selectattr('producto', 'equalto', 'agricola')|list|length %}
+{% set n_comercial = tenants|selectattr('producto', 'equalto', 'comercial')|list|length %}
+{% set n_constructora = tenants|selectattr('producto', 'equalto', 'constructora')|list|length %}
 
-      <div class="section-head">
-        <h2>Clientes</h2>
-        <p>Super Consola, acceso directo al ERP (dashboard) o mantención del sitio.</p>
-      </div>
-
-      <ul class="tenant-list">
-        {% for t in tenants %}
-        <li>
-          <div class="tenant-row">
-            {% if t.can_manage %}
-            <a class="tenant-main" href="{{ url_for('super_consola', slug=t.slug) }}">
-              <div>
-                <div class="name">{{ t.nombre }}</div>
-                <div class="desc">{{ t.descripcion }}</div>
-              </div>
-              <div class="meta">
-                {% if t.en_mantenimiento %}
-                <span class="status status-maint">mantención</span>
-                {% else %}
-                <span class="status">activo</span>
-                {% endif %}
-                <span class="go">Consola →</span>
-              </div>
-            </a>
-            {% else %}
-            <div class="tenant-main is-static">
-              <div>
-                <div class="name">{{ t.nombre }}</div>
-                <div class="desc">{{ t.descripcion }}{% if not t.can_manage %} · sin Super Consola aún{% endif %}</div>
-              </div>
-              <div class="meta">
-                {% if t.en_mantenimiento %}
-                <span class="status status-maint">mantención</span>
-                {% else %}
-                <span class="status">pendiente</span>
-                {% endif %}
-              </div>
-            </div>
-            {% endif %}
-
-            {% if t.url_dashboard %}
-            <a class="tenant-erp" href="{{ url_for('entrar_erp', slug=t.slug) }}" target="_blank" rel="noopener" title="Entrar al ERP (dashboard) en una pestaña nueva">
-              Abrir ERP
-            </a>
-            {% endif %}
-
-            {% if t.can_mantenimiento %}
-            <form method="post" action="{{ url_for('toggle_mantenimiento', slug=t.slug) }}" class="tenant-maint">
-              {% if t.en_mantenimiento %}
-              <input type="hidden" name="activo" value="0">
-              <button type="submit" class="btn-maint is-on" title="Quitar mantención">En mantención · clic para reactivar</button>
-              {% else %}
-              <input type="hidden" name="activo" value="1">
-              <button type="submit" class="btn-maint">Sitio en mantención</button>
-              {% endif %}
-            </form>
-            {% endif %}
-          </div>
-        </li>
-        {% endfor %}
-      </ul>
-
-      <p class="foot">Mantención muestra un aviso en la página de acceso del ERP. La Super Consola sigue operativa.</p>
-    </main>
+<div class="page-head">
+  <div>
+    <h1>Administración de tenants</h1>
+    <p>Configuración de tenants por producto (Agrícola / Comercial / Constructora). Los clientes de cobro/suscripción van en <strong>Clientes suscriptores</strong>.</p>
   </div>
-</body>
-</html>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi blue">
+    <div class="label">ERP Agrícola</div>
+    <div class="value">{{ n_agricola }}</div>
+    <div class="hint">Tenants de campo</div>
+  </div>
+  <div class="kpi cyan">
+    <div class="label">Comercial</div>
+    <div class="value">{{ n_comercial }}</div>
+    <div class="hint">Cotizador / cobranza</div>
+  </div>
+  <div class="kpi orange">
+    <div class="label">Constructora</div>
+    <div class="value">{{ n_constructora }}</div>
+    <div class="hint">Obras / APU</div>
+  </div>
+  <div class="kpi green">
+    <div class="label">Operativos</div>
+    <div class="value">{{ n_activos }}</div>
+    <div class="hint">Sin mantención</div>
+  </div>
+  <div class="kpi orange">
+    <div class="label">Mantención</div>
+    <div class="value">{{ n_maint }}</div>
+    <div class="hint">Con aviso en acceso</div>
+  </div>
+</div>
+
+
+<section class="panel host-panel" id="hostResources" aria-label="Recursos del VPS"
+         data-url="{{ url_for('host_stats_api') }}">
+  <div class="product-head">
+    <div>
+      <div class="product-kicker">VPS</div>
+      <h3>Recursos del servidor</h3>
+      <p class="product-sub">RAM, swap y disco en vivo. Se actualiza cada 20 s.</p>
+    </div>
+    <span class="host-live" id="hostLiveBadge">en vivo</span>
+  </div>
+  <div class="host-grid">
+    <article class="host-meter" data-key="mem">
+      <div class="host-meter-top">
+        <strong>RAM</strong>
+        <span class="host-pct" data-field="mem_pct">{{ '%.0f'|format(host_stats.mem_pct) }}%</span>
+      </div>
+      <div class="host-bar" data-level="{{ host_stats.mem_level }}"><i style="width: {{ host_stats.mem_pct }}%"></i></div>
+      <div class="host-meta">
+        <span data-field="mem_detail">{{ (host_stats.mem_used/1048576)|round(0)|int }} / {{ (host_stats.mem_total/1048576)|round(0)|int }} MB</span>
+        <span data-field="mem_avail">libres {{ (host_stats.mem_avail/1048576)|round(0)|int }} MB</span>
+      </div>
+    </article>
+    <article class="host-meter" data-key="swap">
+      <div class="host-meter-top">
+        <strong>Swap</strong>
+        <span class="host-pct" data-field="swap_pct">
+          {% if host_stats.swap_total %}{{ '%.0f'|format(host_stats.swap_pct) }}%{% else %}off{% endif %}
+        </span>
+      </div>
+      <div class="host-bar" data-level="{{ host_stats.swap_level }}">
+        <i style="width: {% if host_stats.swap_total %}{{ host_stats.swap_pct }}{% else %}0{% endif %}%"></i>
+      </div>
+      <div class="host-meta">
+        <span data-field="swap_detail">
+          {% if host_stats.swap_total %}
+          {{ (host_stats.swap_used/1048576)|round(0)|int }} / {{ (host_stats.swap_total/1048576)|round(0)|int }} MB
+          {% else %}sin swap{% endif %}
+        </span>
+        <span data-field="swap_hint">red de seguridad</span>
+      </div>
+    </article>
+    <article class="host-meter" data-key="disk">
+      <div class="host-meter-top">
+        <strong>Disco</strong>
+        <span class="host-pct" data-field="disk_pct">{{ '%.0f'|format(host_stats.disk_pct) }}%</span>
+      </div>
+      <div class="host-bar" data-level="{{ host_stats.disk_level }}"><i style="width: {{ host_stats.disk_pct }}%"></i></div>
+      <div class="host-meta">
+        <span data-field="disk_detail">{{ '%.1f'|format(host_stats.disk_used/1073741824) }} / {{ '%.1f'|format(host_stats.disk_total/1073741824) }} GB</span>
+        <span data-field="disk_free">libres {{ '%.1f'|format(host_stats.disk_free/1073741824) }} GB</span>
+      </div>
+    </article>
+  </div>
+  <p class="host-load" id="hostLoadLine">
+    Load:
+    <span data-field="load">{{ '%.2f'|format(host_stats.loadavg[0]) }} · {{ '%.2f'|format(host_stats.loadavg[1]) }} · {{ '%.2f'|format(host_stats.loadavg[2]) }}</span>
+  </p>
+</section>
+
+<section class="panel host-panel" id="webVisitas" aria-label="Visitas web"
+         data-url="{{ url_for('web_visitas_api') }}">
+  <div class="product-head">
+    <div>
+      <div class="product-kicker">Marketing · erpmaster.cl</div>
+      <h3>Visitas web</h3>
+      <p class="product-sub">Estimación desde nginx (sin bots obvios). Últimos 14 días · se actualiza cada ~2 min.</p>
+    </div>
+    <span class="host-live" id="visitasLiveBadge">en vivo</span>
+  </div>
+  <div class="host-grid">
+    <article class="host-meter">
+      <div class="host-meter-top"><strong>Hoy · home</strong><span class="host-pct" data-v="today_ips">{{ web_visitas.today_ips }} IP</span></div>
+      <div class="host-meta"><span data-v="today_hits">{{ web_visitas.today_hits }} hits</span><span>landing `/`</span></div>
+    </article>
+    <article class="host-meter">
+      <div class="host-meter-top"><strong>14 días · home</strong><span class="host-pct" data-v="landing_ips">{{ web_visitas.landing_ips }} IP</span></div>
+      <div class="host-meta"><span data-v="landing_human">{{ web_visitas.landing_human }} humanas</span><span data-v="landing_hits">{{ web_visitas.landing_hits }} hits</span></div>
+    </article>
+    <article class="host-meter">
+      <div class="host-meter-top"><strong>Comercial</strong><span class="host-pct" data-v="sec_comercial_ips">{{ web_visitas.sections.comercial.ips }} IP</span></div>
+      <div class="host-meta"><span data-v="sec_comercial_human">{{ web_visitas.sections.comercial.human }} hits</span><span>/comercial*</span></div>
+    </article>
+    <article class="host-meter">
+      <div class="host-meter-top"><strong>Agrícola</strong><span class="host-pct" data-v="sec_agricola_ips">{{ web_visitas.sections.agricola.ips }} IP</span></div>
+      <div class="host-meta"><span data-v="sec_agricola_human">{{ web_visitas.sections.agricola.human }} hits</span><span>/agricola*</span></div>
+    </article>
+    <article class="host-meter">
+      <div class="host-meter-top"><strong>Constructora</strong><span class="host-pct" data-v="sec_constructora_ips">{{ web_visitas.sections.constructora.ips }} IP</span></div>
+      <div class="host-meta"><span data-v="sec_constructora_human">{{ web_visitas.sections.constructora.human }} hits</span><span>/constructora*</span></div>
+    </article>
+  </div>
+  <div class="host-foot" style="margin-top:.85rem">
+    <div style="overflow:auto">
+      <table class="table table-sm mb-0" style="font-size:.82rem">
+        <thead><tr><th>Día</th><th>Hits home</th><th>IPs</th></tr></thead>
+        <tbody id="visitasDays">
+          {% for d in web_visitas.days %}
+          <tr{% if d.is_today %} style="font-weight:700"{% endif %}>
+            <td>{{ d.day }}{% if d.is_today %} · hoy{% endif %}</td>
+            <td>{{ d.hits }}</td>
+            <td>{{ d.ips }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="product-sub" style="margin:.65rem 0 0" data-v="note">{{ web_visitas.note }} · act. <span data-v="updated_at">{{ web_visitas.updated_at }}</span></p>
+  </div>
+</section>
+
+
+
+{% for g in product_groups %}
+{% if g.tenants %}
+<section class="panel product-panel product-{{ g.key }}">
+  <div class="product-head">
+    <div>
+      <div class="product-kicker">Producto</div>
+      <h3>{{ g.titulo }}</h3>
+      <p class="product-sub">{{ g.subtitulo }}</p>
+    </div>
+    <span class="product-badge product-badge-{{ g.key }}">{{ g.titulo }}</span>
+  </div>
+  <div class="tenant-grid">
+    {% for t in g.tenants %}
+    <article class="tenant-card tenant-{{ t.producto }}">
+      {% if t.can_manage %}
+      <a class="tenant-card-main" href="{{ url_for('super_consola', slug=t.slug) }}">
+        <div>
+          <div class="name-row">
+            <div class="name">{{ t.nombre }}</div>
+            <span class="product-chip product-chip-{{ t.producto }}">{{ t.producto_label }}</span>
+          </div>
+          <div class="desc">{{ t.descripcion }}</div>
+        </div>
+        <div class="meta">
+          {% if t.en_mantenimiento %}
+          <span class="status status-maint">mantención</span>
+          {% else %}
+          <span class="status">activo</span>
+          {% endif %}
+          <span>Consola →</span>
+        </div>
+      </a>
+      {% else %}
+      <div class="tenant-card-main">
+        <div>
+          <div class="name-row">
+            <div class="name">{{ t.nombre }}</div>
+            <span class="product-chip product-chip-{{ t.producto }}">{{ t.producto_label }}</span>
+          </div>
+          <div class="desc">{{ t.descripcion }} · sin Super Consola aún</div>
+        </div>
+        <div class="meta">
+          {% if t.en_mantenimiento %}
+          <span class="status status-maint">mantención</span>
+          {% else %}
+          <span class="status status-pending">pendiente</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="tenant-actions">
+        {% if t.url_dashboard %}
+        <a href="{{ url_for('entrar_erp', slug=t.slug) }}" target="_blank" rel="noopener" title="{{ t.abrir_label }}">
+          {{ t.abrir_label }}
+        </a>
+        {% endif %}
+        {% if t.can_mantenimiento %}
+        <form method="post" action="{{ url_for('toggle_mantenimiento', slug=t.slug) }}">
+          {% if t.en_mantenimiento %}
+          <input type="hidden" name="activo" value="0">
+          <button type="submit" class="btn-maint is-on" title="Quitar mantención">Reactivar sitio</button>
+          {% else %}
+          <input type="hidden" name="activo" value="1">
+          <button type="submit" class="btn-maint">Sitio en mantención</button>
+          {% endif %}
+        </form>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endfor %}
+
+<p class="foot">Mantención muestra un aviso en la página de acceso del producto. La Super Consola sigue operativa.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const root = document.getElementById('hostResources');
+  if (!root) return;
+  const url = root.getAttribute('data-url');
+  const badge = document.getElementById('hostLiveBadge');
+
+  function fmtMB(n) { return Math.round(n / 1048576); }
+  function fmtGB(n) { return (n / 1073741824).toFixed(1); }
+
+  function apply(data) {
+    const setText = (sel, text) => {
+      const el = root.querySelector('[data-field="' + sel + '"]');
+      if (el) el.textContent = text;
+    };
+    const setBar = (key, pct, level) => {
+      const meter = root.querySelector('.host-meter[data-key="' + key + '"]');
+      if (!meter) return;
+      const bar = meter.querySelector('.host-bar');
+      const fill = bar ? bar.querySelector('i') : null;
+      if (bar) bar.setAttribute('data-level', level || 'ok');
+      if (fill) fill.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+    };
+
+    setText('mem_pct', Math.round(data.mem_pct) + '%');
+    setText('mem_detail', fmtMB(data.mem_used) + ' / ' + fmtMB(data.mem_total) + ' MB');
+    setText('mem_avail', 'libres ' + fmtMB(data.mem_avail) + ' MB');
+    setBar('mem', data.mem_pct, data.mem_level);
+
+    if (data.swap_total > 0) {
+      setText('swap_pct', Math.round(data.swap_pct) + '%');
+      setText('swap_detail', fmtMB(data.swap_used) + ' / ' + fmtMB(data.swap_total) + ' MB');
+    } else {
+      setText('swap_pct', 'off');
+      setText('swap_detail', 'sin swap');
+    }
+    setBar('swap', data.swap_pct || 0, data.swap_level);
+
+    setText('disk_pct', Math.round(data.disk_pct) + '%');
+    setText('disk_detail', fmtGB(data.disk_used) + ' / ' + fmtGB(data.disk_total) + ' GB');
+    setText('disk_free', 'libres ' + fmtGB(data.disk_free) + ' GB');
+    setBar('disk', data.disk_pct, data.disk_level);
+
+    const load = data.loadavg || [0, 0, 0];
+    setText('load', Number(load[0]).toFixed(2) + ' · ' + Number(load[1]).toFixed(2) + ' · ' + Number(load[2]).toFixed(2));
+    if (badge) {
+      badge.classList.remove('is-err');
+      badge.textContent = 'en vivo';
+    }
+  }
+
+  async function tick() {
+    try {
+      const res = await fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+      if (res.status === 401) {
+        window.location = '/consola/login?out=1';
+        return;
+      }
+      if (!res.ok) throw new Error('http ' + res.status);
+      apply(await res.json());
+    } catch (err) {
+      if (badge) {
+        badge.classList.add('is-err');
+        badge.textContent = 'sin señal';
+      }
+    }
+  }
+
+  setInterval(tick, 20000);
+})();
+</script>
+
+<script>
+(function () {
+  const root = document.getElementById("webVisitas");
+  if (!root) return;
+  const url = root.dataset.url;
+  const badge = document.getElementById("visitasLiveBadge");
+  function setText(sel, val) {
+    root.querySelectorAll("[data-v=\"" + sel + "\"]").forEach(el => { el.textContent = val; });
+  }
+  async function tick() {
+    try {
+      const r = await fetch(url, { credentials: "same-origin", headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error("http " + r.status);
+      const d = await r.json();
+      setText("today_ips", (d.today_ips || 0) + " IP");
+      setText("today_hits", (d.today_hits || 0) + " hits");
+      setText("landing_ips", (d.landing_ips || 0) + " IP");
+      setText("landing_human", (d.landing_human || 0) + " humanas");
+      setText("landing_hits", (d.landing_hits || 0) + " hits");
+      const sec = d.sections || {};
+      setText("sec_comercial_ips", ((sec.comercial || {}).ips || 0) + " IP");
+      setText("sec_comercial_human", ((sec.comercial || {}).human || 0) + " hits");
+      setText("sec_agricola_ips", ((sec.agricola || {}).ips || 0) + " IP");
+      setText("sec_agricola_human", ((sec.agricola || {}).human || 0) + " hits");
+      setText("sec_constructora_ips", ((sec.constructora || {}).ips || 0) + " IP");
+      setText("sec_constructora_human", ((sec.constructora || {}).human || 0) + " hits");
+      setText("updated_at", d.updated_at || "");
+      const tb = document.getElementById("visitasDays");
+      if (tb && Array.isArray(d.days)) {
+        tb.innerHTML = d.days.map(x => {
+          const hoy = x.is_today ? " · hoy" : "";
+          const st = x.is_today ? " style=\"font-weight:700\"" : "";
+          return "<tr" + st + "><td>" + x.day + hoy + "</td><td>" + x.hits + "</td><td>" + x.ips + "</td></tr>";
+        }).join("");
+      }
+      if (badge) badge.textContent = d.cached ? "cache" : "en vivo";
+    } catch (e) {
+      if (badge) badge.textContent = "error";
+    }
+  }
+  setInterval(tick, 60000);
+})();
+</script>
+
+{% endblock %}
