@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Panel consultor — GlobalGAP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">🌿 Panel consultor GlobalGAP</h1>
+      <p class="text-muted mb-0">Clientes, huertos y certificación — sin acceso externo</p>
+    </div>
+    <form method="post" action="{{ url_for('globalgap_portal.logout') }}">
+      <button type="submit" class="btn btn-outline-secondary btn-sm">Cerrar sesión</button>
+    </form>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="kpi-card"><div class="kpi-label">Clientes</div><div class="kpi-value">{{ resumen.n_clientes }}</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card"><div class="kpi-label">Ámbitos</div><div class="kpi-value">{{ resumen.n_ambitos }}</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card kpi-warn"><div class="kpi-label">NC abiertas</div><div class="kpi-value">{{ resumen.nc_abiertas }}</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card"><div class="kpi-label">Alertas</div><div class="kpi-value">{{ resumen.alertas }}</div></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-5">
+      <div class="panel-card">
+        <h2 class="h6 panel-title">+ Nuevo cliente (etiqueta)</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="crear_etiqueta">
+          <div class="col-12">
+            <label class="form-label small">Nombre cliente</label>
+            <input type="text" name="nombre" class="form-control form-control-sm" required maxlength="120">
+          </div>
+          <div class="col-12">
+            <label class="form-label small">Notas</label>
+            <input type="text" name="notas" class="form-control form-control-sm" maxlength="200">
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-success btn-sm">Crear cliente</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="panel-card">
+        <h2 class="h6 panel-title">+ Nuevo ámbito (huerto + especie)</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="crear_ambito">
+          <div class="col-md-6">
+            <label class="form-label small">Cliente</label>
+            <select name="etiqueta_id" class="form-select form-select-sm" required>
+              <option value="">— Elegir —</option>
+              {% for e in resumen.etiquetas %}
+              <option value="{{ e.id }}">{{ e.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Huerto / predio</label>
+            <input type="text" name="nombre_huerto" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Especie</label>
+            <input type="text" name="especie_cultivo" class="form-control form-control-sm" placeholder="Cerezos" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Plantilla docs</label>
+            <select name="plantilla_docs" class="form-select form-select-sm">
+              {% for p in plantillas %}
+              <option value="{{ p }}">{{ p|title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Razón social (membrete)</label>
+            <input type="text" name="razon_social" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label small">Dirección (membrete)</label>
+            <input type="text" name="direccion" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary btn-sm">Crear ámbito y clonar documentos</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-card">
+    <h2 class="h6 panel-title mb-3">Cartera de clientes</h2>
+    {% if not resumen.etiquetas %}
+    <div class="alert alert-info mb-0">Sin clientes aún. Cree la primera etiqueta arriba.</div>
+    {% else %}
+    {% for e in resumen.etiquetas %}
+    <div class="mb-4">
+      <h3 class="h6 mb-2">{{ e.nombre }} <span class="text-muted fw-normal">({{ e.n_ambitos }} ámbito{{ 's' if e.n_ambitos != 1 else '' }})</span></h3>
+      {% if e.ambitos %}
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0">
+          <thead>
+            <tr>
+              <th>Huerto · Especie</th>
+              <th class="text-end">Checklist</th>
+              <th class="text-end">NC</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in e.ambitos %}
+            <tr>
+              <td>{{ a.nombre_huerto }} · {{ a.especie_cultivo }}</td>
+              <td class="text-end">
+                {% set card = resumen.cards_by_ambito.get(a.id) %}
+                {{ card.pct_checklist if card else 0 }}%
+              </td>
+              <td class="text-end">{{ card.nc_abiertas if card else 0 }}</td>
+              <td class="text-end">
+                <a class="btn btn-outline-success btn-sm" href="{{ url_for('globalgap_portal.entrar_ambito', ambito_id=a.id) }}">Abrir certificación</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="small text-muted mb-0">Sin ámbitos — agregue huerto + especie arriba.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
