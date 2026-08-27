@@ -2927,6 +2927,130 @@ body.demo-body.planes-page .planes-cards.planes-cards-5 {
 .gap-dash {
   max-width: 1100px;
 }
+.gap-board {
+  max-width: 1200px;
+}
+.gap-board-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.gap-board-client {
+  background: #fff;
+  border: 1px solid #dfe6ee;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(22, 58, 95, 0.05);
+}
+.gap-board-client-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  background: var(--client-bg, #f4f7fa);
+  border-left: 4px solid var(--client-color, #78909c);
+  border-bottom: 1px solid #e8eef4;
+}
+.gap-board-client-name {
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: var(--client-color, #37474f);
+}
+.gap-board-client-meta {
+  font-size: 0.68rem;
+  color: #78909c;
+}
+.gap-board-client-link {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--client-color, #546e7a);
+  text-decoration: none;
+}
+.gap-board-client-link:hover {
+  text-decoration: underline;
+  color: var(--client-accent, #37474f);
+}
+.gap-board-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.5rem 0.55rem 0.55rem;
+  background: #fafbfc;
+}
+.gap-board-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 108px;
+  padding: 0.4rem 0.35rem 0.45rem;
+  background: var(--tile-bg, #fff);
+  border: 1px solid var(--tile-border, #e0e8ef);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  position: relative;
+}
+.gap-board-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 3px 10px rgba(22, 58, 95, 0.12);
+  border-color: var(--client-color, #90a4ae);
+}
+.gap-board-tile-csg {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--client-color, #78909c);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gap-board-tile-huerto {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #455a64;
+  line-height: 1.15;
+  margin-top: 0.15rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gap-board-tile-esp {
+  font-size: 0.62rem;
+  color: #90a4ae;
+  line-height: 1.1;
+  margin-bottom: 0.25rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gap-board-tile-ring {
+  width: 32px;
+  height: 32px;
+  font-size: 0.52rem;
+}
+.gap-board-tile-ring span {
+  width: 20px;
+  height: 20px;
+}
+.gap-board-tile-nc {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #c62828;
+  background: #ffebee;
+  border-radius: 3px;
+  padding: 0 0.2rem;
+  line-height: 1.3;
+}
 .gap-dash-kpis {
   display: flex;
   flex-wrap: wrap;

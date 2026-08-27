@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Panel consultor — GlobalGAP{% endblock %}
 {% block content %}
-<div class="container-fluid py-2 gap-dash">
+<div class="container-fluid py-2 gap-board">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
     <h1 class="h5 mb-0">🌿 Panel GlobalGAP</h1>
     <div class="d-flex gap-1">
@@ -12,7 +12,7 @@
     </div>
   </div>
 
-  <div class="gap-dash-kpis mb-2">
+  <div class="gap-dash-kpis mb-3">
     <div class="gap-dash-kpi gap-kpi-clientes">
       <span class="gap-dash-kpi-n">{{ resumen.n_clientes }}</span>
       <span class="gap-dash-kpi-l">Clientes</span>
@@ -31,67 +31,48 @@
     </div>
   </div>
 
-  {% if not resumen.summary_rows %}
+  {% if not resumen.client_blocks %}
   <div class="panel-card py-2 px-3">
     <div class="alert alert-info mb-0 py-2 small">
       Sin ámbitos. <a href="{{ url_for('globalgap_portal.clientes_list') }}">Crear cliente → CSG → ámbito</a>
     </div>
   </div>
   {% else %}
-  <div class="panel-card gap-dash-table-card p-0">
-    <table class="table table-sm gap-dash-table mb-0">
-      <thead>
-        <tr>
-          <th>Cliente</th>
-          <th>CSG · Predio</th>
-          <th>Huerto · Especie</th>
-          <th class="text-center">Checklist</th>
-          <th class="text-center">NC</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in resumen.summary_rows %}
-        <tr class="gap-dash-row"
-            style="--client-color: {{ row.theme.primary }}; --client-bg: {{ row.theme.bg }}; --huerto-bg: {{ row.colors.bg }};">
-          <td class="gap-dash-td-client">
-            {% if row.show_client %}
-            <span class="gap-dash-client-pill">{{ row.cliente_nombre }}</span>
-            {% endif %}
-          </td>
-          <td class="gap-dash-td-csg">
-            {% if row.show_csg %}
-            <span class="gap-dash-csg">{{ row.csg_codigo }}</span>
-            <span class="text-muted">{{ row.csg_predio }}</span>
-            {% endif %}
-          </td>
-          <td class="gap-dash-td-huerto">
-            <span class="gap-dash-huerto">{{ row.huerto }}</span>
-            <span class="text-muted">· {{ row.especie }}</span>
-          </td>
-          <td class="text-center">
-            <div class="gap-mini-ring mx-auto"
-                 style="--pct: {{ row.pct_checklist }}; --ring-color: {{ row.theme.accent }};"
-                 title="Checklist {{ row.pct_checklist }}%">
-              <span>{{ row.pct_checklist|round(0)|int }}%</span>
-            </div>
-          </td>
-          <td class="text-center">
-            {% if row.nc_abiertas %}
-            <span class="badge text-bg-danger">{{ row.nc_abiertas }}</span>
-            {% else %}
-            <span class="text-muted">—</span>
-            {% endif %}
-          </td>
-          <td class="text-end pe-2">
-            <a class="btn btn-outline-success btn-sm py-0 px-2"
-               href="{{ url_for('globalgap_portal.entrar_ambito', ambito_id=row.ambito_id) }}"
-               title="Abrir certificación">→</a>
-          </td>
-        </tr>
+
+  <div class="gap-board-grid">
+    {% for block in resumen.client_blocks %}
+    {% set theme = block.theme %}
+    <section class="gap-board-client"
+             style="--client-color: {{ theme.primary }}; --client-bg: {{ theme.bg }}; --client-accent: {{ theme.accent }};">
+      <header class="gap-board-client-head">
+        <span class="gap-board-client-name">{{ block.nombre }}</span>
+        <span class="gap-board-client-meta">{{ block.n_csg }} CSG · {{ block.n_ambitos }} ámb.</span>
+        <a href="{{ url_for('globalgap_portal.clientes_detalle', etiqueta_id=block.id) }}"
+           class="gap-board-client-link">Ficha</a>
+      </header>
+      <div class="gap-board-tiles">
+        {% for csg in block.csgs %}
+        {% for card in csg.ambitos %}
+        <a class="gap-board-tile"
+           href="{{ url_for('globalgap_portal.entrar_ambito', ambito_id=card.ambito_id) }}"
+           style="--tile-bg: {{ card.colors.bg }}; --tile-border: {{ card.colors.border }};"
+           title="Abrir certificación — {{ card.huerto }} · {{ card.especie }}">
+          <span class="gap-board-tile-csg">CSG {{ card.csg_codigo }}</span>
+          <span class="gap-board-tile-huerto">{{ card.huerto }}</span>
+          <span class="gap-board-tile-esp">{{ card.especie }}</span>
+          <div class="gap-mini-ring gap-board-tile-ring"
+               style="--pct: {{ card.pct_checklist }}; --ring-color: {{ theme.accent }};">
+            <span>{{ card.pct_checklist|round(0)|int }}%</span>
+          </div>
+          {% if card.nc_abiertas %}
+          <span class="gap-board-tile-nc">{{ card.nc_abiertas }} NC</span>
+          {% endif %}
+        </a>
         {% endfor %}
-      </tbody>
-    </table>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
   </div>
   {% endif %}
 </div>
