@@ -11,6 +11,7 @@ import io
 import re
 import shutil
 import sys
+import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -367,8 +368,54 @@ def patch_doc(path: Path, membrete: Membrete) -> tuple[bool, str]:
     return True, ";".join(dict.fromkeys(notes)) or "doc"
 
 
+def _strip_lc_header_fragments(xml: str, membrete: Membrete) -> tuple[str, bool]:
+    """Vacía w:t sueltos de membrete LC cuando ya está el predio Espino."""
+    if membrete.slug != "espino":
+        return xml, False
+    if membrete.razon.upper() not in xml.upper():
+        return xml, False
+    orig = xml
+    for frag in (
+        "SOCIEDAD AGRICOLA LTDA.",
+        "SOCIEDAD AGRICOLA LTDA",
+        "AGRICOLA LTDA",
+        "PARC. EL SAUCE LOTE 4 ",
+        "PARC. ",
+        "EL SAUCE LOTE 4",
+        "LA APARICION ",
+    ):
+        xml = re.sub(rf">{re.escape(frag)}</w:t>", "></w:t>", xml, flags=re.I)
+    xml = re.sub(r">PAINE\s*</w:t>", "></w:t>", xml, flags=re.I)
+    if membrete.rut not in xml and f">{membrete.razon}</w:t>" in xml:
+        xml = xml.replace(
+            f">{membrete.razon}</w:t>",
+            f">{membrete.razon}</w:t></w:r><w:r><w:rPr/><w:t xml:space=\"preserve\">RUT: {membrete.rut}\r{membrete.direccion}</w:t>",
+            1,
+        )
+    return xml, xml != orig
+
+
+def _inject_espino_header_if_lc_only(xml: str, membrete: Membrete) -> tuple[str, bool]:
+    """Encabezado solo con restos LC (sin EL ESPINO): inserta membrete Espino."""
+    if membrete.slug != "espino" or "EL ESPINO" in xml.upper():
+        return xml, False
+    if "SAUCE" not in xml.upper() and "AGRICOLA LTDA" not in xml.upper():
+        return xml, False
+    orig = xml
+    block = f"{membrete.razon}\rRUT: {membrete.rut}\r{membrete.direccion}"
+    for pat in (
+        r"(<w:t[^>]*>)\s*AGRICOLA LTDA\s*(</w:t>)",
+        r"(<w:t[^>]*>)\s*SOCIEDAD AGRICOLA LTDA\.?\s*(</w:t>)",
+        r"(<w:t[^>]*>)\s*LA CONCEPCION\s*(</w:t>)",
+    ):
+        xml2 = re.sub(pat, rf"\1{block}\2", xml, count=1, flags=re.I)
+        if xml2 != xml:
+            return xml2, True
+    return xml, xml != orig
+
+
 def _collapse_split_lc_header(xml: str, membrete: Membrete) -> tuple[str, bool]:
-    """Docx clonados LC: 'La Concepcion' + 'Sociedad' + 'Agricola' + 'Ltda.' en varios w:t."""
+    """Docx clonados LC: 'La Concepcion' + 'Sociedad' + 'Agricola' + 'Ltda.' en varios w:r."""
     if membrete.slug != "espino":
         return xml, False
     if not re.search(r">La Concepcion\s*</w:t>", xml, re.I):
@@ -381,13 +428,34 @@ def _collapse_split_lc_header(xml: str, membrete: Membrete) -> tuple[str, bool]:
         count=1,
         flags=re.I,
     )
-    for frag in (
-        r">Sociedad\s*</w:t>",
-        r">\s*Agricola\s*</w:t>",
-        r">\s*Ltda\.?\s*</w:t>",
-    ):
-        xml = re.sub(frag, "></w:t>", xml, flags=re.I)
+    run_pat = (
+        r"<w:r\b[^>]*>\s*(?:<w:rPr\b.*?</w:rPr>\s*)?"
+        r"<w:t\b[^>]*>\s*{frag}\s*</w:t>\s*</w:r>"
+    )
+    for frag in ("Sociedad", "Agricola", "Ltda\\.?"):
+        xml = re.sub(run_pat.format(frag=frag), "", xml, count=1, flags=re.I | re.S)
     return xml, xml != orig
+
+
+def _ooxml_bytes_valid(data: bytes) -> bool:
+    """Verifica ZIP OOXML y XML bien formado en partes críticas."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            if z.testzip() is not None:
+                return False
+            for name in z.namelist():
+                if not name.endswith(".xml"):
+                    continue
+                if not (
+                    name.startswith("word/")
+                    or name.startswith("xl/")
+                    or name == "[Content_Types].xml"
+                ):
+                    continue
+                ET.fromstring(z.read(name))
+        return True
+    except Exception:
+        return False
 
 
 def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
@@ -471,27 +539,6 @@ def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
             count=1,
             flags=re.I | re.S,
         )
-        # Clon desde cerezos: limpiar líneas sueltas LC
-        xml = xml.replace(">LA CONCEPCION </w:t>", f">{membrete.razon}</w:t>", 1)
-        xml = xml.replace(">SOCIEDAD AGRICOLA LTDA.</w:t>", "></w:t>", 1)
-        xml = xml.replace(">SOCIEDAD AGRICOLA LTDA. </w:t>", "></w:t>", 1)
-        xml = re.sub(r">PARC\.\s*</w:t>", "></w:t>", xml, count=1)
-        xml = re.sub(r">EL SAUCE LOTE 4\s*</w:t>", f">{membrete.direccion}</w:t>", xml, count=1)
-        xml = re.sub(r">LA APARICION\s*</w:t>", "></w:t>", xml, count=1)
-        xml = re.sub(r">PAINE\s*</w:t>", "></w:t>", xml, count=1)
-
-    # ciruelos / espino / cerezos: RUT tras razón social
-    if membrete.rut not in xml:
-        xml = xml.replace(
-            f">{membrete.razon}</w:t>",
-            f">{membrete.razon}</w:t></w:r><w:r><w:rPr/><w:t>RUT: {membrete.rut}</w:t></w:r><w:r><w:rPr/><w:t>",
-            1,
-        )
-        xml = xml.replace(
-            f">{membrete.razon} </w:t>",
-            f">{membrete.razon}</w:t></w:r><w:r><w:rPr/><w:t>RUT: {membrete.rut}</w:t></w:r><w:r><w:rPr/><w:t>",
-            1,
-        )
 
     # Quitar otras razones sociales del encabezado
     for other in MEMBRETES.values():
@@ -502,6 +549,14 @@ def _patch_header_footer_xml(xml: str, membrete: Membrete) -> tuple[str, bool]:
 
     xml, split_ch = _collapse_split_lc_header(xml, membrete)
     if split_ch:
+        changed = True
+
+    xml, inject_ch = _inject_espino_header_if_lc_only(xml, membrete)
+    if inject_ch:
+        changed = True
+
+    xml, strip_ch = _strip_lc_header_fragments(xml, membrete)
+    if strip_ch:
         changed = True
 
     legacy_xml = _apply_legacy_replacements(xml, membrete)
@@ -540,7 +595,7 @@ def patch_zip_office(path: Path, membrete: Membrete) -> tuple[bool, str]:
                     or "footer" in fn
                     or fn.endswith("document.xml")
                     or fn.endswith("sharedstrings.xml")
-                    or (fn.startswith("xl/") and fn.endswith(".xml"))
+                    or (fn.startswith("xl/worksheets/") and fn.endswith(".xml"))
                 )
                 if patchable:
                     try:
@@ -557,7 +612,10 @@ def patch_zip_office(path: Path, membrete: Membrete) -> tuple[bool, str]:
                     zout.writestr(item, data)
     if not changed:
         return False, "sin-cambios-zip"
-    path.write_bytes(out_buf.getvalue())
+    out_data = out_buf.getvalue()
+    if not _ooxml_bytes_valid(out_data):
+        return False, "xml-invalido-revertido"
+    path.write_bytes(out_data)
     return True, ";".join(notes[:5])
 
 
@@ -632,15 +690,88 @@ def backup_tree(slugs: list[str]) -> Path:
     return bak
 
 
+def restore_slug_from_backup(slug: str, backup: Path) -> None:
+    import tarfile
+
+    if not backup.is_file():
+        raise SystemExit(f"No existe backup {backup}")
+    prefix = f"globalgap/docs/{slug}/"
+    dest = DOCS_ROOT / slug
+    if dest.exists():
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.move(str(dest), str(dest.with_name(f"{slug}_pre_restore_{ts}")))
+    dest.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(backup) as tar:
+        for member in tar.getmembers():
+            if not member.name.startswith(prefix) or member.isdir():
+                continue
+            rel = member.name[len(prefix) :]
+            if not rel or rel.endswith(".bak"):
+                continue
+            out = dest / rel
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with tar.extractfile(member) as src:
+                out.write_bytes(src.read())
+    print(f"RESTORE\t{slug}\tfrom {backup.name}\t-> {dest}")
+
+
+def validate_slug(slug: str) -> int:
+    root = DOCS_ROOT / slug
+    bad: list[tuple[str, str]] = []
+    ok = 0
+    for path in collect_files(slug):
+        rel = str(path.relative_to(DOCS_ROOT))
+        ext = path.suffix.lower()
+        if ext in {".docx", ".xlsx", ".xlsm"}:
+            data = path.read_bytes()
+            if not _ooxml_bytes_valid(data):
+                bad.append((rel, "ooxml-invalid"))
+            else:
+                ok += 1
+        elif ext == ".doc":
+            try:
+                import olefile
+
+                if not olefile.isOleFile(str(path)):
+                    bad.append((rel, "not-ole"))
+                else:
+                    ok += 1
+            except Exception as exc:
+                bad.append((rel, str(exc)))
+        elif ext == ".xls":
+            ok += 1
+    print(f"VALIDATE\t{slug}\tok={ok}\tbad={len(bad)}")
+    for rel, reason in bad:
+        print(f"BAD\t{rel}\t{reason}")
+    return len(bad)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--bootstrap-espino", action="store_true")
     parser.add_argument("--slug", action="append", default=[], help="cerezos|ciruelos|espino")
     parser.add_argument("--no-backup", action="store_true")
+    parser.add_argument(
+        "--restore-from-backup",
+        type=Path,
+        help="Restaura carpeta slug desde tar.gz (globalgap/docs/{slug}/...)",
+    )
+    parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args()
 
     slugs = args.slug or ["cerezos", "ciruelos", "espino"]
+
+    if args.restore_from_backup:
+        for slug in slugs:
+            restore_slug_from_backup(slug, args.restore_from_backup)
+        return 0
+
+    if args.validate_only:
+        err = 0
+        for slug in slugs:
+            err += validate_slug(slug)
+        return 1 if err else 0
 
     if args.bootstrap_espino:
         for line in bootstrap_espino(dry_run=args.dry_run):
