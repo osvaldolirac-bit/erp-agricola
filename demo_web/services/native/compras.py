@@ -88,6 +88,42 @@ def _ensure_folio_interno_col(conn) -> None:
         conn.commit()
 
 
+def _ensure_imputar_bruto_col(conn) -> None:
+    """Marca si la imputación CC debe respetarse como neto (iva_bruto desmarcado)."""
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)").fetchall()}
+    if "imputar_bruto" not in cols:
+        if conn_en_solo_lectura(conn):
+            return
+        conn.execute("ALTER TABLE facturas ADD COLUMN imputar_bruto INTEGER DEFAULT 1")
+        conn.commit()
+    if conn_en_solo_lectura(conn):
+        return
+    # Corregir cabeceras donde las filas _P ya suman neto (~bruto/1.19)
+    conn.execute(
+        """
+        UPDATE facturas
+        SET imputar_bruto = 0
+        WHERE nro_documento NOT LIKE '%_P'
+          AND monto_total > 0
+          AND id IN (
+            SELECT par.id
+            FROM facturas par
+            INNER JOIN facturas p
+              ON p.nro_documento = par.nro_documento || '_P'
+             AND p.proveedor = par.proveedor
+            WHERE par.nro_documento NOT LIKE '%_P'
+            GROUP BY par.id, par.monto_total
+            HAVING ABS(SUM(COALESCE(p.monto_imputado, 0)) * 1.19 - par.monto_total)
+                   < MAX(0.02, par.monto_total * 0.005)
+               AND SUM(COALESCE(p.monto_imputado, 0)) > 0.01
+          )
+        """
+    )
+    conn.commit()
+
+
 def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str:
     """Siguiente correlativo por razón social (solo facturas reales, no INT-)."""
     sql = """
@@ -564,8 +600,21 @@ def _post_save_gastos(demo, conn) -> dict:
     imp = mt if iva_bruto else mt / 1.19
     conn.execute(
         """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-           tipo, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?)""",
-        (ng, prov, fe, fv, mt, "Gasto Operacional", concepto, razon, tipo_gasto),
+           monto_neto, tipo, concepto, razon_social, tipo_gasto, imputar_bruto)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            ng,
+            prov,
+            fe,
+            fv,
+            mt,
+            imp,
+            "Gasto Operacional",
+            concepto,
+            razon,
+            tipo_gasto,
+            1 if iva_bruto else 0,
+        ),
     )
     for c in selcc:
         conn.execute(
@@ -836,6 +885,7 @@ def gather_compras(user_email: str, user_rol: str) -> dict:
     conn = demo.conectar_db()
     try:
         demo._migrar_tipo_gasto_operacional(conn)
+        _ensure_imputar_bruto_col(conn)
         ctx: dict = {"secciones": SECCIONES, "sec_activa": sec}
         if sec == "historial":
             ctx.update(_historial(demo, conn))
@@ -860,6 +910,7 @@ def view(user_email: str, user_rol: str):
         conn = demo.conectar_db()
         try:
             demo._migrar_tipo_gasto_operacional(conn)
+            _ensure_imputar_bruto_col(conn)
             result: dict | None = None
             if action == "add_car":
                 result = _post_add_car(demo)
