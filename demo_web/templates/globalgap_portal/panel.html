@@ -1,79 +1,151 @@
 {% extends "base.html" %}
 {% block title %}Panel consultor — GlobalGAP{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
 {% block content %}
-<div class="container-fluid py-2 gap-board">
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-    <h1 class="h5 mb-0">🌿 Panel GlobalGAP</h1>
-    <div class="d-flex gap-1">
-      <a href="{{ url_for('globalgap_portal.clientes_list') }}" class="btn btn-outline-primary btn-sm py-0">Clientes</a>
-      <form method="post" action="{{ url_for('globalgap_portal.logout') }}">
-        <button type="submit" class="btn btn-outline-secondary btn-sm py-0">Salir</button>
-      </form>
+<div class="gap-comercial-wrap">
+  <div class="page-head">
+    <div>
+      <h1>Panel GlobalGAP</h1>
+      <p>Resumen por cliente · detalle de ámbitos en Clientes</p>
     </div>
+    <form method="post" action="{{ url_for('globalgap_portal.logout') }}">
+      <button type="submit" class="btn btn-outline-secondary btn-sm">Cerrar sesión</button>
+    </form>
   </div>
 
-  <div class="gap-dash-kpis mb-3">
-    <div class="gap-dash-kpi gap-kpi-clientes">
-      <span class="gap-dash-kpi-n">{{ resumen.n_clientes }}</span>
-      <span class="gap-dash-kpi-l">Clientes</span>
+  <div class="kpi-grid kpi-grid-6">
+    <div class="kpi blue">
+      <div class="label">Clientes</div>
+      <div class="value">{{ resumen.n_clientes }}</div>
+      <div class="hint">Cartera activa</div>
     </div>
-    <div class="gap-dash-kpi gap-kpi-csg">
-      <span class="gap-dash-kpi-n">{{ resumen.n_csg }}</span>
-      <span class="gap-dash-kpi-l">CSG</span>
+    <div class="kpi cyan">
+      <div class="label">CSG / predios</div>
+      <div class="value">{{ resumen.n_csg }}</div>
+      <div class="hint">Registros SAG</div>
     </div>
-    <div class="gap-dash-kpi gap-kpi-ambitos">
-      <span class="gap-dash-kpi-n">{{ resumen.n_ambitos }}</span>
-      <span class="gap-dash-kpi-l">Ámbitos</span>
+    <div class="kpi green">
+      <div class="label">Ámbitos</div>
+      <div class="value">{{ resumen.n_ambitos }}</div>
+      <div class="hint">Huerto + especie</div>
     </div>
-    <div class="gap-dash-kpi gap-kpi-nc">
-      <span class="gap-dash-kpi-n">{{ resumen.nc_abiertas }}</span>
-      <span class="gap-dash-kpi-l">NC</span>
+    <div class="kpi {% if resumen.nc_abiertas %}orange{% else %}kpi-info{% endif %}">
+      <div class="label">NC abiertas</div>
+      <div class="value">{{ resumen.nc_abiertas }}</div>
+      <div class="hint">No conformidades</div>
     </div>
+    <a class="kpi text-decoration-none gap-kpi-clientes-link"
+       href="{{ url_for('globalgap_portal.clientes_list') }}">
+      <div class="label"><i class="bi bi-people"></i> Clientes</div>
+      <div class="value">Gestionar</div>
+      <div class="hint">CSG · ámbitos · fichas</div>
+    </a>
   </div>
 
-  {% if not resumen.client_blocks %}
-  <div class="panel-card py-2 px-3">
-    <div class="alert alert-info mb-0 py-2 small">
-      Sin ámbitos. <a href="{{ url_for('globalgap_portal.clientes_list') }}">Crear cliente → CSG → ámbito</a>
+  {% if not resumen.client_summaries %}
+  <div class="panel">
+    <div class="alert alert-info mb-0 py-2">
+      Sin ámbitos registrados.
+      <a href="{{ url_for('globalgap_portal.clientes_list') }}">Crear cliente → CSG → ámbito</a>
     </div>
   </div>
   {% else %}
-
-  <div class="gap-board-grid">
-    {% for block in resumen.client_blocks %}
-    {% set theme = block.theme %}
-    <section class="gap-board-client"
-             style="--client-color: {{ theme.primary }}; --client-bg: {{ theme.bg }}; --client-accent: {{ theme.accent }};">
-      <header class="gap-board-client-head">
-        <span class="gap-board-client-name">{{ block.nombre }}</span>
-        <span class="gap-board-client-meta">{{ block.n_csg }} CSG · {{ block.n_ambitos }} ámb.</span>
-        <a href="{{ url_for('globalgap_portal.clientes_detalle', etiqueta_id=block.id) }}"
-           class="gap-board-client-link">Ficha</a>
-      </header>
-      <div class="gap-board-tiles">
-        {% for csg in block.csgs %}
-        {% for card in csg.ambitos %}
-        <a class="gap-board-tile"
-           href="{{ url_for('globalgap_portal.entrar_ambito', ambito_id=card.ambito_id) }}"
-           style="--tile-bg: {{ card.colors.bg }}; --tile-border: {{ card.colors.border }};"
-           title="Abrir certificación — {{ card.huerto }} · {{ card.especie }}">
-          <span class="gap-board-tile-csg">CSG {{ card.csg_codigo }}</span>
-          <span class="gap-board-tile-huerto">{{ card.huerto }}</span>
-          <span class="gap-board-tile-esp">{{ card.especie }}</span>
-          <div class="gap-mini-ring gap-board-tile-ring"
-               style="--pct: {{ card.pct_checklist }}; --ring-color: {{ theme.accent }};">
-            <span>{{ card.pct_checklist|round(0)|int }}%</span>
+  <div class="row g-3">
+    {% for client in resumen.client_summaries %}
+    <div class="col-lg-6">
+      <div class="panel gap-client-panel">
+        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+          <h2 class="h5 fw-bold mb-0 gap-client-title">{{ client.nombre }}</h2>
+          <a class="btn btn-sm btn-outline-primary py-0"
+             href="{{ url_for('globalgap_portal.clientes_detalle', etiqueta_id=client.id) }}">Ficha</a>
+        </div>
+        <div class="gap-client-donut-row">
+          <div class="gap-client-donut-wrap">
+            <canvas id="gapClientDonut{{ client.id }}" width="120" height="120"
+                    aria-label="Checklist {{ client.pct_checklist }}%"></canvas>
+            <span class="gap-client-donut-val">{{ client.pct_checklist|round(0)|int }}%</span>
           </div>
-          {% if card.nc_abiertas %}
-          <span class="gap-board-tile-nc">{{ card.nc_abiertas }} NC</span>
-          {% endif %}
-        </a>
-        {% endfor %}
-        {% endfor %}
+          <div class="gap-client-stats">
+            <div><span class="text-muted">CSG</span> <strong>{{ client.n_csg }}</strong></div>
+            <div><span class="text-muted">Ámbitos</span> <strong>{{ client.n_ambitos }}</strong></div>
+            <div>
+              <span class="text-muted">NC</span>
+              {% if client.nc_abiertas %}
+              <strong class="text-danger">{{ client.nc_abiertas }}</strong>
+              {% else %}
+              <strong>0</strong>
+              {% endif %}
+            </div>
+            <div class="small text-muted mt-1">Promedio checklist certificación</div>
+          </div>
+        </div>
+        {% if client.lineas %}
+        <div class="table-responsive mt-2">
+          <table class="table table-sm table-hover align-middle mb-0 gap-client-table">
+            <thead>
+              <tr>
+                <th>CSG</th>
+                <th>Huerto · Especie</th>
+                <th class="text-end">%</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ln in client.lineas %}
+              <tr>
+                <td><span class="cot-num">{{ ln.csg_codigo }}</span></td>
+                <td>{{ ln.huerto }} · {{ ln.especie }}</td>
+                <td class="text-end fw-bold">{{ ln.pct_checklist|round(0)|int }}%</td>
+                <td class="text-end">
+                  <a class="btn-act ver" href="{{ url_for('globalgap_portal.entrar_ambito', ambito_id=ln.ambito_id) }}"
+                     title="Certificación"><i class="bi bi-box-arrow-in-right"></i></a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
       </div>
-    </section>
+    </div>
     {% endfor %}
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% if resumen.client_summaries %}
+<script>
+(function () {
+  const clients = {{ resumen.client_summaries|tojson }};
+  if (!window.Chart) return;
+  clients.forEach(function (c) {
+    const el = document.getElementById('gapClientDonut' + c.id);
+    if (!el) return;
+    const fill = (c.style && c.style.donut_fill) ? c.style.donut_fill : '#2f6fed';
+    const track = (c.style && c.style.donut_track) ? c.style.donut_track : '#d7e0ea';
+    new Chart(el, {
+      type: 'doughnut',
+      data: {
+        labels: ['Cumple', 'Pendiente'],
+        datasets: [{
+          data: [c.pct_checklist, c.pct_pendiente],
+          backgroundColor: [fill, track],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        cutout: '72%',
+        plugins: { legend: { display: false } },
+        maintainAspectRatio: false
+      }
+    });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

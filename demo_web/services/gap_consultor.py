@@ -11,57 +11,11 @@ from pathlib import Path
 
 _PLANTILLAS = ("cerezos", "ciruelos")
 _ESPECIE_LABEL = {"cerezos": "Cerezos", "ciruelos": "Ciruelos"}
-_CLIENT_THEMES = (
-    {
-        "primary": "#1565C0",
-        "bg": "#E8F4FD",
-        "accent": "#1976D2",
-        "huerto": (
-            {"bg": "#FAFCFE", "border": "#D6E8F8", "accent": "#90CAF9", "badge": "#F0F7FD"},
-            {"bg": "#F7FAFD", "border": "#C8DFF5", "accent": "#A5D6FA", "badge": "#EBF4FC"},
-            {"bg": "#F3F8FC", "border": "#BBD9F2", "accent": "#B3E0FC", "badge": "#E6F2FA"},
-        ),
-    },
-    {
-        "primary": "#2E7D32",
-        "bg": "#E8F5E9",
-        "accent": "#388E3C",
-        "huerto": (
-            {"bg": "#FAFDFA", "border": "#D5EAD7", "accent": "#A5D6A7", "badge": "#F1F8F1"},
-            {"bg": "#F6FBF6", "border": "#C8E6C9", "accent": "#B9DFBA", "badge": "#EBF5EB"},
-            {"bg": "#F2F9F2", "border": "#BDDDBF", "accent": "#C8E6C9", "badge": "#E5F2E6"},
-        ),
-    },
-    {
-        "primary": "#6A1B9A",
-        "bg": "#F3E5F5",
-        "accent": "#7B1FA2",
-        "huerto": (
-            {"bg": "#FDFAFF", "border": "#E1D5E7", "accent": "#CE93D8", "badge": "#F8F2FA"},
-            {"bg": "#FBF7FC", "border": "#D9CCE3", "accent": "#DAB6E4", "badge": "#F3ECF6"},
-            {"bg": "#F9F4FB", "border": "#D1C4D9", "accent": "#E1BEE7", "badge": "#EFE6F2"},
-        ),
-    },
-    {
-        "primary": "#00838F",
-        "bg": "#E0F7FA",
-        "accent": "#0097A7",
-        "huerto": (
-            {"bg": "#FAFEFE", "border": "#CCEEF1", "accent": "#80DEEA", "badge": "#EDFAFB"},
-            {"bg": "#F6FCFD", "border": "#BFE8EC", "accent": "#9FE8F0", "badge": "#E6F7F9"},
-            {"bg": "#F2FAFB", "border": "#B2DFE5", "accent": "#B2EBF2", "badge": "#E0F4F6"},
-        ),
-    },
-    {
-        "primary": "#E65100",
-        "bg": "#FFF3E0",
-        "accent": "#EF6C00",
-        "huerto": (
-            {"bg": "#FFFDFA", "border": "#FFE0B2", "accent": "#FFCC80", "badge": "#FFF8F0"},
-            {"bg": "#FFFBF5", "border": "#FFD9A8", "accent": "#FFD699", "badge": "#FFF4E8"},
-            {"bg": "#FFF9F2", "border": "#FFD099", "accent": "#FFE0B2", "badge": "#FFF0E0"},
-        ),
-    },
+_COMERCIAL_CLIENT_STYLES = (
+    {"kpi_class": "blue", "donut_fill": "#2f6fed", "donut_track": "#d7e0ea"},
+    {"kpi_class": "cyan", "donut_fill": "#22b8cf", "donut_track": "#d7e0ea"},
+    {"kpi_class": "green", "donut_fill": "#2fbf71", "donut_track": "#d7e0ea"},
+    {"kpi_class": "orange", "donut_fill": "#f0a202", "donut_track": "#d7e0ea"},
 )
 
 
@@ -635,6 +589,30 @@ def load_ambito_ctx(conn: sqlite3.Connection, ambito_id: int) -> GapAmbitoCtx | 
     )
 
 
+def _client_checklist_pct(conn: sqlite3.Connection, ambito_ids: list[int]) -> float:
+    if not ambito_ids:
+        return 0.0
+    try:
+        total = int(conn.execute("SELECT COUNT(*) FROM gap_checklist").fetchone()[0] or 0)
+        if not total:
+            return 0.0
+        cumple = 0
+        for aid in ambito_ids:
+            key = especie_key_for_ambito(int(aid))
+            cumple += int(
+                conn.execute(
+                    """SELECT COUNT(*) FROM gap_evaluacion e
+                       JOIN gap_checklist c ON c.id=e.checklist_id
+                       WHERE COALESCE(e.especie,'')=? AND e.estado='Cumple' AND e.ambito_id=?""",
+                    (key, int(aid)),
+                ).fetchone()[0]
+                or 0
+            )
+        return round(100.0 * float(cumple) / float(total * len(ambito_ids)), 1)
+    except sqlite3.OperationalError:
+        return 0.0
+
+
 def panel_resumen(conn: sqlite3.Connection) -> dict:
     migrar_gap_consultor(conn)
     etiquetas = list_etiquetas(conn)
@@ -653,75 +631,61 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
     alertas = 0
     cards = []
     cards_by_ambito: dict[int, dict] = {}
-    client_blocks: list[dict] = []
+    client_summaries: list[dict] = []
     for ci, et in enumerate(etiquetas):
-        theme = _CLIENT_THEMES[ci % len(_CLIENT_THEMES)]
-        block = {
-            "id": et["id"],
-            "nombre": et["nombre"],
-            "n_csg": et["n_csg"],
-            "n_ambitos": et["n_ambitos"],
-            "theme": theme,
-            "csgs": [],
-        }
-        hi = 0
+        style = _COMERCIAL_CLIENT_STYLES[ci % len(_COMERCIAL_CLIENT_STYLES)]
+        lineas: list[dict] = []
+        ambito_ids: list[int] = []
+        nc_cliente = 0
         for csg in et.get("csgs") or []:
-            csg_block = {
-                "id": csg["id"],
-                "codigo_csg": csg["codigo_csg"],
-                "nombre_predio": csg["nombre_predio"],
-                "direccion": csg.get("direccion") or "",
-                "ambitos": [],
-            }
             for amb in csg.get("ambitos") or []:
-                pct = _ambito_checklist_pct(conn, amb["id"], especie_key_for_ambito(amb["id"]))
-                nc = _ambito_nc_abiertas(conn, amb["id"])
+                aid = int(amb["id"])
+                pct = _ambito_checklist_pct(conn, aid, especie_key_for_ambito(aid))
+                nc = _ambito_nc_abiertas(conn, aid)
                 alertas += nc
-                colors = theme["huerto"][hi % len(theme["huerto"])]
-                hi += 1
+                nc_cliente += nc
+                ambito_ids.append(aid)
                 card = {
                     "etiqueta_id": et["id"],
                     "etiqueta_nombre": et["nombre"],
                     "csg_id": csg["id"],
                     "csg_codigo": csg["codigo_csg"],
-                    "ambito_id": amb["id"],
+                    "ambito_id": aid,
                     "huerto": amb["nombre_huerto"],
                     "especie": amb["especie_cultivo"],
                     "label": f"{et['nombre']} · {csg['codigo_csg']} · {amb['nombre_huerto']} · {amb['especie_cultivo']}",
                     "pct_checklist": pct,
                     "pct_pendiente": round(max(0.0, 100.0 - pct), 1),
                     "nc_abiertas": nc,
-                    "colors": colors,
-                    "client_theme": theme,
                 }
-                csg_block["ambitos"].append(card)
                 cards.append(card)
-                cards_by_ambito[int(amb["id"])] = card
-            if csg_block["ambitos"]:
-                block["csgs"].append(csg_block)
-        if block["csgs"]:
-            client_blocks.append(block)
-    summary_rows: list[dict] = []
-    prev_client_id = None
-    prev_csg_key = None
-    for block in client_blocks:
-        theme = block["theme"]
-        for csg in block["csgs"]:
-            csg_key = (block["id"], csg["id"])
-            for card in csg["ambitos"]:
-                summary_rows.append(
+                cards_by_ambito[aid] = card
+                lineas.append(
                     {
-                        **card,
-                        "cliente_id": block["id"],
-                        "cliente_nombre": block["nombre"],
-                        "csg_predio": csg["nombre_predio"],
-                        "theme": theme,
-                        "show_client": prev_client_id != block["id"],
-                        "show_csg": prev_csg_key != csg_key,
+                        "ambito_id": aid,
+                        "csg_codigo": csg["codigo_csg"],
+                        "huerto": amb["nombre_huerto"],
+                        "especie": amb["especie_cultivo"],
+                        "pct_checklist": pct,
+                        "nc_abiertas": nc,
                     }
                 )
-                prev_client_id = block["id"]
-                prev_csg_key = csg_key
+        if not lineas:
+            continue
+        pct_cliente = _client_checklist_pct(conn, ambito_ids)
+        client_summaries.append(
+            {
+                "id": et["id"],
+                "nombre": et["nombre"],
+                "n_csg": et["n_csg"],
+                "n_ambitos": et["n_ambitos"],
+                "pct_checklist": pct_cliente,
+                "pct_pendiente": round(max(0.0, 100.0 - pct_cliente), 1),
+                "nc_abiertas": nc_cliente,
+                "style": style,
+                "lineas": lineas,
+            }
+        )
     return {
         "n_clientes": len(etiquetas),
         "n_csg": n_csg,
@@ -731,8 +695,7 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
         "etiquetas": etiquetas,
         "cards": cards,
         "cards_by_ambito": cards_by_ambito,
-        "client_blocks": client_blocks,
-        "summary_rows": summary_rows,
+        "client_summaries": client_summaries,
     }
 
 

@@ -134,6 +134,7 @@ def panel():
     return render_template(
         "globalgap_portal/panel.html",
         active_key="PanelGlobalGAP",
+        body_class="gap-comercial-page",
         page_title="Panel consultor GlobalGAP",
         resumen=resumen,
     )
