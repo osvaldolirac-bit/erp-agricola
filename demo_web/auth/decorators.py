@@ -120,12 +120,19 @@ def module_required(module_key: str):
         @wraps(view)
         def wrapped(*args, **kwargs):
             from flask import session
+            from demo_web.tenants import get_tenant
 
             tenant_slug = (getattr(g, "tenant_slug", None) or session.get("tenant_slug") or "").strip().lower()
             if module_key == "Espino" and tenant_slug == "demo":
                 abort(404)
             demo = g.demo
             bind_user_session(g.user["email"], g.user["rol"])
+            tenant = get_tenant(tenant_slug)
+            if tenant and tenant.get("kind") == "globalgap":
+                # Menú GlobalGAP se arma en build_menu(); app_demo no incluye Soporte en opts.
+                if module_key not in {"GlobalGAP", "Soporte", "Manual"}:
+                    abort(403)
+                return view(*args, **kwargs)
             if not demo.puede_acceder_modulo(module_key):
                 abort(403)
             return view(*args, **kwargs)
