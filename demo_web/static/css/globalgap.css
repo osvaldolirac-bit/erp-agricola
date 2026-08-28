@@ -1,0 +1,342 @@
+/* GlobalGAP — panel consultor, Gantt y estilo Comercial
+   Aislado de erp.css para evitar regresiones en petróleo, riego, etc. */
+/* GlobalGAP — tablero Gantt */
+.gap-gantt-hero {
+  border-left: 4px solid #163A5F;
+  background: linear-gradient(180deg, #f5f8fc 0%, #ffffff 55%);
+}
+.gap-timeline-track {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  background: #e8eef5;
+  overflow: hidden;
+}
+.gap-timeline-cosecha {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(15, 143, 168, 0.35);
+  border-radius: 999px;
+}
+.gap-timeline-today {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  margin-left: -1px;
+  background: #c62828;
+  border-radius: 2px;
+}
+.gap-cosecha-chip {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: #e0f7fa;
+  color: #006064;
+  font-weight: 700;
+}
+.gap-mod-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid #e0e6ee;
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: #fff;
+  height: 100%;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.gap-mod-card:hover {
+  border-color: #0F8FA8;
+  transform: translateY(-1px);
+  color: inherit;
+}
+.gap-mod-pct {
+  font-weight: 800;
+  color: #163A5F;
+}
+.gap-mod-progress {
+  height: 8px;
+  background: #eef2f7;
+  margin: 0.4rem 0 0.35rem;
+}
+.gap-mod-card.tone-ok .progress-bar { background: #2e7d32; }
+.gap-mod-card.tone-mid .progress-bar { background: #0F8FA8; }
+.gap-mod-card.tone-low .progress-bar { background: #ef6c00; }
+.gap-mod-card.tone-warn .progress-bar { background: #c62828; }
+.gap-gantt-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.gap-gantt-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 2.4fr) minmax(90px, 0.7fr);
+  gap: 0.65rem;
+  align-items: center;
+}
+.gap-gantt-label {
+  min-width: 0;
+}
+.gap-gantt-lane {
+  position: relative;
+  height: 28px;
+  background: #f3f6fa;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e4ebf2;
+}
+.gap-gantt-cosecha-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(15, 143, 168, 0.12);
+}
+.gap-gantt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #c62828;
+  z-index: 2;
+}
+.gap-gantt-bar {
+  position: absolute;
+  top: 5px;
+  height: 18px;
+  border-radius: 6px;
+  background: #c5d0dc;
+  overflow: hidden;
+  min-width: 8px;
+  z-index: 1;
+}
+.gap-gantt-bar .gap-gantt-fill {
+  display: block;
+  height: 100%;
+  background: #163A5F;
+}
+.gap-gantt-bar.tone-ok .gap-gantt-fill { background: #2e7d32; }
+.gap-gantt-bar.tone-warn .gap-gantt-fill { background: #ef6c00; }
+.gap-gantt-bar.tone-bad .gap-gantt-fill { background: #c62828; }
+.gap-gantt-bar.tone-neutral .gap-gantt-fill { background: #0F8FA8; }
+.gap-gantt-bar-txt {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .25);
+}
+.gap-gantt-meta {
+  text-align: right;
+  line-height: 1.25;
+  color: #455a64;
+}
+.gap-legend {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+.gap-legend.ok { background: #e8f5e9; color: #2e7d32; }
+.gap-legend.warn { background: #fff3e0; color: #ef6c00; }
+.gap-legend.bad { background: #ffebee; color: #c62828; }
+.gap-legend.cos { background: #e0f7fa; color: #006064; }
+@media (max-width: 900px) {
+  .gap-gantt-row {
+    grid-template-columns: 1fr;
+  }
+  .gap-gantt-meta {
+    text-align: left;
+    display: flex;
+    gap: 0.75rem;
+  }
+}
+
+/* GlobalGAP panel — estilo Comercial (Río Maipo) */
+body.gap-comercial-page main.demo-main {
+  background: #eef2f7;
+}
+.gap-comercial-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0.25rem 0 1rem;
+}
+.gap-comercial-wrap .page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.gap-comercial-wrap .page-head h1 {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #163a5f;
+}
+.gap-comercial-wrap .page-head p {
+  margin: 0.25rem 0 0;
+  color: #5b6b7c;
+  font-size: 0.9rem;
+}
+.gap-comercial-wrap .panel {
+  background: #fff;
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 8px 24px rgba(22, 58, 95, 0.06);
+  margin-bottom: 0;
+}
+.gap-comercial-wrap .kpi-grid,
+.gap-comercial-wrap .kpi-grid.kpi-grid-6 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+@media (min-width: 992px) {
+  .gap-comercial-wrap .kpi-grid.kpi-grid-6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.gap-comercial-wrap .kpi {
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  color: #fff;
+  min-height: 88px;
+  box-shadow: 0 8px 22px rgba(22, 58, 95, 0.12);
+}
+.gap-comercial-wrap .kpi .label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  opacity: 0.95;
+}
+.gap-comercial-wrap .kpi .value {
+  font-size: 1.12rem;
+  font-weight: 800;
+  margin-top: 0.35rem;
+}
+.gap-comercial-wrap .kpi .hint {
+  font-size: 0.78rem;
+  margin-top: 0.25rem;
+  opacity: 0.9;
+}
+.gap-comercial-wrap .kpi.blue { background: linear-gradient(135deg, #1f4b99, #2f6fed); }
+.gap-comercial-wrap .kpi.cyan { background: linear-gradient(135deg, #0f8fa8, #22b8cf); }
+.gap-comercial-wrap .kpi.green { background: linear-gradient(135deg, #1f8a65, #2fbf71); }
+.gap-comercial-wrap .kpi.orange { background: linear-gradient(135deg, #c46a12, #f0a202); }
+.gap-comercial-wrap .kpi.kpi-info { background: linear-gradient(135deg, #1f4b99, #2f6fed); }
+.gap-comercial-wrap a.kpi.gap-kpi-clientes-link {
+  display: block;
+  color: #fff;
+  background: linear-gradient(135deg, #5b21b6, #8b5cf6);
+}
+.gap-comercial-wrap a.kpi:hover {
+  color: #fff;
+  filter: brightness(1.05);
+}
+.gap-comercial-wrap .gap-client-title {
+  color: #163a5f;
+}
+.gap-comercial-wrap .gap-client-panel {
+  border-left-width: 4px;
+  border-left-style: solid;
+}
+.gap-comercial-wrap .gap-client-panel--blue { border-left-color: #2f6fed; }
+.gap-comercial-wrap .gap-client-panel--cyan { border-left-color: #22b8cf; }
+.gap-comercial-wrap .gap-client-panel--green { border-left-color: #2fbf71; }
+.gap-comercial-wrap .gap-client-panel--orange { border-left-color: #f0a202; }
+.gap-comercial-wrap .gap-ambito-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.gap-comercial-wrap .gap-ambito-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 118px;
+  padding: 0.55rem 0.45rem 0.5rem;
+  background: #f8fafc;
+  border: 1px solid #d7e0ea;
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  position: relative;
+}
+.gap-comercial-wrap .gap-ambito-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(22, 58, 95, 0.1);
+  border-color: var(--client-accent, #2f6fed);
+}
+.gap-comercial-wrap .gap-ambito-csg {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--client-accent, #2f6fed);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gap-comercial-wrap .gap-ambito-huerto {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #1a2b3c;
+  margin-top: 0.15rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gap-comercial-wrap .gap-ambito-esp {
+  font-size: 0.62rem;
+  color: #5b6b7c;
+  margin-bottom: 0.35rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gap-comercial-wrap .gap-ambito-donut-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+}
+.gap-comercial-wrap .gap-ambito-donut-wrap canvas {
+  width: 72px !important;
+  height: 72px !important;
+}
+.gap-comercial-wrap .gap-ambito-donut-val {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #163a5f;
+  pointer-events: none;
+}
+.gap-comercial-wrap .gap-ambito-nc {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #c62828;
+  background: #ffebee;
+  border-radius: 3px;
+  padding: 0 0.25rem;
+  line-height: 1.35;
+}
+
