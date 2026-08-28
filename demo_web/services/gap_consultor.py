@@ -667,6 +667,7 @@ def panel_resumen(conn: sqlite3.Connection) -> dict:
                         "huerto": amb["nombre_huerto"],
                         "especie": amb["especie_cultivo"],
                         "pct_checklist": pct,
+                        "pct_pendiente": round(max(0.0, 100.0 - pct), 1),
                         "nc_abiertas": nc,
                     }
                 )
