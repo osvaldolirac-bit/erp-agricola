@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 dashboard-page{% if erp_app == 'concepcion' %} dashboard-page--concepcion{% endif %}">
+  {% if logo_url %}
+  <div class="text-center mb-3 dashboard-tenant-logo">
+    <img src="{{ logo_url }}" alt="{{ erp_title }}" class="logo-modulo">
+  </div>
+  {% endif %}
+
+  <div class="dash-enc-simple mb-3">
+    <hr class="dash-hr">
+    <h1 class="dash-main-title">{{ dash_title|default('Dashboard') }}</h1>
+    <p class="dash-subtitle">Resumen operativo{% if erp_app == 'concepcion' %} — Soc. Agrícola La Concepción{% endif %}</p>
+    <span class="modulo-badge">DASHBOARD</span>
+  </div>
+
+  {% if alerta_rrhh %}
+  <div class="alert-roja">⚠️ {{ alerta_rrhh }}</div>
+  {% endif %}
+
+  {% if indicadores %}
+  <div class="banner-econ mb-3">
+    {% if indicadores.get('offline') %}
+    📈 INDICADORES: sin conexión a fuente externa
+    {% else %}
+    📈 INDICADORES: UF: {{ indicadores.uf }} | UTM: {{ indicadores.utm }} |
+    DÓLAR: {{ indicadores.dolar }} | EURO: {{ indicadores.euro }}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="dashboard-kpi-grid mb-4">
+    <div class="dashboard-kpi-card"><div class="dashboard-kpi-label">💰 DEUDA TOTAL</div><div class="dashboard-kpi-value">{{ kpis.deuda_total }}</div></div>
+    <div class="dashboard-kpi-card"><div class="dashboard-kpi-label">🔥 MESES ANTERIORES</div><div class="dashboard-kpi-value critico">{{ kpis.meses_anteriores }}</div></div>
+    <div class="dashboard-kpi-card"><div class="dashboard-kpi-label">⚠️ VENCIDAS</div><div class="dashboard-kpi-value alerta">{{ kpis.vencidas }}</div></div>
+    <div class="dashboard-kpi-card"><div class="dashboard-kpi-label">📄 PENDIENTES</div><div class="dashboard-kpi-value">{{ kpis.pendientes }}</div></div>
+    <div class="dashboard-kpi-card"><div class="dashboard-kpi-label">⛽ PETRÓLEO NETO</div><div class="dashboard-kpi-value">{{ kpis.petroleo }}</div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="dashboard-dual-panel">
+        <div class="dashboard-dual-title">📊 GASTOS POR CENTRO DE COSTOS</div>
+        <div class="dashboard-cc-header">
+          <span>Cuartel</span><span>Total</span><span>Avance</span><span>USD/kg</span>
+        </div>
+        {% for row in gastos_cc %}
+        <div class="dashboard-fila-monto dashboard-fila-cc {% if row.total_row %}total{% endif %}">
+          <span class="etiqueta">{{ row.cuartel }}</span>
+          <span class="monto">{{ row.total }}</span>
+          <span class="metrica avance badge-costos {{ row.avance_tone }}">{{ row.avance }}</span>
+          <span class="metrica usd-kg badge-costos {{ row.usd_tone }}">{{ row.usd_kg }}</span>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Sin datos de costos.</p>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="dashboard-dual-panel">
+        <div class="dashboard-dual-title">📅 Proyección pagos</div>
+        {% for p in pagos_mes %}
+        <div class="dashboard-fila-monto {% if p.vacio %}pago-vacio{% else %}pago{% endif %}">
+          <span class="etiqueta">{{ p.mes }}</span>
+          <span class="monto">{{ p.monto }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {% if master_logo_url %}
+  <div class="dashboard-master-logo" aria-hidden="true">
+    <img src="{{ master_logo_url }}" alt="ERP Master">
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
