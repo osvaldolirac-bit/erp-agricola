@@ -3040,12 +3040,12 @@ body.gap-comercial-page main.demo-main {
 .gap-comercial-wrap .gap-ambito-tile:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 14px rgba(22, 58, 95, 0.1);
-  border-color: #2f6fed;
+  border-color: var(--client-accent, #2f6fed);
 }
 .gap-comercial-wrap .gap-ambito-csg {
   font-size: 0.58rem;
   font-weight: 700;
-  color: #2f6fed;
+  color: var(--client-accent, #2f6fed);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   max-width: 100%;
