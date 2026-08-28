@@ -75,6 +75,8 @@ def check_static_globalgap() -> None:
     text = body.decode("utf-8", errors="replace")
     if ".gap-comercial-wrap" not in text:
         raise CheckFailed("globalgap.css missing .gap-comercial-wrap")
+    if ".gap-client-donut-row" not in text:
+        raise CheckFailed("globalgap.css missing panel consultor donut styles")
     print("OK  static globalgap.css")
 
 

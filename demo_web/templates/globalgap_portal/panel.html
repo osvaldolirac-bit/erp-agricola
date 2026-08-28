@@ -53,7 +53,7 @@
   <div class="row g-3">
     {% for client in resumen.client_summaries %}
     <div class="col-lg-6">
-      <div class="panel gap-client-panel">
+      <div class="panel gap-client-panel gap-client-panel--{{ client.style.kpi_class }}">
         <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
           <h2 class="h5 fw-bold mb-0 gap-client-title">{{ client.nombre }}</h2>
           <a class="btn btn-sm btn-outline-primary py-0"
