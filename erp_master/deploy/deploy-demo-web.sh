@@ -10,7 +10,7 @@ BK="${BACKUP_ROOT}/${STAMP}"
 SERVICE="${SERVICE:-erp-agricola-web}"
 PORT="${PORT:-8508}"
 VERIFY_SCRIPT="${VERIFY_SCRIPT:-/root/scripts/verify_agricola.py}"
-PREFIX="${PREFIX:-/agricola}"
+PREFIX="${PREFIX:-}"
 
 log() { echo "[$(date -Iseconds)] $*"; }
 die() { log "ERROR: $*"; exit 1; }
@@ -71,8 +71,8 @@ systemctl is-active --quiet "$SERVICE" || die "$SERVICE not active"
 if [[ -f "$VERIFY_SCRIPT" ]]; then
   log "Verify agricola"
   DEMO_WEB_ROOT="$DEPLOY_ROOT/demo_web" \
-  BASE_URL="http://127.0.0.1:${PORT}" \
-  PREFIX="$PREFIX" \
+  BASE_URL=http://127.0.0.1:8508 \
+  PREFIX="${PREFIX:-}" \
   python3 "$VERIFY_SCRIPT" || die "verification failed"
 else
   log "WARN: verify script not found at $VERIFY_SCRIPT"

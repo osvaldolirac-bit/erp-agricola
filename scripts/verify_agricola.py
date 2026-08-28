@@ -17,7 +17,8 @@ import urllib.error
 import urllib.request
 
 BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8508").rstrip("/")
-PREFIX = (os.environ.get("PREFIX") or os.environ.get("AGRICOLA_PREFIX") or "/agricola").rstrip("/")
+# Gunicorn (:8508) sirve sin prefijo; nginx externo usa /agricola
+PREFIX = os.environ.get("PREFIX", os.environ.get("AGRICOLA_PREFIX", "")).rstrip("/")
 DEMO_WEB_ROOT = os.environ.get("DEMO_WEB_ROOT", "/root/demo-web/demo_web")
 LOCAL_PORT = os.environ.get("PORT", "8508")
 
