@@ -1,0 +1,71 @@
+<aside class="sidebar" aria-label="Navegación consola">
+  <div class="brand">
+    <img class="brand-logo" src="{{ url_for('static', filename='logo_erpmaster.png') }}" alt="ERP Master">
+    <div class="brand-kicker">{{ brand }}</div>
+    <div class="brand-title">Super Consola</div>
+    <div class="brand-sub">{{ user.nombre or user.email }} · {{ user.rol_label }}</div>
+    {% if tenant is defined and tenant and tenant.producto_label is defined %}
+    <div class="brand-product brand-product-{{ tenant.producto }}">{{ tenant.producto_label }}</div>
+    {% endif %}
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="nav-link {% if nav_active == 'tenants' %}active{% endif %}" href="{{ url_for('home') }}">
+      <span>▦</span> Admin. tenants
+    </a>
+    <a class="nav-link {% if nav_active == 'soporte' %}active{% endif %}" href="{{ url_for('consola_soporte') }}">
+      <span>🎫</span> Soporte
+      {% if soporte_badge is defined and soporte_badge %}
+      <span class="role-badge role-admin" style="margin-left:auto">{{ soporte_badge }}</span>
+      {% endif %}
+    </a>
+
+    <a class="nav-link {% if nav_active == 'clientes_suscriptores' %}active{% endif %}" href="{{ url_for('consola_comercial_suscripciones') }}">
+      <span>💳</span> Clientes suscriptores
+    </a>
+
+    {% if tenant is defined and tenant %}
+    <div class="nav-section">Tenant · {{ tenant.nombre }}</div>
+    <a class="nav-link {% if sec == 'usuarios' %}active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='usuarios') }}">
+      <span>◎</span> Usuarios
+    </a>
+    {% if tenant.kind != 'comercial' %}
+    <a class="nav-link {% if sec == 'modulos' %}active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='modulos') }}">
+      <span>☰</span> Módulos
+    </a>
+    {% endif %}
+    <a class="nav-link {% if sec == 'alertas' %}active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='alertas') }}">
+      <span>✉</span> Alertas
+    </a>
+    {% if tenant.kind != 'comercial' %}
+    <a class="nav-link {% if sec == 'prorrateo' %}active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='prorrateo') }}">
+      <span>%</span> Prorrateo CC
+    </a>
+    {% endif %}
+    <a class="nav-link {% if sec == 'respaldo' %}active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='respaldo') }}">
+      <span>⇩</span> Respaldos
+    </a>
+    {% if tenant.kind == 'demo' or tenant.slug == 'comercial-demo' %}
+    <a class="nav-link {% if sec == 'plataforma' %}active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='plataforma') }}">
+      <span>⚙</span> Plataforma
+    </a>
+    {% endif %}
+    <a class="nav-link {% if sec == 'bitacora' %}active{% endif %}" href="{{ url_for('super_consola', slug=tenant.slug, sec='bitacora') }}">
+      <span>≡</span> Bitácora
+    </a>
+    {% endif %}
+
+    {% if user.is_super %}
+    <div class="nav-section">Plataforma</div>
+    <a class="nav-link {% if nav_active == 'usuarios_consola' %}active{% endif %}" href="{{ url_for('consola_usuarios') }}">
+      <span>★</span> Usuarios consola
+    </a>
+    {% endif %}
+  </nav>
+
+  <div class="sidebar-foot">
+    <form method="post" action="{{ request.script_root.rstrip('/') }}/logout">
+      <button class="nav-link" type="submit"><span>→</span> Salir</button>
+    </form>
+  </div>
+</aside>
