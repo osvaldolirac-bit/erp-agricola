@@ -88,6 +88,24 @@ def _ensure_folio_interno_col(conn) -> None:
         conn.commit()
 
 
+def _es_doc_interno(nro_documento: str) -> bool:
+    doc = (nro_documento or "").strip().upper()
+    if not doc:
+        return True
+    return doc.startswith("INT-") or doc.startswith("INT/")
+
+
+def _es_factura_real_gasto_operacional(nro_documento: str, tipo: str | None) -> bool:
+    """Solo facturas reales de gasto operacional (no INT-, no sueldos _RRHH)."""
+    doc = (nro_documento or "").strip().upper()
+    if not doc or doc.endswith("_P") or doc.endswith("_RRHH"):
+        return False
+    if _es_doc_interno(doc):
+        return False
+    t = (tipo or "").strip()
+    return t in ("Gasto Operacional", "Gasto Vario")
+
+
 def _ensure_imputar_bruto_col(conn) -> None:
     """Marca si la imputación CC debe respetarse como neto (iva_bruto desmarcado)."""
     from erp_solo_lectura import conn_en_solo_lectura
@@ -100,12 +118,30 @@ def _ensure_imputar_bruto_col(conn) -> None:
         conn.commit()
     if conn_en_solo_lectura(conn):
         return
-    # Corregir cabeceras donde las filas _P ya suman neto (~bruto/1.19)
+    # Revertir marcas erróneas (sueldos, INT-, otros tipos)
+    conn.execute(
+        """
+        UPDATE facturas
+        SET imputar_bruto = 1
+        WHERE COALESCE(imputar_bruto, 1) = 0
+          AND (
+            nro_documento LIKE '%_RRHH'
+            OR UPPER(TRIM(nro_documento)) LIKE 'INT-%'
+            OR UPPER(TRIM(nro_documento)) LIKE 'INT/%'
+            OR COALESCE(tipo, '') NOT IN ('Gasto Operacional', 'Gasto Vario')
+          )
+        """
+    )
+    # Solo facturas reales de gasto operacional donde _P ya suma neto (~bruto/1.19)
     conn.execute(
         """
         UPDATE facturas
         SET imputar_bruto = 0
         WHERE nro_documento NOT LIKE '%_P'
+          AND nro_documento NOT LIKE '%_RRHH'
+          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
+          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          AND COALESCE(tipo, '') IN ('Gasto Operacional', 'Gasto Vario')
           AND monto_total > 0
           AND id IN (
             SELECT par.id
@@ -114,6 +150,10 @@ def _ensure_imputar_bruto_col(conn) -> None:
               ON p.nro_documento = par.nro_documento || '_P'
              AND p.proveedor = par.proveedor
             WHERE par.nro_documento NOT LIKE '%_P'
+              AND par.nro_documento NOT LIKE '%_RRHH'
+              AND UPPER(TRIM(par.nro_documento)) NOT LIKE 'INT-%'
+              AND UPPER(TRIM(par.nro_documento)) NOT LIKE 'INT/%'
+              AND COALESCE(par.tipo, '') IN ('Gasto Operacional', 'Gasto Vario')
             GROUP BY par.id, par.monto_total
             HAVING ABS(SUM(COALESCE(p.monto_imputado, 0)) * 1.19 - par.monto_total)
                    < MAX(0.02, par.monto_total * 0.005)
