@@ -138,6 +138,19 @@ def check_salida_petroleo_route() -> None:
     print("OK  salida-petroleo route")
 
 
+def check_compras_insumo_ingrediente() -> None:
+    if not os.path.isdir(DEMO_WEB_ROOT):
+        print("SKIP compras insumo IA (DEMO_WEB_ROOT not found)")
+        return
+    compras_html = _read_local("templates/modules/compras.html")
+    if 'name="ingrediente_activo"' not in compras_html:
+        raise CheckFailed("compras.html missing ingrediente_activo field in insumos form")
+    compras_py = _read_local("services/native/compras.py")
+    if "ingrediente_activo" not in compras_py:
+        raise CheckFailed("compras.py missing ingrediente_activo save logic")
+    print("OK  compras insumo ingrediente activo")
+
+
 def check_consola_globalgap_tenant() -> None:
     cfg_path = os.path.join(
         os.environ.get("ERP_MASTER_ROOT", "/root/erp_master"),
@@ -169,6 +182,7 @@ def main() -> int:
         check_login,
         check_globalgap_login,
         check_salida_petroleo_route,
+        check_compras_insumo_ingrediente,
         check_consola_globalgap_tenant,
     ]
     failed = 0
