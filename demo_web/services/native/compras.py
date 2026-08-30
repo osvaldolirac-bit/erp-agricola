@@ -561,6 +561,7 @@ def _post_add_car(demo) -> dict:
                 "t": cant * neto,
                 "nuevo": True,
                 "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
+                "ingrediente_activo": (request.form.get("ingrediente_activo") or "").strip(),
             }
         )
     _set_car(car)
@@ -593,11 +594,25 @@ def _post_save_agro(demo, conn) -> dict:
     )
     for i in car:
         if i.get("nuevo") or i.get("id") is None:
+            nia = (i.get("ingrediente_activo") or "").strip()
+            nf = i.get("familia", "OTROS")
             cur_ins = conn.execute(
-                "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
-                (i["n"], i.get("familia", "OTROS"), i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
+                "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida, ingrediente_activo) VALUES (?,?,?,?,?,?)",
+                (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO), nia),
             )
-            poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
+            new_id = cur_ins.lastrowid
+            if not nia:
+                poblar_ingredientes_inventario(conn, new_id)
+            elif getattr(demo, "requiere_autorizacion_pppl", lambda _f: False)(nf):
+                gap = conn.execute(
+                    "SELECT id FROM gap_pppl WHERE UPPER(TRIM(producto))=?",
+                    (i["n"].upper(),),
+                ).fetchone()
+                if gap:
+                    conn.execute(
+                        "UPDATE gap_pppl SET ingrediente_activo=?, vigente=1 WHERE id=?",
+                        (nia, gap[0]),
+                    )
         else:
             cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i["id"],)).fetchone()
             npmp = ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"]) if (cur[0] + i["c"]) > 0 else i["p"]
