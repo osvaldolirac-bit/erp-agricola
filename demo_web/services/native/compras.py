@@ -370,6 +370,8 @@ def _historial(demo, conn) -> dict:
 
 def _gather_ingreso(demo, conn) -> dict:
     modo = request.args.get("modo", "gastos")
+    if modo == "insumos":
+        modo = "agro"
     if modo not in {k for k, _ in MODOS_INGRESO}:
         modo = "gastos"
 
@@ -959,6 +961,8 @@ def view(user_email: str, user_rol: str):
 
     sec = request.args.get("sec", "historial")
     modo = request.args.get("modo") or request.form.get("modo", "gastos")
+    if modo == "insumos":
+        modo = "agro"
 
     if request.method == "POST":
         action = request.form.get("action", "")
