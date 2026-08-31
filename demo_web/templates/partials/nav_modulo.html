@@ -1,0 +1,22 @@
+{% macro nav_modulo(endpoint, secciones, activa, param='sec') %}
+<ul class="nav nav-pills flex-wrap demo-nav-seccion gap-1 mb-3">
+  {% for key, label in secciones %}
+  <li class="nav-item">
+    <a class="nav-link {% if activa == key %}active{% endif %}"
+       href="{{ url_for(endpoint, **{param: key}) }}">{{ label }}</a>
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro nav_temporada(endpoint, temporadas, activa, extra={}) %}
+<div class="mb-3">
+  <div class="small text-muted mb-1">Temporada</div>
+  <div class="btn-group flex-wrap">
+    {% for nombre, fi, ff in temporadas %}
+    <a class="btn btn-sm {% if activa == nombre %}btn-primary{% else %}btn-outline-primary{% endif %}"
+       href="{{ url_for(endpoint, temp=nombre, **extra) }}">📅 {{ nombre }}</a>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
