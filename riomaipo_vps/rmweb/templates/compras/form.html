@@ -131,14 +131,14 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-md-7">
-      <label class="form-label fw-bold">Centro de costo <span class="text-danger">*</span></label>
-      <div class="border rounded p-2" style="max-height:9rem;overflow:auto">
+    <div class="col-md-7" id="bloqueCc">
+      <label class="form-label fw-bold">Centro de costo <span class="text-danger cc-req">*</span></label>
+      <div id="ccSelectWrap" class="border rounded p-2" style="max-height:9rem;overflow:auto">
         {% if centros %}
           {% for cc in centros %}
           <div class="form-check">
-            <input class="form-check-input" type="radio" name="centro_costo_id" value="{{ cc.id }}" id="cc{{ cc.id }}"
-              {% if cc_selected and cc.id == cc_selected[0] %}checked{% endif %} required>
+            <input class="form-check-input cc-radio" type="radio" name="centro_costo_id" value="{{ cc.id }}" id="cc{{ cc.id }}"
+              {% if cc_selected and cc.id == cc_selected[0] %}checked{% endif %}>
             <label class="form-check-label" for="cc{{ cc.id }}">{{ cc.nombre }}</label>
           </div>
           {% endfor %}
@@ -152,7 +152,10 @@
                {% if base_bruto %}checked{% endif %}>
         <label class="form-check-label" for="imputarBruto">Imputar sobre el <strong>bruto</strong> del documento (total c/IVA)</label>
       </div>
-      <div class="form-text">Si no marca la casilla, se imputa el <strong>neto</strong>. El monto se asigna al centro seleccionado.</div>
+      <div class="form-text cc-hint">Si no marca la casilla, se imputa el <strong>neto</strong>. El monto se asigna al centro seleccionado.</div>
+      <div class="alert alert-info py-2 px-3 mt-2 mb-0 small d-none" id="ccBodegaHint">
+        La imputación al centro de costo se realiza al <strong>salir de bodega</strong>, no al ingresar la compra.
+      </div>
     </div>
     <div class="col-12"><label class="form-label fw-bold">Notas</label><input class="form-control" name="notas" value="{{ row.notas if row and row.notas else (oc.notas if oc and oc.notas else '') }}"></div>
 
@@ -231,8 +234,29 @@ function fillFromProd(sel){
   const cb=tr.querySelector('.item-serv');
   if(cb) cb.checked=String(opt.dataset.serv)==='1';
 }
+function syncCcBodega(){
+  const stk=document.getElementById('stk');
+  const bloque=document.getElementById('bloqueCc');
+  if(!stk||!bloque) return;
+  const entra=stk.checked;
+  bloque.querySelectorAll('.cc-radio').forEach(el=>{
+    el.required=!entra;
+    if(entra) el.checked=false;
+  });
+  bloque.querySelectorAll('.cc-req').forEach(el=>el.classList.toggle('d-none', entra));
+  const selectWrap=document.getElementById('ccSelectWrap');
+  if(selectWrap) selectWrap.classList.toggle('d-none', entra);
+  const hint=document.getElementById('ccBodegaHint');
+  if(hint) hint.classList.toggle('d-none', !entra);
+  const brutoWrap=document.getElementById('imputarBruto')?.closest('.form-check');
+  if(brutoWrap) brutoWrap.classList.toggle('d-none', entra);
+  const brutoHint=bloque.querySelector('.cc-hint');
+  if(brutoHint) brutoHint.classList.toggle('d-none', entra);
+}
+document.getElementById('stk')?.addEventListener('change', syncCcBodega);
 document.getElementById('formCompra').addEventListener('submit', reindexServ);
 {% if not items %}addItemRow();{% else %}reindexServ();{% endif %}
+syncCcBodega();
 </script>
 {% endif %}
 {% endblock %}

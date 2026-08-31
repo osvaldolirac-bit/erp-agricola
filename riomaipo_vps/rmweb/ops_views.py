@@ -440,7 +440,7 @@ def register_ops_routes(app, login_required):
                 flash("Agregue al menos un ítem", "danger")
             elif not rubro_id:
                 flash("Seleccione el rubro de gasto", "danger")
-            elif not cc_selected:
+            elif not cc_selected and not afecta_stock:
                 flash("Seleccione un centro de costo", "danger")
             else:
                 iva_pct = 19.0
@@ -530,14 +530,19 @@ def register_ops_routes(app, login_required):
                             """,
                             (fid_use, pid, desc, un, cant, costo, total_l, es_serv),
                         )
-                    ok_cc, msg_cc = ops_cc.guardar_imputacion_cc(
-                        db, fid_use, cc_selected, monto_cc
+                    db.execute(
+                        "DELETE FROM factura_compra_cc WHERE factura_id=?",
+                        (fid_use,),
                     )
-                    if not ok_cc:
-                        db.rollback()
-                        flash(msg_cc, "danger")
-                        db.close()
-                        return _render_form()
+                    if not afecta_stock:
+                        ok_cc, msg_cc = ops_cc.guardar_imputacion_cc(
+                            db, fid_use, cc_selected, monto_cc
+                        )
+                        if not ok_cc:
+                            db.rollback()
+                            flash(msg_cc, "danger")
+                            db.close()
+                            return _render_form()
                     ops.recalc_factura_compra(db, fid_use)
                     if not row and afecta_stock:
                         ok, msg = ops.aplicar_entrada_compra(db, fid_use)
@@ -791,6 +796,10 @@ def register_ops_routes(app, login_required):
         unidad = (request.form.get("unidad") or "un").strip() or "un"
         nota = (request.form.get("nota") or "").strip()
         fecha = (request.form.get("fecha") or core.hoy_chile().isoformat()).strip()
+        if tipo == "salida" and not cc_id:
+            flash("Seleccione un centro de costo para la salida de bodega", "danger")
+            db.close()
+            return redirect(url_for("bodega_list"))
         ok, msg = ops.registrar_movimiento_stock(
             db,
             tipo=tipo,
