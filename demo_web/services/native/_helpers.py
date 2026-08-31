@@ -70,6 +70,58 @@ def prorrateo_rrhh(demo, conn) -> dict:
     return {}
 
 
+def reparto_imputacion_cc(demo, conn, total, seleccionados) -> tuple[list[tuple[str, float]] | None, str | None]:
+    """Reparte monto neto entre CC según prorrateo Consola (LC) o partes iguales (fallback).
+
+    Prefiere demo._reparto_por_cc (app_concepcion). Si no existe, replica la misma lógica
+    usando prorrateo_cc / PRORRATEO_CC_DEFAULT del tenant.
+    """
+    if hasattr(demo, "_reparto_por_cc"):
+        try:
+            reparto, err = demo._reparto_por_cc(conn, total, seleccionados)
+            if err:
+                return None, err
+            return reparto, None
+        except Exception as exc:
+            return None, str(exc)
+
+    try:
+        total_f = float(total)
+    except (TypeError, ValueError):
+        return None, "Total inválido."
+    if total_f <= 0:
+        return None, "El total debe ser mayor a cero."
+
+    sel = [str(c).strip().upper() for c in seleccionados if c]
+    if not sel:
+        return None, "Seleccione al menos un centro de costo."
+
+    prorr = [str(c).strip().upper() for c in getattr(demo, "CUARTELES_PRORRATEO", [])]
+    directos = [str(c).strip().upper() for c in getattr(demo, "CUARTELES_IMPUTACION_DIRECTA", [])]
+    invalid = [c for c in sel if c not in prorr and c not in directos]
+    if invalid:
+        return None, f"Centro de costo no válido: {invalid[0]}"
+
+    dir_sel = [c for c in sel if c in directos]
+    pr_sel = [c for c in sel if c in prorr]
+    if dir_sel and pr_sel:
+        return None, (
+            "No mezcle cuarteles del fundo (Corte 1, Corte 2, Ciruelos, Nogales) "
+            "con El Espino u Otros en el mismo movimiento."
+        )
+    if dir_sel:
+        parte = total_f / len(dir_sel)
+        return [(c, parte) for c in dir_sel], None
+
+    pesos = prorrateo_rrhh(demo, conn)
+    sub = {c: float(pesos.get(c, 0.0) or 0.0) for c in pr_sel}
+    suma = sum(sub.values())
+    if suma <= 0:
+        parte = total_f / len(pr_sel)
+        return [(c, parte) for c in pr_sel], None
+    return [(c, total_f * sub[c] / suma) for c in pr_sel], None
+
+
 def avance_ppto_tone(pct: float) -> str:
     """Clase CSS para tono de avance presupuesto (igual que Streamlit)."""
     p = min(float(pct), 100.0) if pct <= 100 else 101.0
