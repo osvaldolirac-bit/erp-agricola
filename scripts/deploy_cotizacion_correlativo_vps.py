@@ -34,6 +34,7 @@ def main() -> None:
     run(
         [
             *ssh,
+            f"mkdir -p {REMOTE}/scripts && "
             f"grep -q next_cotizacion_folio {REMOTE}/rmweb/core.py && "
             f"python3 {REMOTE}/scripts/fix_cotizacion_folio_1019.py && "
             f"systemctl restart erp-riomaipo && systemctl is-active erp-riomaipo",
