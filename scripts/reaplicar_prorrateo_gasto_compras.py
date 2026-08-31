@@ -51,7 +51,7 @@ def main() -> int:
     if not args.proveedor and not args.doc:
         parser.error("Indique --proveedor o --doc")
 
-    from demo_web.services.demo_loader import get_erp_module_for
+    from demo_web.services.erp_loader import get_erp_module_for
     from demo_web.services.native._helpers import reparto_imputacion_cc
 
     demo = get_erp_module_for("concepcion")
