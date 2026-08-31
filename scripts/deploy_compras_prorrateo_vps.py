@@ -38,7 +38,7 @@ def main() -> None:
         f"cd {REMOTE} && "
         "grep -q reparto_imputacion_cc demo_web/services/native/_helpers.py && "
         "grep -q reparto_imputacion_cc demo_web/services/native/compras.py && "
-        "ERP_APP=concepcion python3 scripts/reaplicar_prorrateo_gasto_compras.py --proveedor 'Luis Aros' && "
+        "ERP_LC_DB=/root/erp_concepcion_v6.db python3 scripts/reaplicar_prorrateo_gasto_compras.py --proveedor 'Luis Aros' && "
         "systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web"
     )
     run([*ssh_base, remote_cmd])
