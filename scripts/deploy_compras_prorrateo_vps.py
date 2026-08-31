@@ -14,6 +14,7 @@ FILES = [
     ("demo_web/services/native/_helpers.py", "demo_web/services/native/_helpers.py"),
     ("demo_web/services/native/compras.py", "demo_web/services/native/compras.py"),
     ("scripts/reaplicar_prorrateo_gasto_compras.py", "scripts/reaplicar_prorrateo_gasto_compras.py"),
+    ("scripts/reaplicar_prorrateo_gastos_batch.py", "scripts/reaplicar_prorrateo_gastos_batch.py"),
 ]
 
 
@@ -36,9 +37,7 @@ def main() -> None:
     ssh_base = ["sshpass", "-e", "ssh", "-o", "StrictHostKeyChecking=no", "-p", PORT, HOST]
     remote_cmd = (
         f"cd {REMOTE} && "
-        "grep -q reparto_imputacion_cc demo_web/services/native/_helpers.py && "
-        "grep -q reparto_imputacion_cc demo_web/services/native/compras.py && "
-        "ERP_LC_DB=/root/erp_concepcion_v6.db python3 scripts/reaplicar_prorrateo_gasto_compras.py --proveedor 'Luis Aros' && "
+        "python3 scripts/reaplicar_prorrateo_gastos_batch.py && "
         "systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web"
     )
     run([*ssh_base, remote_cmd])
