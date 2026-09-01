@@ -520,7 +520,7 @@ def _post_agregar_producto(demo, conn) -> dict:
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Valores numéricos inválidos."}
 
-    from pppl_catalogo_sag import resolver_ingrediente_activo
+    from erp_inventario_ia import resolver_ingrediente_activo
 
     um_prod = demo._um_producto_inventario(conn, prod)
     car = session.get(CAR_KEY, [])
