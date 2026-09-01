@@ -23,7 +23,20 @@ MESES = (
 
 
 def ensure_rrhh_schema(c) -> None:
-    ensure_cc_schema(c)
+    try:
+        ensure_cc_schema(c)
+    except Exception:
+        c.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS centros_costo (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL UNIQUE,
+                activo INTEGER DEFAULT 1,
+                orden INTEGER DEFAULT 0,
+                presupuesto REAL DEFAULT 0
+            );
+            """
+        )
     c.executescript(
         """
         CREATE TABLE IF NOT EXISTS rrhh_trabajadores (

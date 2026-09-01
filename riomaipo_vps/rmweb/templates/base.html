@@ -159,15 +159,23 @@
   <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
   <script>
     $(function () {
-      if ($('.datatable').length) {
-        $('.datatable').DataTable({
+      $('.datatable').each(function () {
+        var $table = $(this);
+        var cols = $table.find('thead th').length;
+        if (!cols) return;
+        var ok = true;
+        $table.find('tbody tr').each(function () {
+          if ($(this).find('td').length !== cols) ok = false;
+        });
+        if (!ok) return;
+        $table.DataTable({
           pageLength: 50,
           order: [],
           language: {
             url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'
           }
         });
-      }
+      });
     });
   </script>
   

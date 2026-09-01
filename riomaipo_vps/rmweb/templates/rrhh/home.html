@@ -50,6 +50,8 @@
       <p class="text-muted mb-0">Agregue un trabajador para comenzar.</p>
       {% elif reparto.n == 0 %}
       <p class="text-muted mb-0">Active al menos un centro de costo para imputar.</p>
+      {% elif not (trabajadores|selectattr('activo')|list) %}
+      <p class="text-muted mb-0">No hay trabajadores activos para imputar.</p>
       {% else %}
       <form method="post">
         <input type="hidden" name="action" value="imputar">
@@ -57,9 +59,14 @@
           <div class="col-md-6">
             <label class="form-label fw-bold">Trabajador</label>
             <select class="form-select" name="trabajador_id" required>
-              {% for t in trabajadores if t.activo %}
+              {% set activos = trabajadores|selectattr('activo')|list %}
+              {% if not activos %}
+              <option value="" disabled selected>Sin trabajadores activos</option>
+              {% else %}
+              {% for t in activos %}
               <option value="{{ t.id }}">{{ t.nombre }}{% if t.cargo %} · {{ t.cargo }}{% endif %}</option>
               {% endfor %}
+              {% endif %}
             </select>
           </div>
           <div class="col-md-3">
@@ -125,7 +132,7 @@
 <div class="panel mt-3">
   <h2 class="h6 fw-bold mb-3">Historial de imputaciones</h2>
   <div class="table-responsive">
-    <table class="table table-sm align-middle mb-0 datatable">
+    <table class="table table-sm align-middle mb-0{% if pagos %} datatable{% endif %}">
       <thead>
         <tr>
           <th>Periodo</th>
