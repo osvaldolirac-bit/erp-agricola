@@ -70,7 +70,7 @@ TENANTS: dict[str, dict[str, Any]] = {
         "slug": "taller-demo",
         "nombre": "DEMO Taller Automotriz",
         "nombre_erp": "DEMO Taller Automotriz",
-        "descripcion": "Pruebas — Taller automotriz (cotizaciones + OT futuro)",
+        "descripcion": "Pruebas — Taller automotriz (cotizaciones + OT)",
         "es_demo": True,
         "rubro": "taller",
         "db": os.environ.get("TALLER_DEMO_DB", f"{_DATA}/taller_demo.db"),
@@ -110,3 +110,28 @@ def es_demo(slug: str | None) -> bool:
 def rubro(slug: str | None) -> str:
     ten = get_tenant(slug)
     return str((ten or {}).get("rubro") or "comercial").strip().lower()
+
+
+# Módulos ocultos por rubro (menú lateral y acceso directo por URL).
+_MODULOS_OCULTOS_POR_RUBRO: dict[str, frozenset[str]] = {
+    "taller": frozenset({"arriendos", "mercadolibre"}),
+}
+
+# Módulos visibles solo en ciertos rubros.
+_MODULOS_EXCLUSIVOS: dict[str, frozenset[str]] = {
+    "taller_ot": frozenset({"taller"}),
+}
+
+
+def modulo_visible(slug: str | None, modulo: str) -> bool:
+    """Indica si un módulo del menú lateral aplica al tenant."""
+    mod = str(modulo or "").strip().lower()
+    if not mod:
+        return False
+    r = rubro(slug)
+    if mod in _MODULOS_OCULTOS_POR_RUBRO.get(r, frozenset()):
+        return False
+    exclusivo = _MODULOS_EXCLUSIVOS.get(mod)
+    if exclusivo is not None:
+        return r in exclusivo
+    return True
