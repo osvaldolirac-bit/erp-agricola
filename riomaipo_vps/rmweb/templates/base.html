@@ -81,11 +81,11 @@
         <a class="nav-link {% if active=='bodega' %}active{% endif %}" href="{{ url_for('bodega_list') }}">
           <span class="nav-link-main"><i class="bi bi-box-seam"></i> Bodega</span>
         </a>
-        <a class="nav-link {% if active=='rrhh' %}active{% endif %}" href="{{ url_for('rrhh_home') }}">
-          <span class="nav-link-main"><i class="bi bi-people"></i> RRHH</span>
-        </a>
 
-        
+        <div class="nav-section">RRHH</div>
+        <a class="nav-link {% if active=='rrhh' %}active{% endif %}" href="{{ url_for('rrhh_home') }}">
+          <span class="nav-link-main"><i class="bi bi-people"></i> Sueldos</span>
+        </a>
 
         <div class="nav-section">Sistema</div>
         <a class="nav-link {% if active=='admin' %}active{% endif %}" href="{{ url_for('admin') }}">
