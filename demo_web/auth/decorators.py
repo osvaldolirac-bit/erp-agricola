@@ -152,6 +152,30 @@ def request_path() -> str:
     return path
 
 
+def _sidebar_badge_count(conn, module_key: str) -> int | None:
+    """Pendientes visibles en sidebar (/agricola). None = no mostrar contador."""
+    try:
+        if module_key == "Petróleo":
+            from demo_web.services.salida_petroleo import contar_pendientes, habilitado
+
+            if not habilitado():
+                return None
+            return contar_pendientes(conn)
+        if module_key == "Maquinaria":
+            from erp_maquinaria import contar_maquinaria_casos_abiertos
+
+            return contar_maquinaria_casos_abiertos(conn)
+        if module_key == "Riego":
+            from demo_web.services.registro_riego import contar_pendientes, habilitado
+
+            if not habilitado():
+                return None
+            return contar_pendientes(conn)
+    except Exception:
+        return None
+    return None
+
+
 def build_menu(user_email: str, rol: str) -> list[dict]:
     from demo_web.tenants import get_tenant
     from flask import session
@@ -195,6 +219,7 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     demo = get_demo_module()
     bind_user_session(user_email, rol)
     opts = demo.construir_menu_usuario(user_email, rol)
+    badge_by_key: dict[str, int] = {}
     conn = demo.conectar_db()
     try:
         try:
@@ -209,6 +234,12 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
             opts = aplicar_badge_menu_maquinaria(opts, conn)
         except Exception:
             pass
+        for mod_key in ("Petróleo", "Maquinaria", "Riego"):
+            if mod_key not in opts.values():
+                continue
+            n = _sidebar_badge_count(conn, mod_key)
+            if n is not None:
+                badge_by_key[mod_key] = n
     finally:
         conn.close()
 
@@ -254,12 +285,13 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     for label, key in opts.items():
         endpoint = slug_map.get(key)
         if endpoint:
-            items.append(
-                {
-                    "label": label,
-                    "key": key,
-                    "endpoint": endpoint,
-                    "icon": icon_map.get(key, "bi-circle"),
-                }
-            )
+            item = {
+                "label": label,
+                "key": key,
+                "endpoint": endpoint,
+                "icon": icon_map.get(key, "bi-circle"),
+            }
+            if key in badge_by_key:
+                item["badge_count"] = badge_by_key[key]
+            items.append(item)
     return items
