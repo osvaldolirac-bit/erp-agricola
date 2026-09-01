@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% block title %}Centro de costo{% endblock %}
+{% block content %}
+{% set avance = matriz.avance if matriz else none %}
+<div class="page-head">
+  <div>
+    <h1>Centro de costo</h1>
+    <p>Gasto vs presupuesto por centro y resumen por rubro. Catálogo y ppto en <a href="{{ url_for('admin', tab='centros') }}">Administración</a>.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('compras_list') }}">Ir a Compras</a>
+</div>
+
+<form method="get" class="panel mb-3">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label fw-bold">Desde</label>
+      <input type="date" class="form-control" name="desde" value="{{ desde }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold">Hasta</label>
+      <input type="date" class="form-control" name="hasta" value="{{ hasta }}">
+    </div>
+    <div class="col-md-3 d-flex gap-2">
+      <button class="btn btn-primary" type="submit">Filtrar</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('centros_costo', tab=tab) }}">Limpiar</a>
+    </div>
+  </div>
+</form>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item">
+    <a class="nav-link {% if tab=='resumen' %}active{% endif %}"
+       href="{{ url_for('centros_costo', tab='resumen', desde=desde or None, hasta=hasta or None) }}">Resumen</a>
+  </li>
+  {% for cc in centros %}
+  <li class="nav-item">
+    <a class="nav-link {% if tab=='cc-' ~ cc.id %}active{% endif %}"
+       href="{{ url_for('centros_costo', tab='cc-' ~ cc.id, desde=desde or None, hasta=hasta or None) }}">{{ cc.nombre }}</a>
+  </li>
+  {% endfor %}
+</ul>
+
+<style>
+  .cc-avance-bar { height: 8px; background: #e8eef5; border-radius: 999px; overflow: hidden; }
+  .cc-avance-bar > span { display: block; height: 100%; border-radius: 999px; transition: width .35s ease; }
+  .cc-avance-bar > span.ok { background: var(--ok); }
+  .cc-avance-bar > span.warn { background: var(--warn); }
+  .cc-avance-bar > span.over { background: var(--danger); }
+  .cc-avance-bar > span.sin_ppto { background: #9aa8b8; }
+  .cc-kpi { border: 1px solid var(--line); border-radius: 10px; padding: .85rem 1rem; background: #f7fafc; height: 100%; }
+  .cc-kpi .lbl { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .cc-kpi .val { font-size: 1.15rem; font-weight: 800; color: var(--brand); margin-top: .15rem; }
+  .cc-dona-wrap { max-width: 260px; margin: 0 auto; position: relative; }
+  .cc-dona-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; pointer-events: none;
+  }
+  .cc-dona-center .pct { font-size: 1.6rem; font-weight: 800; color: var(--brand); line-height: 1; }
+  .cc-dona-center .sub { font-size: .72rem; color: var(--muted); margin-top: .2rem; }
+  .cc-estado-ok { color: var(--ok); font-weight: 700; }
+  .cc-estado-warn { color: var(--warn); font-weight: 700; }
+  .cc-estado-over { color: var(--danger); font-weight: 700; }
+  .cc-estado-sin_ppto { color: var(--muted); }
+</style>
+
+{% if tab == 'resumen' %}
+<div class="panel mb-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h2 class="h6 mb-1">Avance gasto / presupuesto</h2>
+      <p class="small text-muted mb-0">Compara el gasto imputado del período filtrado con el presupuesto definido por centro.</p>
+    </div>
+    {% if not avance or not avance.tiene_presupuesto %}
+    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin', tab='centros') }}">Definir presupuestos</a>
+    {% endif %}
+  </div>
+
+  {% if not avance or not avance.tiene_presupuesto %}
+  <div class="alert alert-info py-2 mb-0">
+    Aún no hay presupuestos cargados. Defínalos en <strong>Administración → Centros de costo</strong> para ver el avance y la dona.
+  </div>
+  {% else %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="cc-kpi">
+        <div class="lbl">Presupuesto total</div>
+        <div class="val">{{ clp(avance.presupuesto_total) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="cc-kpi">
+        <div class="lbl">Gastado (período)</div>
+        <div class="val">{{ clp(avance.gasto_total) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="cc-kpi">
+        <div class="lbl">Disponible</div>
+        <div class="val">{{ clp(avance.disponible_total) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="cc-kpi">
+        <div class="lbl">Avance global</div>
+        <div class="val {% if avance.pct_global >= 100 %}cc-estado-over{% elif avance.pct_global >= 80 %}cc-estado-warn{% else %}cc-estado-ok{% endif %}">
+          {{ '%.1f'|format(avance.pct_global) }}%
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 align-items-center">
+    <div class="col-lg-4">
+      <div class="cc-dona-wrap">
+        <canvas id="ccDonaAvance" height="240" aria-label="Dona gasto vs disponible"></canvas>
+        <div class="cc-dona-center">
+          <div class="pct">{{ '%.0f'|format(avance.pct_global) }}%</div>
+          <div class="sub">utilizado</div>
+        </div>
+      </div>
+      <div class="d-flex justify-content-center gap-3 mt-2 small text-muted">
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#c0392b;margin-right:4px"></span>Gastado</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#1f8a65;margin-right:4px"></span>Disponible</span>
+      </div>
+    </div>
+    <div class="col-lg-8">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Centro</th>
+              <th class="text-end">Presupuesto</th>
+              <th class="text-end">Gastado</th>
+              <th class="text-end">Disponible</th>
+              <th style="min-width:140px">Avance</th>
+              <th class="text-end">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in avance.filas %}
+            <tr>
+              <td>
+                <a href="{{ url_for('centros_costo', tab='cc-' ~ f.id, desde=desde or None, hasta=hasta or None) }}">{{ f.nombre }}</a>
+              </td>
+              <td class="text-end">{% if f.presupuesto %}{{ clp(f.presupuesto) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              <td class="text-end">{{ clp(f.gasto) }}</td>
+              <td class="text-end">{% if f.presupuesto %}{{ clp(f.disponible) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              <td>
+                {% if f.presupuesto %}
+                <div class="cc-avance-bar" title="{{ '%.1f'|format(f.pct) }}%">
+                  <span class="{{ f.estado }}" style="width: {% if f.pct > 100 %}100{% else %}{{ f.pct }}{% endif %}%"></span>
+                </div>
+                {% else %}
+                <span class="small text-muted">Sin ppto</span>
+                {% endif %}
+              </td>
+              <td class="text-end cc-estado-{{ f.estado }}">
+                {% if f.presupuesto %}{{ '%.1f'|format(f.pct) }}%{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2 class="h6 mb-3">Totales por rubro × centro de costo <span class="text-muted fw-normal">(monto imputado: neto o bruto según cada compra)</span></h2>
+  {% if not matriz.centros %}
+  <p class="text-muted mb-0">No hay centros de costo activos. Créelos en Administración.</p>
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle mb-0 cc-matriz">
+      <thead>
+        <tr>
+          <th>Rubro</th>
+          {% for cc in matriz.centros %}
+          <th class="text-end">{{ cc.nombre }}</th>
+          {% endfor %}
+          <th class="text-end">Total</th>
+          <th class="text-end">%</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in matriz.rubros %}
+        <tr>
+          <td>{{ r.nombre }}{% if not r.activo %} <span class="text-muted small">(inactivo)</span>{% endif %}</td>
+          {% for cc in matriz.centros %}
+          <td class="text-end {% if matriz.matrix[r.id][cc.id] %}{% else %}text-muted{% endif %}">
+            {{ clp(matriz.matrix[r.id][cc.id]) }}
+          </td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ clp(matriz.row_totals[r.id]) }}</td>
+          <td class="text-end">{{ '%.1f'|format(matriz.row_pcts[r.id]) }}%</td>
+        </tr>
+        {% endfor %}
+        {% if matriz.tiene_sin_rubro %}
+        <tr>
+          <td class="text-muted">Sin rubro</td>
+          {% for cc in matriz.centros %}
+          <td class="text-end">{{ clp(matriz.sin_rubro[cc.id]) }}</td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ clp(matriz.sin_rubro_total) }}</td>
+          <td class="text-end">{{ '%.1f'|format(matriz.sin_rubro_pct) }}%</td>
+        </tr>
+        {% endif %}
+        {% if matriz.tiene_bodega %}
+        <tr>
+          <td>Salida bodega</td>
+          {% for cc in matriz.centros %}
+          <td class="text-end {% if matriz.bodega[cc.id] %}{% else %}text-muted{% endif %}">
+            {{ clp(matriz.bodega[cc.id]) }}
+          </td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ clp(matriz.bodega_total) }}</td>
+          <td class="text-end">{{ '%.1f'|format(matriz.bodega_pct) }}%</td>
+        </tr>
+        {% endif %}
+        {% if matriz.tiene_rrhh %}
+        <tr>
+          <td>Remuneraciones</td>
+          {% for cc in matriz.centros %}
+          <td class="text-end {% if matriz.rrhh[cc.id] %}{% else %}text-muted{% endif %}">
+            {{ clp(matriz.rrhh[cc.id]) }}
+          </td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ clp(matriz.rrhh_total) }}</td>
+          <td class="text-end">{{ '%.1f'|format(matriz.rrhh_pct) }}%</td>
+        </tr>
+        {% endif %}
+      </tbody>
+      <tfoot>
+        <tr class="table-light">
+          <th>Total</th>
+          {% for cc in matriz.centros %}
+          <th class="text-end">{{ clp(matriz.col_totals[cc.id]) }}</th>
+          {% endfor %}
+          <th class="text-end">{{ clp(matriz.grand_total) }}</th>
+          <th class="text-end">{% if matriz.grand_total %}100%{% else %}0%{% endif %}</th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% if avance and avance.tiene_presupuesto %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  var el = document.getElementById('ccDonaAvance');
+  if (!el || typeof Chart === 'undefined') return;
+  var gastado = Number({{ avance.gasto_total }}) || 0;
+  var disponible = Number({{ avance.disponible_total }}) || 0;
+  if (gastado <= 0 && disponible <= 0) return;
+  var sliceDisp = disponible > 0 ? disponible : 0;
+  var colors = ['#c0392b', '#1f8a65'];
+  var labels = ['Gastado', 'Disponible'];
+  var values = [gastado, sliceDisp];
+  if (sliceDisp <= 0 && gastado > 0) {
+    values = [gastado];
+    labels = ['Gastado (sobre ppto)'];
+    colors = ['#c0392b'];
+  }
+  new Chart(el, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 0,
+        hoverOffset: 4
+      }]
+    },
+    options: {
+      cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) {
+              var v = ctx.parsed || 0;
+              return ctx.label + ': $ ' + Math.round(v).toLocaleString('es-CL');
+            }
+          }
+        }
+      },
+      animation: { animateRotate: true, duration: 700 }
+    }
+  });
+})();
+</script>
+{% endif %}
+
+{% else %}
+<div class="panel">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h2 class="h6 mb-0">{{ cc_activo.nombre if cc_activo else 'Centro' }} · detalle</h2>
+    <div class="text-muted small">
+      {% set ppto_cc = (cc_activo.presupuesto or 0) if cc_activo else 0 %}
+      {% set gasto_cc = matriz.col_totals.get(cc_activo.id, 0) if cc_activo else 0 %}
+      {% set pct_cc = (100.0 * gasto_cc / ppto_cc) if ppto_cc else 0 %}
+      Total imputado: <strong>{% if cc_activo %}{{ clp(gasto_cc) }}{% else %}{{ clp(0) }}{% endif %}</strong>
+      {% if ppto_cc %}
+      · Ppto: <strong>{{ clp(ppto_cc) }}</strong>
+      · Avance:
+      <strong class="{% if pct_cc >= 100 %}cc-estado-over{% elif pct_cc >= 80 %}cc-estado-warn{% else %}cc-estado-ok{% endif %}">
+        {{ '%.1f'|format(pct_cc) }}%
+      </strong>
+      {% endif %}
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle {% if detalle_cc %}datatable{% endif %}">
+      <thead>
+        <tr>
+          <th>Emisión</th>
+          <th>OC</th>
+          <th>Proveedor</th>
+          <th>Factura</th>
+          <th>Rubro</th>
+          <th class="text-end">Monto CC</th>
+          <th class="text-end">Total doc.</th>
+          <th class="text-end">Saldo</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in detalle_cc or [] %}
+        <tr>
+          <td>{{ fmt_dmy(r.fecha_emision) }}</td>
+          <td>
+            {% if r.fuente == 'bodega' %}—
+            {% elif r.fuente == 'rrhh' %}—
+            {% elif r.oc_folio and r.orden_compra_id %}
+            <a href="{{ url_for('oc_detalle', oid=r.orden_compra_id) }}">{{ r.oc_folio }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td><strong>{{ r.proveedor or '—' }}</strong></td>
+          <td>
+            {% if r.fuente == 'bodega' %}
+            <span class="cot-num">{{ r.producto_nombre or r.documento }}</span>
+            {% if r.cantidad %}<span class="text-muted small"> · {{ r.cantidad }}</span>{% endif %}
+            {% elif r.fuente == 'rrhh' %}
+            <span class="cot-num">{{ r.producto_nombre or r.documento }}</span>
+            {% else %}
+            <span class="cot-num">{{ r.documento }}</span>
+            {% endif %}
+          </td>
+          <td class="small">{{ r.rubro_nombre or '—' }}</td>
+          <td class="text-end fw-semibold">{{ clp(r.monto_cc) }}</td>
+          <td class="text-end">{{ clp(r.total) }}</td>
+          <td class="text-end">{% if r.fuente in ('bodega', 'rrhh') %}—{% else %}{{ clp(r.saldo) }}{% endif %}</td>
+          <td>
+            {% if r.fuente in ('bodega', 'rrhh') %}
+            <span class="estado ok">Imputado</span>
+            {% else %}
+            <span class="estado {{ cxp_estado_class(r.estado) }}">{{ cxp_estado_label(r.estado) }}</span>
+            {% endif %}
+          </td>
+          <td class="actions-cell">
+            {% if r.fuente == 'bodega' %}
+            <a class="btn-act ver" href="{{ url_for('bodega_list') }}" title="Ver bodega"><i class="bi bi-box-seam"></i></a>
+            {% elif r.fuente == 'rrhh' %}
+            <a class="btn-act ver" href="{{ url_for('rrhh_home') }}" title="Ver RRHH"><i class="bi bi-people"></i></a>
+            {% else %}
+            <a class="btn-act ver" href="{{ url_for('compras_detalle', fid=r.id) }}" title="Ver"><i class="bi bi-eye"></i></a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="10" class="text-muted">Sin imputaciones a este centro en el período.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

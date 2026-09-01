@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Órdenes de trabajo{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h3 mb-1">Órdenes de trabajo</h1>
+    <p class="text-muted mb-0">Generadas al aprobar cotizaciones de servicio.</p>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0 datatable">
+      <thead class="table-light">
+        <tr>
+          <th>Folio OT</th>
+          <th>Patente</th>
+          <th>Cliente</th>
+          <th>Cotización</th>
+          <th>Mecánico</th>
+          <th>Estado</th>
+          <th>Apertura</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="fw-semibold">{{ r.folio }}</td>
+          <td>{{ r.patente or '—' }}</td>
+          <td>{{ r.cliente or '—' }}</td>
+          <td>{{ r.cot_folio or '—' }}</td>
+          <td>{{ r.mecanico or '—' }}</td>
+          <td><span class="badge text-bg-secondary">{{ estado_label(r.estado) }}</span></td>
+          <td>{{ fmt_dmy(r.fecha_apertura) if r.fecha_apertura else '—' }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('taller_ot_detalle', ot_id=r.id) }}">Ver</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not rows %}
+    <p class="text-center text-muted py-5 mb-0">
+      No hay órdenes de trabajo aún.<br>
+      <small>Cree una cotización de <strong>servicio</strong>, indique patente y apruebe para generar la primera OT.</small>
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

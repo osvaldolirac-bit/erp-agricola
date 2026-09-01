@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Acceso · Comercial · ERP Master</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=1785543581" sizes="32x32">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v=1785543581">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}?v=1785543581" sizes="any">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=1785543581">
+  <link rel="shortcut icon" href="{{ url_for('favicon') }}?v=1785543581">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
+</head>
+<body class="login-page">
+  <div class="login-stage">
+    <header class="login-top">
+      <div class="dropdown login-access">
+        <button class="btn login-access-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+          Acceso
+        </button>
+        <div class="dropdown-menu dropdown-menu-end login-access-menu p-3">
+          {% if info %}<div class="alert alert-success py-2 mb-2">{{ info }}</div>{% endif %}
+          {% if error %}<div class="alert alert-danger py-2 mb-2" role="alert">{{ error }}</div>{% endif %}
+          <form method="post" action="{{ url_for('login') }}{% if tenant_slug %}?tenant={{ tenant_slug }}{% endif %}" autocomplete="off" id="loginForm">
+            {% if tenant_slug %}<input type="hidden" name="tenant_slug" value="{{ tenant_slug }}">{% endif %}
+            <input type="text" name="fake_user" value="" tabindex="-1" autocomplete="username" aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0;">
+            <input type="password" name="fake_pass" value="" tabindex="-1" autocomplete="current-password" aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0;">
+            <div class="mb-2">
+              <label class="form-label fw-bold mb-1" for="usuario">Usuario</label>
+              <input class="form-control" type="email" name="usuario" id="usuario" value="" required autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="tu@correo.cl">
+            </div>
+            <div class="mb-2">
+              <label class="form-label fw-bold mb-1" for="clave">Clave</label>
+              <input class="form-control" type="password" name="clave" id="clave" placeholder="••••" required autocomplete="new-password">
+            </div>
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" name="recordar" value="1" id="recordar">
+              <label class="form-check-label" for="recordar">Recordar usuario</label>
+            </div>
+            <button class="btn login-submit w-100" type="submit">Ingresar</button>
+          </form>
+        </div>
+      </div>
+    </header>
+
+    <footer class="login-foot">
+      <p class="mb-2"><a class="btn btn-sm btn-outline-light" href="{{ url_for('probar') }}">Probar gratis 30 días</a></p>
+      <img class="login-erpmaster" src="{{ url_for('static', filename='logo_erpmaster.png') }}" alt="ERP Master">
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  (function () {
+    const storageKey = 'erp_comercial_remember_user';
+    const form = document.getElementById('loginForm');
+    const emailInput = document.getElementById('usuario');
+    const passwordInput = document.getElementById('clave');
+    const rememberInput = document.getElementById('recordar');
+    const accessBtn = document.querySelector('.login-access-btn');
+    if (!form || !emailInput || !rememberInput) return;
+
+    function loadRemembered() {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const data = JSON.parse(raw);
+          if (data && data.remember && data.email) {
+            emailInput.value = String(data.email).trim();
+            rememberInput.checked = true;
+            return true;
+          }
+        }
+        if (localStorage.getItem('rm_remember') === '1') {
+          const legacy = localStorage.getItem('rm_acceso') || '';
+          if (legacy) {
+            emailInput.value = legacy;
+            rememberInput.checked = true;
+            localStorage.setItem(storageKey, JSON.stringify({ remember: true, email: legacy }));
+            localStorage.removeItem('rm_remember');
+            localStorage.removeItem('rm_acceso');
+            return true;
+          }
+        }
+      } catch (err) {}
+      return false;
+    }
+
+    function closeAccessMenu() {
+      if (!accessBtn || !window.bootstrap) return;
+      const dd = bootstrap.Dropdown.getInstance(accessBtn) || new bootstrap.Dropdown(accessBtn);
+      dd.hide();
+      accessBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    function blockAutofillUntilAccess() {
+      emailInput.setAttribute('readonly', 'readonly');
+      emailInput.setAttribute('autocomplete', 'off');
+      if (!accessBtn) return;
+      accessBtn.addEventListener('click', function () {
+        emailInput.removeAttribute('readonly');
+        emailInput.setAttribute('autocomplete', 'username');
+      }, { once: true });
+    }
+
+    const loggedOut = window.location.search.indexOf('out=1') >= 0;
+    const serverDefault = {{ default_user|tojson }};
+
+    if (loggedOut) {
+      if (passwordInput) passwordInput.value = '';
+      if (!loadRemembered()) {
+        emailInput.value = '';
+        rememberInput.checked = false;
+      }
+      closeAccessMenu();
+      blockAutofillUntilAccess();
+    } else if (serverDefault) {
+      emailInput.value = String(serverDefault).trim();
+    } else if (!loadRemembered()) {
+      emailInput.value = '';
+      rememberInput.checked = false;
+    }
+
+    {% if error %}
+    if (accessBtn && window.bootstrap) {
+      new bootstrap.Dropdown(accessBtn).show();
+    }
+    {% endif %}
+
+    form.addEventListener('submit', function () {
+      emailInput.removeAttribute('readonly');
+      try {
+        const email = (emailInput.value || '').trim();
+        if (rememberInput.checked && email) {
+          localStorage.setItem(storageKey, JSON.stringify({ remember: true, email: email }));
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+        localStorage.removeItem('rm_remember');
+        localStorage.removeItem('rm_acceso');
+        localStorage.removeItem('rm_clave');
+      } catch (err) {}
+    });
+  })();
+  </script>
+</body>
+</html>
