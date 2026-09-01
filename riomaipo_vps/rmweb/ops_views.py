@@ -35,6 +35,12 @@ def register_ops_routes(app, login_required):
         db = core.conn()
         ops.ensure_ops_schema(db)
         ops_cc.ensure_cc_schema(db)
+        try:
+            from rmweb import ops_rrhh
+
+            ops_rrhh.ensure_rrhh_schema(db)
+        except Exception:
+            pass
         desde = (request.args.get("desde") or "").strip()
         hasta = (request.args.get("hasta") or "").strip()
         tab = (request.args.get("tab") or "resumen").strip()

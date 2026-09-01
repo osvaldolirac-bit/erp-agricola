@@ -2675,11 +2675,13 @@ from rmweb.ops_views import register_ops_routes
 from rmweb.ops_oc_views import register_oc_routes
 from rmweb.ml_views import register_ml_routes
 from rmweb.taller_views import register_taller_routes
+from rmweb.rrhh_views import register_rrhh_routes
 
 register_ops_routes(app, login_required)
 register_oc_routes(app, login_required)
 register_ml_routes(app, login_required)
 register_taller_routes(app, login_required)
+register_rrhh_routes(app, login_required)
 
 
 def create_app():

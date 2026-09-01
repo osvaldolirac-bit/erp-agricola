@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}RRHH{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>RRHH · Sueldos</h1>
+    <p class="text-muted mb-0">Imputa líquido + leyes por trabajador, repartido en partes iguales entre los centros de costo activos.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('centros_costo') }}">Ver centros de costo</a>
+</div>
+
+{% if reparto.n == 0 %}
+<div class="alert alert-warning">
+  No hay centros de costo activos. Cree al menos uno en <strong>Administración → Centros de costo</strong> antes de imputar sueldos.
+</div>
+{% else %}
+<div class="alert alert-info py-2">
+  <strong>{{ reparto.n }}</strong> CC activo(s) → cada uno recibe ~<strong>{{ reparto.pct_cada_uno }}%</strong> del costo empresa (líquido + leyes).
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="panel">
+      <h2 class="h6 fw-bold mb-3">Nuevo trabajador</h2>
+      <form method="post">
+        <input type="hidden" name="action" value="trabajador">
+        <div class="mb-2">
+          <label class="form-label fw-bold">Nombre</label>
+          <input class="form-control" name="nombre" required maxlength="120">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">RUT</label>
+          <input class="form-control" name="rut" placeholder="Opcional">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Cargo</label>
+          <input class="form-control" name="cargo" placeholder="Opcional">
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Agregar</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="panel">
+      <h2 class="h6 fw-bold mb-3">Imputar sueldo</h2>
+      {% if not trabajadores %}
+      <p class="text-muted mb-0">Agregue un trabajador para comenzar.</p>
+      {% elif reparto.n == 0 %}
+      <p class="text-muted mb-0">Active al menos un centro de costo para imputar.</p>
+      {% else %}
+      <form method="post">
+        <input type="hidden" name="action" value="imputar">
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Trabajador</label>
+            <select class="form-select" name="trabajador_id" required>
+              {% for t in trabajadores if t.activo %}
+              <option value="{{ t.id }}">{{ t.nombre }}{% if t.cargo %} · {{ t.cargo }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">Mes</label>
+            <select class="form-select" name="mes">
+              {% for i in range(1, 13) %}
+              <option value="{{ i }}" {% if i == mes_actual %}selected{% endif %}>{{ meses[i-1] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">Año</label>
+            <input class="form-control" type="number" name="anio" value="{{ anio_actual }}" min="2000" max="2100">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Líquido ($)</label>
+            <input class="form-control" type="number" name="liquido" min="0" step="1" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Leyes ($)</label>
+            <input class="form-control" type="number" name="leyes" min="0" step="1" value="0">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Nota</label>
+            <input class="form-control" name="nota" placeholder="Opcional">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-success mt-3">Imputar a CC activos</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="panel mt-3">
+  <h2 class="h6 fw-bold mb-3">Trabajadores</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>RUT</th>
+          <th>Cargo</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in trabajadores %}
+        <tr>
+          <td>{{ t.nombre }}</td>
+          <td>{{ t.rut or '—' }}</td>
+          <td>{{ t.cargo or '—' }}</td>
+          <td>{% if t.activo %}<span class="badge text-bg-success">Activo</span>{% else %}<span class="badge text-bg-secondary">Inactivo</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">Sin trabajadores.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel mt-3">
+  <h2 class="h6 fw-bold mb-3">Historial de imputaciones</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 datatable">
+      <thead>
+        <tr>
+          <th>Periodo</th>
+          <th>Trabajador</th>
+          <th class="text-end">Líquido</th>
+          <th class="text-end">Leyes</th>
+          <th class="text-end">Costo empresa</th>
+          <th>Fecha registro</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pagos %}
+        <tr>
+          <td>{{ mes_label(p.mes) }} {{ p.anio }}</td>
+          <td>{{ p.trabajador }}</td>
+          <td class="text-end">{{ clp(p.liquido) }}</td>
+          <td class="text-end">{{ clp(p.leyes) }}</td>
+          <td class="text-end fw-semibold">{{ clp(p.costo_empresa) }}</td>
+          <td>{{ fmt_dmy(p.fecha_registro) if p.fecha_registro else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">Aún no hay sueldos imputados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -481,17 +481,30 @@ def matriz_cc_rubros(
         if cid in bodega_por_cc:
             bodega_por_cc[cid] = float(monto or 0)
 
+    rrhh_por_cc = {cid: 0.0 for cid in cc_ids}
+    try:
+        from rmweb import ops_rrhh
+
+        ops_rrhh.ensure_rrhh_schema(c)
+        for cid, monto in ops_rrhh.totales_por_cc(c, desde=desde, hasta=hasta).items():
+            if cid in rrhh_por_cc:
+                rrhh_por_cc[cid] = float(monto or 0)
+    except Exception:
+        pass
+
     row_totals = {rid: sum(matrix[rid].values()) for rid in rubro_ids}
     col_totals = {
         cid: (
             sum(matrix[rid][cid] for rid in rubro_ids)
             + float(sin_rubro.get(cid) or 0)
             + float(bodega_por_cc.get(cid) or 0)
+            + float(rrhh_por_cc.get(cid) or 0)
         )
         for cid in cc_ids
     }
     sin_rubro_total = sum(sin_rubro.values())
     bodega_total = sum(bodega_por_cc.values())
+    rrhh_total = sum(rrhh_por_cc.values())
     grand = sum(col_totals.values())
 
     # Filas de mayor a menor gasto.
@@ -513,6 +526,7 @@ def matriz_cc_rubros(
     row_pcts = {rid: _pct(row_totals.get(rid, 0.0)) for rid in rubro_ids}
     sin_rubro_pct = _pct(sin_rubro_total)
     bodega_pct = _pct(bodega_total)
+    rrhh_pct = _pct(rrhh_total)
     avance = avance_gasto_presupuesto(centros, col_totals)
     return {
         "centros": centros,
@@ -527,9 +541,13 @@ def matriz_cc_rubros(
         "bodega": bodega_por_cc,
         "bodega_total": bodega_total,
         "bodega_pct": bodega_pct,
+        "rrhh": rrhh_por_cc,
+        "rrhh_total": rrhh_total,
+        "rrhh_pct": rrhh_pct,
         "grand_total": grand,
         "tiene_sin_rubro": sin_rubro_total > 0,
         "tiene_bodega": bodega_total > 0,
+        "tiene_rrhh": rrhh_total > 0,
         "avance": avance,
     }
 
@@ -653,7 +671,17 @@ def detalle_por_centro(
         """,
         [int(cc_id), *params_mov],
     ).fetchall()
-    rows = list(compras) + list(bodega)
+    rrhh: list[Any] = []
+    try:
+        from rmweb import ops_rrhh
+
+        ops_rrhh.ensure_rrhh_schema(c)
+        rrhh = ops_rrhh.list_imputaciones_por_centro(
+            c, int(cc_id), desde=desde, hasta=hasta
+        )
+    except Exception:
+        pass
+    rows = list(compras) + list(bodega) + list(rrhh)
     rows.sort(
         key=lambda r: (
             str(r["fecha_emision"] or ""),

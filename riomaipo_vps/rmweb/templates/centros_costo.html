@@ -220,6 +220,18 @@
           <td class="text-end">{{ '%.1f'|format(matriz.bodega_pct) }}%</td>
         </tr>
         {% endif %}
+        {% if matriz.tiene_rrhh %}
+        <tr>
+          <td>Remuneraciones</td>
+          {% for cc in matriz.centros %}
+          <td class="text-end {% if matriz.rrhh[cc.id] %}{% else %}text-muted{% endif %}">
+            {{ clp(matriz.rrhh[cc.id]) }}
+          </td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ clp(matriz.rrhh_total) }}</td>
+          <td class="text-end">{{ '%.1f'|format(matriz.rrhh_pct) }}%</td>
+        </tr>
+        {% endif %}
       </tbody>
       <tfoot>
         <tr class="table-light">
@@ -325,6 +337,7 @@
           <td>{{ fmt_dmy(r.fecha_emision) }}</td>
           <td>
             {% if r.fuente == 'bodega' %}—
+            {% elif r.fuente == 'rrhh' %}—
             {% elif r.oc_folio and r.orden_compra_id %}
             <a href="{{ url_for('oc_detalle', oid=r.orden_compra_id) }}">{{ r.oc_folio }}</a>
             {% else %}—{% endif %}
@@ -334,6 +347,8 @@
             {% if r.fuente == 'bodega' %}
             <span class="cot-num">{{ r.producto_nombre or r.documento }}</span>
             {% if r.cantidad %}<span class="text-muted small"> · {{ r.cantidad }}</span>{% endif %}
+            {% elif r.fuente == 'rrhh' %}
+            <span class="cot-num">{{ r.producto_nombre or r.documento }}</span>
             {% else %}
             <span class="cot-num">{{ r.documento }}</span>
             {% endif %}
@@ -341,9 +356,9 @@
           <td class="small">{{ r.rubro_nombre or '—' }}</td>
           <td class="text-end fw-semibold">{{ clp(r.monto_cc) }}</td>
           <td class="text-end">{{ clp(r.total) }}</td>
-          <td class="text-end">{% if r.fuente == 'bodega' %}—{% else %}{{ clp(r.saldo) }}{% endif %}</td>
+          <td class="text-end">{% if r.fuente in ('bodega', 'rrhh') %}—{% else %}{{ clp(r.saldo) }}{% endif %}</td>
           <td>
-            {% if r.fuente == 'bodega' %}
+            {% if r.fuente in ('bodega', 'rrhh') %}
             <span class="estado ok">Imputado</span>
             {% else %}
             <span class="estado {{ cxp_estado_class(r.estado) }}">{{ cxp_estado_label(r.estado) }}</span>
@@ -352,6 +367,8 @@
           <td class="actions-cell">
             {% if r.fuente == 'bodega' %}
             <a class="btn-act ver" href="{{ url_for('bodega_list') }}" title="Ver bodega"><i class="bi bi-box-seam"></i></a>
+            {% elif r.fuente == 'rrhh' %}
+            <a class="btn-act ver" href="{{ url_for('rrhh_home') }}" title="Ver RRHH"><i class="bi bi-people"></i></a>
             {% else %}
             <a class="btn-act ver" href="{{ url_for('compras_detalle', fid=r.id) }}" title="Ver"><i class="bi bi-eye"></i></a>
             {% endif %}
