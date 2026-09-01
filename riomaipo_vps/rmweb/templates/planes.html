@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Planes y precios{% endblock %}
+{% block content %}
+{% set mod_icons = {
+  'dashboard': 'bi-grid-1x2',
+  'clientes': 'bi-people',
+  'cotizaciones': 'bi-file-earmark-text',
+  'cuentas': 'bi-cash-stack',
+  'ordenes': 'bi-clipboard-check',
+  'compras': 'bi-cart3',
+  'tesoreria': 'bi-bank',
+  'bodega': 'bi-box-seam',
+  'centros': 'bi-diagram-3',
+  'taller_ot': 'bi-wrench-adjustable',
+  'rrhh': 'bi-people-fill',
+  'admin': 'bi-gear',
+  'soporte': 'bi-life-preserver',
+  'mercadolibre': 'bi-shop'
+} %}
+<section class="planes-pricing">
+  <header class="planes-pricing-head">
+    <h1>Planes y precios</h1>
+    <p>{{ intro or 'Elige cómo contratar: por módulo, pack parcial o plan total.' }}</p>
+    <p class="planes-trust-note">Sin letra chica. Sin contratos. Date de baja cuando quieras.</p>
+  </header>
+
+  <p class="planes-probar-note text-center mb-3">Elige el pack que te sirve y solicita contratación. Te contactamos con los datos de tu prueba.</p>
+
+  <div class="planes-cards planes-cards-4" aria-label="Alternativas de plan">
+    <article class="plan-card plan-card-modulos">
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-puzzle"></i></div>
+        <h2>POR MÓDULO</h2>
+        <div class="plan-card-price">
+          <span class="plan-card-from">desde</span>
+          <strong>{{ clp(modulos_pago_min) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">Pagas solo lo que activas</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Dashboard, Administración y Soporte incluidos</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Eliges módulos uno a uno</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 1 asiento (Operador o Lector)</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuario adicional: $4.990/mes</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Respaldo de datos permanente</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Packs o plan total en un solo precio</li>
+        {% if show_ml %}
+        <li class="no"><i class="bi bi-x-lg"></i> Integración Mercado Libre (add-on)</li>
+        {% endif %}
+      </ul>
+      <div class="plan-card-foot">
+        <form method="post" action="{{ url_for('planes_contratar') }}">
+          <input type="hidden" name="plan" value="modulos">
+          <button type="submit" class="plan-card-cta">Quiero contratar</button>
+        </form>
+      </div>
+    </article>
+
+    <article class="plan-card plan-card-pack-ventas">
+      <div class="plan-card-badge plan-card-badge-mid">Intermedio</div>
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-cash-stack"></i></div>
+        <h2>{{ pack_ventas.nombre|upper }}</h2>
+        <div class="plan-card-price">
+          <strong>{{ clp(pack_ventas.fee) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">{% if demo_rubro == 'taller' %}Cotizar, OT y cobrar{% else %}Cotizar y cobrar{% endif %} · Ahorras {{ clp(ahorro_ventas) }}/mes</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Dashboard, Administración y Soporte incluidos</li>
+        {% if demo_rubro == 'taller' %}
+        <li class="ok"><i class="bi bi-check-lg"></i> Clientes, Cotizaciones, CxC y Órdenes de trabajo</li>
+        <li class="no"><i class="bi bi-x-lg"></i> OC, Compras, Centro de costos, Tesorería, Bodega y RRHH</li>
+        {% else %}
+        <li class="ok"><i class="bi bi-check-lg"></i> Clientes, Cotizaciones y Cuentas por cobrar</li>
+        <li class="no"><i class="bi bi-x-lg"></i> OC, Compras, Centro de costos, Tesorería y Bodega</li>
+        {% endif %}
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 1 asiento</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Setup único {{ pack_ventas.setup_txt }}</li>
+      </ul>
+      <div class="plan-card-foot">
+        <form method="post" action="{{ url_for('planes_contratar') }}">
+          <input type="hidden" name="plan" value="ventas">
+          <button type="submit" class="plan-card-cta">Quiero contratar</button>
+        </form>
+      </div>
+    </article>
+
+    <article class="plan-card plan-card-pack-compras">
+      <div class="plan-card-badge plan-card-badge-compras">Intermedio</div>
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-cart3"></i></div>
+        <h2>{{ pack_compras_label|upper }}</h2>
+        <div class="plan-card-price">
+          <strong>{{ clp(pack_compras.fee) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">{% if demo_rubro == 'taller' %}Repuestos, CC y sueldos{% else %}Comprar y pagar{% endif %} · Ahorras {{ clp(ahorro_compras) }}/mes</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Dashboard, Administración y Soporte incluidos</li>
+        {% if demo_rubro == 'taller' %}
+        <li class="ok"><i class="bi bi-check-lg"></i> OC, Compras, Centro de costos, Tesorería, Bodega y RRHH</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Clientes, Cotizaciones, CxC y Órdenes de trabajo</li>
+        {% else %}
+        <li class="ok"><i class="bi bi-check-lg"></i> Órdenes de compra, Compras, Centro de costos, Tesorería y Bodega</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Clientes, Cotizaciones y Cuentas por cobrar</li>
+        {% endif %}
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 1 asiento</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Setup único {{ pack_compras.setup_txt }}</li>
+      </ul>
+      <div class="plan-card-foot">
+        <form method="post" action="{{ url_for('planes_contratar') }}">
+          <input type="hidden" name="plan" value="compras">
+          <button type="submit" class="plan-card-cta">Quiero contratar</button>
+        </form>
+      </div>
+    </article>
+
+    <article class="plan-card plan-card-pack plan-card-featured">
+      <div class="plan-card-badge">Completo</div>
+      <div class="plan-card-top">
+        <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-box-seam"></i></div>
+        <h2>{{ pack_total_label|upper }}</h2>
+        <div class="plan-card-price">
+          <strong>{{ clp(pack.fee) }}</strong>
+          <span class="plan-card-period">/mes</span>
+        </div>
+        <p class="plan-card-note">Todos los módulos · Ahorras {{ clp(ahorro) }}/mes</p>
+      </div>
+      <ul class="plan-card-features">
+        <li class="ok"><i class="bi bi-check-lg"></i> Todo lo del pack ventas y {{ pack_compras_label|lower }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Usuarios incluidos: 1 Administrador + 3 asientos</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Setup único {{ pack.setup_txt }}</li>
+        <li class="ok"><i class="bi bi-check-lg"></i> Ahorro vs módulos sueltos: {{ clp(ahorro) }}/mes</li>
+        {% if show_ml %}
+        <li class="no"><i class="bi bi-x-lg"></i> Integración Mercado Libre (add-on $29.900/mes)</li>
+        {% endif %}
+      </ul>
+      <div class="plan-card-foot">
+        <form method="post" action="{{ url_for('planes_contratar') }}">
+          <input type="hidden" name="plan" value="comercial">
+          <button type="submit" class="plan-card-cta">Quiero contratar</button>
+        </form>
+      </div>
+    </article>
+  </div>
+
+  {% if show_ml and modulos.mercadolibre is defined %}
+  <section class="planes-addon-block" aria-label="Add-on Mercado Libre" style="margin:1.75rem 0 0.5rem;">
+    <header class="planes-pricing-head">
+      <h2>Add-on premium</h2>
+      <p>No va dentro de los packs: se suma al plan que elijas.</p>
+    </header>
+    <div class="planes-cards" style="grid-template-columns:minmax(0,1fr);max-width:420px;">
+      <article class="plan-card plan-card-pack plan-card-featured">
+        <div class="plan-card-badge">Premium</div>
+        <div class="plan-card-top">
+          <div class="plan-card-icon" aria-hidden="true"><i class="bi bi-shop"></i></div>
+          <h2>INTEGRACIÓN MERCADO LIBRE</h2>
+          <div class="plan-card-price">
+            <strong>{{ clp(modulos.mercadolibre.fee) }}</strong>
+            <span class="plan-card-period">/mes</span>
+          </div>
+          <p class="plan-card-note">{{ modulos.mercadolibre.pitch }} · Setup {{ modulos.mercadolibre.setup_txt }}</p>
+        </div>
+        <ul class="plan-card-features">
+          {% for f in modulos.mercadolibre.funciones %}
+          <li class="ok"><i class="bi bi-check-lg"></i> {{ f }}</li>
+          {% endfor %}
+        </ul>
+        <div class="plan-card-foot">
+          <form method="post" action="{{ url_for('planes_contratar') }}">
+            <input type="hidden" name="plan" value="mercadolibre">
+            <button type="submit" class="plan-card-cta">Quiero contratar</button>
+          </form>
+        </div>
+      </article>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="planes-modulos-block" aria-labelledby="modulos-incluyen-title">
+    <header class="planes-pricing-head planes-modulos-head">
+      <h2 id="modulos-incluyen-title">Qué incluye cada módulo · {{ titulo }}</h2>
+      <p>Detalle si contratas por separado. Los packs agrupan módulos con descuento.</p>
+    </header>
+
+    <div class="planes-mod-cards" aria-label="Módulos del ERP">
+      {% for key, m in modulos.items() %}
+      <article class="plan-card plan-card-modulo{% if m.fee == 0 %} plan-card-incluido{% endif %}">
+        <div class="plan-card-top">
+          <div class="plan-card-icon" aria-hidden="true">
+            <i class="bi {{ mod_icons.get(key, 'bi-app') }}"></i>
+          </div>
+          <h2>{{ m.label|upper }}</h2>
+          <div class="plan-card-price">
+            {% if m.fee > 0 %}
+            <strong>{{ clp(m.fee) }}</strong>
+            <span class="plan-card-period">/mes</span>
+            {% else %}
+            <strong class="plan-card-incluido-txt">Incluido</strong>
+            {% endif %}
+          </div>
+          <p class="plan-card-note">{{ m.pitch }}{% if m.setup_txt %} · {{ m.setup_txt }}{% endif %}</p>
+        </div>
+        <ul class="plan-card-features">
+          {% for f in m.funciones %}
+          <li class="ok{% if key == 'soporte' and loop.last %} plan-feat-strong{% endif %}">
+            <i class="bi bi-check-lg"></i>
+            {% if key == 'soporte' and loop.last %}<strong>{{ f }}</strong>{% else %}{{ f }}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}

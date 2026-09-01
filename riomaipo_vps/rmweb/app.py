@@ -22,7 +22,7 @@ from flask import (
 from io import BytesIO
 
 from rmweb import core
-from rmweb.tenants import get_tenant, list_tenants, modulo_visible
+from rmweb.tenants import get_tenant, list_tenants, modulo_visible, rubro
 from rmweb.pricing import pricing_context
 from rmweb.mail_alertas import enviar_correo_alerta, enviar_correo_alerta_pago
 from rmweb.master_bitacora import log_master_bitacora
@@ -75,7 +75,9 @@ def _tenant_session_epoch(slug: str) -> str:
 
 
 def _es_tenant_demo(slug: str | None) -> bool:
-    return (slug or "").strip().lower() == "comercial-demo"
+    from rmweb.tenants import es_demo
+
+    return es_demo(slug)
 
 
 def _demo_prueba_context(slug: str | None, fecha_expira: str | None) -> dict:
@@ -309,6 +311,7 @@ def inject_globals():
     ctx.update(pricing_context(slug))
     ctx.update(_demo_prueba_context(slug, session.get("auth_fecha_expira")))
     ctx["modulo_visible"] = lambda mod: modulo_visible(slug, mod)
+    ctx["demo_rubro"] = rubro(slug) if slug else "comercial"
     return ctx
 
 
@@ -572,6 +575,9 @@ def master_entry():
         flash("Su periodo de prueba ha finalizado.", "danger")
         return redirect(url_for("login", tenant=slug))
     _activate_tenant_session(slug, user, from_master=True)
+    dest = (request.args.get("dest") or "").strip().lower()
+    if dest == "planes":
+        return redirect(url_for("planes"))
     return redirect(url_for("dashboard"))
 
 
@@ -643,40 +649,21 @@ def session_continue():
 @app.route("/planes")
 @login_required
 def planes():
-    """Valoración de módulos (DEMO Comercial)."""
-    from rmweb.pricing import (
-        MODULOS_FEE,
-        PACK,
-        PACK_COMPRAS,
-        PACK_VENTAS,
-        suma_modulos,
-        suma_modulos_keys,
-    )
+    """Valoración de módulos (tenants DEMO)."""
     from rmweb.demo_invitacion import DEMO_DIAS_PRUEBA
+    from rmweb.pricing import catalog_for_tenant
+    from rmweb.tenants import es_demo
 
     slug = (session.get("tenant_slug") or "").strip().lower()
-    if slug != "comercial-demo":
-        flash("Esta vista aplica al tenant DEMO Comercial.", "ok")
+    if not es_demo(slug):
+        flash("Esta vista aplica a los tenants DEMO.", "ok")
         return redirect(url_for("dashboard"))
-    suma = suma_modulos()
-    suma_ventas = suma_modulos_keys(PACK_VENTAS["modulos"])
-    suma_compras = suma_modulos_keys(PACK_COMPRAS["modulos"])
-    pagos = [int(m["fee"]) for m in MODULOS_FEE.values() if int(m["fee"]) > 0 and not m.get("addon")]
+    cat = catalog_for_tenant(slug)
     return render_template(
         "planes.html",
         active="planes",
-        modulos=MODULOS_FEE,
-        pack=PACK,
-        pack_ventas=PACK_VENTAS,
-        pack_compras=PACK_COMPRAS,
-        suma=suma,
-        suma_ventas=suma_ventas,
-        suma_compras=suma_compras,
-        ahorro=max(0, suma - int(PACK["fee"])),
-        ahorro_ventas=max(0, suma_ventas - int(PACK_VENTAS["fee"])),
-        ahorro_compras=max(0, suma_compras - int(PACK_COMPRAS["fee"])),
-        modulos_pago_min=min(pagos) if pagos else 0,
         dias_prueba=DEMO_DIAS_PRUEBA,
+        **cat,
     )
 
 
@@ -2225,27 +2212,30 @@ def planes_contratar():
     import sqlite3
 
     from rmweb import soporte as sop
-    from rmweb.pricing import PACK, PACK_COMPRAS, PACK_VENTAS
+    from rmweb.pricing import catalog_for_tenant
+    from rmweb.tenants import es_demo
 
     slug = (session.get("tenant_slug") or "").strip().lower()
-    if slug != "comercial-demo":
-        flash("Solo disponible en DEMO Comercial.", "danger")
+    if not es_demo(slug):
+        flash("Solo disponible en tenants DEMO.", "danger")
         return redirect(url_for("dashboard"))
 
     plan = (request.form.get("plan") or "").strip().lower()
-    from rmweb.pricing import MODULOS_FEE as _MFEE
-    ml = _MFEE.get("mercadolibre") or {}
+    cat = catalog_for_tenant(slug)
+    modulos = cat["modulos"]
+    ml = modulos.get("mercadolibre") or {}
     planes = {
         "modulos": ("Por módulo", "pago solo por módulos activados"),
-        "ventas": ("Pack Ventas", str(PACK_VENTAS.get("fee_txt") or "")),
-        "compras": ("Pack Compras", str(PACK_COMPRAS.get("fee_txt") or "")),
-        "comercial": ("Plan Total", str(PACK.get("fee_txt") or "")),
-        "mercadolibre": (
+        "ventas": (cat["pack_ventas"]["nombre"], str(cat["pack_ventas"].get("fee_txt") or "")),
+        "compras": (cat["pack_compras_label"], str(cat["pack_compras"].get("fee_txt") or "")),
+        "comercial": (cat["pack_total_label"], str(cat["pack"].get("fee_txt") or "")),
+    }
+    if cat.get("show_ml") and ml:
+        planes["mercadolibre"] = (
             "Integración Mercado Libre (add-on)",
             str(ml.get("fee_txt") or "$29.900/mes")
             + (" · " + str(ml.get("setup_txt") or "") if ml.get("setup_txt") else ""),
-        ),
-    }
+        )
     if plan not in planes:
         flash("Elige un plan válido.", "danger")
         return redirect(url_for("planes"))
@@ -2327,6 +2317,12 @@ def planes_contratar():
 def demo_entry_public():
     """Entrada pública (link bio / marketing) → formulario de prueba con OTP."""
     return redirect(url_for("probar"))
+
+
+@app.route("/taller-demo")
+def taller_demo_entry():
+    """Entrada demo taller automotriz → login del tenant."""
+    return redirect(url_for("login", tenant="taller-demo"))
 
 
 @app.route("/probar", methods=["GET", "POST"])

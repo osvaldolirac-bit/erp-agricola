@@ -101,7 +101,7 @@ def acceso_permitido_en_tenant(slug: str | None, user: dict[str, Any] | None) ->
     invitado = str(u.get("invitado_por") or "").strip()
     expira = str(u.get("fecha_expira") or "").strip()
     if invitado or expira:
-        return (slug or "").strip().lower() == "comercial-demo"
+        return (slug or "").strip().lower() == (home or "comercial-demo")
     return True
 
 

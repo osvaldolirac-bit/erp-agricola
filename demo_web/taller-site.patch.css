@@ -1,0 +1,60 @@
+/* ERP Taller Automotriz — landing erpmaster.cl */
+:root {
+  --taller-deep: #1e293b;
+  --taller-mid: #475569;
+  --taller-soft: #f1f5f9;
+  --taller-accent: #ea580c;
+}
+
+.flyer-taller {
+  background: linear-gradient(165deg, #fff 0%, var(--taller-soft) 55%, #ffedd5 100%);
+  border-color: #cbd5e1;
+}
+.flyer-taller .product-tag { color: var(--taller-accent); }
+.flyer-taller h3 { color: var(--taller-deep); }
+.flyer-taller .flyer-packs {
+  color: var(--taller-mid);
+  border-top: 1px solid #e2e8f0;
+}
+.flyer-taller .btn-solid {
+  background: linear-gradient(135deg, var(--taller-deep), #334155);
+  border-color: var(--taller-deep);
+}
+.flyer-taller .btn-solid:hover { filter: brightness(1.06); }
+.flyer-taller .btn-ghost {
+  color: var(--taller-deep);
+  border-color: #94a3b8;
+}
+
+.mod-col-taller {
+  background: linear-gradient(180deg, var(--taller-soft), #fff);
+  border-color: #cbd5e1;
+}
+.mod-col-taller h3 { color: var(--taller-deep); }
+.mod-col-taller .mod-chips li {
+  border-color: #94a3b8;
+  color: var(--taller-deep);
+}
+.mod-col-taller .mod-chip-eje {
+  background: rgba(234, 88, 12, 0.12);
+  border-color: var(--taller-accent);
+  font-weight: 800;
+}
+
+.planes-taller {
+  background: linear-gradient(180deg, var(--taller-soft), #fff);
+  border-color: #cbd5e1;
+}
+.planes-taller .planes-sub { color: var(--taller-deep); }
+.planes-taller .planes-demo-link { color: var(--taller-accent); }
+.planes-taller .plan-featured {
+  border-color: var(--taller-accent);
+  box-shadow: 0 12px 30px rgba(234, 88, 12, 0.12);
+}
+.planes-taller .price { color: var(--taller-deep); }
+
+@media (min-width: 1100px) {
+  .mod-compare {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
