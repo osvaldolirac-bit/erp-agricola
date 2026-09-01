@@ -152,30 +152,6 @@ def request_path() -> str:
     return path
 
 
-def _sidebar_badge_count(conn, module_key: str) -> int | None:
-    """Pendientes visibles en sidebar (/agricola). None = no mostrar contador."""
-    try:
-        if module_key == "Petróleo":
-            from demo_web.services.salida_petroleo import contar_pendientes, habilitado
-
-            if not habilitado():
-                return None
-            return contar_pendientes(conn)
-        if module_key == "Maquinaria":
-            from erp_maquinaria import contar_maquinaria_casos_abiertos
-
-            return contar_maquinaria_casos_abiertos(conn)
-        if module_key == "Riego":
-            from demo_web.services.registro_riego import contar_pendientes, habilitado
-
-            if not habilitado():
-                return None
-            return contar_pendientes(conn)
-    except Exception:
-        return None
-    return None
-
-
 def build_menu(user_email: str, rol: str) -> list[dict]:
     from demo_web.tenants import get_tenant
     from flask import session
@@ -219,6 +195,7 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     demo = get_demo_module()
     bind_user_session(user_email, rol)
     opts = demo.construir_menu_usuario(user_email, rol)
+    modulos_menu = set(opts.values())
     badge_by_key: dict[str, int] = {}
     conn = demo.conectar_db()
     try:
@@ -228,18 +205,9 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
             opts = aplicar_badge_menu_soporte(opts, conn, demo.es_admin)
         except Exception:
             pass
-        try:
-            from erp_maquinaria import aplicar_badge_menu_maquinaria
+        from demo_web.services.sidebar_badges import conteos_sidebar
 
-            opts = aplicar_badge_menu_maquinaria(opts, conn)
-        except Exception:
-            pass
-        for mod_key in ("Petróleo", "Maquinaria", "Riego"):
-            if mod_key not in opts.values():
-                continue
-            n = _sidebar_badge_count(conn, mod_key)
-            if n is not None:
-                badge_by_key[mod_key] = n
+        badge_by_key = conteos_sidebar(conn, modulos_menu)
     finally:
         conn.close()
 

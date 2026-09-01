@@ -1711,3 +1711,9 @@ def links_personales_regadores() -> list[dict[str, str]]:
 
 def habilitado() -> bool:
     return get_erp_app() in ("concepcion", "demo")
+
+
+def aplicar_badge_menu_riego(opts, conn):
+    from demo_web.services.sidebar_badges import aplicar_badges_labels_menu
+
+    return aplicar_badges_labels_menu(opts, conn)
