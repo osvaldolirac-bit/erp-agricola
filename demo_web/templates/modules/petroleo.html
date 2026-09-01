@@ -2,6 +2,9 @@
 {% from "partials/nav_modulo.html" import nav_modulo %}
 {% from "partials/pdf_button.html" import pdf_btn %}
 {% block title %}Petróleo — {{ erp_title|default('ERP') }}{% endblock %}
+{% block extra_head %}
+<link href="{{ url_for('static', filename='css/salida-link.css') }}?v={{ static_version }}" rel="stylesheet">
+{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
@@ -12,14 +15,20 @@
     <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
   </div>
 
-  <div class="row g-3 mb-3">
-    <div class="col-lg-8">
-      <div class="saldo-banner">🛢️ SALDO ACTUAL EN TANQUE: {{ saldo_actual }} LITROS</div>
-      <p class="small text-muted mb-0">
-        Saldo en tanque arriba. Detalle por temporada, mes y CC en el widget →
+  <div class="row g-3 mb-3 align-items-start">
+    <div class="col-lg-7">
+      <div class="salida-petroleo-estanque petroleo-estanque-hero" role="status" aria-live="polite">
+        <div class="salida-petroleo-estanque-kicker">🛢️ Saldo actual en tanque</div>
+        <div class="salida-petroleo-estanque-valor">{{ saldo_actual }} L</div>
+        <div class="salida-petroleo-estanque-meta">
+          Cargas al estanque: {{ tot_cargas }} L · Despachos acumulados: {{ tot_salidas }} L
+        </div>
+      </div>
+      <p class="small text-muted mb-0 mt-2">
+        Temporada <strong>{{ temp_nombre }}</strong> — litros por equipo, mes y gasto CC en el resumen →
       </p>
     </div>
-    <div class="col-lg-4">
+    <div class="col-lg-5">
       {{ widget_html|safe }}
     </div>
   </div>

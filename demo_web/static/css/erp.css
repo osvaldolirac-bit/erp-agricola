@@ -1149,6 +1149,24 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   font-weight: 800;
   margin-bottom: 1rem;
 }
+
+/* Petróleo — contador estanque (mismo bloque grande que Salida Link) */
+.petroleo-estanque-hero.salida-petroleo-estanque {
+  margin-bottom: 0;
+  padding: 1.15rem 1.25rem 1rem;
+}
+
+.petroleo-estanque-hero .salida-petroleo-estanque-valor {
+  font-size: clamp(1.85rem, 4.5vw, 2.45rem);
+  line-height: 1.1;
+}
+
+.petroleo-estanque-hero .salida-petroleo-estanque-meta {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .banner-econ {
   background: linear-gradient(135deg, var(--azul-oscuro), var(--azul-accion));
   color: white;
