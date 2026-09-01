@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Libro de Campo — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Aplicaciones fitosanitarias y trazabilidad PPPL</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_modulo('modules.libro_campo', secciones, sec_activa) }}
+
+  {% if alerta_bodega %}
+  <div class="alert alert-warning">
+    <strong>Aplicación N° {{ '%05d'|format(alerta_bodega.n_app) }} archivada en Libro de Campo.</strong><br>
+    <strong>Rebajar bodega pendiente</strong> — El stock no se descontó automáticamente.<br>
+    Vaya a <strong>Bodega → Salida</strong> e impute al cuartel <strong>{{ alerta_bodega.huerto }}</strong>:
+    <ul class="mb-0 mt-1">
+      {% for p in alerta_bodega.productos %}
+      <li><strong>{{ p.producto }}</strong> — {{ p.cantidad }} {{ p.um }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if sec_activa == 'historial' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">🔍 Filtros</h2>
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cuartel</label>
+        <select name="cuartel" class="form-select">
+          {% for c in cuarteles %}
+          <option value="{{ c }}" {% if c == filtro_cuartel %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Producto</label>
+        <input type="search" name="q" class="form-control" value="{{ filtro_q }}" placeholder="Nombre producto">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">N° App</label>
+        <input type="text" name="n_app" class="form-control" value="{{ filtro_n_app }}" placeholder="12">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        {{ pdf_btn(pdf_historial_url, '📥 PDF INFORME', 'btn-outline-success w-100') }}
+      </div>
+    </form>
+  </div>
+
+  {% if historial_grupos %}
+  <p class="small text-muted mb-3">
+    <strong>{{ historial_stats.eventos }}</strong> evento(s) · <strong>{{ historial_stats.productos }}</strong> producto(s)
+  </p>
+  {% for g in historial_grupos %}
+  <div class="lc-evento-banner mb-2">
+    <strong>N° {{ '%05d'|format(g.num) }}</strong> &nbsp;|&nbsp;
+    {{ g.fecha }} &nbsp;|&nbsp; {{ g.cuartel }} &nbsp;|&nbsp; {{ g.especie }} &nbsp;|&nbsp;
+    Agua: {{ g.vol_agua }} L &nbsp;|&nbsp; {{ g.maquinaria }} &nbsp;|&nbsp; {{ g.tractor }} &nbsp;|&nbsp;
+    {{ g.aplicador }} &nbsp;|&nbsp; Op.Cert: {{ g.op_cert }}
+  </div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0">
+        <thead>
+          <tr><th>Producto</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total</th><th>PHI viable</th></tr>
+        </thead>
+        <tbody>
+          {% for p in g.productos %}
+          <tr>
+            <td>{{ p.producto }}</td><td>{{ p.lote }}</td><td>{{ p.ing_activo }}</td>
+            <td>{{ p.dosis }}</td><td>{{ p.unidad }}</td><td>{{ p.total }}</td><td>{{ p.phi }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="alert alert-info">No hay registros para los filtros seleccionados.</div>
+  {% endif %}
+
+  {% elif sec_activa == 'desfase' %}
+  <div class="alert alert-info small">
+    Detecta productos <strong>PPPL</strong> registrados en un módulo pero no reflejados en el otro
+    (mismo producto, cuartel, cantidad equivalente ±2%, fecha dentro de la ventana).
+  </div>
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="desfase">
+      <div class="col-md-3"><label class="form-label">Desde</label><input type="date" name="desde" class="form-control" value="{{ filtro_desde }}"></div>
+      <div class="col-md-3"><label class="form-label">Hasta</label><input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}"></div>
+      <div class="col-md-2"><label class="form-label">Ventana ± días</label><input type="number" name="ventana" class="form-control" value="{{ ventana_dias }}" min="1" max="60"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Analizar</button></div>
+    </form>
+  </div>
+  {% if desfase_ok %}
+  <div class="alert alert-success">No hay desfaces PPPL en el período seleccionado.</div>
+  {% else %}
+  {% if desfase_lc_rows %}
+  <div class="alert alert-warning">{{ desfase_lc_rows|length }} registro(s) en Libro de Campo sin salida de bodega equivalente.</div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr>{% for k in desfase_lc_rows[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in desfase_lc_rows %}<tr>{% for v in row.values() %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% if desfase_bod_rows %}
+  <div class="alert alert-warning">{{ desfase_bod_rows|length }} salida(s) de bodega sin aplicación en Libro de Campo.</div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr>{% for k in desfase_bod_rows[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in desfase_bod_rows %}<tr>{% for v in row.values() %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {% elif sec_activa == 'modificar' %}
+  {% if not mod_eventos %}
+  <div class="alert alert-info">No hay aplicaciones ingresadas.</div>
+  {% else %}
+  <div class="panel-card">
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="sec" value="modificar">
+      <div class="col-md-8">
+        <label class="form-label">Evento de aplicación</label>
+        <select name="n_app" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for e in mod_eventos %}
+          <option value="{{ e.n_app }}" {% if e.n_app == mod_app_sel %}selected{% endif %}>{{ e.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Línea de producto</label>
+        <select name="linea_id" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for l in mod_lineas %}
+          <option value="{{ l.id }}" {% if mod_edit and l.id == mod_edit.id %}selected{% endif %}>{{ l.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+    {% if mod_edit %}
+    <h2 class="h6">Editando evento {{ '%05d'|format(mod_edit.n_app) }} — {{ mod_edit.producto }}</h2>
+    <form method="post" class="row g-2 mb-2">
+      <input type="hidden" name="action" value="editar_linea">
+      <input type="hidden" name="sec" value="modificar">
+      <input type="hidden" name="linea_id" value="{{ mod_edit.id }}">
+      <input type="hidden" name="n_app" value="{{ mod_edit.n_app }}">
+      <div class="col-md-3"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ mod_edit.fecha }}"></div>
+      <div class="col-md-3"><label class="form-label small">Cuartel</label>
+        <select name="cuartel" class="form-select form-select-sm">{% for c in cuarteles %}<option value="{{ c }}" {% if c == mod_edit.sector %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-3"><label class="form-label small">Especie</label>
+        <select name="especie" class="form-select form-select-sm">{% for e in especies %}<option value="{{ e }}" {% if e == mod_edit.especie %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-3"><label class="form-label small">Producto</label><input type="text" name="producto" class="form-control form-control-sm" value="{{ mod_edit.producto }}"></div>
+      <div class="col-md-3"><label class="form-label small">Lote</label><input type="text" name="lote" class="form-control form-control-sm" value="{{ mod_edit.lote }}"></div>
+      <div class="col-md-3"><label class="form-label small">Ing. activo</label><input type="text" name="ingrediente" class="form-control form-control-sm" value="{{ mod_edit.ingrediente }}"></div>
+      <div class="col-md-3"><label class="form-label small">Dosis /100L</label><input type="number" name="dosis" class="form-control form-control-sm" value="{{ mod_edit.dosis }}" step="0.001"></div>
+      <div class="col-md-3"><label class="form-label small">Unidad dosis</label>
+        <select name="unidad_dosis" class="form-select form-select-sm">{% for u in unidades_dosis %}<option value="{{ u }}" {% if u == mod_edit.unidad_dosis %}selected{% endif %}>{{ u }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-3"><label class="form-label small">Vol. agua (L)</label><input type="number" name="vol_agua" class="form-control form-control-sm" value="{{ mod_edit.vol_total }}" step="0.1"></div>
+      <div class="col-md-3"><label class="form-label small">Total producto</label><input type="number" name="gasto_total" class="form-control form-control-sm" value="{{ mod_edit.gasto_total }}" step="0.01"></div>
+      <div class="col-md-3"><label class="form-label small">PHI viable</label><input type="date" name="fecha_viable" class="form-control form-control-sm" value="{{ mod_edit.fecha_viable }}"></div>
+      <div class="col-md-4"><label class="form-label small">Aplicador(es)</label><input type="text" name="aplicador" class="form-control form-control-sm" value="{{ mod_edit.aplicadores }}"></div>
+      <div class="col-md-4"><label class="form-label small">Maquinaria</label>
+        <select name="maquinaria" class="form-select form-select-sm">{% for cod, etiq in maquinaria_opts %}<option value="{{ cod }}" {% if cod == mod_edit.maquina %}selected{% endif %}>{{ etiq }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-4"><label class="form-label small">Tractor</label>
+        <select name="tractor" class="form-select form-select-sm">{% for cod, etiq in tractor_opts %}<option value="{{ cod }}" {% if cod == mod_edit.tractor %}selected{% endif %}>{{ etiq }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-4"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-4 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm">Actualizar línea</button></div>
+    </form>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="eliminar_linea">
+      <input type="hidden" name="sec" value="modificar">
+      <input type="hidden" name="linea_id" value="{{ mod_edit.id }}">
+      <input type="hidden" name="n_app" value="{{ mod_edit.n_app }}">
+      <div class="col-md-4"><label class="form-label small">Clave p/ eliminar línea</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar línea</button></div>
+    </form>
+    <hr>
+    <form method="post" class="row g-2 mt-2">
+      <input type="hidden" name="action" value="eliminar_evento">
+      <input type="hidden" name="sec" value="modificar">
+      <input type="hidden" name="n_app" value="{{ mod_edit.n_app }}">
+      <div class="col-md-4"><label class="form-label small">Clave p/ eliminar evento completo</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-4 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar evento N° {{ '%05d'|format(mod_edit.n_app) }}</button></div>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% elif sec_activa == 'ingreso' %}
+  <div class="alert alert-primary small mb-3">
+    Libro de Campo y Bodega son <strong>módulos independientes</strong>.
+    Registrar aquí archiva la aplicación; debe rebajar stock en <strong>Bodega → Salida</strong>.
+  </div>
+  {% if not productos_stock %}
+  <div class="alert alert-warning">No hay productos con stock en bodega. Registre compras o apertura de stock antes de anotar aplicaciones.</div>
+  {% else %}
+  <div class="panel-card mb-3">
+    <h2 class="h6">Nueva orden N° {{ '%05d'|format(siguiente_app) }}</h2>
+    <p class="small text-muted">Un evento puede incluir varios productos fitosanitarios con el mismo N° de orden.</p>
+    <form method="post" id="lcEventoForm">
+      <input type="hidden" name="action" value="guardar_evento">
+      <input type="hidden" name="sec" value="ingreso">
+      <div class="row g-2 mb-3">
+        <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}" required></div>
+        <div class="col-md-3"><label class="form-label small">Cuartel</label>
+          <select name="cuartel" class="form-select form-select-sm">{% for c in cuarteles %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
+        </div>
+        <div class="col-md-3"><label class="form-label small">Especie</label>
+          <select name="especie" class="form-select form-select-sm">{% for e in especies %}<option value="{{ e }}">{{ e }}</option>{% endfor %}</select>
+        </div>
+        <div class="col-md-3"><label class="form-label small">Total agua (L)</label><input type="number" name="vol_agua" class="form-control form-control-sm" min="0.1" step="0.1" required></div>
+        <div class="col-md-4"><label class="form-label small">Aplicador(es)</label><input type="text" name="aplicador" class="form-control form-control-sm" required></div>
+        <div class="col-md-4"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="op_cert" value="1" id="lcOpCert"><label class="form-check-label" for="lcOpCert">Operador certificado fitosanitario</label></div></div>
+        <div class="col-md-4"><label class="form-label small">Maquinaria / nebulizador</label>
+          <select name="maquinaria" class="form-select form-select-sm" required>{% for cod, etiq in maquinaria_opts %}<option value="{{ cod }}">{{ etiq }}</option>{% endfor %}</select>
+        </div>
+        <div class="col-md-4"><label class="form-label small">Tractor</label>
+          <select name="tractor" class="form-select form-select-sm">{% for cod, etiq in tractor_opts %}<option value="{{ cod }}">{{ etiq }}</option>{% endfor %}</select>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6">Agregar producto al evento</h2>
+    <form method="get" class="mb-2">
+      <input type="hidden" name="sec" value="ingreso">
+      <label class="form-label small">Producto (desde bodega)</label>
+      <select name="prod" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in productos_stock %}
+        <option value="{{ p.producto }}" {% if p.producto == prod_sel %}selected{% endif %}>{{ p.producto }} ({{ p.um }}) — stock {{ p.stock_fmt }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% if stock_info %}<p class="small text-muted">Stock disponible: <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>{% endif %}
+    {% if prod_sel and not pppl_ok %}<div class="alert alert-warning small py-2">Producto no autorizado en PPPL. Revise en GlobalGAP → PPPL o Bodega.</div>{% endif %}
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="agregar_producto">
+      <input type="hidden" name="sec" value="ingreso">
+      <input type="hidden" name="producto" value="{{ prod_sel }}">
+      <div class="col-md-3"><label class="form-label small">Lote</label><input type="text" name="lote" class="form-control form-control-sm"></div>
+      <div class="col-md-3"><label class="form-label small">Ing. activo</label><input type="text" name="ingrediente" class="form-control form-control-sm" value="{{ ing_def }}"></div>
+      <div class="col-md-3"><label class="form-label small">Dosis /100L agua</label><input type="number" name="dosis" class="form-control form-control-sm" min="0" step="0.001" value="0"></div>
+      <div class="col-md-3"><label class="form-label small">Unidad dosis</label>
+        <select name="unidad_dosis" class="form-select form-select-sm">{% for u in unidades_dosis %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-3"><label class="form-label small">Total producto</label><input type="number" name="gasto_total" class="form-control form-control-sm" min="0" step="0.01" required></div>
+      <div class="col-md-3"><label class="form-label small">PHI (días)</label><input type="number" name="dias_car" class="form-control form-control-sm" min="0" max="365" value="{{ phi_def }}"></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm" {% if not pppl_ok %}disabled{% endif %}>Agregar producto</button></div>
+    </form>
+  </div>
+
+  {% if lc_car %}
+  <div class="panel-card mb-3">
+    <h2 class="h6">Productos en este evento</h2>
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-bordered">
+        <thead><tr><th>Producto</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total</th><th>UM</th><th>PHI días</th></tr></thead>
+        <tbody>{% for r in lc_car %}<tr>
+          <td>{{ r.producto }}</td><td>{{ r.lote }}</td><td>{{ r.ingrediente }}</td><td>{{ r.dosis }}</td>
+          <td>{{ r.unidad_dosis }}</td><td>{{ r.gasto_total }}</td><td>{{ r.um_gasto }}</td><td>{{ r.dias_car }}</td>
+        </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <div class="d-flex gap-2">
+      <form method="post"><input type="hidden" name="action" value="pop_producto"><input type="hidden" name="sec" value="ingreso"><button type="submit" class="btn btn-outline-secondary btn-sm">Quitar último</button></form>
+      <button type="submit" form="lcEventoForm" class="btn btn-primary btn-sm">Validar y guardar evento completo</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Agregue uno o más productos al evento antes de guardar.</div>
+  {% endif %}
+  {% endif %}
+
+  {% elif sec_activa in ('prog_cerezos', 'prog_ciruelos') %}
+  {% if programa %}
+  <div class="alert mb-3" style="background:#E8F5E9;border:1px solid #A5D6A7;color:#1B5E20;">
+    <strong>{{ programa.emoji }} {{ programa.titulo }}</strong> — Temporada <b>{{ programa.temporada }}</b>
+    &nbsp;|&nbsp; Versión <b>{{ programa.version }}</b> &nbsp;|&nbsp; Emisión <b>{{ programa.emision }}</b><br>
+    <span class="small">Documento técnico Exportadora Subsole — consulta interna dentro del ERP.</span>
+  </div>
+  <p class="text-muted small mb-3">{{ programa.notas }}</p>
+  {% if not programa.pdf_ok %}
+  <div class="alert alert-warning">
+    No se encontró el PDF <code>{{ programa.archivo }}</code>.
+    Contacte al administrador para cargar el archivo en el servidor.
+  </div>
+  {% else %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <p class="small text-muted mb-0">
+      Consulta página a página (optimizado para celular).
+      En iPhone use <strong>Descargar PDF</strong> para guardar en Archivos.
+    </p>
+    <a class="btn btn-outline-success" href="{{ programa.pdf_url }}" download="{{ programa.descarga }}">Descargar PDF</a>
+  </div>
+  {% if programa.paginas %}
+  <p class="small text-muted mb-2"><strong>{{ programa.n_paginas }}</strong> página(s) — desplace hacia abajo para ver el documento completo.</p>
+  {% for url in programa.paginas %}
+  <figure class="mb-3">
+    <img src="{{ url }}" alt="Página {{ loop.index }} de {{ programa.n_paginas }}" class="img-fluid w-100 border rounded" loading="lazy">
+    <figcaption class="small text-muted mt-1">Página {{ loop.index }} de {{ programa.n_paginas }}</figcaption>
+  </figure>
+  {% endfor %}
+  {% else %}
+  <div class="alert alert-warning">
+    No se pudieron cargar las páginas para visualización.
+    Use <strong>Descargar PDF</strong> o contacte al administrador.
+  </div>
+  {% endif %}
+  {% endif %}
+  {% else %}
+  <div class="alert alert-danger">Programa no configurado.</div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
