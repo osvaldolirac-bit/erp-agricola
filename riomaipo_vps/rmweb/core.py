@@ -289,6 +289,7 @@ def init_db(db_path: str | Path | None = None, empresa_default: dict | None = No
             ("gg_monto", "REAL DEFAULT 0"),
             ("utilidad_monto", "REAL DEFAULT 0"),
             ("valor_neto", "REAL DEFAULT 0"),
+            ("patente", "TEXT"),
         ],
     )
     _ensure_columns(c, "cotizacion_items", [("obs", "TEXT"), ("orden", "INTEGER DEFAULT 0")])
