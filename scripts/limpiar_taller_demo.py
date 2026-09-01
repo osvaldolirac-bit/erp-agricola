@@ -9,6 +9,13 @@ from pathlib import Path
 DB = Path(sys.argv[1] if len(sys.argv) > 1 else "/root/riomaipo/data/taller_demo.db")
 KEEP = frozenset({"empresa", "parametros", "usuarios", "schema_meta"})
 
+# Solo administradores internos en taller-demo (no invitados IG/comercial).
+USUARIOS_TALLER = (
+    "osvaldolira@constructorariomaipo.cl",
+    "osvaldolirac@gmail.com",
+    "osvaldolira@laconcepcion.cl",
+)
+
 
 def main() -> None:
     db = sqlite3.connect(DB)
@@ -30,6 +37,15 @@ def main() -> None:
             cleared.append((table, count))
 
     cur.execute("DELETE FROM sqlite_sequence")
+    ph = ",".join("?" * len(USUARIOS_TALLER))
+    removed_users = cur.execute(
+        f"SELECT usuario FROM usuarios WHERE lower(usuario) NOT IN ({ph})",
+        [u.lower() for u in USUARIOS_TALLER],
+    ).fetchall()
+    cur.execute(
+        f"DELETE FROM usuarios WHERE lower(usuario) NOT IN ({ph})",
+        [u.lower() for u in USUARIOS_TALLER],
+    )
     cur.execute(
         """
         UPDATE empresa
@@ -45,6 +61,10 @@ def main() -> None:
     print("Tablas limpiadas:")
     for table, count in sorted(cleared):
         print(f"  {table}: {count}")
+    if removed_users:
+        print("Usuarios invitados eliminados del taller:")
+        for (email,) in removed_users:
+            print(f"  {email}")
     print("Conteo final (tablas con datos):")
     for table in sorted(tables):
         count = cur.execute(f"SELECT COUNT(*) FROM [{table}]").fetchone()[0]

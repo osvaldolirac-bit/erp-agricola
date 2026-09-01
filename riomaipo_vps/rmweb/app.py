@@ -357,6 +357,10 @@ def _find_login_matches(usuario: str, clave: str) -> list[dict]:
             user = core.get_user_if_valid(email, password, ten["db"])
             if not user:
                 continue
+            from rmweb.demo_invitacion import acceso_permitido_en_tenant
+
+            if not acceso_permitido_en_tenant(slug, dict(user)):
+                continue
             if _bloquear_si_prueba_vencida(slug, user.get("fecha_expira")):
                 continue
             matches.append(
@@ -548,6 +552,11 @@ def master_entry():
     if not row:
         return redirect(url_for("login", tenant=slug))
     user = dict(row)
+    from rmweb.demo_invitacion import acceso_permitido_en_tenant
+
+    if not acceso_permitido_en_tenant(slug, user):
+        flash("Este acceso de prueba no aplica a este tenant.", "danger")
+        return redirect(url_for("login", tenant=slug))
     if _bloquear_si_prueba_vencida(slug, user.get("fecha_expira")):
         flash("Su periodo de prueba ha finalizado.", "danger")
         return redirect(url_for("login", tenant=slug))
