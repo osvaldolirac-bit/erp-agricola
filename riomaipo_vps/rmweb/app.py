@@ -837,19 +837,29 @@ def clientes_form(cid: int | None = None):
 # ---------------------------------------------------------------------------
 # Cotizaciones
 # ---------------------------------------------------------------------------
-def _cotizacion_aprobar_side_effects(db, cid: int, tipo_venta: str) -> tuple[bool, str | None, str | None, str | None]:
-    """CxC + bodega/arriendo al aprobar. Retorna (ok, cxc_doc, stock_msg, arriendo_msg)."""
+def _cotizacion_aprobar_side_effects(
+    db, cid: int, tipo_venta: str, tenant_slug: str | None = None
+) -> tuple[bool, str | None, str | None, str | None]:
+    """CxC + bodega/arriendo/OT al aprobar. Retorna (ok, cxc_doc, stock_msg, extra_msg)."""
     from rmweb import ops as _ops
     from rmweb import ops_arriendo as _arr
 
     _ops.ensure_ops_schema(db)
     cxc_doc = core.ensure_cxc_from_cotizacion(db, cid)
+    slug = (tenant_slug or "").strip().lower()
     tv = (tipo_venta or "servicio").strip().lower()
     if tv == "arriendo":
-        ok_a, arriendo_msg = _arr.crear_contrato_desde_cotizacion(db, cid)
-        return ok_a, cxc_doc, None, arriendo_msg
+        ok_a, extra_msg = _arr.crear_contrato_desde_cotizacion(db, cid)
+        return ok_a, cxc_doc, None, extra_msg
     ok_s, stock_msg = _ops.aplicar_salida_cotizacion_producto(db, cid)
-    return ok_s, cxc_doc, stock_msg, None
+    extra_msg = None
+    if tv == "servicio" and modulo_visible(slug, "taller_ot"):
+        from rmweb import ops_taller as _taller
+
+        ok_ot, extra_msg = _taller.crear_ot_desde_cotizacion(db, cid)
+        if not ok_ot:
+            return False, cxc_doc, stock_msg, extra_msg
+    return ok_s, cxc_doc, stock_msg, extra_msg
 
 
 def _cotizacion_revert_aprobacion(db, cid: int) -> None:
@@ -983,6 +993,11 @@ def cotizaciones_list():
 @login_required
 def cotizaciones_form(cot_id: int | None = None):
     db = core.conn()
+    _slug_form = (session.get("tenant_slug") or "").strip().lower()
+    if modulo_visible(_slug_form, "taller_ot"):
+        from rmweb import ops_taller as _taller
+
+        _taller.ensure_taller_schema(db)
     edit = None
     items = []
     if cot_id:
@@ -1031,6 +1046,19 @@ def cotizaciones_form(cot_id: int | None = None):
         titulo = (request.form.get("titulo") or "").strip() or None
         proyecto = (request.form.get("proyecto") or "").strip() or None
         asunto = (request.form.get("asunto") or "").strip() or None
+        patente = (request.form.get("patente") or "").strip() or None
+        slug_cot = (session.get("tenant_slug") or "").strip().lower()
+        if not modulo_visible(slug_cot, "taller_ot"):
+            patente = None
+        elif not patente and edit:
+            try:
+                patente = edit["patente"]
+            except (KeyError, IndexError):
+                patente = None
+        if modulo_visible(slug_cot, "taller_ot"):
+            from rmweb import ops_taller as _taller
+
+            _taller.ensure_taller_schema(db)
         estado = request.form.get("estado") or "borrador"
         try:
             fecha = _fecha_cotizacion_form(request.form.get("fecha"))
@@ -1046,7 +1074,6 @@ def cotizaciones_form(cot_id: int | None = None):
         tipo_venta = (request.form.get("tipo_venta") or "servicio").strip().lower()
         if tipo_venta not in {"servicio", "producto", "arriendo"}:
             tipo_venta = "servicio"
-        slug_cot = (session.get("tenant_slug") or "").strip().lower()
         if tipo_venta == "arriendo" and not modulo_visible(slug_cot, "arriendos"):
             tipo_venta = "servicio"
 
@@ -1147,14 +1174,14 @@ def cotizaciones_form(cot_id: int | None = None):
                 db.execute(
                     """
                     UPDATE cotizaciones SET
-                      cliente_id=?, asunto=?, proyecto=?, estado=?, fecha=?, validez_dias=?,
+                      cliente_id=?, asunto=?, proyecto=?, patente=?, estado=?, fecha=?, validez_dias=?,
                       version=?, titulo=?, gg_pct=?, utilidad_pct=?,
                       gg_monto=?, utilidad_monto=?, valor_neto=?,
                       subtotal=?, iva=?, total=?, notas=?, tipo_venta=?
                     WHERE id=?
                     """,
                     (
-                        cliente_id, asunto, proyecto, estado, fecha, validez,
+                        cliente_id, asunto, proyecto, patente, estado, fecha, validez,
                         version, titulo, gg_pct, utilidad_pct,
                         tots["gg_monto"], tots["utilidad_monto"], tots["valor_neto"],
                         tots["subtotal"], tots["iva"], tots["total"], notas, tipo_venta, edit["id"],
@@ -1170,13 +1197,13 @@ def cotizaciones_form(cot_id: int | None = None):
                     cur.execute(
                         """
                         INSERT INTO cotizaciones
-                        (folio, cliente_id, asunto, proyecto, estado, fecha, validez_dias,
+                        (folio, cliente_id, asunto, proyecto, patente, estado, fecha, validez_dias,
                          version, titulo, gg_pct, utilidad_pct,
                          gg_monto, utilidad_monto, valor_neto, subtotal, iva, total, notas, tipo_venta)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         """,
                         (
-                            folio, cliente_id, asunto, proyecto, estado,
+                            folio, cliente_id, asunto, proyecto, patente, estado,
                             fecha, validez,
                             version, titulo, gg_pct, utilidad_pct,
                             tots["gg_monto"], tots["utilidad_monto"], tots["valor_neto"],
@@ -1205,7 +1232,7 @@ def cotizaciones_form(cot_id: int | None = None):
             msg = f"{folio} guardada · total {core.clp(tots['total'])}"
             if estado == "aprobada":
                 ok_apr, cxc_doc, stock_msg, arriendo_msg = _cotizacion_aprobar_side_effects(
-                    db, cid, tipo_venta
+                    db, cid, tipo_venta, slug_cot
                 )
                 if not ok_apr:
                     _cotizacion_revert_aprobacion(db, cid)
@@ -1220,7 +1247,7 @@ def cotizaciones_form(cot_id: int | None = None):
                         msg += f" · CxC {cxc_doc} generada"
                     if stock_msg and "Sin impacto" not in stock_msg and "ya aplicada" not in stock_msg:
                         msg += f" · {stock_msg}"
-                    if arriendo_msg and "ya existe" not in arriendo_msg:
+                    if arriendo_msg and "ya existe" not in arriendo_msg.lower():
                         msg += f" · {arriendo_msg}"
                     log_movimiento_demo("COTIZACION", msg)
                     flash(msg, "ok")
@@ -1310,6 +1337,15 @@ def cotizaciones_detalle(cot_id: int):
         "SELECT id, folio, estado FROM arriendo_contratos WHERE cotizacion_id=? LIMIT 1",
         (cot_id,),
     ).fetchone()
+    ot_taller = None
+    if modulo_visible((session.get("tenant_slug") or "").strip().lower(), "taller_ot"):
+        from rmweb import ops_taller as _taller
+
+        _taller.ensure_taller_schema(db)
+        ot_taller = db.execute(
+            "SELECT id, folio, estado, patente, mecanico FROM taller_ordenes WHERE cotizacion_id=? LIMIT 1",
+            (cot_id,),
+        ).fetchone()
     db.close()
     return render_template(
         "cotizaciones/detalle.html",
@@ -1318,6 +1354,7 @@ def cotizaciones_detalle(cot_id: int):
         items=items,
         cxc=cxc,
         contrato_arriendo=contrato_arriendo,
+        ot_taller=ot_taller,
     )
 
 
@@ -1397,7 +1434,9 @@ def cotizaciones_estado(cot_id: int):
     if estado == "aprobada":
         cot_row = db.execute("SELECT tipo_venta FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
         tv = (cot_row["tipo_venta"] if cot_row else "servicio") or "servicio"
-        ok_apr, cxc_doc, stock_msg, arriendo_msg = _cotizacion_aprobar_side_effects(db, cot_id, tv)
+        ok_apr, cxc_doc, stock_msg, arriendo_msg = _cotizacion_aprobar_side_effects(
+            db, cot_id, tv, (session.get("tenant_slug") or "").strip().lower()
+        )
         if not ok_apr:
             row = db.execute("SELECT cxc_id FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
             if row and row["cxc_id"]:
@@ -1435,6 +1474,8 @@ def cotizaciones_estado(cot_id: int):
         msg = f"Estado actualizado · CxC {cxc_doc} generada automáticamente"
         if stock_msg and "Sin impacto" not in stock_msg and "ya aplicada" not in stock_msg:
             msg += f" · {stock_msg}"
+        if arriendo_msg and "ya existe" not in arriendo_msg.lower():
+            msg += f" · {arriendo_msg}"
         if ppto_msg:
             msg += f" · {ppto_msg}"
         log_movimiento_demo("COTIZACION", msg)

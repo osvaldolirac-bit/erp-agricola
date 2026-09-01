@@ -44,11 +44,17 @@
         <input class="form-control" name="titulo" id="titulo" value="{{ titulo_default }}">
       </div>
       <div class="col-md-4">
+        {% if modulo_visible('taller_ot') %}
+        <label class="form-label fw-bold">Patente</label>
+        <input class="form-control" name="patente" placeholder="Ej. ABCD12"
+               value="{{ edit.patente if edit and edit.patente else '' }}">
+        {% else %}
         <label class="form-label fw-bold">Proyecto / obra</label>
         <input class="form-control" name="proyecto" value="{{ edit.proyecto if edit else '' }}">
+        {% endif %}
       </div>
       <div class="col-md-4">
-        <label class="form-label fw-bold">Asunto</label>
+        <label class="form-label fw-bold">{% if modulo_visible('taller_ot') %}Vehículo / trabajo{% else %}Asunto{% endif %}</label>
         <input class="form-control" name="asunto" value="{{ edit.asunto if edit else '' }}">
       </div>
       <div class="col-md-2">

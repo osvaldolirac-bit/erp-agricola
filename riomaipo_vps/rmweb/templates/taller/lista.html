@@ -5,50 +5,48 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <h1 class="h3 mb-1">Órdenes de trabajo</h1>
-    <p class="text-muted mb-0">Seguimiento de reparaciones y servicios del taller.</p>
+    <p class="text-muted mb-0">Generadas al aprobar cotizaciones de servicio.</p>
   </div>
-</div>
-
-<div class="alert alert-info">
-  <strong>Próximo paso:</strong> al aprobar una cotización de tipo <em>Servicio</em> se creará automáticamente una OT
-  con patente, mecánico y estado. Por ahora este listado está vacío — el tenant taller ya no muestra Arriendos ni Mercado Libre.
 </div>
 
 <div class="card shadow-sm">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0 datatable">
       <thead class="table-light">
         <tr>
           <th>Folio OT</th>
           <th>Patente</th>
           <th>Cliente</th>
+          <th>Cotización</th>
           <th>Mecánico</th>
           <th>Estado</th>
-          <th>Fecha</th>
+          <th>Apertura</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
-        {% if rows %}
-          {% for r in rows %}
-          <tr>
-            <td>{{ r.folio }}</td>
-            <td>{{ r.patente }}</td>
-            <td>{{ r.cliente }}</td>
-            <td>{{ r.mecanico }}</td>
-            <td>{{ r.estado }}</td>
-            <td>{{ fmt_dmy(r.fecha) if r.fecha else '—' }}</td>
-          </tr>
-          {% endfor %}
-        {% else %}
-          <tr>
-            <td colspan="6" class="text-center text-muted py-5">
-              No hay órdenes de trabajo aún.<br>
-              <small>Cree una cotización de servicio y apruebe para generar la primera OT.</small>
-            </td>
-          </tr>
-        {% endif %}
+        {% for r in rows %}
+        <tr>
+          <td class="fw-semibold">{{ r.folio }}</td>
+          <td>{{ r.patente or '—' }}</td>
+          <td>{{ r.cliente or '—' }}</td>
+          <td>{{ r.cot_folio or '—' }}</td>
+          <td>{{ r.mecanico or '—' }}</td>
+          <td><span class="badge text-bg-secondary">{{ estado_label(r.estado) }}</span></td>
+          <td>{{ fmt_dmy(r.fecha_apertura) if r.fecha_apertura else '—' }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('taller_ot_detalle', ot_id=r.id) }}">Ver</a>
+          </td>
+        </tr>
+        {% endfor %}
       </tbody>
     </table>
+    {% if not rows %}
+    <p class="text-center text-muted py-5 mb-0">
+      No hay órdenes de trabajo aún.<br>
+      <small>Cree una cotización de <strong>servicio</strong>, indique patente y apruebe para generar la primera OT.</small>
+    </p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

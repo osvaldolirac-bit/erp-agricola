@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}{{ row.folio }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ row.folio }}</h1>
+    <p class="text-muted mb-0">
+      Cotización {{ row.cot_folio or '—' }} · {{ row.cliente or 'Sin cliente' }}
+    </p>
+  </div>
+  <div class="d-flex gap-2">
+    {% if row.cotizacion_id %}
+    <a class="btn btn-outline-secondary" href="{{ url_for('cotizaciones_detalle', cot_id=row.cotizacion_id) }}">Ver cotización</a>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="{{ url_for('taller_ot_list') }}">Volver</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="panel">
+      <h2 class="h6 fw-bold mb-3">Datos OT</h2>
+      <dl class="row mb-0 small">
+        <dt class="col-5">Patente</dt>
+        <dd class="col-7">{{ row.patente or '—' }}</dd>
+        <dt class="col-5">Vehículo / trabajo</dt>
+        <dd class="col-7">{{ row.vehiculo or row.cot_asunto or '—' }}</dd>
+        <dt class="col-5">Estado</dt>
+        <dd class="col-7">{{ estado_label(row.estado) }}</dd>
+        <dt class="col-5">Apertura</dt>
+        <dd class="col-7">{{ fmt_dmy(row.fecha_apertura) if row.fecha_apertura else '—' }}</dd>
+        <dt class="col-5">Cierre</dt>
+        <dd class="col-7">{{ fmt_dmy(row.fecha_cierre) if row.fecha_cierre else '—' }}</dd>
+        <dt class="col-5">Total cot.</dt>
+        <dd class="col-7">{{ clp(row.cot_total or 0) }}</dd>
+      </dl>
+    </div>
+
+    <div class="panel mt-3">
+      <h2 class="h6 fw-bold mb-3">Asignación</h2>
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label fw-bold">Mecánico</label>
+          <input class="form-control" name="mecanico" placeholder="Nombre del mecánico"
+                 value="{{ row.mecanico or '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Estado</label>
+          <select class="form-select" name="estado">
+            {% for val, lbl in estados %}
+            <option value="{{ val }}" {% if row.estado == val %}selected{% endif %}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Notas taller</label>
+          <textarea class="form-control" name="notas" rows="3">{{ row.notas or '' }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Guardar</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="panel">
+      <h2 class="h6 fw-bold mb-3">Trabajos (desde cotización)</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Descripción</th>
+              <th>Und</th>
+              <th class="text-end">Cant</th>
+              <th class="text-end">Valor</th>
+              <th class="text-end">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in items %}
+            <tr>
+              <td>{{ it.descripcion }}{% if it.obs %}<br><small class="text-muted">{{ it.obs }}</small>{% endif %}</td>
+              <td>{{ it.unidad }}</td>
+              <td class="text-end">{{ it.cantidad }}</td>
+              <td class="text-end">{{ clp(it.precio_unitario) }}</td>
+              <td class="text-end fw-semibold">{{ clp(it.total) }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-muted text-center py-4">Sin ítems en la cotización.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

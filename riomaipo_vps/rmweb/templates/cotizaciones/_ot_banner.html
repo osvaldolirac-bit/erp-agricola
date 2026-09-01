@@ -1,0 +1,10 @@
+{% if ot_taller %}
+<div class="alert alert-info d-flex justify-content-between align-items-center">
+  <div>
+    <strong>Orden de trabajo:</strong> {{ ot_taller.folio }}
+    {% if ot_taller.patente %} · Patente {{ ot_taller.patente }}{% endif %}
+    {% if ot_taller.mecanico %} · {{ ot_taller.mecanico }}{% endif %}
+  </div>
+  <a class="btn btn-sm btn-primary" href="{{ url_for('taller_ot_detalle', ot_id=ot_taller.id) }}">Abrir OT</a>
+</div>
+{% endif %}
