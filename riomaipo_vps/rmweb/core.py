@@ -273,6 +273,7 @@ def init_db(db_path: str | Path | None = None, empresa_default: dict | None = No
         [
             ("fecha_expira", "TEXT"),
             ("invitado_por", "TEXT"),
+            ("tenant_slug", "TEXT"),
             ("alerta_24h_enviada", "INTEGER DEFAULT 0"),
             ("alerta_vencido_enviada", "INTEGER DEFAULT 0"),
         ],
@@ -475,7 +476,7 @@ def get_user_if_valid(usuario: str, clave: str, db_path: str | Path | None = Non
     row = c.execute(
         """
         SELECT id, usuario, salt, clave_hash, nombre, tipo, activo,
-               fecha_expira, invitado_por
+               fecha_expira, invitado_por, tenant_slug
         FROM usuarios WHERE lower(usuario)=lower(?) AND activo=1
         """,
         (usuario.strip(),),
@@ -493,7 +494,7 @@ def get_user_by_email(usuario: str, db_path: str | Path | None = None):
     row = c.execute(
         """
         SELECT id, usuario, salt, clave_hash, nombre, tipo, activo,
-               fecha_expira, invitado_por
+               fecha_expira, invitado_por, tenant_slug
         FROM usuarios WHERE lower(usuario)=lower(?) AND activo=1
         """,
         ((usuario or "").strip(),),

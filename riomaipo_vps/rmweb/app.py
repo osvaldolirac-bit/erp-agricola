@@ -376,6 +376,7 @@ def _find_login_matches(usuario: str, clave: str) -> list[dict]:
                         "fecha_expira": (user.get("fecha_expira") or "")[:10] or "",
                         "id": user.get("id"),
                         "invitado_por": user.get("invitado_por") or "",
+                        "tenant_slug": user.get("tenant_slug") or "",
                     },
                 }
             )
@@ -410,6 +411,15 @@ def login():
         clave = request.form.get("clave") or ""
         default_user = email
         matches = _find_login_matches(email, clave)
+        preferred = (
+            request.form.get("tenant_slug")
+            or request.args.get("tenant")
+            or ""
+        ).strip().lower()
+        if preferred and len(matches) > 1:
+            filtered = [m for m in matches if m.get("slug") == preferred]
+            if filtered:
+                matches = filtered
         if not matches:
             error = "Usuario o clave incorrectos, o periodo de prueba finalizado."
             # Alerta best-effort en DEMO (si existe), sin filtrar otros ERP.
@@ -466,6 +476,7 @@ def login():
         "login.html",
         error=error,
         default_user=default_user,
+        tenant_slug=(request.args.get("tenant") or request.form.get("tenant_slug") or "").strip().lower(),
     )
 
 
@@ -2440,7 +2451,7 @@ def probar():
                                 """
                                 UPDATE usuarios
                                    SET salt=?, clave_hash=?, nombre=?, tipo='Administrador',
-                                       activo=1, fecha_expira=?, invitado_por=?
+                                       activo=1, fecha_expira=?, invitado_por=?, tenant_slug=?
                                  WHERE id=?
                                 """,
                                 (
@@ -2449,6 +2460,7 @@ def probar():
                                     nombre_u[:120],
                                     exp_use,
                                     f"ig:{telefono_u}"[:80],
+                                    "comercial-demo",
                                     row["id"],
                                 ),
                             )
@@ -2457,8 +2469,8 @@ def probar():
                             conn.execute(
                                 """
                                 INSERT INTO usuarios
-                                  (usuario, salt, clave_hash, nombre, tipo, activo, fecha_expira, invitado_por)
-                                VALUES (?,?,?,?, 'Administrador', 1, ?, ?)
+                                  (usuario, salt, clave_hash, nombre, tipo, activo, fecha_expira, invitado_por, tenant_slug)
+                                VALUES (?,?,?,?, 'Administrador', 1, ?, ?, ?)
                                 """,
                                 (
                                     email_u,
@@ -2467,6 +2479,7 @@ def probar():
                                     nombre_u[:120],
                                     exp,
                                     f"ig:{telefono_u}"[:80],
+                                    "comercial-demo",
                                 ),
                             )
                         conn.commit()

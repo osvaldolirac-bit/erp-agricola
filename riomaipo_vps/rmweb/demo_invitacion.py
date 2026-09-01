@@ -15,16 +15,26 @@ DEMO_URL = os.environ.get(
 NOMBRE_ERP = "DEMO Comercial"
 
 
-def login_url_invitado(email: str) -> str:
-    """Login DEMO con correo del invitado precargado (sin listar otros usuarios)."""
+def login_url_invitado(email: str, tenant_slug: str = "comercial-demo") -> str:
+    """Login DEMO con correo del invitado precargado y tenant destino."""
     from urllib.parse import quote
 
     e = (email or "").strip().lower()
-    base = DEMO_URL
+    slug = (tenant_slug or "comercial-demo").strip().lower()
+    if slug == "taller-demo":
+        base = os.environ.get(
+            "TALLER_DEMO_URL",
+            "https://erpmaster.cl/comercial/login?tenant=taller-demo",
+        )
+    else:
+        base = DEMO_URL
     if "acceso=" in base:
         return base
     sep = "&" if "?" in base else "?"
-    return f"{base}{sep}acceso={quote(e)}"
+    url = f"{base}{sep}acceso={quote(e)}"
+    if slug and "tenant=" not in base:
+        url += f"&tenant={quote(slug)}"
+    return url
 
 # Cuentas permanentes (sin vencimiento) en DEMO Comercial
 USUARIOS_PERMANENTES = {
@@ -81,15 +91,30 @@ def es_permanente(email: str) -> bool:
 
 
 def acceso_permitido_en_tenant(slug: str | None, user: dict[str, Any] | None) -> bool:
-    """Invitados de prueba (IG/correo) solo en comercial-demo; internos en todos."""
+    """Invitados de prueba solo en su tenant_slug; internos en todos."""
     u = user or {}
     if es_permanente(u.get("usuario") or ""):
         return True
+    home = str(u.get("tenant_slug") or "").strip().lower()
+    if home:
+        return (slug or "").strip().lower() == home
     invitado = str(u.get("invitado_por") or "").strip()
     expira = str(u.get("fecha_expira") or "").strip()
     if invitado or expira:
         return (slug or "").strip().lower() == "comercial-demo"
     return True
+
+
+def tenant_slug_usuario(user: dict[str, Any] | None) -> str:
+    u = user or {}
+    home = str(u.get("tenant_slug") or "").strip().lower()
+    if home:
+        return home
+    if es_permanente(u.get("usuario") or ""):
+        return ""
+    if str(u.get("invitado_por") or "").strip() or str(u.get("fecha_expira") or "").strip():
+        return "comercial-demo"
+    return ""
 
 
 def enviar_correo_invitacion_demo(

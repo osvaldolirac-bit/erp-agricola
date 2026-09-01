@@ -24,7 +24,8 @@
         <div class="dropdown-menu dropdown-menu-end login-access-menu p-3">
           {% if info %}<div class="alert alert-success py-2 mb-2">{{ info }}</div>{% endif %}
           {% if error %}<div class="alert alert-danger py-2 mb-2" role="alert">{{ error }}</div>{% endif %}
-          <form method="post" action="{{ url_for('login') }}" autocomplete="off" id="loginForm">
+          <form method="post" action="{{ url_for('login') }}{% if tenant_slug %}?tenant={{ tenant_slug }}{% endif %}" autocomplete="off" id="loginForm">
+            {% if tenant_slug %}<input type="hidden" name="tenant_slug" value="{{ tenant_slug }}">{% endif %}
             <input type="text" name="fake_user" value="" tabindex="-1" autocomplete="username" aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0;">
             <input type="password" name="fake_pass" value="" tabindex="-1" autocomplete="current-password" aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0;">
             <div class="mb-2">
