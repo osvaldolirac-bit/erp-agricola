@@ -2321,8 +2321,8 @@ def demo_entry_public():
 
 @app.route("/taller-demo")
 def taller_demo_entry():
-    """Entrada demo taller automotriz → login del tenant."""
-    return redirect(url_for("login", tenant="taller-demo"))
+    """Entrada demo taller automotriz → mismo flujo probar con OTP."""
+    return redirect(url_for("probar", tenant="taller-demo"))
 
 
 @app.route("/probar", methods=["GET", "POST"])
@@ -2355,7 +2355,17 @@ def probar():
     error = None
     info = None
     usuario_demo = ""
-    login_url = url_for("login", tenant="comercial-demo")
+    tenant_slug = (
+        (request.form.get("tenant_slug") or request.args.get("tenant") or "comercial-demo")
+        .strip()
+        .lower()
+    )
+    ten = get_tenant(tenant_slug) or {}
+    if not ten.get("es_demo"):
+        tenant_slug = "comercial-demo"
+        ten = get_tenant(tenant_slug) or {}
+    tenant_nombre = ten.get("nombre_erp") or ten.get("nombre") or "ERP Comercial"
+    login_url = url_for("login", tenant=tenant_slug)
     fecha_expira_txt = ""
     paso = "datos"  # datos | codigo
     pending_email = ""
@@ -2363,7 +2373,6 @@ def probar():
     pending_telefono = ""
     resend_wait = 0
 
-    ten = get_tenant("comercial-demo") or {}
     secrets_path = ten.get("secrets") or ""
 
     if request.method == "POST":
@@ -2386,6 +2395,8 @@ def probar():
                     nombre=nombre,
                     telefono=telefono,
                     force_resend=(action == "reenviar"),
+                    tenant_slug=tenant_slug,
+                    nombre_erp=tenant_nombre,
                 )
                 if sent_ok:
                     paso = "codigo"
@@ -2456,7 +2467,7 @@ def probar():
                                     nombre_u[:120],
                                     exp_use,
                                     f"ig:{telefono_u}"[:80],
-                                    "comercial-demo",
+                                    tenant_slug,
                                     row["id"],
                                 ),
                             )
@@ -2475,7 +2486,7 @@ def probar():
                                     nombre_u[:120],
                                     exp,
                                     f"ig:{telefono_u}"[:80],
-                                    "comercial-demo",
+                                    tenant_slug,
                                 ),
                             )
                         conn.commit()
@@ -2488,10 +2499,13 @@ def probar():
                             os.makedirs(status_dir, exist_ok=True)
                         except Exception:
                             status_dir = "/tmp"
-                        path = os.path.join(status_dir, "leads_demo_comercial.jsonl")
+                        path = os.path.join(
+                            status_dir,
+                            f"leads_demo_{tenant_slug.replace('-', '_')}.jsonl",
+                        )
                         row_lead = {
                             "ts": datetime.now(timezone.utc).isoformat(),
-                            "producto": "comercial",
+                            "producto": ten.get("rubro") or tenant_slug,
                             "nombre": nombre_u,
                             "telefono": telefono_u,
                             "email": email_u,
@@ -2508,7 +2522,7 @@ def probar():
 
                         try:
                             log_master_bitacora(
-                                "comercial-demo",
+                                tenant_slug,
                                 email_u,
                                 "PRUEBA_INICIO",
                                 f"{nombre_u} · {telefono_u} · vence {exp}",
@@ -2518,7 +2532,7 @@ def probar():
 
                         ok = True
                         usuario_demo = email_u
-                        login_url = login_url_invitado(email_u)
+                        login_url = login_url_invitado(email_u, tenant_slug)
                         from rmweb.demo_invitacion import (
                             enviar_correo_invitacion_demo,
                             parse_fecha,
@@ -2537,6 +2551,8 @@ def probar():
                                 admin_email=receptor_admin(secrets_path),
                                 fecha_expira=exp,
                                 dias=dias,
+                                tenant_slug=tenant_slug,
+                                nombre_erp=tenant_nombre,
                             )
                         except Exception:
                             pass
@@ -2565,6 +2581,8 @@ def probar():
         pending_nombre=pending_nombre,
         pending_telefono=pending_telefono,
         resend_wait=resend_wait,
+        tenant_slug=tenant_slug,
+        tenant_nombre=tenant_nombre,
     )
 
 

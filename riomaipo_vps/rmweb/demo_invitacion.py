@@ -14,6 +14,19 @@ DEMO_URL = os.environ.get(
 )
 NOMBRE_ERP = "DEMO Comercial"
 
+_DEMO_NOMBRES: dict[str, str] = {
+    "comercial-demo": "DEMO Comercial",
+    "taller-demo": "DEMO Taller Automotriz",
+}
+
+
+def nombre_erp_demo(tenant_slug: str | None = None, nombre_erp: str | None = None) -> str:
+    custom = (nombre_erp or "").strip()
+    if custom:
+        return custom
+    slug = (tenant_slug or "comercial-demo").strip().lower()
+    return _DEMO_NOMBRES.get(slug, NOMBRE_ERP)
+
 
 def login_url_invitado(email: str, tenant_slug: str = "comercial-demo") -> str:
     """Login DEMO con correo del invitado precargado y tenant destino."""
@@ -126,6 +139,8 @@ def enviar_correo_invitacion_demo(
     admin_email: str,
     fecha_expira: str,
     dias: int = DEMO_DIAS_PRUEBA,
+    tenant_slug: str = "comercial-demo",
+    nombre_erp: str | None = None,
 ) -> tuple[bool, str]:
     from erp_correo_html import html_esc, plantilla_correo_html
 
@@ -139,11 +154,13 @@ def enviar_correo_invitacion_demo(
     email_n = (email or "").strip()
     admin = (admin_email or receptor_admin(secrets_path) or "").strip()
     n_dias = max(1, int(dias or DEMO_DIAS_PRUEBA))
-    link_acceso = login_url_invitado(email_n)
+    slug = (tenant_slug or "comercial-demo").strip().lower()
+    erp_nombre = nombre_erp_demo(slug, nombre_erp)
+    link_acceso = login_url_invitado(email_n, slug)
 
     interior = f"""
             <p style="color:#1F2933;line-height:1.55;">
-                Has sido invitado a probar el <b>ERP Master Comercial</b> en entorno de demostración.
+                Has sido invitado a probar el <b>ERP Master {html_esc(erp_nombre)}</b> en entorno de demostración.
                 Este acceso es temporal y sirve para conocer el sistema sin afectar datos de producción.
             </p>
             <div style="background:#E0F7FA;border:1px solid #80DEEA;border-radius:10px;padding:14px 18px;margin:18px 0;">
@@ -162,21 +179,21 @@ def enviar_correo_invitacion_demo(
             </div>
             <p style="text-align:center;margin:24px 0;">
                 <a href="{link_acceso}" style="display:inline-block;background:linear-gradient(135deg,#0F8FA8,#00695C);color:white;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:800;">
-                  ACCEDER AL ERP DEMO COMERCIAL
+                  ACCEDER AL ERP {html_esc(erp_nombre.upper())}
                 </a>
             </p>
             <p style="font-size:13px;color:#5F6B7A;margin:6px 0;"><b>Fecha:</b> {html_esc(f_h)} (Chile)</p>
     """
     cuerpo = plantilla_correo_html(
         "invitacion",
-        "Bienvenido al ERP Master Comercial — Ambiente Demo",
+        f"Bienvenido al ERP Master {erp_nombre} — Ambiente Demo",
         interior,
-        nombre_erp=NOMBRE_ERP,
+        nombre_erp=erp_nombre,
         pie="Si no esperaba esta invitación, ignore el correo.",
     )
     ok = bool(
         send(
-            f"Invitación — ERP Comercial Demo (acceso de prueba {n_dias} días)",
+            f"Invitación — ERP {erp_nombre} (acceso de prueba {n_dias} días)",
             cuerpo,
             [email_n],
         )
@@ -185,7 +202,7 @@ def enviar_correo_invitacion_demo(
     if admin and admin.lower() != email_n.lower():
         try:
             send(
-                f"Copia — Invitación Comercial Demo enviada a {email_n}",
+                f"Copia — Invitación {erp_nombre} enviada a {email_n}",
                 cuerpo,
                 [admin],
             )
@@ -405,6 +422,8 @@ def crear_y_enviar_codigo_probar(
     nombre: str,
     telefono: str,
     force_resend: bool = False,
+    tenant_slug: str = "comercial-demo",
+    nombre_erp: str | None = None,
 ) -> tuple[bool, str, dict | None]:
     """Genera OTP, lo guarda y envía el mail con el código. No crea usuario."""
     import secrets
@@ -467,10 +486,12 @@ def crear_y_enviar_codigo_probar(
     data[email_n] = entry
     _otp_save(data)
 
+    erp_nombre = nombre_erp_demo(tenant_slug, nombre_erp)
+
     interior = f"""
             <p style="color:#1F2933;line-height:1.55;">
                 Hola{(' ' + html_esc(entry['nombre'])) if entry['nombre'] else ''},
-                para activar tu prueba del <b>ERP Master Comercial</b> ingresa este código:
+                para activar tu prueba del <b>ERP Master {html_esc(erp_nombre)}</b> ingresa este código:
             </p>
             <div style="background:#E0F2F1;border:1px solid #80CBC4;border-radius:12px;padding:18px 20px;margin:22px 0;text-align:center;">
                 <p style="margin:0 0 8px;font-size:13px;color:#00695C;font-weight:700;letter-spacing:.08em;">CÓDIGO DE VERIFICACIÓN</p>
@@ -480,12 +501,12 @@ def crear_y_enviar_codigo_probar(
     """
     cuerpo = plantilla_correo_html(
         "invitacion",
-        "Tu código para probar ERP Comercial",
+        f"Tu código para probar {erp_nombre}",
         interior,
-        nombre_erp=NOMBRE_ERP,
+        nombre_erp=erp_nombre,
         pie="No compartas este código. ERP Master.",
     )
-    ok = bool(send(f"Código de verificación — ERP Comercial Demo", cuerpo, [email_n]))
+    ok = bool(send(f"Código de verificación — {erp_nombre}", cuerpo, [email_n]))
     meta = {
         "email": email_n,
         "nombre": entry["nombre"],
