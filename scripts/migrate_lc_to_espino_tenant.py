@@ -23,6 +23,8 @@ CC_TARGET = "Cerezos"
 CC_SOURCES = frozenset({"EL ESPINO", "NOGALES APARICION", "NOGALES CRUZ DEL SUR"})
 GAP_ESPECIE = "EL ESPINO"
 RAZON_SOCIAL_ESPINO = "El Espino"
+GASTOS_ESPINO_DOC_PREFIX = "GE"
+TIPO_GASTO_DEFAULT = "Sin clasificar"
 SUPERFICIE_HA = 7.0
 PRORRATEO_PCT = 100.0
 
@@ -421,6 +423,189 @@ def _migrate_compras_tesoreria(
     return n_main, n_imput, n_abonos, int(n_pend)
 
 
+def _infer_tipo_gasto_espino(item: str | None, documento: str | None) -> str:
+    """Clasificación heurística para rubro en matriz de costos."""
+    txt = f"{item or ''} {documento or ''}".upper()
+    if any(k in txt for k in ("ARRIENDO", "MARIA PAOLA", "TORRES ORTIZ")):
+        return "Arriendos"
+    if any(
+        k in txt
+        for k in (
+            "CGE",
+            "CONSUMO ELÉCTRICO",
+            "CONSUMO ELECTRICO",
+            "ELECTRIC",
+            "ENERGÍA",
+            "ENERGIA",
+        )
+    ):
+        return "Energía eléctrica"
+    if any(
+        k in txt
+        for k in (
+            "PODA",
+            "SUELDO",
+            "FINIQUITO",
+            "IMPOSICION",
+            "IMPOSICI",
+            "INDEMNIZ",
+            "AGUINALDO",
+            "ANTICIPO",
+            "REEMBOLSO",
+            "DUILIO",
+            "ALEJANDRA",
+            "CARLOS ZAVALA",
+            "DANIXA",
+            "HECHURA",
+            "REPLANTE",
+            "AMONTON",
+            "APILAR",
+            "SARMIENTO",
+            "SUPERVISION",
+        )
+    ):
+        return "Contratistas externos"
+    if any(k in txt for k in ("MAQUINARIA", "TRACTOR", "TRASLADO DE BOMBA", "CAMBIO DE BOMBA")):
+        return "Servicios maq. externa"
+    if any(
+        k in txt
+        for k in (
+            "TOPAGRO",
+            "COAGRA",
+            "MACAL",
+            "FITOSANIT",
+            "AGROQUÍM",
+            "AGROQUIM",
+            "NEXUS",
+            "KONAN",
+            "PIRIPROXIFEN",
+            "NORDOX",
+            "COBRE",
+            "FASCINATE",
+            "ALION",
+            "PODASTIK",
+            "ACABAN",
+            "UREA",
+            "NITRATO",
+            "SYNCRON",
+            "BIOIL",
+            "DORMEX",
+            "FERMACO",
+        )
+    ):
+        return "Agroquímicos"
+    if any(k in txt for k in ("FERRE", "ELECTROCOM", "CABLE", "PERNO", "PALA", "VITEL", "DAB,")):
+        return "Repuestos y talleres"
+    if any(
+        k in txt
+        for k in (
+            "NOTARIA",
+            "NOTARÍ",
+            "CONTADOR",
+            "AUDITORIA",
+            "AUDITORÍA",
+            "COMISIÓN",
+            "COMISION",
+            "INTERÉS",
+            "INTERES",
+            "GASTOS NOTARIALES",
+        )
+    ):
+        return "Gastos administración y asesorías"
+    if any(k in txt for k in ("RIEGO", "SONDA", "MOTOR 4", "EMPAR", "POZO", "HIDRÁUL", "HIDRaul")):
+        return "Repuestos y talleres"
+    if any(k in txt for k in ("HELADA", "CACERES", "ZUÑIGA", "ZUNIGA")):
+        return "Contratistas externos"
+    return TIPO_GASTO_DEFAULT
+
+
+def _migrate_gastos_espino_costos(
+    src: sqlite3.Connection,
+    dst: sqlite3.Connection,
+) -> tuple[int, float, int]:
+    """gastos_espino (LC) → facturas GE-* + imputación _P en Cerezos (Costos)."""
+    if not _table_exists(src, "gastos_espino") or not _table_exists(dst, "facturas"):
+        return 0, 0.0, 0
+
+    # Evitar doble conteo: quitar imputaciones _P de compras; gastos_espino es la fuente (~61M).
+    dst.execute("DELETE FROM facturas WHERE nro_documento GLOB 'GE-*'")
+    dst.execute(
+        """DELETE FROM facturas
+           WHERE nro_documento LIKE '%\_P' ESCAPE '\\'
+             AND nro_documento NOT GLOB 'GE-*'"""
+    )
+
+    rows = src.execute(
+        """SELECT id, fecha, documento, item, monto
+           FROM gastos_espino
+           WHERE ABS(COALESCE(monto, 0)) > 0.01
+           ORDER BY id"""
+    ).fetchall()
+    if not rows:
+        return 0, 0.0, 0
+
+    n = 0
+    total = 0.0
+    for gid, fecha, documento, item, monto in rows:
+        monto_f = float(monto or 0)
+        if monto_f <= 0.01:
+            continue
+        doc_base = f"{GASTOS_ESPINO_DOC_PREFIX}-{int(gid)}"
+        prov = (str(documento or "").strip() or "S/N")[:120]
+        concepto = (str(item or "").strip() or "Gasto El Espino")[:500]
+        tg = _infer_tipo_gasto_espino(concepto, prov)
+        fv = str(fecha)[:10] if fecha else None
+
+        dst.execute(
+            """INSERT INTO facturas
+               (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, monto_neto,
+                estado, tipo, concepto, razon_social, tipo_gasto, folio_interno)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                doc_base,
+                prov,
+                fv,
+                fv,
+                monto_f,
+                monto_f,
+                "Pagado",
+                "Gasto Varios",
+                concepto,
+                RAZON_SOCIAL_ESPINO,
+                tg,
+                prov if not str(prov).upper().startswith("INT-") else "",
+            ),
+        )
+        dst.execute(
+            """INSERT INTO facturas
+               (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
+                tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                f"{doc_base}_P",
+                prov,
+                fv,
+                fv,
+                0.0,
+                "Gasto Varios",
+                CC_TARGET,
+                monto_f,
+                concepto,
+                RAZON_SOCIAL_ESPINO,
+                tg,
+            ),
+        )
+        n += 1
+        total += monto_f
+
+    n_imput = dst.execute(
+        """SELECT COUNT(*) FROM facturas
+           WHERE nro_documento LIKE ? AND ABS(COALESCE(monto_imputado,0))>0.01""",
+        (f"{GASTOS_ESPINO_DOC_PREFIX}-%_P",),
+    ).fetchone()[0]
+    return n, total, int(n_imput)
+
+
 def _migrate_libro_campo(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
     _delete_all(dst, "libro_campo")
     return _copy_table(
@@ -507,6 +692,56 @@ def migrate_compras_tesoreria(*, dry_run: bool = False) -> dict[str, int | str]:
         stats["facturas_imputacion"] = n_imput
         stats["facturas_abonos"] = n_abonos
         stats["tesoreria_pendientes"] = n_pend
+        dst.commit()
+    except Exception:
+        dst.rollback()
+        raise
+    finally:
+        src.close()
+        dst.close()
+    return stats
+
+
+def migrate_gastos_espino_costos(*, dry_run: bool = False) -> dict[str, int | str | float]:
+    """Módulo Espino LC (gastos_espino) → imputaciones Costos tenant (~61M)."""
+    if not LC_DB.is_file():
+        raise SystemExit(f"LC DB not found: {LC_DB}")
+    if not ESPINO_DB.is_file():
+        raise SystemExit(f"Espino DB not found: {ESPINO_DB}")
+
+    stats: dict[str, int | str | float] = {}
+    src = sqlite3.connect(LC_DB)
+    try:
+        stats["gastos_espino_src"] = src.execute(
+            "SELECT COUNT(*) FROM gastos_espino WHERE ABS(COALESCE(monto,0))>0.01"
+        ).fetchone()[0]
+        stats["monto_espino_src"] = round(
+            float(
+                src.execute(
+                    "SELECT COALESCE(SUM(monto),0) FROM gastos_espino WHERE ABS(COALESCE(monto,0))>0.01"
+                ).fetchone()[0]
+                or 0
+            ),
+            2,
+        )
+    finally:
+        src.close()
+
+    if dry_run:
+        stats["dry_run"] = 1
+        return stats
+
+    backup = _backup_db(ESPINO_DB)
+    stats["backup"] = str(backup)
+
+    src = sqlite3.connect(LC_DB)
+    dst = sqlite3.connect(ESPINO_DB)
+    try:
+        dst.execute("PRAGMA foreign_keys=OFF")
+        n, total, n_imput = _migrate_gastos_espino_costos(src, dst)
+        stats["gastos_espino"] = n
+        stats["monto_imputado_costos"] = round(total, 2)
+        stats["imputaciones_ge"] = n_imput
         dst.commit()
     except Exception:
         dst.rollback()
@@ -604,8 +839,16 @@ def main() -> int:
         action="store_true",
         help="Solo facturas El Espino y abonos (compras + tesorería); no toca GAP/bodega/etc.",
     )
+    parser.add_argument(
+        "--solo-gastos-espino-costos",
+        action="store_true",
+        help="Módulo Espino LC (gastos_espino ~61M) → imputaciones Costos en Cerezos.",
+    )
     args = parser.parse_args()
-    if args.solo_compras_tesoreria:
+    if args.solo_gastos_espino_costos:
+        stats = migrate_gastos_espino_costos(dry_run=args.dry_run)
+        print("Migración gastos Espino LC → Costos tenant El Espino")
+    elif args.solo_compras_tesoreria:
         stats = migrate_compras_tesoreria(dry_run=args.dry_run)
         print("Migración compras/tesorería LC → tenant El Espino")
     else:
