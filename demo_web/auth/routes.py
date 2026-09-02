@@ -99,6 +99,26 @@ def _maybe_alert_login(*, email: str, exitoso: bool, tenant_slug: str | None = N
         pass
 
 
+def _login_tenant_choices() -> list[dict]:
+    """Tenants visibles en la pantalla de acceso agrícola (excluye GlobalGAP: portal propio)."""
+    out: list[dict] = []
+    for t in list_tenants():
+        if t.get("kind") == "globalgap":
+            continue
+        out.append(
+            {
+                "slug": t["slug"],
+                "nombre": t["nombre"],
+                "descripcion": t.get("descripcion") or "",
+            }
+        )
+    return out
+
+
+def _tenant_pref() -> str:
+    return (request.args.get("tenant") or request.form.get("tenant_pref") or "").strip().lower()
+
+
 def _find_login_matches(email: str, password: str) -> list[dict]:
     matches: list[dict] = []
     for t in list_tenants():
@@ -197,12 +217,19 @@ def login():
     open_panel = False
     remember_key = _remember_storage_key()
     acceso_pref = (request.args.get("acceso") or "").strip()
+    tenant_pref = _tenant_pref()
+    login_tenants = _login_tenant_choices()
+    if tenant_pref and not get_tenant(tenant_pref):
+        tenant_pref = ""
     if acceso_pref and "@" in acceso_pref:
+        open_panel = True
+    if tenant_pref:
         open_panel = True
 
     if request.method == "POST":
         email = (request.form.get("email") or "").strip()
         password = request.form.get("password") or ""
+        tenant_pref = _tenant_pref()
         matches = _find_login_matches(email, password)
         if not matches:
             error = "Acceso denegado o periodo de prueba vencido."
@@ -224,6 +251,12 @@ def login():
             _maybe_alert_login(email=email, exitoso=True, tenant_slug=m["slug"])
             _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
             return redirect(safe_next(pop_login_next()))
+        elif tenant_pref:
+            chosen = next((m for m in matches if m["slug"] == tenant_pref), None)
+            if chosen:
+                _maybe_alert_login(email=email, exitoso=True, tenant_slug=chosen["slug"])
+                _activate_session(email=chosen["email"], rol=chosen["rol"], tenant_slug=chosen["slug"])
+                return redirect(safe_next(pop_login_next()))
         else:
             # Varios tenants: selector
             session["pending_login"] = {
@@ -246,6 +279,8 @@ def login():
         open_panel=open_panel,
         remember_key=remember_key,
         acceso_pref=acceso_pref,
+        login_tenants=login_tenants,
+        tenant_pref=tenant_pref,
     )
 
 

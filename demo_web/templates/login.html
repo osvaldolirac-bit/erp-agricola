@@ -19,6 +19,7 @@
     <button type="button" class="btn-acceso" id="btnAcceso" aria-expanded="false"{% if open_panel %} aria-expanded="true"{% endif %}>Acceso</button>
     <div class="login-panel{% if open_panel %} open{% endif %}" id="loginPanel" role="dialog" aria-label="Iniciar sesión">
       <form method="post" class="login-panel-form" autocomplete="off">
+        {% if tenant_pref %}<input type="hidden" name="tenant_pref" value="{{ tenant_pref }}">{% endif %}
         <label for="email">Usuario</label>
         <input id="email" name="email" value="{{ acceso_pref or '' }}" type="email" autocomplete="username" required>
         <label for="password">Clave</label>
@@ -38,6 +39,14 @@
     <p class="login-brand">{{ erp_brand|default('ERP Master', true) }}</p>
     <h1>{{ erp_title|default('ERP Agrícola', true)|upper }}</h1>
     <p>{{ erp_login_subtitle|default('Vista operativa: sectores, riego y logística en un solo sistema', true) }}</p>
+    {% if login_tenants %}
+    <div class="login-tenant-list" aria-label="Clientes ERP Agrícola">
+      {% for t in login_tenants %}
+      <a class="login-tenant-chip{% if tenant_pref == t.slug %} is-active{% endif %}"
+         href="{{ url_for('auth.login', tenant=t.slug) }}">{{ t.nombre }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
   </main>
 </section>
 {% endblock %}
