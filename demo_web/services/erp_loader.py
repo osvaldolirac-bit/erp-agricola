@@ -139,6 +139,7 @@ def _apply_espino_tenant_overrides(erp: Any) -> None:
     erp.GAP_ESPECIES = ["EL ESPINO"]
     erp.GAP_ESPECIE_CUARTELES = {"EL ESPINO": ["Cerezos"]}
     erp.LIBRO_CAMPO_ESPECIES = ["Cerezos"]
+    erp.RAZONES_SOCIALES_COMPRAS = ["El Espino"]
 
 
 def _apply_tenant_config(erp: Any, t: dict[str, Any]) -> None:

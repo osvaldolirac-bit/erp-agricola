@@ -5,6 +5,8 @@ from typing import Any
 
 ESPINO_CC = "Cerezos"
 ESPINO_CCS = [ESPINO_CC]
+RAZON_SOCIAL_ESPINO = "El Espino"
+RAZONES_SOCIALES_ESPINO = [RAZON_SOCIAL_ESPINO]
 
 
 def tenant_slug() -> str:
@@ -58,6 +60,17 @@ def libro_campo_especies(demo: Any) -> list[str]:
     if is_espino_tenant():
         return list(ESPINO_CCS)
     return list(getattr(demo, "LIBRO_CAMPO_ESPECIES", []) or [])
+
+
+def razones_sociales_compras(demo: Any) -> list[str]:
+    if is_espino_tenant():
+        return list(RAZONES_SOCIALES_ESPINO)
+    return list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+
+
+def razon_social_compras_default(demo: Any) -> str:
+    razones = razones_sociales_compras(demo)
+    return razones[0] if razones else "El Espino"
 
 
 def cuarteles_gap_especie(demo: Any, especie: str) -> list[str]:

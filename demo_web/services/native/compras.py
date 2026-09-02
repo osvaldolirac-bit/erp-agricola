@@ -6,7 +6,7 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
-from demo_web.services.tenant_scope import centros_costo
+from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -54,6 +54,16 @@ def _folio_interno(conn, fecha) -> str:
         (prefijo + "%",),
     ).fetchone()[0]
     return f"{prefijo}{int(n) + 1:02d}"
+
+
+def _razon_social_post(demo) -> str:
+    razones = razones_sociales_compras(demo)
+    if len(razones) == 1:
+        return razones[0]
+    raw = (request.form.get("razon_social") or "").strip()
+    if raw in razones:
+        return raw
+    return razon_social_compras_default(demo)
 
 
 def _es_documento_interno(nro_documento: str | None) -> bool:
@@ -261,7 +271,7 @@ def _historial(demo, conn) -> dict:
         factura_edit = dict(factura_edit)
         factura_edit["tipo_gasto_sel"] = tg
 
-    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+    razones = razones_sociales_compras(demo)
     tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
     proveedores = _proveedores_options(conn) if es_admin else []
 
@@ -288,6 +298,7 @@ def _historial(demo, conn) -> dict:
         "factura_edit": factura_edit,
         "factura_opts": factura_opts,
         "razones_sociales": razones,
+        "razon_social_fija": razones[0] if len(razones) == 1 else "",
         "tipos_gasto_historial": tipos_gasto,
         "proveedores_hist": proveedores,
     }
@@ -325,6 +336,7 @@ def _gather_ingreso(demo, conn) -> dict:
     ]
     car_total = sum(i["t"] for i in car)
     proveedores = _proveedores_options(conn)
+    razones = razones_sociales_compras(demo)
     return {
         "modo_ingreso": modo,
         "modos_ingreso": MODOS_INGRESO,
@@ -333,7 +345,8 @@ def _gather_ingreso(demo, conn) -> dict:
         "productos": productos,
         "familias": demo.listar_familias_producto(conn),
         "unidades": demo.UNIDADES_MEDIDA_INSUMO,
-        "razones_sociales": demo.RAZONES_SOCIALES_COMPRAS,
+        "razones_sociales": razones,
+        "razon_social_fija": razones[0] if len(razones) == 1 else "",
         "tipos_gasto": demo.TIPOS_GASTO_ALTA,
         "centros_costo": centros_costo(demo),
         "car_rows": car_rows,
@@ -508,7 +521,7 @@ def _post_save_agro(demo, conn) -> dict:
     desglose = [f"{i['c']} {i.get('um', demo.DEFAULT_UNIDAD_INSUMO)} x {i['n']}" for i in car]
     concepto = "[" + ", ".join(desglose) + "]"
     total_bruto = sum(i["t"] for i in car) * 1.19
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = _razon_social_post(demo)
     tipo_gasto = (request.form.get("tipo_gasto") or "Agroquímicos").strip() or "Agroquímicos"
     conn.execute(
         """INSERT INTO facturas
@@ -542,7 +555,7 @@ def _post_save_gastos(demo, conn) -> dict:
     fv = request.form.get("fecha_vence") or str(hoy_demo(demo))
     sin_doc = request.form.get("sin_doc") == "1"
     nro = (request.form.get("nro_doc") or "").strip()
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = _razon_social_post(demo)
     concepto = (request.form.get("concepto") or "").strip()
     tipo_gasto = request.form.get("tipo_gasto") or demo.TIPOS_GASTO_ALTA[0]
     iva_bruto = request.form.get("iva_bruto") == "1"
@@ -585,7 +598,7 @@ def _post_save_petroleo(demo, conn) -> dict:
     fv = request.form.get("fecha_vence") or str(hoy_demo(demo))
     sin_doc = request.form.get("sin_doc") == "1"
     nro = (request.form.get("nro_doc") or "").strip()
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = _razon_social_post(demo)
     concepto = (request.form.get("concepto") or "").strip()
     try:
         litros = float(request.form.get("litros") or 0)
@@ -736,7 +749,7 @@ def _post_corregir_factura(demo, conn) -> dict:
     monto_old = float(fila[5] or 0)
     doc_new = (request.form.get("nro_documento") or "").strip()
     prov_new = (request.form.get("proveedor") or "").strip()
-    nrazon = (request.form.get("razon_social") or "").strip()
+    nrazon = _razon_social_post(demo)
     nconcepto = (request.form.get("concepto") or "").strip()
     nfe = (request.form.get("fecha_compra") or "").strip()
     nfv = (request.form.get("fecha_vencimiento") or nfe).strip()
@@ -750,7 +763,7 @@ def _post_corregir_factura(demo, conn) -> dict:
     if nmonto <= 0:
         return {"ok": False, "msg": "El monto bruto debe ser superior a $0."}
 
-    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+    razones = razones_sociales_compras(demo)
     if nrazon not in razones and razones:
         nrazon = razones[0]
     tg_guardar = demo.tipo_gasto_canonico_contratista(ntipo_gasto)
