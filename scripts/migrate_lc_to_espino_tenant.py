@@ -21,6 +21,7 @@ DOCS_ROOT = Path(
 
 CC_TARGET = "Cerezos"
 CC_SOURCES = frozenset({"EL ESPINO", "NOGALES APARICION", "NOGALES CRUZ DEL SUR"})
+BODEGA_CC_SOURCE = "EL ESPINO"
 GAP_ESPECIE = "EL ESPINO"
 RAZON_SOCIAL_ESPINO = "El Espino"
 GASTOS_ESPINO_DOC_PREFIX = "GE"
@@ -150,6 +151,106 @@ def _migrate_inventario(src: sqlite3.Connection, dst: sqlite3.Connection) -> int
         dst.execute(ins, [data[c] for c in inv_cols])
         n += 1
     return n
+
+
+def _stock_cc_desde_movimientos(conn: sqlite3.Connection, cc: str) -> dict[int, float]:
+    rows = conn.execute(
+        """SELECT producto_id,
+                  SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END) AS stock_cc
+           FROM movimientos
+           WHERE UPPER(TRIM(centro_costo)) = ?
+           GROUP BY producto_id""",
+        (cc.upper().strip(),),
+    ).fetchall()
+    return {int(r[0]): float(r[1] or 0) for r in rows}
+
+
+def _migrate_bodega_espino(src: sqlite3.Connection, dst: sqlite3.Connection) -> tuple[int, int, dict[str, float]]:
+    """Inventario Espino + movimientos EL ESPINO → Cerezos (stock y kardex actuales)."""
+    if not _table_exists(src, "inventario") or not _table_exists(dst, "inventario"):
+        return 0, 0, {}
+
+    stock_lc = _stock_cc_desde_movimientos(src, BODEGA_CC_SOURCE)
+    inv_cols = [c for c in _columns(src, "inventario") if c in _columns(dst, "inventario")]
+    if "producto" not in inv_cols:
+        return 0, 0, {}
+
+    upd_fields = [
+        c for c in inv_cols if c not in {"id", "producto", "stock"} and c in _columns(dst, "inventario")
+    ]
+    n_prod = 0
+    id_map: dict[int, int] = {}
+
+    for row in src.execute(f"SELECT {', '.join(inv_cols)} FROM inventario ORDER BY id").fetchall():
+        data = dict(zip(inv_cols, row))
+        nombre = str(data.get("producto") or "")
+        if not _es_producto_bodega_espino(nombre):
+            continue
+        lc_id = int(data.get("id") or 0)
+        stock_val = float(stock_lc.get(lc_id, 0.0))
+        name_key = nombre.upper().strip()
+
+        existing = dst.execute(
+            "SELECT id FROM inventario WHERE UPPER(TRIM(producto))=?",
+            (name_key,),
+        ).fetchone()
+        if existing:
+            dst_id = int(existing[0])
+            if upd_fields:
+                sets = ", ".join(f"{c}=?" for c in upd_fields)
+                dst.execute(
+                    f"UPDATE inventario SET {sets}, stock=? WHERE id=?",
+                    [data[c] for c in upd_fields] + [stock_val, dst_id],
+                )
+            else:
+                dst.execute("UPDATE inventario SET stock=? WHERE id=?", (stock_val, dst_id))
+        else:
+            ins_cols = [c for c in inv_cols if c != "id"]
+            ins_data = {c: data[c] for c in ins_cols}
+            ins_data["stock"] = stock_val
+            ph = ", ".join("?" for _ in ins_cols)
+            cur = dst.execute(
+                f"INSERT INTO inventario ({', '.join(ins_cols)}) VALUES ({ph})",
+                [ins_data[c] for c in ins_cols],
+            )
+            dst_id = int(cur.lastrowid)
+        id_map[lc_id] = dst_id
+        n_prod += 1
+
+    _delete_all(dst, "movimientos")
+    mov_cols = [c for c in _columns(src, "movimientos") if c in _columns(dst, "movimientos")]
+    if "producto_id" not in mov_cols:
+        return n_prod, 0, {}
+
+    mov_rows = src.execute(
+        f"""SELECT {", ".join(mov_cols)} FROM movimientos
+            WHERE UPPER(TRIM(centro_costo))=?
+            ORDER BY id""",
+        (BODEGA_CC_SOURCE.upper().strip(),),
+    ).fetchall()
+    ins_cols = [c for c in mov_cols if c != "id"]
+    ph = ", ".join("?" for _ in ins_cols)
+    ins = f"INSERT INTO movimientos ({', '.join(ins_cols)}) VALUES ({ph})"
+    n_mov = 0
+    for row in mov_rows:
+        data = dict(zip(mov_cols, row))
+        old_pid = int(data.get("producto_id") or 0)
+        new_pid = id_map.get(old_pid)
+        if not new_pid:
+            continue
+        data["producto_id"] = new_pid
+        data["centro_costo"] = CC_TARGET
+        dst.execute(ins, [data[c] for c in ins_cols])
+        n_mov += 1
+
+    stocks_out: dict[str, float] = {}
+    for row in dst.execute(
+        """SELECT producto, stock FROM inventario
+           ORDER BY producto COLLATE NOCASE"""
+    ).fetchall():
+        if _es_producto_bodega_espino(str(row[0])):
+            stocks_out[str(row[0])] = float(row[1] or 0)
+    return n_prod, n_mov, stocks_out
 
 
 def _migrate_prorrateo(dst: sqlite3.Connection) -> None:
@@ -702,6 +803,64 @@ def migrate_compras_tesoreria(*, dry_run: bool = False) -> dict[str, int | str]:
     return stats
 
 
+def migrate_bodega_espino(*, dry_run: bool = False) -> dict[str, int | str | float]:
+    """Bodega El Espino LC → inventario + movimientos tenant (CC Cerezos)."""
+    if not LC_DB.is_file():
+        raise SystemExit(f"LC DB not found: {LC_DB}")
+    if not ESPINO_DB.is_file():
+        raise SystemExit(f"Espino DB not found: {ESPINO_DB}")
+
+    stats: dict[str, int | str | float] = {}
+    src = sqlite3.connect(LC_DB)
+    try:
+        stats["movimientos_src"] = src.execute(
+            """SELECT COUNT(*) FROM movimientos
+               WHERE UPPER(TRIM(centro_costo))=?""",
+            (BODEGA_CC_SOURCE.upper().strip(),),
+        ).fetchone()[0]
+        stats["productos_bodega_src"] = src.execute(
+            "SELECT COUNT(*) FROM inventario"
+        ).fetchone()[0]
+        # productos espino reales
+        n_pe = 0
+        for row in src.execute("SELECT producto FROM inventario").fetchall():
+            if _es_producto_bodega_espino(str(row[0])):
+                n_pe += 1
+        stats["productos_espino_src"] = n_pe
+        stock_lc = _stock_cc_desde_movimientos(src, BODEGA_CC_SOURCE)
+        for lc_id, qty in stock_lc.items():
+            name = src.execute("SELECT producto FROM inventario WHERE id=?", (lc_id,)).fetchone()
+            if name and _es_producto_bodega_espino(str(name[0])):
+                stats[f"stock_lc_{name[0][:24]}"] = round(qty, 4)
+    finally:
+        src.close()
+
+    if dry_run:
+        stats["dry_run"] = 1
+        return stats
+
+    backup = _backup_db(ESPINO_DB)
+    stats["backup"] = str(backup)
+
+    src = sqlite3.connect(LC_DB)
+    dst = sqlite3.connect(ESPINO_DB)
+    try:
+        dst.execute("PRAGMA foreign_keys=OFF")
+        n_prod, n_mov, stocks = _migrate_bodega_espino(src, dst)
+        stats["productos"] = n_prod
+        stats["movimientos"] = n_mov
+        for name, qty in stocks.items():
+            stats[f"stock_{name[:24]}"] = round(qty, 4)
+        dst.commit()
+    except Exception:
+        dst.rollback()
+        raise
+    finally:
+        src.close()
+        dst.close()
+    return stats
+
+
 def migrate_gastos_espino_costos(*, dry_run: bool = False) -> dict[str, int | str | float]:
     """Módulo Espino LC (gastos_espino) → imputaciones Costos tenant (~61M)."""
     if not LC_DB.is_file():
@@ -844,8 +1003,16 @@ def main() -> int:
         action="store_true",
         help="Módulo Espino LC (gastos_espino ~61M) → imputaciones Costos en Cerezos.",
     )
+    parser.add_argument(
+        "--solo-bodega-espino",
+        action="store_true",
+        help="Bodega El Espino LC: inventario actual + movimientos imputados a Cerezos.",
+    )
     args = parser.parse_args()
-    if args.solo_gastos_espino_costos:
+    if args.solo_bodega_espino:
+        stats = migrate_bodega_espino(dry_run=args.dry_run)
+        print("Migración bodega El Espino LC → tenant El Espino")
+    elif args.solo_gastos_espino_costos:
         stats = migrate_gastos_espino_costos(dry_run=args.dry_run)
         print("Migración gastos Espino LC → Costos tenant El Espino")
     elif args.solo_compras_tesoreria:
