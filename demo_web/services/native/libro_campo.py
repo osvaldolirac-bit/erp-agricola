@@ -12,6 +12,21 @@ from demo_web.services.module_runner import pdf_download_url, redirect_module, s
 from demo_web.services.native._helpers import hoy_demo, parse_date
 from demo_web.services.tenant_scope import centros_costo, libro_campo_especies
 
+# Especies de cultivo (≠ GAP_ESPECIES / ámbitos GlobalGAP).
+_LIBRO_CAMPO_ESPECIES_DEFAULT = ("Cerezos", "Ciruelos", "Nogales")
+
+
+def _especies_libro_campo(demo) -> list[str]:
+    """Lista de especies para ingreso LC; respeta tenant (Espino → solo Cerezos)."""
+    out = libro_campo_especies(demo)
+    if out:
+        return out
+    custom = getattr(demo, "LIBRO_CAMPO_ESPECIES", None)
+    if custom:
+        return list(custom)
+    return list(_LIBRO_CAMPO_ESPECIES_DEFAULT)
+
+
 SECCIONES_BASE = [
     ("historial", "📜 HISTORIAL AUDITABLE"),
     ("ingreso", "📥 INGRESO APLICACIÓN"),
@@ -258,7 +273,7 @@ def _leer_evento_meta(demo) -> dict:
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
     if not out.get("cuartel") and centros_costo(demo):
         out["cuartel"] = centros_costo(demo)[0]
-    especies = libro_campo_especies(demo)
+    especies = _especies_libro_campo(demo)
     if not out.get("especie") and especies:
         out["especie"] = especies[0]
     return out
@@ -332,7 +347,7 @@ def _ingreso(demo, conn) -> dict:
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
         "cuarteles": centros_costo(demo),
-        "especies": libro_campo_especies(demo),
+        "especies": _especies_libro_campo(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -561,7 +576,7 @@ def _modificar(demo, conn) -> dict:
         "mod_edit": edit_linea,
         "mod_app_sel": edit_app,
         "cuarteles": centros_costo(demo),
-        "especies": libro_campo_especies(demo),
+        "especies": _especies_libro_campo(demo),
         "unidades_dosis": UNIDADES_DOSIS,
         "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
@@ -645,7 +660,7 @@ def _post_guardar_evento(demo, conn) -> dict:
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
     huerto = request.form.get("cuartel") or centros_costo(demo)[0]
-    especie = request.form.get("especie") or libro_campo_especies(demo)[0]
+    especie = request.form.get("especie") or _especies_libro_campo(demo)[0]
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
