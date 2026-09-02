@@ -21,6 +21,36 @@ elif (_REPO_ROOT / "app_demo.py").exists() or (_REPO_ROOT / "app_concepcion.py")
         sys.path.insert(0, str(_REPO_ROOT))
 
 _erp_modules: dict[str, Any] = {}
+_LC_DEFAULTS: dict[str, Any] | None = None
+
+
+def _capture_lc_defaults(erp: Any) -> None:
+    global _LC_DEFAULTS
+    if _LC_DEFAULTS is not None:
+        return
+    _LC_DEFAULTS = {
+        "CENTROS_COSTO": list(erp.CENTROS_COSTO),
+        "CUARTELES_OFICIALES": list(erp.CUARTELES_OFICIALES),
+        "CUARTELES_PRORRATEO": list(erp.CUARTELES_PRORRATEO),
+        "CUARTELES_IMPUTACION_DIRECTA": list(erp.CUARTELES_IMPUTACION_DIRECTA),
+        "PRORRATEO_CC_DEFAULT": dict(erp.PRORRATEO_CC_DEFAULT),
+        "GAP_ESPECIES": list(erp.GAP_ESPECIES),
+        "GAP_ESPECIE_CUARTELES": dict(erp.GAP_ESPECIE_CUARTELES),
+        "LIBRO_CAMPO_ESPECIES": list(erp.LIBRO_CAMPO_ESPECIES),
+    }
+
+
+def _restore_lc_defaults(erp: Any) -> None:
+    if _LC_DEFAULTS is None:
+        return
+    erp.CENTROS_COSTO = list(_LC_DEFAULTS["CENTROS_COSTO"])
+    erp.CUARTELES_OFICIALES = list(_LC_DEFAULTS["CUARTELES_OFICIALES"])
+    erp.CUARTELES_PRORRATEO = list(_LC_DEFAULTS["CUARTELES_PRORRATEO"])
+    erp.CUARTELES_IMPUTACION_DIRECTA = list(_LC_DEFAULTS["CUARTELES_IMPUTACION_DIRECTA"])
+    erp.PRORRATEO_CC_DEFAULT = dict(_LC_DEFAULTS["PRORRATEO_CC_DEFAULT"])
+    erp.GAP_ESPECIES = list(_LC_DEFAULTS["GAP_ESPECIES"])
+    erp.GAP_ESPECIE_CUARTELES = dict(_LC_DEFAULTS["GAP_ESPECIE_CUARTELES"])
+    erp.LIBRO_CAMPO_ESPECIES = list(_LC_DEFAULTS["LIBRO_CAMPO_ESPECIES"])
 
 
 def _request_tenant_slug() -> str:
@@ -94,6 +124,8 @@ def _load_module(erp_app: str) -> Any:
         import app_demo as erp  # noqa: WPS433
     patch_erp_module(erp, erp_app)
     _wrap_registrar_accion(erp)
+    if erp_app == "concepcion":
+        _capture_lc_defaults(erp)
     return erp
 
 
@@ -115,8 +147,11 @@ def _apply_tenant_config(erp: Any, t: dict[str, Any]) -> None:
     nombre_erp = (t.get("nombre_erp") or "").strip()
     if nombre_erp:
         erp.NOMBRE_ERP = nombre_erp
-    if str(t.get("slug") or "").strip().lower() == "espino":
+    slug = str(t.get("slug") or "").strip().lower()
+    if slug == "espino":
         _apply_espino_tenant_overrides(erp)
+    elif str(t.get("erp_app") or "") == "concepcion":
+        _restore_lc_defaults(erp)
     os.environ["ERP_DB"] = t["db"]
     os.environ["ERP_DEMO_DB"] = t["db"]
     os.environ["ERP_SECRETS"] = t["secrets"]

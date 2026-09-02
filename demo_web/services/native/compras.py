@@ -6,6 +6,7 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import centros_costo
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -334,7 +335,7 @@ def _gather_ingreso(demo, conn) -> dict:
         "unidades": demo.UNIDADES_MEDIDA_INSUMO,
         "razones_sociales": demo.RAZONES_SOCIALES_COMPRAS,
         "tipos_gasto": demo.TIPOS_GASTO_ALTA,
-        "centros_costo": demo.CENTROS_COSTO,
+        "centros_costo": centros_costo(demo),
         "car_rows": car_rows,
         "car_total_bruto": demo.f_peso(car_total * 1.19) if car else "",
         "car_count": len(car),
@@ -549,7 +550,7 @@ def _post_save_gastos(demo, conn) -> dict:
         mt = float(request.form.get("monto") or 0)
     except ValueError:
         return {"ok": False, "msg": "Monto inválido."}
-    selcc = [c for c in demo.CENTROS_COSTO if request.form.get(f"cc_{c}") == "1"]
+    selcc = [c for c in centros_costo(demo) if request.form.get(f"cc_{c}") == "1"]
 
     if not prov:
         return {"ok": False, "msg": "El proveedor es obligatorio."}

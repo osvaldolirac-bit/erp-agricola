@@ -11,6 +11,7 @@ from typing import Any
 from flask import current_app, request
 
 from demo_web.services.demo_loader import get_demo_module, get_erp_app
+from demo_web.services.tenant_scope import centros_costo
 
 _CODIGO_RE = re.compile(r"^PET-(\d+)$", re.I)
 
@@ -61,8 +62,8 @@ def _retrofill_codigos(conn: sqlite3.Connection) -> None:
 
 def normalizar_cuarteles(cuarteles: list[str]) -> str:
     demo = get_demo_module()
-    canon = {c.upper(): c for c in getattr(demo, "CENTROS_COSTO", []) or []}
-    orden = {c.upper(): i for i, c in enumerate(getattr(demo, "CENTROS_COSTO", []) or [])}
+    canon = {c.upper(): c for c in centros_costo(demo) or []}
+    orden = {c.upper(): i for i, c in enumerate(centros_costo(demo) or [])}
     vals = {c.strip().upper() for c in cuarteles if c and c.strip()}
     ordenados = sorted(vals, key=lambda v: (orden.get(v, 999), v))
     return ", ".join(canon.get(v, v) for v in ordenados)
@@ -137,7 +138,7 @@ def saldo_estanque_para_formulario() -> dict[str, Any]:
 def cuarteles_para_formulario() -> list[str]:
     """Centros de costo en orden maestro ERP (OTROS al final)."""
     demo = get_demo_module()
-    raw = list(getattr(demo, "CENTROS_COSTO", []) or [])
+    raw = list(centros_costo(demo) or [])
     otros = [c for c in raw if str(c).strip().upper() == "OTROS"]
     resto = [c for c in raw if str(c).strip().upper() != "OTROS"]
     return resto + otros
@@ -610,7 +611,7 @@ def registrar_salida(
 
 def _cuarteles_desde_huerto(huerto: str) -> list[str]:
     demo = get_demo_module()
-    canon = {c.upper(): c for c in getattr(demo, "CENTROS_COSTO", []) or []}
+    canon = {c.upper(): c for c in centros_costo(demo) or []}
     out = []
     for part in str(huerto or "").split(","):
         key = part.strip().upper()

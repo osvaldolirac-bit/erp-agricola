@@ -16,6 +16,7 @@ from demo_web.services.native._helpers import (
     prorrateo_rrhh,
     temporada_sel,
 )
+from demo_web.services.tenant_scope import cuarteles_oficiales
 
 
 def _pdf_matriz_url(demo, show) -> str | None:
@@ -58,7 +59,7 @@ def _avance_gasto_ppto_resumen(demo, matriz: pd.DataFrame) -> dict:
         skip = {"Rubro", "TOTAL", "% Total"}
         cc_cols = [c for c in matriz.columns if c not in skip]
         # Preferir orden oficial de cuarteles si existe.
-        oficiales = list(getattr(demo, "CUARTELES_OFICIALES", []) or [])
+        oficiales = list(cuarteles_oficiales(demo) or [])
         if oficiales:
             ordered = [c for c in oficiales if c in cc_cols]
             ordered += [c for c in cc_cols if c not in ordered]
@@ -152,7 +153,7 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     hoy = hoy_demo(demo)
     es_vigente = fi <= hoy <= ff
 
-    cuarteles = demo.CUARTELES_OFICIALES
+    cuarteles = cuarteles_oficiales(demo)
     vistas = [("resumen", "📊 Resumen")] + [(c, c) for c in cuarteles]
     vista = request.args.get("vista", "resumen")
     if vista != "resumen" and vista not in cuarteles:

@@ -10,6 +10,7 @@ from flask import flash, jsonify, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import centros_costo, libro_campo_especies
 
 SECCIONES_BASE = [
     ("historial", "📜 HISTORIAL AUDITABLE"),
@@ -255,10 +256,11 @@ def _leer_evento_meta(demo) -> dict:
     base = _evento_meta_defaults(demo)
     meta = session.get(META_KEY) or {}
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
-    if not out.get("cuartel") and getattr(demo, "CENTROS_COSTO", None):
-        out["cuartel"] = demo.CENTROS_COSTO[0]
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    if not out.get("cuartel") and centros_costo(demo):
+        out["cuartel"] = centros_costo(demo)[0]
+    especies = libro_campo_especies(demo)
+    if not out.get("especie") and especies:
+        out["especie"] = especies[0]
     return out
 
 # Histórico importado (planillas antiguas) vive en n_aplicacion >= 10000
@@ -329,8 +331,8 @@ def _ingreso(demo, conn) -> dict:
         "form_op_cert": bool(meta.get("op_cert")),
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
-        "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "cuarteles": centros_costo(demo),
+        "especies": libro_campo_especies(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -393,7 +395,7 @@ def _historial(demo, conn) -> dict:
             "filtro_cuartel": cuartel,
             "filtro_q": q_prod,
             "filtro_n_app": q_app,
-            "cuarteles": ["TODOS"] + demo.CENTROS_COSTO,
+            "cuarteles": ["TODOS"] + centros_costo(demo),
             "pdf_historial_url": pdf_url,
             "pdf_historial_filename": pdf_filename,
         }
@@ -474,7 +476,7 @@ def _historial(demo, conn) -> dict:
         "filtro_cuartel": cuartel,
         "filtro_q": q_prod,
         "filtro_n_app": q_app,
-        "cuarteles": ["TODOS"] + demo.CENTROS_COSTO,
+        "cuarteles": ["TODOS"] + centros_costo(demo),
         "pdf_historial_url": pdf_url,
         "pdf_historial_filename": pdf_filename,
     }
@@ -558,8 +560,8 @@ def _modificar(demo, conn) -> dict:
         "mod_lineas": lineas,
         "mod_edit": edit_linea,
         "mod_app_sel": edit_app,
-        "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "cuarteles": centros_costo(demo),
+        "especies": libro_campo_especies(demo),
         "unidades_dosis": UNIDADES_DOSIS,
         "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
@@ -642,8 +644,8 @@ def _post_guardar_evento(demo, conn) -> dict:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
-    huerto = request.form.get("cuartel") or demo.CENTROS_COSTO[0]
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    huerto = request.form.get("cuartel") or centros_costo(demo)[0]
+    especie = request.form.get("especie") or libro_campo_especies(demo)[0]
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 

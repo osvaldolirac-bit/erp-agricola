@@ -11,6 +11,7 @@ from typing import Any
 from flask import current_app, request
 
 from demo_web.services.demo_loader import get_demo_module, get_erp_app
+from demo_web.services.tenant_scope import centros_costo
 
 _CODIGO_RE = re.compile(r"^RIE-(\d+)$", re.I)
 _FAMILIAS_FERTILIZANTE = ("FERTILIZANTE",)
@@ -80,7 +81,7 @@ def _siguiente_codigo(conn: sqlite3.Connection, tabla: str = "riego_bitacora") -
 
 def huertos_para_formulario() -> list[str]:
     demo = get_demo_module()
-    raw = list(getattr(demo, "CENTROS_COSTO", []) or [])
+    raw = list(centros_costo(demo) or [])
     otros = [c for c in raw if str(c).strip().upper() == "OTROS"]
     resto = [c for c in raw if str(c).strip().upper() != "OTROS"]
     return resto + otros

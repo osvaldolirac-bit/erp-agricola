@@ -8,6 +8,7 @@ from flask import flash, render_template, request, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import centros_costo
 
 SECCIONES = [
     ("faenas", "Faenas"),
@@ -130,7 +131,7 @@ def _faenas(demo, conn) -> dict:
         "faena_desde": fi.isoformat(),
         "faena_hasta": ff.isoformat(),
         "pdf_faenas_url": pdf_url,
-        "cuarteles": demo.CENTROS_COSTO,
+        "cuarteles": centros_costo(demo),
         "equipos_opts": _select_maquinaria(conn, tipos=TIPOS_MAQUINARIA),
         "tractores_opts": _select_maquinaria(conn, tipos=TIPOS_MAQUINARIA_TRACTOR),
         "form_fecha": hoy.isoformat(),
@@ -262,7 +263,7 @@ def _procesar_faena(demo, conn) -> dict:
     equipo = (request.form.get("equipo") or "").strip()
     tractor = (request.form.get("tractor") or "").strip()
 
-    if cc not in demo.CENTROS_COSTO:
+    if cc not in centros_costo(demo):
         return {"ok": False, "msg": "Cuartel inválido."}
     if not equipo:
         return {"ok": False, "msg": "Seleccione el equipo principal desde la maestra."}

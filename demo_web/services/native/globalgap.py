@@ -14,6 +14,7 @@ from flask import abort, flash, jsonify, render_template, request, send_file, ur
 from werkzeug.utils import secure_filename
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.tenant_scope import cuarteles_gap_especie, is_espino_tenant
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, df_to_records, parse_date
 
@@ -659,7 +660,7 @@ def _section_autoeval(demo, conn, especie: str) -> dict:
 
 
 def _section_nc(demo, conn, especie: str) -> dict:
-    cuarteles = demo.cuarteles_gap_especie(especie)
+    cuarteles = cuarteles_gap_especie(demo, especie)
     placeholders = ",".join("?" * len(cuarteles))
     df = pd.read_sql_query(
         f"""SELECT codigo AS CÓDIGO, capitulo AS CAPÍTULO, descripcion AS DESCRIPCIÓN,
@@ -762,7 +763,7 @@ def _section_cosecha(demo, conn, especie: str) -> dict:
     pdf = _pdf_url(
         demo, df, f"GLOBALGAP — {especie.upper()} — Cosecha y lotes", f"globalgap_{pref}_cosecha.pdf",
     )
-    cuarteles = demo.cuarteles_gap_especie(especie)
+    cuarteles = cuarteles_gap_especie(demo, especie)
     cc_sel = request.args.get("cuartel") or (cuarteles[0] if cuarteles else "")
     if cc_sel not in cuarteles:
         cc_sel = cuarteles[0] if cuarteles else ""
@@ -2672,6 +2673,8 @@ def _fmt_num(val, decimals=3):
 
 
 def _planilla_cuarteles_activos() -> list[str]:
+    if is_espino_tenant():
+        return ["Cerezos"]
     return list(PLANILLA_CUARTELES_ACTIVOS)
 
 
@@ -3780,7 +3783,7 @@ def gather_globalgap(user_email: str, user_rol: str) -> dict:
         if scope:
             cuarteles = [scope.huerto]
         else:
-            cuarteles = demo.cuarteles_gap_especie(especie)
+            cuarteles = cuarteles_gap_especie(demo, especie)
         res = demo.resumen_globalgap(conn, especie)
 
         df_res = pd.DataFrame([

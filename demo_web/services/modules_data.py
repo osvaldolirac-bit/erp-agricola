@@ -4,6 +4,7 @@ import pandas as pd
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.native._helpers import prorrateo_rrhh
+from demo_web.services.tenant_scope import cuarteles_oficiales
 
 
 def _conn():
@@ -131,7 +132,7 @@ def costos_resumen(email: str, rol: str) -> tuple[list[dict], list[str]]:
     bind_user_session(email, rol)
     try:
         dfr, _ = demo._armar_dataframe_costos_dashboard(
-            conn, demo.CUARTELES_OFICIALES, prorrateo_rrhh(demo, conn)
+            conn, cuarteles_oficiales(demo), prorrateo_rrhh(demo, conn)
         )
         if dfr.empty:
             return [], []
@@ -149,7 +150,7 @@ def flujo_matriz(email: str, rol: str) -> tuple[list[dict], list[str]]:
     try:
         from erp_flujo_financiero import armar_flujo_financiero, df_flujo_para_pdf
 
-        matriz = armar_flujo_financiero(conn, demo.CUARTELES_OFICIALES)
+        matriz = armar_flujo_financiero(conn, cuarteles_oficiales(demo))
         df = df_flujo_para_pdf(matriz)
         if df is None or df.empty:
             return [], []
