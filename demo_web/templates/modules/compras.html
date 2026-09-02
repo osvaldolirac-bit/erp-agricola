@@ -132,11 +132,9 @@
       </div>
       <div class="col-md-3">
         <label class="form-label small">Proveedor</label>
-        <select name="proveedor" class="form-select form-select-sm" required>
-          {% for p in proveedores_hist %}
-          <option value="{{ p.nombre }}" {% if p.nombre == factura_edit.proveedor %}selected{% endif %}>{{ p.label }}</option>
-          {% endfor %}
-        </select>
+        {% with proveedores=proveedores_hist, selected=factura_edit.proveedor %}
+        {% include "partials/proveedor_select.html" %}
+        {% endwith %}
       </div>
       <div class="col-md-2">
         <label class="form-label small">N° Documento</label>
@@ -226,10 +224,7 @@
         </div>
         <div class="col-md-3">
           <label class="form-label">Proveedor</label>
-          <select name="proveedor" class="form-select form-select-sm" required>
-            <option value="">— Seleccione —</option>
-            {% for p in proveedores %}<option value="{{ p.nombre }}">{{ p.label }}</option>{% endfor %}
-          </select>
+          {% include "partials/proveedor_select.html" %}
         </div>
         <div class="col-md-3">
           <label class="form-label">Emisión</label>
@@ -304,10 +299,7 @@
         </div>
         <div class="col-md-3">
           <label class="form-label">Proveedor</label>
-          <select name="proveedor" class="form-select form-select-sm" required>
-            <option value="">— Seleccione —</option>
-            {% for p in proveedores %}<option value="{{ p.nombre }}">{{ p.label }}</option>{% endfor %}
-          </select>
+          {% include "partials/proveedor_select.html" %}
         </div>
         <div class="col-md-3">
           <label class="form-label">Emisión</label>
@@ -435,10 +427,7 @@
           <div class="row g-2 mt-2">
             <div class="col-md-2"><input type="text" name="nro_doc" class="form-control form-control-sm" placeholder="N° Doc" required></div>
             <div class="col-md-3">
-              <select name="proveedor" class="form-select form-select-sm" required>
-                <option value="">Proveedor</option>
-                {% for p in proveedores %}<option value="{{ p.nombre }}">{{ p.label }}</option>{% endfor %}
-              </select>
+              {% include "partials/proveedor_select.html" %}
             </div>
             <div class="col-md-2"><input type="date" name="fecha_emision" class="form-control form-control-sm" value="{{ hoy }}" required></div>
             <div class="col-md-2"><input type="date" name="fecha_vence" class="form-control form-control-sm" value="{{ hoy }}" required></div>

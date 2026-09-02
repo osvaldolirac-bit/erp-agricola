@@ -284,43 +284,6 @@ body.demo-body {
   letter-spacing: 0.04em;
 }
 
-.login-tenant-list {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1.15rem;
-  pointer-events: auto;
-}
-
-.login-tenant-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.42rem 0.85rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(18, 32, 24, 0.45);
-  color: #fff;
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-decoration: none;
-  backdrop-filter: blur(8px);
-  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
-}
-
-.login-tenant-chip:hover {
-  background: rgba(31, 77, 58, 0.72);
-  transform: translateY(-1px);
-  color: #fff;
-}
-
-.login-tenant-chip.is-active {
-  background: rgba(46, 125, 50, 0.88);
-  border-color: rgba(200, 230, 201, 0.75);
-  box-shadow: 0 0 0 2px rgba(129, 199, 132, 0.35);
-}
-
 .login-hero-select {
   pointer-events: auto;
   width: min(420px, 92vw);
@@ -3188,5 +3151,41 @@ body.gap-comercial-page main.demo-main {
   border-radius: 3px;
   padding: 0 0.25rem;
   line-height: 1.35;
+}
+
+/* Compras — buscador proveedor */
+.erp-proveedor-picker {
+  position: relative;
+}
+.erp-proveedor-picker-search.is-invalid {
+  border-color: var(--bs-danger);
+}
+.erp-proveedor-picker-list {
+  position: absolute;
+  z-index: 1050;
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 2px;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  box-shadow: 0 0.35rem 0.85rem rgba(0, 0, 0, 0.12);
+}
+.erp-proveedor-picker-item {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  line-height: 1.35;
+}
+.erp-proveedor-picker-item:hover,
+.erp-proveedor-picker-item.is-active {
+  background: #e3f2fd;
+}
+.erp-proveedor-picker-empty {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8125rem;
+  color: #6c757d;
 }
 

@@ -382,6 +382,155 @@
     return s.slice(0, comma + 1) + s.slice(comma + 1).replace(/,/g, '');
   }
 
+  function initProveedorPickers() {
+    document.querySelectorAll('[data-erp-proveedor-picker]').forEach(function (wrap) {
+      if (wrap.dataset.proveedorPickerBound === '1') return;
+      wrap.dataset.proveedorPickerBound = '1';
+
+      var dataEl = wrap.querySelector('.erp-proveedor-picker-data');
+      var search = wrap.querySelector('.erp-proveedor-picker-search');
+      var hidden = wrap.querySelector('.erp-proveedor-picker-value');
+      var list = wrap.querySelector('.erp-proveedor-picker-list');
+      if (!dataEl || !search || !hidden || !list) return;
+
+      var items = [];
+      try {
+        items = JSON.parse(dataEl.textContent || '[]');
+      } catch (e) {
+        items = [];
+      }
+      dataEl.remove();
+
+      var activeIdx = -1;
+
+      function norm(s) {
+        return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      }
+
+      function filtered(q) {
+        var nq = norm(q).trim();
+        if (!nq) return items.slice(0, 40);
+        return items.filter(function (p) {
+          return norm(p.label).indexOf(nq) >= 0 || norm(p.nombre).indexOf(nq) >= 0;
+        }).slice(0, 40);
+      }
+
+      function renderList(rows) {
+        list.innerHTML = '';
+        activeIdx = -1;
+        if (!rows.length) {
+          var empty = document.createElement('li');
+          empty.className = 'erp-proveedor-picker-empty';
+          empty.textContent = 'Sin coincidencias';
+          list.appendChild(empty);
+          list.hidden = false;
+          return;
+        }
+        rows.forEach(function (p) {
+          var li = document.createElement('li');
+          li.className = 'erp-proveedor-picker-item';
+          li.setAttribute('role', 'option');
+          li.dataset.nombre = p.nombre;
+          li.dataset.label = p.label;
+          li.textContent = p.label;
+          li.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            selectItem(p);
+          });
+          list.appendChild(li);
+        });
+        list.hidden = false;
+      }
+
+      function selectItem(p) {
+        hidden.value = p.nombre;
+        search.value = p.label;
+        search.classList.remove('is-invalid');
+        list.hidden = true;
+        activeIdx = -1;
+      }
+
+      function openList() {
+        renderList(filtered(search.value));
+      }
+
+      function setActive(idx) {
+        var opts = list.querySelectorAll('.erp-proveedor-picker-item');
+        opts.forEach(function (el) { el.classList.remove('is-active'); });
+        if (idx < 0 || idx >= opts.length) {
+          activeIdx = -1;
+          return;
+        }
+        activeIdx = idx;
+        opts[idx].classList.add('is-active');
+        opts[idx].scrollIntoView({ block: 'nearest' });
+      }
+
+      search.addEventListener('focus', openList);
+      search.addEventListener('input', function () {
+        hidden.value = '';
+        openList();
+      });
+      search.addEventListener('blur', function () {
+        setTimeout(function () {
+          list.hidden = true;
+          if (!hidden.value && search.value.trim()) {
+            var matches = filtered(search.value);
+            if (matches.length === 1) selectItem(matches[0]);
+          }
+        }, 150);
+      });
+      search.addEventListener('keydown', function (e) {
+        var opts = list.querySelectorAll('.erp-proveedor-picker-item');
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (list.hidden) openList();
+          setActive(Math.min(activeIdx + 1, opts.length - 1));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setActive(Math.max(activeIdx - 1, 0));
+        } else if (e.key === 'Enter') {
+          if (activeIdx >= 0 && opts[activeIdx]) {
+            e.preventDefault();
+            opts[activeIdx].dispatchEvent(new MouseEvent('mousedown'));
+          }
+        } else if (e.key === 'Escape') {
+          list.hidden = true;
+        }
+      });
+
+      var form = wrap.closest('form');
+      if (form && !form.dataset.proveedorPickerSubmitBound) {
+        form.dataset.proveedorPickerSubmitBound = '1';
+        form.addEventListener('submit', function (e) {
+          var pickers = form.querySelectorAll('[data-erp-proveedor-picker]');
+          var ok = true;
+          pickers.forEach(function (pk) {
+            var h = pk.querySelector('.erp-proveedor-picker-value');
+            var s = pk.querySelector('.erp-proveedor-picker-search');
+            if (!h || !h.hasAttribute('required')) return;
+            if (!(h.value || '').trim()) {
+              ok = false;
+              if (s) s.classList.add('is-invalid');
+            }
+          });
+          if (!ok) {
+            e.preventDefault();
+            e.stopPropagation();
+            var first = form.querySelector('.erp-proveedor-picker-search.is-invalid');
+            if (first) first.focus();
+          }
+        });
+      }
+
+      var preset = wrap.getAttribute('data-selected') || hidden.value;
+      if (preset) {
+        var found = items.find(function (p) { return p.nombre === preset; });
+        if (found) selectItem(found);
+      }
+    });
+  }
+
   function initDecimalComaInputs() {
     document.querySelectorAll('input.js-decimal-coma').forEach(function (input) {
       if (input.dataset.decimalComaBound === '1') return;
@@ -410,6 +559,7 @@
   $(function () {
     initRutInputs();
     initDecimalComaInputs();
+    initProveedorPickers();
   });
 
   window.demoInitDataTable = initDataTable;
