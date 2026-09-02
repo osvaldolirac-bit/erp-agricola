@@ -11043,15 +11043,16 @@ def _armar_matriz_costos_vista_b(conn, fi, ff, cuarteles, prorrateo_rrhh, tempor
     cols_cc = list(cuarteles)
     cols = cols_cc + ["TOTAL"]
     matriz = {rubro: {c: 0.0 for c in cols} for rubro in RUBROS_MATRIZ_COSTOS}
+    cc_canon = {str(c).upper().strip(): c for c in cuarteles}
 
     def add(cc, rubro, monto):
-        cc_u = str(cc or "").upper().strip()
-        if cc_u not in cuarteles or not rubro:
+        cc_key = cc_canon.get(str(cc or "").upper().strip())
+        if not cc_key or not rubro:
             return
         m = float(monto or 0)
         if abs(m) < 0.01:
             return
-        matriz[rubro][cc_u] += m
+        matriz[rubro][cc_key] += m
         matriz[rubro]["TOTAL"] += m
 
     filtro_f = ""
