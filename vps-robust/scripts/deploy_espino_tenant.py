@@ -24,6 +24,10 @@ FILES = [
     (WORKSPACE / "demo-web/app_concepcion.py", DEMO_WEB / "app_concepcion.py"),
     (WORKSPACE / "erp_master/erp_master/config.py", ERP_MASTER / "erp_master/config.py"),
     (WORKSPACE / "scripts/bootstrap_espino_tenant.py", DEMO_WEB / "scripts/bootstrap_espino_tenant.py"),
+    (WORKSPACE / "scripts/migrate_lc_to_espino_tenant.py", DEMO_WEB / "scripts/migrate_lc_to_espino_tenant.py"),
+    (WORKSPACE / "scripts/sync_espino_users_from_lc.py", DEMO_WEB / "scripts/sync_espino_users_from_lc.py"),
+    (WORKSPACE / "demo_web/auth/decorators.py", DEMO_WEB / "demo_web/auth/decorators.py"),
+    (WORKSPACE / "demo_web/services/native/globalgap.py", DEMO_WEB / "demo_web/services/native/globalgap.py"),
 ]
 
 
@@ -43,7 +47,7 @@ def main() -> int:
         print(f"copied {src.name} -> {dst}")
 
     subprocess.run(
-        [sys.executable, str(DEMO_WEB / "scripts/bootstrap_espino_tenant.py")],
+        [sys.executable, str(DEMO_WEB / "scripts/migrate_lc_to_espino_tenant.py")],
         check=True,
     )
     for svc in ("erp-agricola-web", "erp-lc-web", "erp-demo-web", "erp-master-web"):

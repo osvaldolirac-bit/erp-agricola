@@ -123,7 +123,7 @@ def module_required(module_key: str):
             from demo_web.tenants import get_tenant
 
             tenant_slug = (getattr(g, "tenant_slug", None) or session.get("tenant_slug") or "").strip().lower()
-            if module_key == "Espino" and tenant_slug == "demo":
+            if module_key == "Espino" and tenant_slug in {"demo", "espino"}:
                 abort(404)
             demo = g.demo
             bind_user_session(g.user["email"], g.user["rol"])
@@ -195,6 +195,9 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     demo = get_demo_module()
     bind_user_session(user_email, rol)
     opts = demo.construir_menu_usuario(user_email, rol)
+    tenant_slug = (session.get("tenant_slug") or "").strip().lower()
+    if tenant_slug == "espino":
+        opts = {k: v for k, v in opts.items() if v != "Espino"}
     modulos_menu = set(opts.values())
     badge_by_key: dict[str, int] = {}
     conn = demo.conectar_db()

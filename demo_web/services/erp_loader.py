@@ -97,12 +97,26 @@ def _load_module(erp_app: str) -> Any:
     return erp
 
 
+def _apply_espino_tenant_overrides(erp: Any) -> None:
+    """Tenant El Espino: un solo cuartel Cerezos y ámbito GlobalGAP propio."""
+    erp.CENTROS_COSTO = ["Cerezos"]
+    erp.CUARTELES_OFICIALES = ["Cerezos"]
+    erp.CUARTELES_PRORRATEO = ["Cerezos"]
+    erp.CUARTELES_IMPUTACION_DIRECTA = ["Cerezos"]
+    erp.PRORRATEO_CC_DEFAULT = {"Cerezos": 100.0}
+    erp.GAP_ESPECIES = ["EL ESPINO"]
+    erp.GAP_ESPECIE_CUARTELES = {"EL ESPINO": ["Cerezos"]}
+    erp.LIBRO_CAMPO_ESPECIES = ["Cerezos"]
+
+
 def _apply_tenant_config(erp: Any, t: dict[str, Any]) -> None:
     erp.NOMBRE_DB = t["db"]
     erp.SECRETS_PATH = t["secrets"]
     nombre_erp = (t.get("nombre_erp") or "").strip()
     if nombre_erp:
         erp.NOMBRE_ERP = nombre_erp
+    if str(t.get("slug") or "").strip().lower() == "espino":
+        _apply_espino_tenant_overrides(erp)
     os.environ["ERP_DB"] = t["db"]
     os.environ["ERP_DEMO_DB"] = t["db"]
     os.environ["ERP_SECRETS"] = t["secrets"]

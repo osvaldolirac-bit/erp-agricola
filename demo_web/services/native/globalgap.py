@@ -54,6 +54,7 @@ _DOC_LINK_EXTRA_COLS = [
 _ESPECIE_DOC_SLUG = {
     "Cerezos": "cerezos",
     "Ciruelos": "ciruelos",
+    "EL ESPINO": "espino",
     "ESPECIE 1": "cerezos",
     "ESPECIE 2": "ciruelos",
 }
@@ -74,6 +75,7 @@ _PLANIF_COSECHA_FIN = {
 _PLANIF_CUARTEL = {
     "Cerezos": "CEREZOS CORTE 1",
     "Ciruelos": "CIRUELOS",
+    "EL ESPINO": "Cerezos",
     "ESPECIE 1": "CEREZOS CORTE 1",
     "ESPECIE 2": "CIRUELOS",
 }
