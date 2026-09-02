@@ -11,7 +11,7 @@
   <div class="dash-enc-simple mb-3">
     <hr class="dash-hr">
     <h1 class="dash-main-title">{{ dash_title|default('Dashboard') }}</h1>
-    <p class="dash-subtitle">Resumen operativo{% if erp_app == 'concepcion' %} — Soc. Agrícola La Concepción{% endif %}</p>
+    <p class="dash-subtitle">Resumen operativo{% if erp_login_subtitle %} — {{ erp_login_subtitle }}{% endif %}</p>
     <span class="modulo-badge">DASHBOARD</span>
   </div>
 

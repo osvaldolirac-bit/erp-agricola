@@ -253,7 +253,7 @@
     <div class="alert alert-light border mb-0">Sin registros aún{% if bitacora_admin_qr %}. Envíe a cada operador su enlace personal{% endif %}.</div>
     {% endif %}
     {% else %}
-    <div class="alert alert-warning mb-0">Salida Link disponible solo en La Concepción.</div>
+    <div class="alert alert-warning mb-0">Salida Link disponible solo en {{ erp_title|default('este tenant') }}.</div>
     {% endif %}
   </div>
 

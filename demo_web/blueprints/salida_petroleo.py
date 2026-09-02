@@ -23,6 +23,7 @@ from demo_web.services.salida_petroleo import (
     responsables_autorizados_para_formulario,
     saldo_estanque_para_formulario,
     token_valido,
+    _nombre_erp,
 )
 
 bp = Blueprint("salida_petroleo", __name__)
@@ -156,6 +157,7 @@ def formulario():
         form_cuarteles_sel=form_cuarteles_sel,
         estanque_litros=estanque.get("litros", 0),
         estanque_fmt=estanque.get("fmt", "0"),
+        nombre_erp=_nombre_erp(),
     )
     resp = make_response(html)
     if cookie_op_id:

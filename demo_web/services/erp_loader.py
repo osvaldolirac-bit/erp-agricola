@@ -97,6 +97,25 @@ def _load_module(erp_app: str) -> Any:
     return erp
 
 
+def _apply_tenant_config(erp: Any, t: dict[str, Any]) -> None:
+    erp.NOMBRE_DB = t["db"]
+    erp.SECRETS_PATH = t["secrets"]
+    nombre_erp = (t.get("nombre_erp") or "").strip()
+    if nombre_erp:
+        erp.NOMBRE_ERP = nombre_erp
+    os.environ["ERP_DB"] = t["db"]
+    os.environ["ERP_DEMO_DB"] = t["db"]
+    os.environ["ERP_SECRETS"] = t["secrets"]
+    os.environ["ERP_DEMO_SECRETS"] = t["secrets"]
+    os.environ["ERP_APP"] = str(t.get("erp_app") or "demo")
+    try:
+        from demo_web.services.streamlit_mock import set_secrets_path
+
+        set_secrets_path(t["secrets"])
+    except Exception:
+        pass
+
+
 def get_erp_module() -> Any:
     t = current_tenant()
     erp_app = str((t or {}).get("erp_app") or get_erp_app())
@@ -104,19 +123,7 @@ def get_erp_module() -> Any:
         _erp_modules[erp_app] = _load_module(erp_app)
     erp = _erp_modules[erp_app]
     if t:
-        erp.NOMBRE_DB = t["db"]
-        erp.SECRETS_PATH = t["secrets"]
-        os.environ["ERP_DB"] = t["db"]
-        os.environ["ERP_DEMO_DB"] = t["db"]
-        os.environ["ERP_SECRETS"] = t["secrets"]
-        os.environ["ERP_DEMO_SECRETS"] = t["secrets"]
-        os.environ["ERP_APP"] = erp_app
-        try:
-            from demo_web.services.streamlit_mock import set_secrets_path
-
-            set_secrets_path(t["secrets"])
-        except Exception:
-            pass
+        _apply_tenant_config(erp, t)
     return erp
 
 
@@ -129,8 +136,7 @@ def get_erp_module_for(slug: str) -> Any:
     if erp_app not in _erp_modules:
         _erp_modules[erp_app] = _load_module(erp_app)
     erp = _erp_modules[erp_app]
-    erp.NOMBRE_DB = t["db"]
-    erp.SECRETS_PATH = t["secrets"]
+    _apply_tenant_config(erp, t)
     return erp
 
 
@@ -143,9 +149,6 @@ def bind_tenant_context(slug: str | None) -> dict[str, Any] | None:
     g.tenant = t
     if t:
         get_erp_module_for(t["slug"])
-        os.environ["ERP_APP"] = t["erp_app"]
-        os.environ["ERP_DB"] = t["db"]
-        os.environ["ERP_DEMO_DB"] = t["db"]
     return t
 
 
