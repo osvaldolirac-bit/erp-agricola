@@ -161,7 +161,7 @@ body.demo-body {
 }
 
 .login-panel {
-  width: min(320px, calc(100vw - 2rem));
+  width: min(340px, calc(100vw - 2rem));
   background: rgba(248, 250, 247, 0.94);
   backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -193,13 +193,19 @@ body.demo-body {
 }
 
 .login-panel-form input[type="email"],
-.login-panel-form input[type="password"] {
+.login-panel-form input[type="password"],
+.login-panel-form select.login-tenant-select {
   width: 100%;
   padding: 0.65rem 0.75rem;
   border-radius: 8px;
   border: 1px solid #c5d2c8;
   background: #f7f9f6;
   font-size: 0.95rem;
+}
+
+.login-panel-form select.login-tenant-select {
+  font-weight: 700;
+  color: #1f3a2c;
 }
 
 .login-panel-form .form-check-label {

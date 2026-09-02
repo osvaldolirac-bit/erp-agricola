@@ -251,13 +251,14 @@ def login():
             _maybe_alert_login(email=email, exitoso=True, tenant_slug=m["slug"])
             _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
             return redirect(safe_next(pop_login_next()))
-        elif tenant_pref:
-            chosen = next((m for m in matches if m["slug"] == tenant_pref), None)
-            if chosen:
-                _maybe_alert_login(email=email, exitoso=True, tenant_slug=chosen["slug"])
-                _activate_session(email=chosen["email"], rol=chosen["rol"], tenant_slug=chosen["slug"])
-                return redirect(safe_next(pop_login_next()))
-        else:
+        elif len(matches) > 1:
+            pref = tenant_pref or (request.form.get("tenant_pref") or "").strip().lower()
+            if pref:
+                chosen = next((m for m in matches if m["slug"] == pref), None)
+                if chosen:
+                    _maybe_alert_login(email=email, exitoso=True, tenant_slug=chosen["slug"])
+                    _activate_session(email=chosen["email"], rol=chosen["rol"], tenant_slug=chosen["slug"])
+                    return redirect(safe_next(pop_login_next()))
             # Varios tenants: selector
             session["pending_login"] = {
                 "email": matches[0]["email"],
