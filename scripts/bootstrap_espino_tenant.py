@@ -41,24 +41,28 @@ def _schema_clone(source: Path, dest: Path) -> None:
         conn.close()
 
 
-def _copy_admin_hash(conn: sqlite3.Connection, email: str) -> None:
+def _sync_users_from_lc(conn: sqlite3.Connection) -> int:
+    """Replica cuentas LC en Espino (mismas claves; no copia datos operativos)."""
     if not SOURCE_DB.is_file():
         raise RuntimeError(f"source db missing: {SOURCE_DB}")
     src = sqlite3.connect(SOURCE_DB)
     try:
-        row = src.execute(
-            "SELECT password FROM usuarios WHERE lower(email)=lower(?) LIMIT 1",
-            (email,),
-        ).fetchone()
-        if not row or not row[0]:
-            raise RuntimeError(f"no password hash for {email} in {SOURCE_DB}")
-        pw_hash = str(row[0])
+        src_cols = [r[1] for r in src.execute("PRAGMA table_info(usuarios)").fetchall()]
+        dst_cols = {r[1] for r in conn.execute("PRAGMA table_info(usuarios)").fetchall()}
+        cols = [c for c in src_cols if c in dst_cols]
+        if "email" not in cols or "password" not in cols:
+            raise RuntimeError("usuarios table incomplete")
+        rows = src.execute(
+            f"SELECT {', '.join(cols)} FROM usuarios ORDER BY lower(email)"
+        ).fetchall()
         conn.execute("DELETE FROM usuarios")
-        conn.execute(
-            "INSERT INTO usuarios (email, password, rol) VALUES (?,?,?)",
-            (email, pw_hash, "admin"),
+        ph = ", ".join("?" for _ in cols)
+        conn.executemany(
+            f"INSERT INTO usuarios ({', '.join(cols)}) VALUES ({ph})",
+            rows,
         )
         conn.commit()
+        return len(rows)
     finally:
         src.close()
 
@@ -66,7 +70,6 @@ def _copy_admin_hash(conn: sqlite3.Connection, email: str) -> None:
 def main() -> int:
     db_path = Path(os.environ.get("ERP_ESPINO_DB", str(DEFAULT_DB)))
     secrets = Path(os.environ.get("ERP_ESPINO_SECRETS", str(DEFAULT_SECRETS)))
-    admin_email = (os.environ.get("ESPINO_ADMIN_EMAIL") or DEFAULT_ADMIN).strip()
 
     secrets.parent.mkdir(parents=True, exist_ok=True)
     if not secrets.is_file():
@@ -89,14 +92,14 @@ def main() -> int:
             except sqlite3.OperationalError:
                 pass
         conn.commit()
-        _copy_admin_hash(conn, admin_email)
+        n_users = _sync_users_from_lc(conn)
     finally:
         conn.close()
 
     print("Tenant El Espino listo")
     print(f"  DB: {db_path}")
     print(f"  Secrets: {secrets}")
-    print(f"  Admin: {admin_email} (misma clave que en LC/demo)")
+    print(f"  Usuarios replicados desde LC: {n_users}")
     print("  URL: https://erpmaster.cl/agricola/login")
     return 0
 
