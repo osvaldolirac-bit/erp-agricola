@@ -1,0 +1,19 @@
+{# Buscador + lista desplegable de proveedores (maestra). #}
+{% set _req = required if required is defined else true %}
+{% set _sel = selected|default('') %}
+<div class="erp-proveedor-picker{% if picker_class %} {{ picker_class }}{% endif %}"
+     data-erp-proveedor-picker
+     data-selected="{{ _sel }}">
+  <input type="text"
+         class="form-control form-control-sm erp-proveedor-picker-search"
+         placeholder="Buscar proveedor…"
+         autocomplete="off"
+         aria-label="Buscar proveedor">
+  <input type="hidden"
+         name="{{ name|default('proveedor') }}"
+         class="erp-proveedor-picker-value"
+         value="{{ _sel }}"
+         {% if _req %}required{% endif %}>
+  <ul class="erp-proveedor-picker-list list-unstyled mb-0" role="listbox" hidden></ul>
+  <script type="application/json" class="erp-proveedor-picker-data">{{ proveedores|tojson }}</script>
+</div>
