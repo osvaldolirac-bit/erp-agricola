@@ -22,6 +22,7 @@ DOCS_ROOT = Path(
 CC_TARGET = "Cerezos"
 CC_SOURCES = frozenset({"EL ESPINO", "NOGALES APARICION", "NOGALES CRUZ DEL SUR"})
 GAP_ESPECIE = "EL ESPINO"
+RAZON_SOCIAL_ESPINO = "El Espino"
 SUPERFICIE_HA = 7.0
 PRORRATEO_PCT = 100.0
 
@@ -346,6 +347,80 @@ def _migrate_gantt(src: sqlite3.Connection, dst: sqlite3.Connection) -> tuple[in
     return len(rows), n_tasks
 
 
+def _migrate_compras_tesoreria(
+    src: sqlite3.Connection,
+    dst: sqlite3.Connection,
+) -> tuple[int, int, int, int]:
+    """Facturas El Espino + abonos (por pagar e historial auditable tesorería)."""
+    _delete_all(dst, "facturas_abonos")
+    _delete_all(dst, "facturas")
+
+    src_cols = [c for c in _columns(src, "facturas") if c in _columns(dst, "facturas")]
+    if not src_cols or "id" not in src_cols:
+        return 0, 0, 0, 0
+
+    rows = src.execute(
+        f"""SELECT {", ".join(src_cols)} FROM facturas
+            WHERE TRIM(COALESCE(razon_social, ''))=?
+            ORDER BY id""",
+        (RAZON_SOCIAL_ESPINO,),
+    ).fetchall()
+    if not rows:
+        return 0, 0, 0, 0
+
+    ins_cols = [c for c in src_cols if c != "id"]
+    ph = ", ".join("?" for _ in ins_cols)
+    ins = f"INSERT INTO facturas ({', '.join(ins_cols)}) VALUES ({ph})"
+    id_map: dict[int, int] = {}
+    n_main = 0
+    n_imput = 0
+    for row in rows:
+        data = dict(zip(src_cols, row))
+        old_id = int(data.pop("id"))
+        nro = str(data.get("nro_documento") or "")
+        if "centro_costo" in data:
+            data["centro_costo"] = _remap_cc(data.get("centro_costo"))
+        cur = dst.execute(ins, [data[c] for c in ins_cols])
+        id_map[old_id] = int(cur.lastrowid)
+        if nro.endswith("_P"):
+            n_imput += 1
+        else:
+            n_main += 1
+
+    n_abonos = 0
+    if id_map and _table_exists(src, "facturas_abonos") and _table_exists(dst, "facturas_abonos"):
+        ab_cols = [
+            c for c in _columns(src, "facturas_abonos") if c in _columns(dst, "facturas_abonos")
+        ]
+        if "factura_id" in ab_cols:
+            placeholders = ", ".join("?" for _ in id_map)
+            ab_rows = src.execute(
+                f"""SELECT {", ".join(ab_cols)} FROM facturas_abonos
+                    WHERE factura_id IN ({placeholders})
+                    ORDER BY id""",
+                tuple(id_map),
+            ).fetchall()
+            ab_ins_cols = [c for c in ab_cols if c != "id"]
+            ab_ph = ", ".join("?" for _ in ab_ins_cols)
+            ab_ins = f"INSERT INTO facturas_abonos ({', '.join(ab_ins_cols)}) VALUES ({ab_ph})"
+            for ab_row in ab_rows:
+                data = dict(zip(ab_cols, ab_row))
+                data.pop("id", None)
+                old_fid = int(data["factura_id"])
+                new_fid = id_map.get(old_fid)
+                if not new_fid:
+                    continue
+                data["factura_id"] = new_fid
+                dst.execute(ab_ins, [data[c] for c in ab_ins_cols])
+                n_abonos += 1
+
+    n_pend = dst.execute(
+        """SELECT COUNT(*) FROM facturas
+           WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0"""
+    ).fetchone()[0]
+    return n_main, n_imput, n_abonos, int(n_pend)
+
+
 def _migrate_libro_campo(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
     _delete_all(dst, "libro_campo")
     return _copy_table(
@@ -380,6 +455,68 @@ def _backup_db(db: Path) -> Path:
     return dest
 
 
+def migrate_compras_tesoreria(*, dry_run: bool = False) -> dict[str, int | str]:
+    """Solo compras (facturas) y tesorería (abonos) El Espino desde LC."""
+    if not LC_DB.is_file():
+        raise SystemExit(f"LC DB not found: {LC_DB}")
+    if not ESPINO_DB.is_file():
+        raise SystemExit(f"Espino DB not found: {ESPINO_DB}")
+
+    stats: dict[str, int | str] = {}
+    src = sqlite3.connect(LC_DB)
+    try:
+        stats["facturas_src"] = src.execute(
+            """SELECT COUNT(*) FROM facturas
+               WHERE TRIM(COALESCE(razon_social, ''))=?""",
+            (RAZON_SOCIAL_ESPINO,),
+        ).fetchone()[0]
+        stats["facturas_main_src"] = src.execute(
+            """SELECT COUNT(*) FROM facturas
+               WHERE TRIM(COALESCE(razon_social, ''))=?
+                 AND nro_documento NOT LIKE '%_P'""",
+            (RAZON_SOCIAL_ESPINO,),
+        ).fetchone()[0]
+        stats["abonos_src"] = src.execute(
+            """SELECT COUNT(*) FROM facturas_abonos a
+               JOIN facturas f ON f.id=a.factura_id
+               WHERE TRIM(COALESCE(f.razon_social, ''))=?""",
+            (RAZON_SOCIAL_ESPINO,),
+        ).fetchone()[0]
+        stats["pendientes_src"] = src.execute(
+            """SELECT COUNT(*) FROM facturas
+               WHERE TRIM(COALESCE(razon_social, ''))=?
+                 AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0""",
+            (RAZON_SOCIAL_ESPINO,),
+        ).fetchone()[0]
+    finally:
+        src.close()
+
+    if dry_run:
+        stats["dry_run"] = 1
+        return stats
+
+    backup = _backup_db(ESPINO_DB)
+    stats["backup"] = str(backup)
+
+    src = sqlite3.connect(LC_DB)
+    dst = sqlite3.connect(ESPINO_DB)
+    try:
+        dst.execute("PRAGMA foreign_keys=OFF")
+        n_main, n_imput, n_abonos, n_pend = _migrate_compras_tesoreria(src, dst)
+        stats["facturas_main"] = n_main
+        stats["facturas_imputacion"] = n_imput
+        stats["facturas_abonos"] = n_abonos
+        stats["tesoreria_pendientes"] = n_pend
+        dst.commit()
+    except Exception:
+        dst.rollback()
+        raise
+    finally:
+        src.close()
+        dst.close()
+    return stats
+
+
 def migrate(*, dry_run: bool = False) -> dict[str, int | str]:
     if not LC_DB.is_file():
         raise SystemExit(f"LC DB not found: {LC_DB}")
@@ -397,6 +534,17 @@ def migrate(*, dry_run: bool = False) -> dict[str, int | str]:
             ).fetchone()[0]
             stats["libro_src"] = src.execute(
                 "SELECT COUNT(*) FROM libro_campo WHERE UPPER(TRIM(sector))='EL ESPINO'"
+            ).fetchone()[0]
+            stats["facturas_src"] = src.execute(
+                """SELECT COUNT(*) FROM facturas
+                   WHERE TRIM(COALESCE(razon_social, ''))=?""",
+                (RAZON_SOCIAL_ESPINO,),
+            ).fetchone()[0]
+            stats["abonos_src"] = src.execute(
+                """SELECT COUNT(*) FROM facturas_abonos a
+                   JOIN facturas f ON f.id=a.factura_id
+                   WHERE TRIM(COALESCE(f.razon_social, ''))=?""",
+                (RAZON_SOCIAL_ESPINO,),
             ).fetchone()[0]
         finally:
             src.close()
@@ -430,6 +578,11 @@ def migrate(*, dry_run: bool = False) -> dict[str, int | str]:
         stats["gantt_proyectos"] = n_proj
         stats["gantt_tareas"] = n_tasks
         stats["libro_campo"] = _migrate_libro_campo(src, dst)
+        n_main, n_imput, n_abonos, n_pend = _migrate_compras_tesoreria(src, dst)
+        stats["facturas_main"] = n_main
+        stats["facturas_imputacion"] = n_imput
+        stats["facturas_abonos"] = n_abonos
+        stats["tesoreria_pendientes"] = n_pend
         dst.commit()
     except Exception:
         dst.rollback()
@@ -446,9 +599,18 @@ def migrate(*, dry_run: bool = False) -> dict[str, int | str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--solo-compras-tesoreria",
+        action="store_true",
+        help="Solo facturas El Espino y abonos (compras + tesorería); no toca GAP/bodega/etc.",
+    )
     args = parser.parse_args()
-    stats = migrate(dry_run=args.dry_run)
-    print("Migración LC → tenant El Espino")
+    if args.solo_compras_tesoreria:
+        stats = migrate_compras_tesoreria(dry_run=args.dry_run)
+        print("Migración compras/tesorería LC → tenant El Espino")
+    else:
+        stats = migrate(dry_run=args.dry_run)
+        print("Migración LC → tenant El Espino")
     for k, v in sorted(stats.items()):
         print(f"  {k}: {v}")
     return 0
