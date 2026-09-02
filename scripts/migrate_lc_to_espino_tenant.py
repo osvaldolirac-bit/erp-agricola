@@ -674,7 +674,7 @@ def _migrate_gastos_espino_costos(
                 concepto,
                 RAZON_SOCIAL_ESPINO,
                 tg,
-                prov if not str(prov).upper().startswith("INT-") else "",
+                "",
             ),
         )
         dst.execute(
