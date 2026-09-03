@@ -10,6 +10,37 @@ def hoy_demo(demo) -> date:
     return demo.hora_chile().date()
 
 
+def ingrediente_activo_display(demo, conn, producto: str, ia_inventario: str) -> str:
+    """Ingrediente activo mostrado en bodega/PDF: inventario + fallback PPPL/catálogo."""
+    ia = (ia_inventario or "").strip()
+    resolved = ""
+    fn = getattr(demo, "_ingrediente_pppl_producto", None)
+    if callable(fn):
+        try:
+            resolved = (fn(conn, producto) or "").strip()
+        except Exception:
+            resolved = ""
+    if ia and not ia.lower().startswith("por confirmar") and ia not in {"—", "-"}:
+        return ia
+    return resolved or ia or "—"
+
+
+def bodega_stock_pdf_columns(dfs_op) -> Any:
+    """Orden de columnas PDF stock: producto → ing. activo → familia → stock → UM (+ PPPL/PHI)."""
+    import pandas as pd
+
+    if dfs_op is None or (isinstance(dfs_op, pd.DataFrame) and dfs_op.empty):
+        return dfs_op
+    cols = ["producto", "ING. ACTIVO", "familia", "stock", "UM"]
+    if "PPPL" in dfs_op.columns:
+        cols.extend(["PPPL", "PHI"])
+    elif "dias_carencia" in dfs_op.columns:
+        cols.append("dias_carencia")
+    present = [c for c in cols if c in dfs_op.columns]
+    extra = [c for c in dfs_op.columns if c not in present]
+    return dfs_op[present + extra]
+
+
 def parse_date(val: str | None, default: date) -> date:
     if not val:
         return default
