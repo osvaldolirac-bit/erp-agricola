@@ -181,10 +181,20 @@ def _ingresos_cc_agrupados(data, cuarteles):
     return by_canon
 
 
+def _sql_excluir_razon_social_espino_lc(alias: str = "f") -> str:
+    try:
+        from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
+
+        return sql_and_excluir_razon_social_espino("razon_social", alias)
+    except Exception:
+        return ""
+
+
 def _cargar_tesoreria(conn, cuarteles, meses=None):
     """CxP neta: saldo pendiente menos lo ya imputado en Costos (_P), evita doble conteo."""
+    filtro_espino = _sql_excluir_razon_social_espino_lc("f")
     df = pd.read_sql_query(
-        """SELECT f.fecha_vencimiento, f.centro_costo,
+        f"""SELECT f.fecha_vencimiento, f.centro_costo,
                   f.monto_total, COALESCE(f.monto_pagado, 0) AS monto_pagado,
                   f.nro_documento, f.proveedor,
                   COALESCE((
@@ -197,7 +207,8 @@ def _cargar_tesoreria(conn, cuarteles, meses=None):
            FROM facturas f
            WHERE f.estado='Pendiente' AND f.nro_documento NOT LIKE '%_P' AND f.monto_total > 0
              AND UPPER(TRIM(f.nro_documento)) NOT GLOB 'GE-*'
-             AND UPPER(TRIM(f.nro_documento)) NOT GLOB 'INT-*'""",
+             AND UPPER(TRIM(f.nro_documento)) NOT GLOB 'INT-*'
+             {filtro_espino}""",
         conn,
     )
     por_mes = {}

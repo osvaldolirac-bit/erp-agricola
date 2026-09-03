@@ -6,6 +6,7 @@ from flask import render_template, send_file, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.flujo_excel import build_flujo_mensual_xlsx, filename_flujo_excel
 from demo_web.services.module_runner import store_pdf
+from demo_web.services.lc_excluir_espino import cuarteles_costos_lc, resumen_costos_para_flujo_lc
 from demo_web.services.native._helpers import (
     hoy_demo,
     df_to_records,
@@ -34,9 +35,10 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         )
         from erp_flujo_financiero import _mes_label
 
-        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        resumen_costos = resumen_costos_para_flujo_lc(conn, demo, nombre, fi, ff)
+        cuarteles = cuarteles_costos_lc(cuarteles_oficiales(demo))
         df_flujo, df_cc, df_eg_cc, meta = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, cuarteles_oficiales(demo), resumen_costos,
+            conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
         )
 
         flujo_rows = []
@@ -77,7 +79,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             total_gastado = float(meta.get("total_gastado", 0) or 0)
             total_ppto = float(meta.get("total_ppto", 0) or 0)
             saldo_ppto = float(meta.get("saldo_por_gastar_ppto", 0) or 0)
-            cxp_val = float(meta.get("teso_cxp_total", tot_eg_real) or 0)
+            cxp_val = float(meta.get("teso_cxp_bruto") or meta.get("teso_cxp_total") or 0)
             disponible_ppto = tot_ing - total_ppto
             kpis = {
                 "ingresos": demo.f_peso(tot_ing),
@@ -241,9 +243,10 @@ def export_flujo_excel(user_email: str, user_rol: str):
     try:
         from erp_flujo_financiero import armar_flujo_financiero
 
-        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        resumen_costos = resumen_costos_para_flujo_lc(conn, demo, nombre, fi, ff)
+        cuarteles = cuarteles_costos_lc(cuarteles_oficiales(demo))
         df_flujo, _, _, _ = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, cuarteles_oficiales(demo), resumen_costos,
+            conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
         )
     finally:
         conn.close()

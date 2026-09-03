@@ -11974,7 +11974,7 @@ def _render_flujo_temporada(conn, nombre, fi, ff, key_prefix):
         with k3:
             _metric_flujo(
                 "Cuentas por pagar",
-                f"${f_puntos(meta.get('teso_cxp_total', tot_eg_real))}",
+                f"${f_puntos(meta.get('teso_cxp_bruto', meta.get('teso_cxp_total', tot_eg_real)))}",
                 "egreso",
             )
         with k4:

@@ -7,7 +7,10 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.lc_excluir_espino import (
     ajustar_matriz_costos_excluir_espino_lc,
+    cuarteles_costos_lc,
     filtrar_detalle_movimientos_espino_lc,
+    ocultar_cuartel_espino_en_matriz_lc,
+    resumen_costos_para_flujo_lc,
 )
 from demo_web.services.native._helpers import (
     hoy_demo,
@@ -157,7 +160,8 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     hoy = hoy_demo(demo)
     es_vigente = fi <= hoy <= ff
 
-    cuarteles = cuarteles_oficiales(demo)
+    cuarteles_full = cuarteles_oficiales(demo)
+    cuarteles = cuarteles_costos_lc(cuarteles_full)
     vistas = [("resumen", "📊 Resumen")] + [(c, c) for c in cuarteles]
     vista = request.args.get("vista", "resumen")
     if vista != "resumen" and vista not in cuarteles:
@@ -169,19 +173,20 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
         fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente) if es_vigente else (fi, ff)
         if es_vigente:
             matriz = demo._armar_matriz_costos_vista_b(
-                conn, fi_cons, ff_cons, cuarteles, prorr, nombre,
+                conn, fi_cons, ff_cons, cuarteles_full, prorr, nombre,
                 fi_rrhh=fi, ff_rrhh=ff,
             )
             det_fi, det_ff = fi_cons, ff_cons
         else:
             matriz = demo._armar_matriz_costos_vista_b(
-                conn, fi, ff, cuarteles, prorr, nombre,
+                conn, fi, ff, cuarteles_full, prorr, nombre,
             )
             det_fi, det_ff = fi, ff
 
         matriz = ajustar_matriz_costos_excluir_espino_lc(
-            conn, demo, matriz, cuarteles, det_fi, det_ff
+            conn, demo, matriz, cuarteles_full, det_fi, det_ff
         )
+        matriz = ocultar_cuartel_espino_en_matriz_lc(matriz)
 
         matriz_cols, matriz_rows = [], []
         detalle_cols, detalle_rows = [], []

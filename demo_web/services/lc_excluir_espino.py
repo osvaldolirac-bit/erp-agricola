@@ -7,6 +7,8 @@ import pandas as pd
 
 from demo_web.services.tenant_scope import RAZON_SOCIAL_ESPINO, is_concepcion_tenant
 
+CUARTEL_ESPINO_LC = "EL ESPINO"
+
 
 def excluir_razon_social_espino_en_lc() -> bool:
     return is_concepcion_tenant()
@@ -22,6 +24,63 @@ def sql_and_excluir_razon_social_espino(col: str = "razon_social", alias: str | 
         return ""
     col_ref = f"{alias}.{col}" if alias else col
     return f" AND TRIM(COALESCE({col_ref}, '')) != '{RAZON_SOCIAL_ESPINO}' "
+
+
+def cuarteles_costos_lc(cuarteles: list[str] | None) -> list[str]:
+    """Quita cuartel EL ESPINO de vistas Costos/Flujo en tenant LC."""
+    if not excluir_razon_social_espino_en_lc() or not cuarteles:
+        return list(cuarteles or [])
+    return [c for c in cuarteles if str(c).upper().strip() != CUARTEL_ESPINO_LC]
+
+
+def ocultar_cuartel_espino_en_matriz_lc(matriz: pd.DataFrame | None) -> pd.DataFrame | None:
+    """Anula gastos del cuartel EL ESPINO en matriz Costos (solo LC)."""
+    if not excluir_razon_social_espino_en_lc() or matriz is None or matriz.empty:
+        return matriz
+    if CUARTEL_ESPINO_LC not in matriz.columns:
+        return matriz
+    cierre = {"TOTAL GASTO", "PRESUPUESTO", "SALDO"}
+    body = matriz[~matriz["Rubro"].isin(cierre)].copy()
+    body[CUARTEL_ESPINO_LC] = 0.0
+    if "TOTAL" in body.columns:
+        skip = {"Rubro", "TOTAL", "% Total"}
+        cc_cols = [c for c in body.columns if c not in skip]
+        body["TOTAL"] = body[cc_cols].sum(axis=1)
+    ppto = matriz[matriz["Rubro"] == "PRESUPUESTO"]
+    if not ppto.empty:
+        body = pd.concat([body, ppto], ignore_index=True)
+    return _recomputar_cierre_matriz(body)
+
+
+def resumen_costos_para_flujo_lc(conn, demo: Any, temporada: str, fi, ff) -> dict:
+    """Misma matriz que Costos con exclusiones LC (razón social + cuartel Espino)."""
+    from erp_flujo_financiero import resumen_desde_matriz_costos
+
+    from demo_web.services.native._helpers import hoy_demo, prorrateo_rrhh
+    from demo_web.services.tenant_scope import cuarteles_oficiales
+
+    cuarteles_full = list(cuarteles_oficiales(demo) or [])
+    cuarteles = cuarteles_costos_lc(cuarteles_full)
+    hoy = hoy_demo(demo)
+    prorr = prorrateo_rrhh(demo, conn)
+    es_vigente = fi <= hoy <= ff
+    fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente)
+    if es_vigente:
+        matriz = demo._armar_matriz_costos_vista_b(
+            conn, fi_cons, ff_cons, cuarteles_full, prorr, temporada,
+            fi_rrhh=fi, ff_rrhh=ff,
+        )
+        det_fi, det_ff = fi_cons, ff_cons
+    else:
+        matriz = demo._armar_matriz_costos_vista_b(
+            conn, fi, ff, cuarteles_full, prorr, temporada,
+        )
+        det_fi, det_ff = fi, ff
+    matriz = ajustar_matriz_costos_excluir_espino_lc(
+        conn, demo, matriz, cuarteles_full, det_fi, det_ff,
+    )
+    matriz = ocultar_cuartel_espino_en_matriz_lc(matriz)
+    return resumen_desde_matriz_costos(matriz, cuarteles)
 
 
 def filtrar_df_facturas_espino_lc(df: pd.DataFrame | None) -> pd.DataFrame | None:
