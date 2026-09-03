@@ -4587,11 +4587,34 @@ def _render_widget_usuarios_dashboard_al_final(conn):
         pass
 
 def ruta_logo_pdf():
+    try:
+        from demo_web.services.branding import find_tenant_logo_path
+        from demo_web.services.tenant_scope import tenant_slug
+
+        slug = tenant_slug()
+        if slug:
+            found = find_tenant_logo_path(slug)
+            if found:
+                return str(found)
+            if slug == "espino":
+                return None
+    except Exception:
+        pass
     for nombre in ("logo_concepcion.jpg", "logo_concepcion.png", "logo_concepcion.jpeg"):
         ruta = os.path.join(LOGO_DIR, nombre)
         if os.path.exists(ruta):
             return ruta
     return None
+
+def _pdf_marca_empresa():
+    return str(NOMBRE_ERP or "ERP Agrícola").upper()
+
+def _pdf_razon_social_default():
+    try:
+        from demo_web.services.tenant_scope import razon_social_default
+        return razon_social_default()
+    except Exception:
+        return "La Concepción"
 
 def encabezado_pdf(pdf, titulo, modo_petroleo=False, saldo_petroleo=None):
     logo = ruta_logo_pdf()
@@ -4603,7 +4626,7 @@ def encabezado_pdf(pdf, titulo, modo_petroleo=False, saldo_petroleo=None):
     if not logo:
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_xy(10, 10)
-        pdf.cell(80, 6, _pdf_txt(str(NOMBRE_ERP or "AGRICOLA LA CONCEPCION").upper()))
+        pdf.cell(80, 6, _pdf_txt(_pdf_marca_empresa()))
     fh = hora_chile().strftime("%d/%m/%Y %H:%M")
     pdf.set_font("Helvetica", "", 8)
     pdf.set_xy(215, 10)
@@ -5248,7 +5271,7 @@ def generar_pdf_tesoreria_pagos(df):
             pdf.set_font("Helvetica", "", 6)
             for _, row in grp.iterrows():
                 pdf.cell(widths[0], 6, _pdf_txt(str(row["nro_documento"]))[:45], border=1)
-                pdf.cell(widths[1], 6, _pdf_txt(str(row.get("razon_social") or "La Concepción"))[:28], border=1)
+                pdf.cell(widths[1], 6, _pdf_txt(str(row.get("razon_social") or _pdf_razon_social_default()))[:28], border=1)
                 pdf.cell(widths[2], 6, _pdf_txt(f"${f_puntos(row['monto_total'])}"), border=1, align="R")
                 pdf.ln()
             pdf.ln(2)
@@ -7879,7 +7902,7 @@ def modulo_petroleo():
             key="pet_plan_litros",
         )
         blob_plan = generar_pdf_planilla_maestra_petroleo(
-            f_plan, l_plan, logo_path=ruta_logo_pdf()
+            f_plan, l_plan, logo_path=ruta_logo_pdf(), empresa=NOMBRE_ERP or "ERP Agrícola",
         )
         if blob_plan:
             boton_descarga_pdf(

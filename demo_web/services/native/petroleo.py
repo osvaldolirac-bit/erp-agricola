@@ -264,7 +264,9 @@ def _planilla(demo, conn) -> dict:
     pdf_url = None
     if request.method == "POST" and request.form.get("action") == "planilla_pdf":
         blob = generar_pdf_planilla_maestra_petroleo(
-            f_plan, l_plan, logo_path=None, empresa="ERP DEMO AGRICOLA",
+            f_plan, l_plan,
+            logo_path=demo.ruta_logo_pdf(),
+            empresa=getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola",
         )
         if blob:
             token = store_pdf(blob, "planilla_maestra_petroleo.pdf")

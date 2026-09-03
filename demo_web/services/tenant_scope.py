@@ -73,6 +73,13 @@ def razon_social_compras_default(demo: Any) -> str:
     return razones[0] if razones else "El Espino"
 
 
+def razon_social_default() -> str:
+    """Razón social por defecto en PDFs y listados (según tenant activo)."""
+    if is_espino_tenant():
+        return RAZON_SOCIAL_ESPINO
+    return "La Concepción"
+
+
 def cuarteles_gap_especie(demo: Any, especie: str) -> list[str]:
     if is_espino_tenant():
         return list(ESPINO_CCS)
