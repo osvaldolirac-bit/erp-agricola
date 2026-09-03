@@ -17,78 +17,38 @@
   {% if sin_datos %}
   <div class="alert alert-info">Sin meses proyectables en esta temporada desde la fecha actual.</div>
   {% else %}
-  <div class="panel-card mb-3">
-    <h2 class="h6 panel-title mb-2">Cuadre</h2>
-    <div class="row g-3 mb-2">
-      <div class="col-6 col-md-4 col-lg">
-        <div class="flujo-metric flujo-metric-ing">
-          <div class="flujo-metric-label">Ingresos proyectados</div>
-          <div class="flujo-metric-value">{{ kpis.ingresos }}</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg">
-        <div class="flujo-metric flujo-metric-eg">
-          <div class="flujo-metric-label">Presup. consumido</div>
-          <div class="flujo-metric-value">{{ kpis.gastado }}</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg">
-        <div class="flujo-metric flujo-metric-eg">
-          <div class="flujo-metric-label">Cuentas por pagar</div>
-          <div class="flujo-metric-value">{{ kpis.cxp }}</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg">
-        <div class="flujo-metric flujo-metric-eg">
-          <div class="flujo-metric-label">Por gastar (saldo ppto)</div>
-          <div class="flujo-metric-value">{{ kpis.egresos_proy }}</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 col-lg">
-        <div class="flujo-metric flujo-metric-res">
-          <div class="flujo-metric-label">Resultado = EERR</div>
-          <div class="flujo-metric-value {% if kpis.margen and '-' in kpis.margen %}text-danger{% endif %}">{{ kpis.margen }}</div>
-        </div>
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-4 col-lg">
+      <div class="flujo-metric flujo-metric-ing">
+        <div class="flujo-metric-label">Ingresos proyectados</div>
+        <div class="flujo-metric-value">{{ kpis.ingresos }}</div>
       </div>
     </div>
-    <p class="small mb-0">
-      <strong>{{ kpis.ingresos }} − {{ kpis.gastado }} − {{ kpis.cxp }} − {{ kpis.egresos_proy }} = {{ kpis.margen }}</strong>
-    </p>
-    {% if gastado_flujo_info %}
-    <p class="small text-muted mb-0 mt-1">{{ gastado_flujo_info }}</p>
-    {% endif %}
-  </div>
-
-  <div class="panel-card mb-3">
-    <h2 class="h6 panel-title mb-2">Presupuesto temporada</h2>
-    <div class="row g-3">
-      <div class="col-6 col-md-4">
-        <div class="flujo-metric">
-          <div class="flujo-metric-label">Presupuesto</div>
-          <div class="flujo-metric-value">{{ kpis.presupuesto }}</div>
-        </div>
+    <div class="col-6 col-md-4 col-lg">
+      <div class="flujo-metric flujo-metric-eg">
+        <div class="flujo-metric-label">Presup. consumido</div>
+        <div class="flujo-metric-value">{{ kpis.gastado }}</div>
       </div>
-      <div class="col-6 col-md-4">
-        <div class="flujo-metric">
-          <div class="flujo-metric-label">Consumido + por gastar</div>
-          <div class="flujo-metric-value">{{ kpis.gastado }} + {{ kpis.saldo_ppto }}</div>
-        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+      <div class="flujo-metric flujo-metric-eg">
+        <div class="flujo-metric-label">Cuentas por pagar</div>
+        <div class="flujo-metric-value">{{ kpis.cxp }}</div>
       </div>
-      <div class="col-6 col-md-4">
-        <div class="flujo-metric">
-          <div class="flujo-metric-label">Disponible (Ing − Ppto)</div>
-          <div class="flujo-metric-value">{{ kpis.disponible_ppto }}</div>
-        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+      <div class="flujo-metric flujo-metric-eg">
+        <div class="flujo-metric-label">Por gastar</div>
+        <div class="flujo-metric-value">{{ kpis.egresos_proy }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+      <div class="flujo-metric flujo-metric-res">
+        <div class="flujo-metric-label">Resultado</div>
+        <div class="flujo-metric-value {% if kpis.margen and '-' in kpis.margen %}text-danger{% endif %}">{{ kpis.margen }}</div>
       </div>
     </div>
   </div>
-
-  {% if caja_info %}
-  <div class="alert alert-info py-2 small">{{ caja_info }}</div>
-  {% endif %}
-  {% if meta_caption %}
-  <p class="small text-muted mb-3">{{ meta_caption }}</p>
-  {% endif %}
 
   <div class="mb-3">
     <span class="flujo-legend flujo-legend-real">■ Real</span>
