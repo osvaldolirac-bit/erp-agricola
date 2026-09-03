@@ -8,6 +8,7 @@ from flask import flash, render_template, request, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.lc_excluir_espino import filtrar_df_facturas_espino_lc, sql_and_excluir_razon_social_espino
+from demo_web.services.native._helpers import hoy_demo
 from demo_web.services.tenant_scope import razon_social_default
 
 SECCIONES = [
