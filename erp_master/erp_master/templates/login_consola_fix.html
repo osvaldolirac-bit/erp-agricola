@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — Super Consola</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=1785543581" sizes="32x32">
+  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
+</head>
+<body class="login-page">
+  <div class="login-stage">
+    <div class="login-watermark" aria-hidden="true">
+      <img src="{{ url_for('static', filename='watermark_m.png') }}?v=1785543581" alt="">
+    </div>
+
+    <div class="login-access-menu p-4" style="position:relative;z-index:5;width:min(420px,92vw);margin:12vh auto 0;background:#fff;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.12);">
+      <div class="text-center mb-3">
+        <img src="{{ url_for('static', filename='logo_erpmaster.png') }}" alt="{{ brand }}" style="max-width:180px;height:auto;">
+        <p class="mt-2 mb-0 fw-bold">Super Consola</p>
+        <p class="text-muted small mb-0">Administración de tenants ERP Master</p>
+      </div>
+
+      {% if info %}<div class="alert alert-success py-2 mb-2">{{ info }}</div>{% endif %}
+      {% if error %}<div class="alert alert-danger py-2 mb-2" role="alert">{{ error }}</div>{% endif %}
+
+      <form method="post" action="{{ url_for('login') }}" autocomplete="off" id="loginForm">
+        <div class="mb-2">
+          <label class="form-label fw-bold mb-1" for="email">Correo</label>
+          <input class="form-control" id="email" name="email" type="email" autocomplete="username" required autofocus>
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-bold mb-1" for="password">Clave</label>
+          <input class="form-control" id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="remember" value="1" id="remember">
+          <label class="form-check-label" for="remember">Recordar correo</label>
+        </div>
+        <button class="btn login-submit w-100" type="submit">Ingresar a la consola</button>
+      </form>
+      <p class="small text-muted mt-3 mb-0">No es el login de Agrícola/Comercial. Usa <strong>/consola/login</strong>.</p>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    const storageKey = 'erp_master_remember_user';
+    const form = document.getElementById('loginForm');
+    const emailInput = document.getElementById('email');
+    const rememberInput = document.getElementById('remember');
+    if (!form || !emailInput || !rememberInput) return;
+    if (window.location.search.indexOf('out=1') >= 0) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const data = raw ? JSON.parse(raw) : null;
+      if (data && data.remember && data.email) {
+        emailInput.value = String(data.email).trim();
+        rememberInput.checked = true;
+      }
+    } catch (err) {}
+    form.addEventListener('submit', function () {
+      try {
+        const email = (emailInput.value || '').trim();
+        if (rememberInput.checked && email) {
+          localStorage.setItem(storageKey, JSON.stringify({ remember: true, email: email }));
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      } catch (err) {}
+    });
+  })();
+  </script>
+</body>
+</html>
