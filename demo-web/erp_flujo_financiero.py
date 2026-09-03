@@ -562,7 +562,7 @@ def armar_flujo_financiero(
     residual_teso = teso_proy_pool
     meses_residual = list(meses_lejos)
     saldo_presupuesto_sin_cxp = max(0.0, saldo_por_gastar - teso_cxp_total)
-    costos_imputado_total = 0.0
+    gastado_contable = float(total_gastado or 0.0)
 
     saldo_caja_inicial = cargar_saldo_caja_inicial(conn, temporada)
     # Caja inicial de temporada al primer mes del EERR (mismo criterio que cuando
@@ -572,9 +572,11 @@ def armar_flujo_financiero(
     eerr = 0.0
     eerr_started = False
     atrasado_aplicado = False
+    gastado_aplicado = False
     for idx, row in enumerate(pre):
         anio, mes = row["anio"], row["mes"]
         teso_real = row["teso_real"]
+        gastado_imputado = 0.0
         if (
             not atrasado_aplicado
             and row.get("en_eerr")
@@ -583,13 +585,21 @@ def armar_flujo_financiero(
         ):
             teso_real += teso_atrasado
             atrasado_aplicado = True
+        if (
+            not gastado_aplicado
+            and row.get("en_eerr")
+            and gastado_contable > 0.01
+            and (anio, mes) == mes_inicio_eerr
+        ):
+            gastado_imputado = gastado_contable
+            gastado_aplicado = True
         rrhh_real = row["rrhh_real"]
         teso_proy = row["teso_proy"] * factor_teso
         rrhh_proy = row["rrhh_proy"] * factor_rrhh
         ing = ingresos.get((anio, mes), 0.0)
         if mes_caja_aplicada and (anio, mes) == mes_caja_aplicada and saldo_caja_inicial > 0.01:
             ing += saldo_caja_inicial
-        eg_real = teso_real + rrhh_real
+        eg_real = teso_real + rrhh_real + gastado_imputado
         eg_proy = teso_proy + rrhh_proy
         eg_total = eg_real + eg_proy
         rrhh_total = rrhh_real + rrhh_proy
@@ -622,6 +632,7 @@ def armar_flujo_financiero(
                 "TESO_PROY": teso_proy,
                 "RRHH_REAL": rrhh_real,
                 "RRHH_PROY": rrhh_proy,
+                "GASTADO_IMPUTADO": gastado_imputado,
                 "TESO_ATRASADO": (
                     teso_atrasado
                     if (row.get("en_eerr") and (anio, mes) == mes_inicio_eerr)
@@ -646,7 +657,9 @@ def armar_flujo_financiero(
         "saldo_a_proyectar": teso_proy_asignado,
         "saldo_a_proyectar_teso_bruto": teso_proy_asignado,
         "saldo_por_gastar_ppto": saldo_por_gastar,
-        "costos_imputado_en_flujo": costos_imputado_total,
+        "gastado_contable_en_flujo": gastado_contable if gastado_aplicado else 0.0,
+        "mes_gastado_contable": _mes_label(*mes_inicio_eerr) if gastado_aplicado and mes_inicio_eerr else "",
+        "costos_imputado_en_flujo": gastado_contable if gastado_aplicado else 0.0,
         "teso_proy_plan_total": teso_proy_plan_total,
         "teso_proy_residual": residual_teso,
         "teso_proy_cuota_lejos": cuota_teso_lejos,

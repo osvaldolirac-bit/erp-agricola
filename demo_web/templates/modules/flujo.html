@@ -18,12 +18,18 @@
   <div class="alert alert-info">Sin meses proyectables en esta temporada desde la fecha actual.</div>
   {% else %}
   <div class="panel-card mb-3">
-    <h2 class="h6 panel-title mb-2">Cuadre flujo de caja</h2>
+    <h2 class="h6 panel-title mb-2">Cuadre</h2>
     <div class="row g-3 mb-2">
       <div class="col-6 col-md-4 col-lg">
         <div class="flujo-metric flujo-metric-ing">
           <div class="flujo-metric-label">Ingresos proyectados</div>
           <div class="flujo-metric-value">{{ kpis.ingresos }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg">
+        <div class="flujo-metric flujo-metric-eg">
+          <div class="flujo-metric-label">Presup. consumido</div>
+          <div class="flujo-metric-value">{{ kpis.gastado }}</div>
         </div>
       </div>
       <div class="col-6 col-md-4 col-lg">
@@ -34,57 +40,47 @@
       </div>
       <div class="col-6 col-md-4 col-lg">
         <div class="flujo-metric flujo-metric-eg">
-          <div class="flujo-metric-label">Egresos proy. (saldo ppto)</div>
+          <div class="flujo-metric-label">Por gastar (saldo ppto)</div>
           <div class="flujo-metric-value">{{ kpis.egresos_proy }}</div>
         </div>
       </div>
       <div class="col-6 col-md-4 col-lg">
         <div class="flujo-metric flujo-metric-res">
-          <div class="flujo-metric-label">Margen = EERR</div>
+          <div class="flujo-metric-label">Resultado = EERR</div>
           <div class="flujo-metric-value {% if kpis.margen and '-' in kpis.margen %}text-danger{% endif %}">{{ kpis.margen }}</div>
         </div>
       </div>
     </div>
-    <p class="small text-muted mb-0">
-      <strong>{{ kpis.ingresos }} − {{ kpis.cxp }} − {{ kpis.egresos_proy }} = {{ kpis.margen }}</strong>
-      (egresos de caja: pendientes + saldo presupuesto por distribuir).
-      No reste el presup. consumido: es contable (histórico ya Pagado) y no es egreso adicional de caja.
+    <p class="small mb-0">
+      <strong>{{ kpis.ingresos }} − {{ kpis.gastado }} − {{ kpis.cxp }} − {{ kpis.egresos_proy }} = {{ kpis.margen }}</strong>
     </p>
+    {% if gastado_flujo_info %}
+    <p class="small text-muted mb-0 mt-1">{{ gastado_flujo_info }}</p>
+    {% endif %}
   </div>
 
   <div class="panel-card mb-3">
-    <h2 class="h6 panel-title mb-2">Presupuesto Costos (referencia)</h2>
-    <div class="row g-3 mb-2">
-      <div class="col-6 col-md-3">
+    <h2 class="h6 panel-title mb-2">Presupuesto temporada</h2>
+    <div class="row g-3">
+      <div class="col-6 col-md-4">
         <div class="flujo-metric">
           <div class="flujo-metric-label">Presupuesto</div>
           <div class="flujo-metric-value">{{ kpis.presupuesto }}</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-4">
         <div class="flujo-metric">
-          <div class="flujo-metric-label">Presup. consumido</div>
-          <div class="flujo-metric-value">{{ kpis.gastado }}</div>
+          <div class="flujo-metric-label">Consumido + por gastar</div>
+          <div class="flujo-metric-value">{{ kpis.gastado }} + {{ kpis.saldo_ppto }}</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
-        <div class="flujo-metric">
-          <div class="flujo-metric-label">Por gastar</div>
-          <div class="flujo-metric-value">{{ kpis.saldo_ppto }}</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-4">
         <div class="flujo-metric">
           <div class="flujo-metric-label">Disponible (Ing − Ppto)</div>
           <div class="flujo-metric-value">{{ kpis.disponible_ppto }}</div>
         </div>
       </div>
     </div>
-    <p class="small text-muted mb-0">
-      {{ kpis.presupuesto }} = {{ kpis.gastado }} + {{ kpis.saldo_ppto }} ·
-      {{ kpis.ingresos }} − {{ kpis.presupuesto }} = {{ kpis.disponible_ppto }}.
-      Si resta también el consumido sobre ingresos obtiene {{ kpis.formula_gastado }} (descuento doble ≈ {{ kpis.gastado }}).
-    </p>
   </div>
 
   {% if caja_info %}

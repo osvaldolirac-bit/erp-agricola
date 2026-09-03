@@ -43,6 +43,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         flujo_cols = []
         kpis = {}
         cuadre = {}
+        gastado_flujo_info = ""
         pdf_flujo_url = None
         excel_flujo_url = None
         flujo_detalle_rows = []
@@ -77,11 +78,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             total_ppto = float(meta.get("total_ppto", 0) or 0)
             saldo_ppto = float(meta.get("saldo_por_gastar_ppto", 0) or 0)
             cxp_val = float(meta.get("teso_cxp_total", tot_eg_real) or 0)
-            # Gastado imputado (Costos) ≠ egreso de caja: GE/histórico ya está Pagado.
-            # Cuadre caja: Ingresos − CxP − Egresos proy. = Margen (= EERR).
-            margen_caja = tot_ing - cxp_val - tot_eg_proy
             disponible_ppto = tot_ing - total_ppto
-            formula_gastado = tot_ing - total_gastado - cxp_val - tot_eg_proy
             kpis = {
                 "ingresos": demo.f_peso(tot_ing),
                 "egresos_total": demo.f_peso(tot_eg_total),
@@ -92,16 +89,19 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 "cxp": demo.f_peso(cxp_val),
                 "egresos_proy": demo.f_peso(tot_eg_proy),
                 "margen": demo.f_peso(margen_eerr),
-                "margen_caja": demo.f_peso(margen_caja),
                 "disponible_ppto": demo.f_peso(disponible_ppto),
                 "eerr": demo.f_peso(eerr_final),
-                "formula_gastado": demo.f_peso(formula_gastado),
             }
             cuadre = {
                 "flujo_ok": abs(margen_eerr - eerr_final) < 1.0,
-                "caja_ok": abs(margen_caja - margen_eerr) < 1.0,
                 "ppto_ok": abs(total_ppto - total_gastado - saldo_ppto) < 1.0,
             }
+            gastado_flujo_info = ""
+            if meta.get("gastado_contable_en_flujo", 0) > 0.01 and meta.get("mes_gastado_contable"):
+                gastado_flujo_info = (
+                    f"Presup. consumido ({demo.f_peso(meta['gastado_contable_en_flujo'])}) "
+                    f"imputado como egreso real en {meta['mes_gastado_contable']}."
+                )
 
             display_cols = [
                 "MES", "INGRESOS", "RRHH SUELDOS", "TESO REAL", "TESO PROY",
@@ -220,6 +220,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             "meta_caption": meta_info,
             "caja_info": caja_info,
             "cuadre": cuadre,
+            "gastado_flujo_info": gastado_flujo_info if kpis else "",
             "pdf_flujo_url": pdf_flujo_url,
             "excel_flujo_url": excel_flujo_url,
             "sin_datos": df_flujo is None or df_flujo.empty,
