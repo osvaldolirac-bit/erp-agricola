@@ -42,6 +42,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         flujo_rows = []
         flujo_cols = []
         kpis = {}
+        cuadre = {}
         pdf_flujo_url = None
         excel_flujo_url = None
         flujo_detalle_rows = []
@@ -72,14 +73,30 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 eg_eerr = tot_eg_total
                 eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
                 margen_eerr = tot_res
+            total_gastado = float(meta.get("total_gastado", 0) or 0)
+            total_ppto = float(meta.get("total_ppto", 0) or 0)
+            saldo_ppto = float(meta.get("saldo_por_gastar_ppto", 0) or 0)
+            cxp_val = float(meta.get("teso_cxp_total", tot_eg_real) or 0)
+            # Restar gastado imputado aquí genera doble conteo: eg. proy. ya sale del saldo (ppto − gastado).
+            formula_gastado = tot_ing - total_gastado - cxp_val - tot_eg_proy
             kpis = {
                 "ingresos": demo.f_peso(tot_ing),
                 "egresos_total": demo.f_peso(tot_eg_total),
-                "gastado": demo.f_peso(meta.get("total_gastado", 0)),
-                "cxp": demo.f_peso(meta.get("teso_cxp_total", tot_eg_real)),
+                "egresos_real": demo.f_peso(tot_eg_real),
+                "gastado": demo.f_peso(total_gastado),
+                "presupuesto": demo.f_peso(total_ppto),
+                "saldo_ppto": demo.f_peso(saldo_ppto),
+                "cxp": demo.f_peso(cxp_val),
                 "egresos_proy": demo.f_peso(tot_eg_proy),
                 "margen": demo.f_peso(margen_eerr),
                 "eerr": demo.f_peso(eerr_final),
+                "formula_gastado": demo.f_peso(formula_gastado),
+                "doble_gastado": demo.f_peso(total_gastado),
+            }
+            cuadre = {
+                "flujo_ok": abs(margen_eerr - eerr_final) < 1.0,
+                "ppto_ok": abs(total_ppto - total_gastado - saldo_ppto) < 1.0,
+                "formula_gastado_warn": abs(formula_gastado - total_gastado) < 1.0,
             }
 
             display_cols = [
@@ -208,6 +225,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             "notas_rows": notas_rows,
             "meta_caption": meta_info,
             "caja_info": caja_info,
+            "cuadre": cuadre,
             "pdf_flujo_url": pdf_flujo_url,
             "excel_flujo_url": excel_flujo_url,
             "sin_datos": df_flujo is None or df_flujo.empty,

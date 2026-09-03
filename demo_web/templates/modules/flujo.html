@@ -17,49 +17,78 @@
   {% if sin_datos %}
   <div class="alert alert-info">Sin meses proyectables en esta temporada desde la fecha actual.</div>
   {% else %}
-  <div class="row g-3 mb-3">
-    <div class="col-6 col-lg">
-      <div class="flujo-metric flujo-metric-ing">
-        <div class="flujo-metric-label">Ingresos proyectados</div>
-        <div class="flujo-metric-value">{{ kpis.ingresos }}</div>
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title mb-2">Flujo de caja</h2>
+    <div class="row g-3">
+      <div class="col-6 col-md-4 col-lg">
+        <div class="flujo-metric flujo-metric-ing">
+          <div class="flujo-metric-label">Ingresos proyectados</div>
+          <div class="flujo-metric-value">{{ kpis.ingresos }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg">
+        <div class="flujo-metric flujo-metric-eg">
+          <div class="flujo-metric-label">Egresos real (CxP + RRHH)</div>
+          <div class="flujo-metric-value">{{ kpis.egresos_real }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg">
+        <div class="flujo-metric flujo-metric-eg">
+          <div class="flujo-metric-label">Egresos proy. (saldo ppto)</div>
+          <div class="flujo-metric-value">{{ kpis.egresos_proy }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg">
+        <div class="flujo-metric flujo-metric-eg">
+          <div class="flujo-metric-label">Egresos total</div>
+          <div class="flujo-metric-value">{{ kpis.egresos_total }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg">
+        <div class="flujo-metric flujo-metric-res">
+          <div class="flujo-metric-label">Margen = EERR acum.</div>
+          <div class="flujo-metric-value {% if kpis.margen and '-' in kpis.margen %}text-danger{% endif %}">{{ kpis.margen }}</div>
+        </div>
       </div>
     </div>
-    <div class="col-6 col-lg">
-      <div class="flujo-metric flujo-metric-eg">
-        <div class="flujo-metric-label">Gastado imputado (Costos)</div>
-        <div class="flujo-metric-value">{{ kpis.gastado }}</div>
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title mb-2">Presupuesto Costos (referencia contable)</h2>
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <div class="flujo-metric">
+          <div class="flujo-metric-label">Presupuesto</div>
+          <div class="flujo-metric-value">{{ kpis.presupuesto }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="flujo-metric">
+          <div class="flujo-metric-label">Presup. consumido</div>
+          <div class="flujo-metric-value">{{ kpis.gastado }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="flujo-metric">
+          <div class="flujo-metric-label">Saldo por gastar</div>
+          <div class="flujo-metric-value">{{ kpis.saldo_ppto }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="flujo-metric">
+          <div class="flujo-metric-label">Cuentas por pagar</div>
+          <div class="flujo-metric-value">{{ kpis.cxp }}</div>
+        </div>
       </div>
     </div>
-    <div class="col-6 col-lg">
-      <div class="flujo-metric flujo-metric-eg">
-        <div class="flujo-metric-label">Cuentas por pagar</div>
-        <div class="flujo-metric-value">{{ kpis.cxp }}</div>
-      </div>
-    </div>
-    <div class="col-6 col-lg">
-      <div class="flujo-metric flujo-metric-eg">
-        <div class="flujo-metric-label">Egresos total (real + proy.)</div>
-        <div class="flujo-metric-value">{{ kpis.egresos_total }}</div>
-      </div>
-    </div>
-    <div class="col-6 col-lg">
-      <div class="flujo-metric flujo-metric-eg">
-        <div class="flujo-metric-label">Egresos caja proy.</div>
-        <div class="flujo-metric-value">{{ kpis.egresos_proy }}</div>
-      </div>
-    </div>
-    <div class="col-6 col-lg">
-      <div class="flujo-metric flujo-metric-res">
-        <div class="flujo-metric-label">Margen (Ing − Egr.)</div>
-        <div class="flujo-metric-value {% if kpis.margen and '-' in kpis.margen %}text-danger{% endif %}">{{ kpis.margen }}</div>
-      </div>
-    </div>
-    <div class="col-6 col-lg">
-      <div class="flujo-metric flujo-metric-res">
-        <div class="flujo-metric-label">EERR acumulado</div>
-        <div class="flujo-metric-value {% if kpis.eerr and '-' in kpis.eerr %}text-danger{% endif %}">{{ kpis.eerr }}</div>
-      </div>
-    </div>
+  </div>
+
+  <div class="alert alert-light border mb-3 small">
+    <strong>Cuadre:</strong>
+    {{ kpis.ingresos }} − {{ kpis.egresos_total }} = <strong>{{ kpis.margen }}</strong> (flujo de caja).
+    Presupuesto: {{ kpis.presupuesto }} = {{ kpis.gastado }} consumido + {{ kpis.saldo_ppto }} saldo.
+    Los <em>egresos proy.</em> se distribuyen desde el saldo presupuesto, no desde ingresos menos gastado.
+    Si resta también el presup. consumido obtiene {{ kpis.formula_gastado }} (doble descuento ≈ {{ kpis.doble_gastado }}).
   </div>
 
   <div class="mb-3">
