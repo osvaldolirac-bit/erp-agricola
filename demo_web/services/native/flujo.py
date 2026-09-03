@@ -53,12 +53,32 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             tot_ing = float(df_flujo["INGRESOS"].sum())
             tot_eg_real = float(df_flujo["EGRESOS_REAL"].sum())
             tot_eg_proy = float(df_flujo["EGRESOS_PROY"].sum())
-            eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
+            tot_eg_total = float(df_flujo["EGRESOS_REAL"].sum() + df_flujo["EGRESOS_PROY"].sum())
+            tot_res = tot_ing - tot_eg_total
+            if "EN_EERR" in df_flujo.columns:
+                df_eerr = df_flujo[df_flujo["EN_EERR"].astype(bool)]
+                if not df_eerr.empty:
+                    ing_eerr = float(df_eerr["INGRESOS"].sum())
+                    eg_eerr = float(df_eerr["EGRESOS_TOTAL"].sum())
+                    eerr_final = float(df_eerr["EERR_ACUM"].iloc[-1])
+                    margen_eerr = ing_eerr - eg_eerr
+                else:
+                    ing_eerr = tot_ing
+                    eg_eerr = tot_eg_total
+                    eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
+                    margen_eerr = tot_res
+            else:
+                ing_eerr = tot_ing
+                eg_eerr = tot_eg_total
+                eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
+                margen_eerr = tot_res
             kpis = {
                 "ingresos": demo.f_peso(tot_ing),
+                "egresos_total": demo.f_peso(tot_eg_total),
                 "gastado": demo.f_peso(meta.get("total_gastado", 0)),
                 "cxp": demo.f_peso(meta.get("teso_cxp_total", tot_eg_real)),
                 "egresos_proy": demo.f_peso(tot_eg_proy),
+                "margen": demo.f_peso(margen_eerr),
                 "eerr": demo.f_peso(eerr_final),
             }
 
@@ -135,8 +155,14 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 f"RRHH proy: {demo.f_peso(meta.get('rrhh_proy_asignado', 0))} · "
                 f"TESO PROY (resto del saldo, desde {meta.get('mes_inicio_teso_proy_auto', 'hoy+2')}): "
                 f"{demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))} · "
-                f"CxP (TESO REAL): {demo.f_peso(meta.get('teso_cxp_total', 0))}."
+                f"CxP (TESO REAL): {demo.f_peso(meta.get('teso_cxp_total', 0))}. "
+                f"Totales tabla: RESULTADO MES = INGRESOS − EGRESOS TOTAL."
             )
+            if meta.get("mes_inicio_eerr"):
+                meta_info += (
+                    f" EERR acumulado cuadra con ingresos − egresos desde {meta.get('mes_inicio_eerr')} "
+                    f"({demo.f_peso(margen_eerr)})."
+                )
 
         eg_cc_cols, eg_cc_rows = [], []
         if df_eg_cc is not None and not df_eg_cc.empty:

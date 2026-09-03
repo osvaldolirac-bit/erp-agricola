@@ -38,8 +38,20 @@
     </div>
     <div class="col-6 col-lg">
       <div class="flujo-metric flujo-metric-eg">
+        <div class="flujo-metric-label">Egresos total (real + proy.)</div>
+        <div class="flujo-metric-value">{{ kpis.egresos_total }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg">
+      <div class="flujo-metric flujo-metric-eg">
         <div class="flujo-metric-label">Egresos caja proy.</div>
         <div class="flujo-metric-value">{{ kpis.egresos_proy }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg">
+      <div class="flujo-metric flujo-metric-res">
+        <div class="flujo-metric-label">Margen (Ing − Egr.)</div>
+        <div class="flujo-metric-value {% if kpis.margen and '-' in kpis.margen %}text-danger{% endif %}">{{ kpis.margen }}</div>
       </div>
     </div>
     <div class="col-6 col-lg">
