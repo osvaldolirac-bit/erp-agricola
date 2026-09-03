@@ -29,6 +29,7 @@ FILES = [
     (WORKSPACE / "demo_web/services/native/espino_bodega.py", DEMO_WEB / "demo_web/services/native/espino_bodega.py"),
     (WORKSPACE / "demo_web/services/native/bodega.py", DEMO_WEB / "demo_web/services/native/bodega.py"),
     (WORKSPACE / "demo_web/services/native/_helpers.py", DEMO_WEB / "demo_web/services/native/_helpers.py"),
+    (WORKSPACE / "demo_web/services/dashboard.py", DEMO_WEB / "demo_web/services/dashboard.py"),
     (WORKSPACE / "erp_master/erp_master/config.py", ERP_MASTER / "erp_master/config.py"),
     (WORKSPACE / "scripts/bootstrap_espino_tenant.py", DEMO_WEB / "scripts/bootstrap_espino_tenant.py"),
     (WORKSPACE / "scripts/migrate_lc_to_espino_tenant.py", DEMO_WEB / "scripts/migrate_lc_to_espino_tenant.py"),
