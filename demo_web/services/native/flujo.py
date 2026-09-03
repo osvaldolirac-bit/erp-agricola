@@ -77,7 +77,10 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             total_ppto = float(meta.get("total_ppto", 0) or 0)
             saldo_ppto = float(meta.get("saldo_por_gastar_ppto", 0) or 0)
             cxp_val = float(meta.get("teso_cxp_total", tot_eg_real) or 0)
-            # Restar gastado imputado aquí genera doble conteo: eg. proy. ya sale del saldo (ppto − gastado).
+            # Gastado imputado (Costos) ≠ egreso de caja: GE/histórico ya está Pagado.
+            # Cuadre caja: Ingresos − CxP − Egresos proy. = Margen (= EERR).
+            margen_caja = tot_ing - cxp_val - tot_eg_proy
+            disponible_ppto = tot_ing - total_ppto
             formula_gastado = tot_ing - total_gastado - cxp_val - tot_eg_proy
             kpis = {
                 "ingresos": demo.f_peso(tot_ing),
@@ -89,14 +92,15 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 "cxp": demo.f_peso(cxp_val),
                 "egresos_proy": demo.f_peso(tot_eg_proy),
                 "margen": demo.f_peso(margen_eerr),
+                "margen_caja": demo.f_peso(margen_caja),
+                "disponible_ppto": demo.f_peso(disponible_ppto),
                 "eerr": demo.f_peso(eerr_final),
                 "formula_gastado": demo.f_peso(formula_gastado),
-                "doble_gastado": demo.f_peso(total_gastado),
             }
             cuadre = {
                 "flujo_ok": abs(margen_eerr - eerr_final) < 1.0,
+                "caja_ok": abs(margen_caja - margen_eerr) < 1.0,
                 "ppto_ok": abs(total_ppto - total_gastado - saldo_ppto) < 1.0,
-                "formula_gastado_warn": abs(formula_gastado - total_gastado) < 1.0,
             }
 
             display_cols = [
@@ -166,20 +170,10 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 caja_info = f"{caja_info} {_extra}".strip() if caja_info else _extra
 
             meta_info = (
-                f"Presupuesto (Costos): {demo.f_peso(meta.get('total_ppto', 0))} · "
-                f"Gastado imputado: {demo.f_peso(meta.get('total_gastado', 0))} · "
-                f"Saldo por gastar (suma CC): {demo.f_peso(meta.get('saldo_por_gastar_ppto', 0))} · "
-                f"RRHH proy: {demo.f_peso(meta.get('rrhh_proy_asignado', 0))} · "
-                f"TESO PROY (resto del saldo, desde {meta.get('mes_inicio_teso_proy_auto', 'hoy+2')}): "
-                f"{demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))} · "
-                f"CxP (TESO REAL): {demo.f_peso(meta.get('teso_cxp_total', 0))}. "
-                f"Totales tabla: RESULTADO MES = INGRESOS − EGRESOS TOTAL."
+                f"Presupuesto (Costos): {demo.f_peso(total_ppto)} = "
+                f"consumido {demo.f_peso(total_gastado)} + por gastar {demo.f_peso(saldo_ppto)} · "
+                f"CxP: {demo.f_peso(cxp_val)} · Egresos proy.: {demo.f_peso(tot_eg_proy)}."
             )
-            if meta.get("mes_inicio_eerr"):
-                meta_info += (
-                    f" EERR acumulado cuadra con ingresos − egresos desde {meta.get('mes_inicio_eerr')} "
-                    f"({demo.f_peso(margen_eerr)})."
-                )
 
         eg_cc_cols, eg_cc_rows = [], []
         if df_eg_cc is not None and not df_eg_cc.empty:
