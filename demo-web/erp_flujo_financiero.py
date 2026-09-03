@@ -182,27 +182,45 @@ def _ingresos_cc_agrupados(data, cuarteles):
 
 
 def _cargar_tesoreria(conn, cuarteles, meses=None):
+    """CxP neta: saldo pendiente menos lo ya imputado en Costos (_P), evita doble conteo."""
     df = pd.read_sql_query(
-        """SELECT fecha_vencimiento, centro_costo,
-                  monto_total, COALESCE(monto_pagado, 0) AS monto_pagado
-           FROM facturas
-           WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
-             AND UPPER(TRIM(nro_documento)) NOT GLOB 'GE-*'
-             AND UPPER(TRIM(nro_documento)) NOT GLOB 'INT-*'""",
+        """SELECT f.fecha_vencimiento, f.centro_costo,
+                  f.monto_total, COALESCE(f.monto_pagado, 0) AS monto_pagado,
+                  f.nro_documento, f.proveedor,
+                  COALESCE((
+                    SELECT SUM(ABS(p.monto_imputado))
+                    FROM facturas p
+                    WHERE p.nro_documento = f.nro_documento || '_P'
+                      AND p.proveedor = f.proveedor
+                      AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
+                  ), 0) AS imputado_costos
+           FROM facturas f
+           WHERE f.estado='Pendiente' AND f.nro_documento NOT LIKE '%_P' AND f.monto_total > 0
+             AND UPPER(TRIM(f.nro_documento)) NOT GLOB 'GE-*'
+             AND UPPER(TRIM(f.nro_documento)) NOT GLOB 'INT-*'""",
         conn,
     )
     por_mes = {}
     por_cc = {cc: 0.0 for cc in cuarteles}
     por_cc_atrasado = {cc: 0.0 for cc in cuarteles}
     teso_atrasado_total = 0.0
+    cxp_bruto_total = 0.0
+    cxp_imputado_doble = 0.0
     meses_set = set(meses or [])
     primer_mes = (
         date(meses[0][0], meses[0][1], 1) if meses else None
     )
     if df.empty:
-        return por_mes, por_cc, teso_atrasado_total, por_cc_atrasado
+        return por_mes, por_cc, teso_atrasado_total, por_cc_atrasado, cxp_bruto_total, cxp_imputado_doble
     for _, row in df.iterrows():
-        saldo = _saldo_pendiente(row["monto_total"], row["monto_pagado"])
+        saldo_bruto = _saldo_pendiente(row["monto_total"], row["monto_pagado"])
+        if saldo_bruto <= 0.01:
+            continue
+        cxp_bruto_total += saldo_bruto
+        imputado = float(row.get("imputado_costos") or 0)
+        descuento = min(saldo_bruto, imputado)
+        cxp_imputado_doble += descuento
+        saldo = max(0.0, saldo_bruto - descuento)
         if saldo <= 0.01:
             continue
         try:
@@ -219,7 +237,7 @@ def _cargar_tesoreria(conn, cuarteles, meses=None):
         if meses_set and key in meses_set and cc:
             por_cc[cc] = por_cc.get(cc, 0.0) + saldo
         por_mes[key] = por_mes.get(key, 0.0) + saldo
-    return por_mes, por_cc, teso_atrasado_total, por_cc_atrasado
+    return por_mes, por_cc, teso_atrasado_total, por_cc_atrasado, cxp_bruto_total, cxp_imputado_doble
 
 
 def _subquery_pagos_rrhh_canonicos():
@@ -468,7 +486,7 @@ def armar_flujo_financiero(
 
     # Tesorería con vencimiento desde el inicio EERR; lo anterior entra como atrasado
     # en ese mes (igual que cuando julio era el primer mes visible).
-    teso_map, teso_por_cc, teso_atrasado, teso_por_cc_atrasado = _cargar_tesoreria(
+    teso_map, teso_por_cc, teso_atrasado, teso_por_cc_atrasado, cxp_bruto, cxp_imputado_doble = _cargar_tesoreria(
         conn, cuarteles, meses_desde_eerr or meses,
     )
     teso_por_cc_total = {
@@ -654,6 +672,8 @@ def armar_flujo_financiero(
         "teso_programada_flujo": teso_programada_flujo,
         "teso_meses_anteriores": teso_atrasado,
         "teso_cxp_total": teso_cxp_total,
+        "teso_cxp_bruto": cxp_bruto,
+        "cxp_imputado_en_gastado": cxp_imputado_doble,
         "saldo_a_proyectar": teso_proy_asignado,
         "saldo_a_proyectar_teso_bruto": teso_proy_asignado,
         "saldo_por_gastar_ppto": saldo_por_gastar,
