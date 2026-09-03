@@ -26,6 +26,10 @@ def is_espino_tenant() -> bool:
     return tenant_slug() == "espino"
 
 
+def is_concepcion_tenant() -> bool:
+    return tenant_slug() == "concepcion"
+
+
 def centros_costo(demo: Any) -> list[str]:
     if is_espino_tenant():
         return list(ESPINO_CCS)
@@ -65,7 +69,10 @@ def libro_campo_especies(demo: Any) -> list[str]:
 def razones_sociales_compras(demo: Any) -> list[str]:
     if is_espino_tenant():
         return list(RAZONES_SOCIALES_ESPINO)
-    return list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+    if is_concepcion_tenant():
+        razones = [r for r in razones if not (r or "").strip().casefold() == RAZON_SOCIAL_ESPINO.casefold()]
+    return razones
 
 
 def razon_social_compras_default(demo: Any) -> str:

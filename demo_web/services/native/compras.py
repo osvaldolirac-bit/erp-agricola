@@ -6,6 +6,7 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
 from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
 SECCIONES = [
@@ -182,6 +183,7 @@ def _historial(demo, conn) -> dict:
         WHERE monto_total > 0
           {_sql_solo_compras_reales()}
           AND fecha_compra BETWEEN ? AND ?
+          {sql_and_excluir_razon_social_espino()}
     """
     params: list = [demo.TIPO_GASTO_SIN_CLASIFICAR, str(fi), str(ff)]
     if q:

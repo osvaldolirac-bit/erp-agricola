@@ -5,6 +5,10 @@ from flask import render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import store_pdf
+from demo_web.services.lc_excluir_espino import (
+    ajustar_matriz_costos_excluir_espino_lc,
+    filtrar_detalle_movimientos_espino_lc,
+)
 from demo_web.services.native._helpers import (
     hoy_demo,
     avance_ppto_badge_tone,
@@ -175,6 +179,10 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
             )
             det_fi, det_ff = fi, ff
 
+        matriz = ajustar_matriz_costos_excluir_espino_lc(
+            conn, demo, matriz, cuarteles, det_fi, det_ff
+        )
+
         matriz_cols, matriz_rows = [], []
         detalle_cols, detalle_rows = [], []
         mov_cols, mov_rows = [], []
@@ -270,6 +278,7 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
                 df_mov = demo._obtener_detalle_gastos_cc(
                     conn, vista, prorr, det_fi, det_ff, fi, ff,
                 )
+                df_mov = filtrar_detalle_movimientos_espino_lc(conn, df_mov)
                 if not df_mov.empty:
                     df_mov = df_mov.copy()
                     df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")
