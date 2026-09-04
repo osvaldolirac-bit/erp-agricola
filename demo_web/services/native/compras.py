@@ -7,14 +7,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
-from demo_web.services.costos_compras_coherencia import (
-    sql_historial_compras_parent,
-    total_imputado_bruto_historial,
-    total_imputado_neto_historial,
-    total_pendiente_imputar_historial,
-    total_registrado_compras_historial,
-    resumen_comparativo_compras_costos,
-)
+from demo_web.services.costos_compras_coherencia import sql_historial_compras_parent
 from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
 SECCIONES = [
