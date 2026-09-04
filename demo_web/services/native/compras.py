@@ -167,51 +167,6 @@ def _proveedores_options(conn) -> list[dict]:
     ]
 
 
-def _total_imputado_cc_historial(demo, conn, fi, ff) -> float:
-    """Suma imputaciones _P de documentos visibles en historial (misma lógica que Costos)."""
-    return total_imputado_neto_historial(demo, conn, fi, ff)
-
-
-def _total_imputado_cc_bruto_historial(demo, conn, fi, ff) -> float:
-    """Imputaciones _P en bruto (misma escala que monto_total del historial)."""
-    return total_imputado_bruto_historial(demo, conn, fi, ff)
-
-
-def _total_pendiente_imputar_historial(conn, fi, ff) -> float:
-    return total_pendiente_imputar_historial(conn, fi, ff)
-
-
-def _resumen_imputacion_historial(
-    demo, conn, compras_total_filtrado: float, fi, ff,
-) -> dict | None:
-    """Compras bruto vs imputación (fechas del filtro; registrado = todo el período, no solo tabla filtrada)."""
-    registrado = total_registrado_compras_historial(conn, fi, ff)
-    if registrado <= 0 and compras_total_filtrado <= 0:
-        return None
-    try:
-        imputado_neto = _total_imputado_cc_historial(demo, conn, fi, ff)
-        imputado_bruto = _total_imputado_cc_bruto_historial(demo, conn, fi, ff)
-        pendiente = _total_pendiente_imputar_historial(conn, fi, ff)
-        hay_filtro_extra = abs(compras_total_filtrado - registrado) > 0.5
-        return {
-            "registrado_fmt": demo.f_peso(registrado),
-            "registrado_filtrado_fmt": demo.f_peso(compras_total_filtrado) if hay_filtro_extra else None,
-            "imputado_neto_fmt": demo.f_peso(imputado_neto),
-            "imputado_bruto_fmt": demo.f_peso(imputado_bruto),
-            "pendiente_fmt": demo.f_peso(pendiente),
-            "coherente": registrado + 0.5 >= imputado_neto,
-            "coherente_bruto": registrado + 0.5 >= imputado_bruto,
-            "notas": [
-                "Registrado = suma bruta de facturas del período (fechas arriba), sin filtros de búsqueda/tipo.",
-                "Acumulado de la tabla = solo filas visibles si aplicó búsqueda o tipo de gasto.",
-                "Imputado a CC: criterio Costos (neto en Agroquímicos, Repuestos y Energía eléctrica).",
-                "Comparar registrado ≥ imputado bruto + pendiente. No comparar con Gasto neto de Costos.",
-            ],
-        }
-    except Exception:
-        return None
-
-
 def _historial(demo, conn) -> dict:
     _ensure_folio_interno_col(conn)
     hoy = hoy_demo(demo)
