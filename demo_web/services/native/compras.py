@@ -325,6 +325,11 @@ def _historial(demo, conn) -> dict:
     fi = parse_date(request.args.get("desde"), fi_def)
     ff = parse_date(request.args.get("hasta"), max(hoy, fmax_db))
     q = (request.args.get("q") or "").strip()
+    tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
+    tipos_gasto_filtro = ["Todas"] + tipos_gasto
+    tg_filtro = (request.args.get("tipo_gasto") or "").strip()
+    if tg_filtro not in tipos_gasto_filtro:
+        tg_filtro = "Todas"
 
     sql = f"""
         SELECT id, nro_documento, COALESCE(folio_interno, '') AS folio_interno, proveedor,
@@ -342,11 +347,14 @@ def _historial(demo, conn) -> dict:
     if q:
         sql += (
             " AND (nro_documento LIKE ? OR COALESCE(folio_interno,'') LIKE ? OR proveedor LIKE ? "
-            "OR concepto LIKE ? OR IFNULL(razon_social,'') LIKE ?)"
+            "OR concepto LIKE ? OR IFNULL(razon_social,'') LIKE ? OR TRIM(COALESCE(tipo_gasto,'')) LIKE ?)"
         )
         like = f"%{q}%"
-        params.extend([like, like, like, like, like])
-    sql += " ORDER BY id DESC"
+        params.extend([like, like, like, like, like, like])
+    if tg_filtro != "Todas":
+        sql += " AND TRIM(COALESCE(tipo_gasto, '')) = ? "
+        params.append(tg_filtro)
+    sql += " ORDER BY fecha_compra DESC, monto_total DESC, id DESC"
     df = pd.read_sql_query(sql, conn, params=params)
 
     siguientes_por_razon: dict[str, str] = {}
@@ -445,7 +453,6 @@ def _historial(demo, conn) -> dict:
         factura_edit["tipo_gasto_sel"] = tg
 
     razones = razones_sociales_compras(demo)
-    tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
     proveedores = _proveedores_options(conn) if es_admin else []
 
     puede_folio = not bool(demo.es_solo_lectura())
@@ -467,6 +474,8 @@ def _historial(demo, conn) -> dict:
         "historial_total_fmt": demo.f_peso(compras_total) if rows else "—",
         "resumen_imputacion": resumen_imputacion,
         "filtro_q": q,
+        "filtro_tipo_gasto": tg_filtro,
+        "tipos_gasto_filtro": tipos_gasto_filtro,
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "siguiente_correlativo": siguiente_corr,
