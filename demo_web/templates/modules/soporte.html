@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% block title %}Soporte — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Soporte técnico del ERP</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {% if es_admin %}
+  <div class="alert alert-info">
+    <strong>La bandeja de tickets se gestiona en la Super Consola.</strong><br>
+    Responda a todos los clientes desde
+    <a href="{{ master_soporte_url }}" target="_blank" rel="noopener">ERP Master → Soporte</a>.
+    Este módulo ya no muestra el inbox en el ERP.
+  </div>
+  {% else %}
+  {{ nav_modulo('modules.soporte', secciones, sec_activa) }}
+
+  {% if sec_activa == 'nuevo' %}
+  <div class="panel-card">
+    <p class="small text-muted">Reporte un problema del <strong>{{ nombre_erp }}</strong>. El administrador recibirá un correo al enviar.</p>
+    {% if solo_lectura %}
+    <div class="alert alert-info mb-0">Modo solo lectura: no puede crear tickets.</div>
+    {% else %}
+    <form method="post">
+      <input type="hidden" name="action" value="crear">
+      <div class="mb-3">
+        <label class="form-label">Describa el problema</label>
+        <textarea name="descripcion" class="form-control" rows="6" required minlength="10"
+                  placeholder="Indique módulo, qué intentaba hacer y qué ocurrió…"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Enviar ticket</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  {% if mis_tickets %}
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead>
+          <tr><th>Código</th><th>Fecha</th><th>ERP</th><th>Estado</th><th>Respuesta</th><th>Resumen</th></tr>
+        </thead>
+        <tbody>
+          {% for t in mis_tickets %}
+          <tr>
+            <td><a href="{{ url_for('modules.soporte', sec='mis', ticket_id=t.id) }}">{{ t.codigo }}</a></td>
+            <td>{{ t.fecha }}</td><td>{{ t.erp }}</td><td>{{ t.estado }}</td>
+            <td>{{ t.respuesta }}</td><td>{{ t.resumen }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if ticket_detalle %}
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Detalle — {{ ticket_detalle.codigo }}</h2>
+    <p class="mb-2"><strong>Estado:</strong> {{ ticket_detalle.estado }}</p>
+    <label class="form-label">Mi consulta</label>
+    <div class="bg-light rounded p-2 mb-3 small" style="white-space:pre-wrap;">{{ ticket_detalle.descripcion }}</div>
+    {% if ticket_detalle.respuesta and ticket_detalle.respuesta.strip() %}
+    <div class="alert alert-success">
+      <strong>Respuesta del administrador:</strong><br>{{ ticket_detalle.respuesta }}
+      {% if ticket_detalle.fecha_respuesta %}
+      <div class="small text-muted mt-1">Respondido el {{ ticket_detalle.fecha_respuesta }}</div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0">Aún no hay respuesta. El administrador le notificará por correo cuando responda.</div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="alert alert-info">No hay tickets registrados.</div>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

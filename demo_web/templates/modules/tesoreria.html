@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% from "partials/nav_seccion.html" import nav_seccion %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Tesorería — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Gestión de pagos y deuda pendiente</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_seccion(secciones, sec_activa) }}
+
+  {% if sec_activa == 'pendientes' %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div class="alert alert-warning fw-semibold mb-0 flex-grow-1">
+      DEUDA PENDIENTE: {{ deuda_total }} <span class="text-muted fw-normal">({{ n_pendientes }} documento(s))</span>
+    </div>
+    {{ pdf_btn(pdf_pendientes_url, '📥 PDF PENDIENTES') }}
+  </div>
+  <div class="panel-card">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover demo-datatable w-100" id="tbl-pendientes">
+        <thead>
+          <tr>
+            <th>N° Documento</th>
+            <th>Proveedor</th>
+            <th>Razón social</th>
+            <th>Vencimiento</th>
+            <th>Días venc.</th>
+            <th>Monto doc.</th>
+            <th>Abonado</th>
+            <th>Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in pendientes %}
+          <tr class="{% if row.vencido %}table-danger fw-semibold{% endif %}">
+            <td>{{ row.nro_documento }}</td>
+            <td>{{ row.proveedor }}</td>
+            <td>{{ row.razon_social }}</td>
+            <td>{{ row.fecha_vencimiento }}</td>
+            <td>{{ row.dias_vencido }}</td>
+            <td>{{ row.monto_total }}</td>
+            <td>{{ row.monto_pagado }}</td>
+            <td>{{ row.saldo }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not pendientes %}
+    <p class="text-muted mb-0 p-3">No hay documentos pendientes.</p>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'deuda' %}
+  {% if proveedores %}
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <input type="hidden" name="sec" value="deuda">
+    <div class="col-md-6">
+      <label class="form-label">Proveedor</label>
+      <select name="proveedor" class="form-select" onchange="this.form.submit()">
+        {% for p in proveedores %}
+        <option value="{{ p }}" {% if p == proveedor_sel %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+  {% if contacto_html %}{{ contacto_html|safe }}{% endif %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div class="alert alert-info mb-0 flex-grow-1">{{ deuda_resumen }}</div>
+    {{ pdf_btn(pdf_deuda_url, '📥 PDF DEUDA') }}
+  </div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead>
+          <tr>
+            <th>N° Documento</th>
+            <th>Vencimiento</th>
+            <th>Monto doc.</th>
+            <th>Abonado</th>
+            <th>Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in deuda_rows %}
+          <tr>
+            <td>{{ row.nro_documento }}</td>
+            <td>{{ row.fecha_vencimiento }}</td>
+            <td>{{ row.monto_total }}</td>
+            <td>{{ row.monto_pagado }}</td>
+            <td>{{ row.saldo }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not deuda_rows %}
+    <p class="text-muted mb-0 p-3">Sin documentos pendientes para este proveedor.</p>
+    {% endif %}
+  </div>
+
+  {% if deuda_rows %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">💰 Registrar pago total (puede seleccionar varios documentos)</h2>
+    <form method="post" class="mt-2">
+      <input type="hidden" name="sec" value="deuda">
+      <input type="hidden" name="action" value="pagar_documentos">
+      <input type="hidden" name="proveedor" value="{{ proveedor_sel }}">
+      <div class="mb-3">
+        {% for row in deuda_rows %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="doc_ids" value="{{ row.id }}" id="pay-{{ row.id }}">
+          <label class="form-check-label" for="pay-{{ row.id }}">
+            {{ row.nro_documento }} — saldo {{ row.saldo }}
+            {% if row.monto_pagado_raw > 0.01 %} · abonado {{ row.monto_pagado }}{% endif %}
+            — vence {{ row.fecha_vencimiento }}
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label">Forma de pago</label>
+          <select name="metodo_pago" class="form-select js-metodo-pago" data-banco-target="banco-pago">
+            {% for m in metodos_pago %}
+            <option value="{{ m }}">{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2" id="wrap-banco-pago">
+          <label class="form-label">Banco</label>
+          <select name="banco" id="banco-pago" class="form-select js-banco-pago">
+            {% for b in bancos %}
+            <option value="{{ b }}">{{ b }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Fecha de pago</label>
+          <input type="date" name="fecha_pago" class="form-control" value="{{ hoy }}" required>
+        </div>
+        <div class="col-md-4">
+          <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" name="enviar_mail" value="1" id="mail-pago" checked>
+            <label class="form-check-label" for="mail-pago">
+              📧 Enviar correo de respaldo al equipo
+            </label>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-success w-100">💰 Pagar seleccionados</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">💵 Abonar pago parcial</h2>
+    <form method="post" class="mt-2">
+      <input type="hidden" name="sec" value="deuda">
+      <input type="hidden" name="action" value="abono_parcial">
+      <input type="hidden" name="proveedor" value="{{ proveedor_sel }}">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label">Documento</label>
+          <select name="doc_id" class="form-select" id="abono-doc" required>
+            {% for row in deuda_rows %}
+            <option value="{{ row.id }}" data-saldo="{{ row.saldo_raw }}">
+              {{ row.nro_documento }} — saldo {{ row.saldo }} — vence {{ row.fecha_vencimiento }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Fecha del abono</label>
+          <input type="date" name="fecha_pago" class="form-control" value="{{ hoy }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Monto abono ($)</label>
+          <input type="number" name="monto_abono" id="abono-monto" class="form-control" min="1" step="1000" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Forma de pago</label>
+          <select name="metodo_pago" class="form-select js-metodo-pago" data-banco-target="banco-abono">
+            {% for m in metodos_pago %}
+            <option value="{{ m }}">{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2" id="wrap-banco-abono">
+          <label class="form-label">Banco</label>
+          <select name="banco" id="banco-abono" class="form-select js-banco-pago">
+            {% for b in bancos %}
+            <option value="{{ b }}">{{ b }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="row g-2 align-items-end mt-2">
+        <div class="col-md-4">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="enviar_mail" value="1" id="mail-abono" checked>
+            <label class="form-check-label" for="mail-abono">📧 Enviar correo de respaldo al equipo</label>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100">💵 Registrar abono</button>
+        </div>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="alert alert-success">No hay deuda pendiente con proveedores.</div>
+  {% endif %}
+
+  {% else %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">🔍 Filtros de búsqueda</h2>
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-4">
+        <label class="form-label">Buscar proveedor o documento</label>
+        <input type="search" name="q" class="form-control" value="{{ filtro_q }}" placeholder="Proveedor, N° doc…">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Método de pago</label>
+        <select name="metodo" class="form-select">
+          <option value="TODOS" {% if filtro_metodo == 'TODOS' %}selected{% endif %}>TODOS</option>
+          {% for m in metodos_pago %}
+          <option value="{{ m }}" {% if filtro_metodo == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-1 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+    </form>
+  </div>
+
+  {% if historial_grupos %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div class="small text-muted">
+      <strong>{{ historial_stats.pagos }}</strong> pago(s) ·
+      <strong>{{ historial_stats.docs }}</strong> documento(s) ·
+      Total período: <strong>{{ historial_stats.total }}</strong>
+    </div>
+    {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL DE PAGOS') }}
+  </div>
+  {% for g in historial_grupos %}
+  <div class="lc-evento-banner mb-2">
+    <strong>Pago {{ '%03d'|format(g.num) }}</strong> &nbsp;|&nbsp;
+    {{ g.proveedor }} &nbsp;|&nbsp;
+    {{ g.fecha_pago }} &nbsp;|&nbsp;
+    {{ g.metodo }}{% if g.banco %} &nbsp;|&nbsp; {{ g.banco }}{% endif %} &nbsp;|&nbsp;
+    Total: {{ g.total }} &nbsp;|&nbsp;
+    {{ g.n_docs }} documento(s)
+  </div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0">
+        <thead>
+          <tr>
+            <th>Documento</th>
+            {% if g.detalle and 'razon_social' in g.detalle[0] %}
+            <th>Razón social</th>
+            {% endif %}
+            <th>Monto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in g.detalle %}
+          <tr>
+            <td>{{ d.nro_documento }}</td>
+            {% if 'razon_social' in d %}
+            <td>{{ d.razon_social }}</td>
+            {% endif %}
+            <td>{{ d.monto }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="alert alert-info">No hay pagos para los filtros seleccionados.</div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  $(function () {
+    $('.demo-datatable').each(function () {
+      if (window.demoInitDataTable) window.demoInitDataTable(this, {
+        pageLength: 25,
+        order: [],
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' }
+      });
+    });
+    function syncAbonoMax() {
+      var sel = document.getElementById('abono-doc');
+      var inp = document.getElementById('abono-monto');
+      if (!sel || !inp) return;
+      var opt = sel.options[sel.selectedIndex];
+      var max = parseFloat(opt && opt.dataset.saldo ? opt.dataset.saldo : '0');
+      if (max > 0) {
+        inp.max = max;
+        if (!inp.value || parseFloat(inp.value) > max) inp.value = max;
+      }
+    }
+    $('#abono-doc').on('change', syncAbonoMax);
+    syncAbonoMax();
+
+    var metodosConBanco = { 'Transferencia': true, 'Cheque': true, 'Tarjeta bancaria': true };
+    function syncBancoPorMetodo(metodoSelect) {
+      var bancoId = metodoSelect.getAttribute('data-banco-target');
+      var banco = document.getElementById(bancoId);
+      var wrap = document.getElementById('wrap-' + bancoId);
+      if (!banco || !wrap) return;
+      var aplica = !!metodosConBanco[metodoSelect.value];
+      wrap.style.display = aplica ? '' : 'none';
+      banco.disabled = !aplica;
+      banco.required = aplica;
+      if (!aplica) banco.value = '—';
+    }
+    document.querySelectorAll('.js-metodo-pago').forEach(function (sel) {
+      syncBancoPorMetodo(sel);
+      sel.addEventListener('change', function () { syncBancoPorMetodo(sel); });
+    });
+  });
+</script>
+{% endblock %}
