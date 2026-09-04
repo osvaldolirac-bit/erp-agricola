@@ -125,17 +125,20 @@ def patch_super_consola(text: str) -> str:
         text,
         count=1,
     )
-    old_re = '''                    <input type="hidden" name="action" value="reenviar_invitacion">
-                    <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <input type="hidden" name="sec" value="usuarios">
-                    <input type="text" name="password" placeholder="Clave p/ invitación" minlength="4" required>
-                    <button class="btn btn-ghost" type="submit">Reenviar mail</button>'''
-    new_re = '''                    <input type="hidden" name="action" value="reenviar_invitacion">
-                    <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <input type="hidden" name="sec" value="usuarios">
-                    <button class="btn btn-ghost" type="submit" onclick="return confirm('¿Reenviar invitación a {{ u.email }}? Se generará clave nueva (solo en el correo).');">Reenviar mail</button>'''
-    if old_re in text:
-        text = text.replace(old_re, new_re, 1)
+    pwd_line = (
+        '                    <input type="text" name="password" '
+        'placeholder="Clave p/ invitación" minlength="4" required>\n'
+    )
+    if pwd_line in text:
+        text = text.replace(pwd_line, "", 1)
+    old_btn = '<button class="btn btn-ghost" type="submit">Reenviar mail</button>'
+    new_btn = (
+        '<button class="btn btn-ghost" type="submit" '
+        "onclick=\"return confirm('¿Reenviar invitación a {{ u.email }}? "
+        "Se generará clave nueva (solo en el correo).');\">Reenviar mail</button>"
+    )
+    if old_btn in text and "reenviar_invitacion" in text:
+        text = text.replace(old_btn, new_btn, 1)
     return text
 
 
