@@ -153,6 +153,8 @@ st.markdown(
 NOMBRE_DB = os.environ.get("ERP_DB") or os.environ.get("ERP_DEMO_DB") or "erp_concepcion_v6.db"
 SECRETS_PATH = os.environ.get("ERP_SECRETS") or os.environ.get("ERP_DEMO_SECRETS") or "/root/.streamlit/secrets.toml"
 NOMBRE_ERP = "ERP Agrícola La Concepción"
+TENANT_SLUG = "concepcion"
+TENANT_NOMBRE = "La Concepción"
 LOGO_DIR = "/root/static"
 CLAVE_MAESTRA = "2908" 
 IMPUESTO_ESPECIFICO_LITRO = 75 
@@ -2764,12 +2766,29 @@ def _panel_corregir_movimientos_bodega_cuartel(conn, df_mov, cuartel, key_prefix
 def _smtp_adjuntar_html(msg, cuerpo_html):
     msg.attach(MIMEText(cuerpo_html, "html", "utf-8"))
 
+def _alerta_acceso_marca():
+    return (NOMBRE_ERP or "ERP Agrícola La Concepción").strip()
+
+
+def _alerta_acceso_scope():
+    slug = (TENANT_SLUG or "concepcion").strip().lower() or "concepcion"
+    return f"agricola-{slug}"
+
+
+def _alerta_acceso_pie():
+    nombre = (TENANT_NOMBRE or "").strip()
+    if nombre:
+        return f"Correo automático de seguridad — {nombre}."
+    return f"Correo automático de seguridad — {_alerta_acceso_marca()}."
+
+
 def enviar_correo_alerta(usuario_intruso, exitoso=True):
     """Despacha una alerta SMTP de alta velocidad (espejo) v11.5.4"""
     from erp_correo_html import alerta_acceso_fallo_en_cooldown, omitir_alerta_acceso, plantilla_correo_html
     if omitir_alerta_acceso(usuario_intruso):
         return
-    if (not exitoso) and alerta_acceso_fallo_en_cooldown(usuario_intruso, minutos=15, scope="agricola-lc"):
+    scope = _alerta_acceso_scope()
+    if (not exitoso) and alerta_acceso_fallo_en_cooldown(usuario_intruso, minutos=15, scope=scope):
         return
 
     try:
@@ -2782,19 +2801,20 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
         receptor = conf["correo_receptor"]
         
         f_h = hora_chile().strftime('%Y-%m-%d %H:%M:%S')
+        marca = _alerta_acceso_marca()
         
         msg = MIMEMultipart()
         msg['From'] = smtp_from_header(emisor)
         msg['To'] = receptor
         
         if exitoso:
-            msg['Subject'] = f"🚨 ALERTA: Acceso Detectado en ERP La Concepción"
+            msg['Subject'] = f"🚨 ALERTA: Acceso Detectado en {marca}"
             tipo_alerta = "Inicio de Sesión Exitoso"
             tipo_tema = "alerta_ingreso_ok"
             titulo = "🚜 Acceso detectado"
             detalle_msg = "Se ha registrado un inicio de sesión exitoso en la plataforma de un usuario secundario."
         else:
-            msg['Subject'] = f"🔥 ADVERTENCIA: Intento de Acceso RECHAZADO en ERP"
+            msg['Subject'] = f"🔥 ADVERTENCIA: Intento de Acceso RECHAZADO en {marca}"
             tipo_alerta = "Intento de Acceso Fallido / Clave Incorrecta"
             tipo_tema = "alerta_ingreso_fallo"
             titulo = "🔥 Intento de acceso rechazado"
@@ -2812,8 +2832,8 @@ def enviar_correo_alerta(usuario_intruso, exitoso=True):
             tipo_tema,
             titulo,
             interior,
-            nombre_erp="ERP La Concepción",
-            pie="Correo automático de seguridad — Agrícola La Concepción.",
+            nombre_erp=marca,
+            pie=_alerta_acceso_pie(),
         )
         _smtp_adjuntar_html(msg, cuerpo)
         

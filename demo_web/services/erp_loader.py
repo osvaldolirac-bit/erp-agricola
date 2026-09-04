@@ -149,6 +149,8 @@ def _apply_tenant_config(erp: Any, t: dict[str, Any]) -> None:
     if nombre_erp:
         erp.NOMBRE_ERP = nombre_erp
     slug = str(t.get("slug") or "").strip().lower()
+    erp.TENANT_SLUG = slug or "concepcion"
+    erp.TENANT_NOMBRE = (t.get("nombre") or slug or "concepcion").strip()
     if slug == "espino":
         _apply_espino_tenant_overrides(erp)
     elif str(t.get("erp_app") or "") == "concepcion":
