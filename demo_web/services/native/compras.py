@@ -5,9 +5,17 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date
-from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
-from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
+from demo_web.services.native._helpers import hoy_demo, parse_date, temporada_sel
+from demo_web.services.lc_excluir_espino import (
+    resumen_costos_para_flujo_lc,
+    sql_and_excluir_razon_social_espino,
+)
+from demo_web.services.tenant_scope import (
+    centros_costo,
+    is_concepcion_tenant,
+    razones_sociales_compras,
+    razon_social_compras_default,
+)
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -161,6 +169,92 @@ def _proveedores_options(conn) -> list[dict]:
     ]
 
 
+def _desglose_costos_fuera_compras_lc(conn, demo, fi_cons, ff_cons) -> dict[str, float]:
+    """Rubros presentes en Costos pero fuera del historial de Compras (LC)."""
+    fi_s, ff_s = str(fi_cons), str(ff_cons)
+    int_imputado = float(
+        conn.execute(
+            """
+            SELECT COALESCE(SUM(p.monto_imputado), 0)
+            FROM facturas p
+            WHERE p.nro_documento LIKE '%_P' AND p.nro_documento NOT LIKE '%_RRHH'
+              AND p.fecha_compra BETWEEN ? AND ?
+              AND EXISTS (
+                SELECT 1 FROM facturas f
+                WHERE f.nro_documento = SUBSTR(p.nro_documento, 1, LENGTH(p.nro_documento) - 2)
+                  AND f.proveedor = p.proveedor
+                  AND (
+                    UPPER(TRIM(f.nro_documento)) LIKE 'INT-%'
+                    OR UPPER(TRIM(f.nro_documento)) LIKE 'INT/%'
+                  )
+              )
+            """,
+            (fi_s, ff_s),
+        ).fetchone()[0]
+        or 0
+    )
+    bodega = float(
+        conn.execute(
+            """
+            SELECT COALESCE(SUM(valor_imputado), 0) FROM movimientos
+            WHERE ABS(COALESCE(valor_imputado, 0)) > 0.01 AND fecha BETWEEN ? AND ?
+            """,
+            (fi_s, ff_s),
+        ).fetchone()[0]
+        or 0
+    )
+    petroleo = float(
+        conn.execute(
+            """
+            SELECT COALESCE(SUM(valor_imputado), 0) FROM petroleo
+            WHERE tipo = 'Salida' AND fecha BETWEEN ? AND ?
+            """,
+            (fi_s, ff_s),
+        ).fetchone()[0]
+        or 0
+    )
+    _, fi, ff = temporada_sel(demo)
+    rrhh = float(demo._calcular_rrhh_temporada(conn, fi, ff) or 0)
+    return {
+        "int_imputado": int_imputado,
+        "bodega": bodega,
+        "petroleo": petroleo,
+        "rrhh": rrhh,
+    }
+
+
+def _nota_compras_vs_costos_lc(demo, conn, compras_total: float) -> dict | None:
+    if not is_concepcion_tenant():
+        return None
+    try:
+        nombre, fi, ff = temporada_sel(demo)
+        hoy = hoy_demo(demo)
+        es_vigente = fi <= hoy <= ff
+        fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente)
+        res = resumen_costos_para_flujo_lc(conn, demo, nombre, fi, ff)
+        costos_total = float(res.get("total_gastado") or 0)
+        desglose = _desglose_costos_fuera_compras_lc(conn, demo, fi_cons, ff_cons)
+        items = [
+            ("RRHH (liquidaciones)", desglose["rrhh"]),
+            ("Gastos con doc. interno INT-", desglose["int_imputado"]),
+            ("Salidas bodega (consumo insumos)", desglose["bodega"]),
+            ("Petróleo imputado en salidas", desglose["petroleo"]),
+        ]
+        return {
+            "temporada": nombre,
+            "compras_fmt": demo.f_peso(compras_total),
+            "costos_fmt": demo.f_peso(costos_total),
+            "gap_fmt": demo.f_peso(max(0.0, costos_total - compras_total)),
+            "items": [
+                {"label": label, "monto_fmt": demo.f_peso(monto)}
+                for label, monto in items
+                if monto > 0.5
+            ],
+        }
+    except Exception:
+        return None
+
+
 def _historial(demo, conn) -> dict:
     _ensure_folio_interno_col(conn)
     hoy = hoy_demo(demo)
@@ -305,8 +399,14 @@ def _historial(demo, conn) -> dict:
     else:
         siguiente_corr = ""
 
+    compras_total = sum(r["monto_raw"] for r in rows)
+    nota_costos = _nota_compras_vs_costos_lc(demo, conn, compras_total) if rows else None
+
     return {
         "historial_rows": rows,
+        "historial_total": compras_total,
+        "historial_total_fmt": demo.f_peso(compras_total) if rows else "—",
+        "nota_compras_costos": nota_costos,
         "filtro_q": q,
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
