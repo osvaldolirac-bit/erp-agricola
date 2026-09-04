@@ -1,9 +1,25 @@
 """Plantillas HTML de correos del ERP."""
 from __future__ import annotations
 
+import secrets
+import string
 from email.headerregistry import Address
 
 SMTP_NOMBRE_REMITENTE = "ERPMASTER"
+
+_CLAVE_INVITACION_CHARS = string.ascii_letters + string.digits
+_CLAVE_INVITACION_CHARS = (
+    _CLAVE_INVITACION_CHARS.replace("l", "")
+    .replace("I", "")
+    .replace("O", "")
+    .replace("0", "")
+)
+
+
+def generar_clave_invitacion(length: int = 12) -> str:
+    """Clave aleatoria para invitaciones (solo va en el correo al colaborador)."""
+    n = max(8, int(length))
+    return "".join(secrets.choice(_CLAVE_INVITACION_CHARS) for _ in range(n))
 
 ALERTA_ACCESO_EXCLUIDOS = frozenset({
     "osvaldolirac@gmail.com",

@@ -545,20 +545,20 @@ def gather_admin(user_email: str, user_rol: str) -> dict:
 
 
 def _post_crear_usuario(demo, conn, user_email: str) -> dict:
+    from erp_correo_html import generar_clave_invitacion
+
     nu = (request.form.get("email") or "").strip().lower()
-    np = (request.form.get("password") or "").strip()
     nr = request.form.get("rol") or "operador"
     mail_teso = request.form.get("mail_teso") == "1"
     mail_pet = request.form.get("mail_petroleo") == "1"
 
-    if not nu or not np:
-        return {"ok": False, "msg": "Ingrese email y contraseña."}
+    if not nu:
+        return {"ok": False, "msg": "Ingrese email."}
     if nr == "super_admin" and not demo.es_super_admin():
         return {"ok": False, "msg": "Solo el super administrador puede crear ese perfil."}
     if nr not in demo.perfiles_asignables_demo():
         return {"ok": False, "msg": "Perfil no válido."}
-    if len(np) < 4:
-        return {"ok": False, "msg": "La contraseña debe tener al menos 4 caracteres."}
+    np = generar_clave_invitacion()
 
     try:
         cols = user_db.usuario_cols(conn)
@@ -586,7 +586,7 @@ def _post_crear_usuario(demo, conn, user_email: str) -> dict:
             if hasattr(demo, "enviar_correo_invitacion_concepcion"):
                 mail_ok = demo.enviar_correo_invitacion_concepcion(nu, np, nr, user_email)
                 if mail_ok:
-                    msg += " Correo de invitación enviado al colaborador (copia al administrador)."
+                    msg += " Invitación enviada por correo (clave automática, no se muestra aquí)."
                 else:
                     msg += " No se pudo enviar el correo de invitación (revise SMTP)."
             return {"ok": True, "msg": msg}

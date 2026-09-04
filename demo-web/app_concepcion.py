@@ -2974,6 +2974,32 @@ def enviar_correo_invitacion_concepcion(email_nuevo, clave_plana, rol, admin_ema
         cc=cc_admin,
     )
 
+
+def reenviar_correo_invitacion_concepcion(email_usuario, admin_email):
+    """Genera clave nueva, actualiza usuario y reenvía invitación (admin no ve la clave)."""
+    from erp_correo_html import generar_clave_invitacion
+
+    email_usuario = (email_usuario or "").strip().lower()
+    if not email_usuario:
+        return False
+    conn = conectar_db()
+    try:
+        row = conn.execute("SELECT rol FROM usuarios WHERE email=?", (email_usuario,)).fetchone()
+        if not row:
+            return False
+        clave = generar_clave_invitacion()
+        conn.execute(
+            "UPDATE usuarios SET password=? WHERE email=?",
+            (hash_password(clave), email_usuario),
+        )
+        conn.commit()
+        ok = enviar_correo_invitacion_concepcion(email_usuario, clave, row[0], admin_email)
+        if ok:
+            registrar_accion("INVITACION REENVIADA", email_usuario)
+        return ok
+    finally:
+        conn.close()
+
 def anclaje_sesion_definitivo():
     if st.session_state.get('logged_in') and not es_solo_lectura():
         try:
@@ -12917,11 +12943,10 @@ def modulo_seguridad():
             "Perfil **certificacion**: solo GlobalGAP, Libro de Campo y Bodega (PPPL). "
             "Perfil **lector**: consulta con menú acotado (asigne módulos en la pestaña correspondiente). "
             "La casilla **Solo lectura** aplica a cualquier perfil excepto administrador. "
-            "Al crear un usuario se envía correo de invitación al colaborador (copia al administrador)."
+            "Al crear un usuario se genera una clave automática y se envía solo por correo al colaborador (copia al administrador)."
         )
         with st.form("seg_nuevo_usuario", clear_on_submit=True):
             nu = st.text_input("Email nuevo usuario")
-            np = st.text_input("Clave", type="password")
             nr = st.selectbox("Perfil", ["operador", "lector", "certificacion", "admin"], key="seg_nuevo_rol")
             mail_teso_nuevo = st.checkbox("Mail respaldo Tesorería", key="seg_nuevo_mail_teso")
             solo_lect_nuevo = st.checkbox(
@@ -12931,25 +12956,28 @@ def modulo_seguridad():
                 key="seg_nuevo_solo_lect",
             )
             if st.form_submit_button("CREAR USUARIO"):
-                if nu.strip() and np.strip():
+                if nu.strip():
                     try:
+                        from erp_correo_html import generar_clave_invitacion
+
                         email_nuevo = nu.strip().lower()
+                        clave_auto = generar_clave_invitacion()
                         admin_inv = st.session_state.get("email", "")
                         sl = 0
                         if nr != "admin" and (nr == "lector" or solo_lect_nuevo):
                             sl = 1
                         conn.execute(
                             "INSERT INTO usuarios (email, password, rol, mail_tesoreria, solo_lectura) VALUES (?,?,?,?,?)",
-                            (email_nuevo, hash_password(np.strip()), nr, 1 if mail_teso_nuevo else 0, sl),
+                            (email_nuevo, hash_password(clave_auto), nr, 1 if mail_teso_nuevo else 0, sl),
                         )
                         conn.commit()
                         registrar_accion("USUARIO NUEVO", f"{email_nuevo} ({nr})")
                         mail_ok = enviar_correo_invitacion_concepcion(
-                            email_nuevo, np.strip(), nr, admin_inv,
+                            email_nuevo, clave_auto, nr, admin_inv,
                         )
                         msg = f"Usuario {email_nuevo} creado con perfil {nr} (acceso permanente)."
                         if mail_ok:
-                            msg += " Correo de invitación enviado al colaborador (copia al administrador)."
+                            msg += " Invitación enviada por correo (clave automática, no se muestra aquí)."
                         else:
                             msg += " Usuario creado; no se pudo enviar el correo (revise SMTP en secrets)."
                         st.success(msg)
@@ -13000,6 +13028,21 @@ def modulo_seguridad():
                         registrar_accion("USUARIO CLAVE", ue_pw)
                         st.success(f"Contraseña actualizada para {ue_pw}.")
                         st.rerun()
+            with st.form("seg_reenviar_invitacion", clear_on_submit=True):
+                st.markdown("##### Reenviar invitación por correo")
+                st.caption(
+                    "Genera una clave nueva automáticamente, la guarda en el sistema y la envía solo por correo "
+                    "(usted no la verá en pantalla)."
+                )
+                ue_re = st.selectbox("Usuario", emails, key="seg_reinv_user")
+                if st.form_submit_button("REENVIAR INVITACIÓN") and ue_re:
+                    admin_re = st.session_state.get("email", "")
+                    mail_ok = reenviar_correo_invitacion_concepcion(ue_re, admin_re)
+                    if mail_ok:
+                        st.success(f"Invitación reenviada a **{ue_re}** (clave nueva solo en el correo).")
+                    else:
+                        st.error(f"No se pudo reenviar a **{ue_re}**. Revise bitácora → FALLO_SMTP.")
+                    st.rerun()
             st.divider()
             st.markdown("##### Eliminar usuario")
             st.warning("Esta acción es permanente. No puede eliminar su propio usuario ni el último administrador.")

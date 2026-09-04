@@ -57,15 +57,12 @@
       {% if sec == 'usuarios' %}
       <section class="admin-block">
         <h3>Usuarios</h3>
-        <p class="help">Alta y control de cuentas del cliente seleccionado. Operas desde Master.</p>
+        <p class="help">Alta y control de cuentas del cliente seleccionado. La clave se genera sola y solo va en el correo de invitación.</p>
         <form method="post" class="form-grid">
           <input type="hidden" name="action" value="crear_usuario">
           <input type="hidden" name="sec" value="usuarios">
           <label>Correo
             <input type="email" name="email" required>
-          </label>
-          <label>Clave
-            <input type="text" name="password" required minlength="4" autocomplete="off">
           </label>
           <label>Rol
             <select name="rol">
@@ -159,6 +156,14 @@
                 <td class="cell-muted">{{ u.invitado_por or '—' }}</td>
                 {% endif %}
                 <td class="actions">
+                  {% if tenant.kind in ('demo', 'lc') %}
+                  <form method="post" class="inline-form" onsubmit="return confirm('¿Reenviar invitación a {{ u.email }}? Se generará una clave nueva (solo en el correo).');">
+                    <input type="hidden" name="action" value="reenviar_invitacion">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <input type="hidden" name="sec" value="usuarios">
+                    <button class="btn btn-ghost" type="submit">Reenviar invitación</button>
+                  </form>
+                  {% endif %}
                   <form method="post" class="inline-form">
                     <input type="hidden" name="action" value="cambiar_clave">
                     <input type="hidden" name="user_id" value="{{ u.id }}">

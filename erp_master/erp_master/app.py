@@ -328,6 +328,7 @@ def create_app(config_object: type = Config) -> Flask:
                 "eliminar_usuario",
                 "flags_usuario",
                 "modulos_guardar",
+                "reenviar_invitacion",
             }:
                 pre_target = _user_email_by_id(tenant, pre_uid)
             ok, text = _handle_admin_action(
@@ -467,6 +468,9 @@ def _log_admin_action(
     elif action == "cambiar_clave":
         detalle = target or f"#{uid}"
         accion = "CAMBIAR_CLAVE"
+    elif action == "reenviar_invitacion":
+        detalle = target or f"#{uid}"
+        accion = "REENVIAR_INVITACION"
     elif action == "eliminar_usuario":
         detalle = target or f"#{uid}"
         accion = "ELIMINAR_USUARIO"
@@ -560,6 +564,13 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
         except ValueError:
             return False, "Usuario inválido."
         return tad.change_password(db, kind, uid, request.form.get("password") or "")
+
+    if action == "reenviar_invitacion":
+        try:
+            uid = int(request.form.get("user_id") or 0)
+        except ValueError:
+            return False, "Usuario inválido."
+        return tad.resend_invitation(tenant, kind, uid, master_email)
 
     if action == "eliminar_usuario":
         try:

@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import secrets
 import sqlite3
 import sys
 from contextlib import contextmanager
@@ -203,6 +204,17 @@ def _load_lc_erp_module(tenant: dict[str, Any]):
     return erp
 
 
+def generar_clave_invitacion(length: int = 12) -> str:
+    try:
+        from erp_correo_html import generar_clave_invitacion as _gen
+
+        return _gen(length)
+    except Exception:
+        chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+        n = max(8, int(length))
+        return "".join(secrets.choice(chars) for _ in range(n))
+
+
 def create_user(
     db_path: str,
     kind: str,
@@ -218,7 +230,10 @@ def create_user(
     email_n = (email or "").strip().lower()
     if not email_n or not _EMAIL_RE.match(email_n):
         return False, "Correo inválido."
-    if not password or len(password) < 4:
+    pwd_plain = (password or "").strip()
+    if not pwd_plain:
+        pwd_plain = generar_clave_invitacion()
+    elif len(pwd_plain) < 4:
         return False, "La clave debe tener al menos 4 caracteres."
     if rol not in roles_for(kind):
         return False, "Rol no válido para este ERP."
@@ -229,7 +244,7 @@ def create_user(
         ).fetchone()
         if exists:
             return False, "Ya existe un usuario con ese correo."
-        pwd = hash_password(password, kind)
+        pwd = hash_password(pwd_plain, kind)
         if kind == "demo":
             exp = (date.today() + timedelta(days=max(1, int(dias_demo)))).isoformat()
             conn.execute(
@@ -255,24 +270,68 @@ def create_user(
             ok_mail, mail_txt = send_demo_invitation(
                 db_path,
                 email_n,
-                password,
+                pwd_plain,
                 rol,
                 invitado_por or "",
                 exp,
             )
-            msg = f"{msg} {mail_txt}"
+            msg = f"{msg} {mail_txt} La clave solo fue enviada por correo."
             if not ok_mail:
                 return True, msg
-    elif kind == "lc" and enviar_invitacion and tenant:
-        ok_mail, mail_txt = send_lc_invitation(
-            tenant,
-            email_n,
-            password,
-            rol,
-            invitado_por or "",
-        )
-        msg = f"{msg} {mail_txt}"
+        else:
+            msg += " Use «Reenviar invitación» para enviar credenciales por correo."
+    elif kind == "lc":
+        if enviar_invitacion and tenant:
+            ok_mail, mail_txt = send_lc_invitation(
+                tenant,
+                email_n,
+                pwd_plain,
+                rol,
+                invitado_por or "",
+            )
+            msg = f"{msg} {mail_txt} La clave solo fue enviada por correo."
+        else:
+            msg += " Use «Reenviar invitación» para enviar credenciales por correo."
     return True, msg
+
+
+def resend_invitation(
+    tenant: dict[str, Any],
+    kind: str,
+    user_id: int,
+    admin_email: str,
+) -> tuple[bool, str]:
+    """Genera clave nueva, actualiza usuario y reenvía mail (admin no ve la clave)."""
+    db_path = tenant["db"]
+    with tenant_conn(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, email, rol, fecha_expira FROM usuarios WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            return False, "Usuario no encontrado."
+        email = str(row["email"] or "").strip().lower()
+        rol = str(row["rol"] or "operador")
+        fecha_expira = str(row["fecha_expira"] or "") if row["fecha_expira"] else ""
+    clave = generar_clave_invitacion()
+    ok_pwd, msg_pwd = change_password(db_path, kind, user_id, clave)
+    if not ok_pwd:
+        return False, msg_pwd
+    if kind == "demo":
+        if not fecha_expira:
+            fecha_expira = (date.today() + timedelta(days=DEMO_DIAS_PRUEBA_DEFAULT)).isoformat()
+        ok_mail, mail_txt = send_demo_invitation(
+            db_path, email, clave, rol, admin_email, fecha_expira
+        )
+        if ok_mail:
+            return True, f"Invitación reenviada a {email}. Clave nueva solo en el correo."
+        return False, mail_txt
+    if kind == "lc":
+        ok_mail, mail_txt = send_lc_invitation(tenant, email, clave, rol, admin_email)
+        if ok_mail:
+            return True, f"Invitación reenviada a {email}. Clave nueva solo en el correo."
+        return False, mail_txt
+    return False, "Tipo de tenant no soportado para invitación."
 
 
 def send_lc_invitation(
