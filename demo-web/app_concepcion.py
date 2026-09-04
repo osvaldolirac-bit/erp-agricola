@@ -947,12 +947,14 @@ RUBROS_MATRIZ_COSTOS = [
 ]
 RUBROS_MATRIZ_FILAS_CIERRE = ("TOTAL GASTO", "PRESUPUESTO", "SALDO")
 
-# Tenant El Espino: costos en neto (sin IVA 19%) para rubros de compras/facturas.
-RUBROS_COSTOS_NETO_ESPINO = frozenset({
+# Rubros de facturas con IVA 19%: en Costos valor neto (÷1.19); Compras historial sigue en bruto.
+RUBROS_COSTOS_NETO_IVA = frozenset({
     "Agroquímicos",
     "Repuestos y talleres",
     "Energía eléctrica",
 })
+# Alias legacy (scripts / migraciones)
+RUBROS_COSTOS_NETO_ESPINO = RUBROS_COSTOS_NETO_IVA
 IVA_COSTOS_FACTOR = 1.19
 
 FAMILIAS_AGROQUIMICOS_MATRIZ = {
@@ -11117,18 +11119,10 @@ def _monto_costos_factura_imputada(factores, nro_p, prov, monto_imputado):
     return float(monto_imputado or 0) * factores.get((str(nro_p or ""), str(prov or "")), 1.0)
 
 
-def _es_tenant_espino_costos():
-    return (TENANT_SLUG or "").strip().lower() == "espino"
-
-
-def _monto_costos_factura_matriz(rubro, monto_bruto_escalado, neto_facturas_espino=True):
-    """En Espino, rubros de facturas pueden mostrarse neto (÷ 1.19) o bruto. Bodega/movimientos no pasan por aquí."""
+def _monto_costos_factura_matriz(rubro, monto_bruto_escalado, neto_facturas_iva=True):
+    """Costos imputa neto (÷ 1.19) en rubros con IVA; Compras historial usa bruto (monto_total)."""
     m = float(monto_bruto_escalado or 0)
-    if (
-        neto_facturas_espino
-        and _es_tenant_espino_costos()
-        and rubro in RUBROS_COSTOS_NETO_ESPINO
-    ):
+    if neto_facturas_iva and rubro in RUBROS_COSTOS_NETO_IVA:
         return m / IVA_COSTOS_FACTOR
     return m
 
@@ -11170,7 +11164,7 @@ def _dataframe_facturas_detalle_cc(conn, cc_u, factores, fi_s=None, ff_s=None):
 
 def _armar_matriz_costos_vista_b(
     conn, fi, ff, cuarteles, prorrateo_rrhh, temporada, fi_rrhh=None, ff_rrhh=None,
-    neto_facturas_espino=True,
+    neto_facturas_iva=True,
 ):
     cols_cc = list(cuarteles)
     cols = cols_cc + ["TOTAL"]
@@ -11221,7 +11215,7 @@ def _armar_matriz_costos_vista_b(
         rubro = _rubro_valido_matriz(row[3])
         if rubro:
             monto = _monto_costos_factura_imputada(factores_bruto, row[0], row[1], row[4])
-            monto = _monto_costos_factura_matriz(rubro, monto, neto_facturas_espino=neto_facturas_espino)
+            monto = _monto_costos_factura_matriz(rubro, monto, neto_facturas_iva=neto_facturas_iva)
             add(row[2], rubro, monto)
 
     q_pet = f"""SELECT UPPER(TRIM(centro_costo)) as cc, SUM(valor_imputado) as m

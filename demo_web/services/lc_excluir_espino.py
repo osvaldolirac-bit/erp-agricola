@@ -222,6 +222,17 @@ def ajustar_matriz_costos_excluir_espino_lc(
                 rubro = None
         if not rubro:
             continue
+        fn_neto = getattr(demo, "_monto_costos_factura_matriz", None)
+        if callable(fn_neto):
+            try:
+                monto = float(fn_neto(rubro, monto, neto_facturas_iva=True) or 0)
+            except TypeError:
+                try:
+                    monto = float(fn_neto(rubro, monto) or 0)
+                except Exception:
+                    pass
+            except Exception:
+                pass
         mask = out["Rubro"] == rubro
         if not mask.any():
             continue

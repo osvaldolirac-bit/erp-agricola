@@ -5,14 +5,9 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date, temporada_sel
+from demo_web.services.native._helpers import hoy_demo, parse_date
 from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
-from demo_web.services.tenant_scope import (
-    centros_costo,
-    is_concepcion_tenant,
-    razones_sociales_compras,
-    razon_social_compras_default,
-)
+from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -223,7 +218,60 @@ def _total_imputado_cc_historial(demo, conn, fi, ff) -> float:
                 rubro = None
         if callable(fn_neto) and rubro:
             try:
-                monto = float(fn_neto(rubro, monto) or 0)
+                monto = float(fn_neto(rubro, monto, neto_facturas_iva=True) or 0)
+            except TypeError:
+                try:
+                    monto = float(fn_neto(rubro, monto) or 0)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        total += monto
+    return total
+
+
+def _total_imputado_cc_bruto_historial(demo, conn, fi, ff) -> float:
+    """Imputaciones _P en bruto (misma escala que monto_total del historial)."""
+    sql = f"""
+        SELECT p.nro_documento, p.proveedor, p.monto_imputado,
+               COALESCE(NULLIF(TRIM(p.tipo_gasto), ''), ?) AS tg
+        FROM facturas p
+        INNER JOIN facturas f
+          ON f.nro_documento = SUBSTR(p.nro_documento, 1, LENGTH(p.nro_documento) - 2)
+         AND f.proveedor = p.proveedor
+        WHERE p.nro_documento LIKE '%_P' AND p.nro_documento NOT LIKE '%_RRHH'
+          AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
+          AND f.monto_total > 0
+          {_sql_historial_compras('f')}
+          AND f.fecha_compra BETWEEN ? AND ?
+          {sql_and_excluir_razon_social_espino('razon_social', 'f')}
+    """
+    tg_default = getattr(demo, "TIPO_GASTO_SIN_CLASIFICAR", "Sin clasificar")
+    rows = conn.execute(sql, (tg_default, str(fi), str(ff))).fetchall()
+    if not rows:
+        return 0.0
+    factores = {}
+    fn_fact = getattr(demo, "_factores_monto_bruto_facturas", None)
+    if callable(fn_fact):
+        try:
+            factores = fn_fact(conn, fi, ff) or {}
+        except Exception:
+            factores = {}
+    fn_imp = getattr(demo, "_monto_costos_factura_imputada", None)
+    fn_neto = getattr(demo, "_monto_costos_factura_matriz", None)
+    total = 0.0
+    for nro_p, prov, m_raw, _tg in rows:
+        monto = float(m_raw or 0)
+        if callable(fn_imp):
+            try:
+                monto = float(fn_imp(factores, nro_p, prov, monto) or 0)
+            except Exception:
+                pass
+        if callable(fn_neto):
+            try:
+                monto = float(fn_neto("", monto, neto_facturas_iva=False) or 0)
+            except TypeError:
+                pass
             except Exception:
                 pass
         total += monto
@@ -249,67 +297,28 @@ def _total_pendiente_imputar_historial(conn, fi, ff) -> float:
     return float(conn.execute(sql, (str(fi), str(ff))).fetchone()[0] or 0)
 
 
-def _desglose_costos_fuera_compras_lc(conn, demo, fi_cons, ff_cons) -> dict[str, float]:
-    """Rubros en Costos que no vienen del historial Compras (LC)."""
-    fi_s, ff_s = str(fi_cons), str(ff_cons)
-    bodega = float(
-        conn.execute(
-            """
-            SELECT COALESCE(SUM(valor_imputado), 0) FROM movimientos
-            WHERE ABS(COALESCE(valor_imputado, 0)) > 0.01 AND fecha BETWEEN ? AND ?
-            """,
-            (fi_s, ff_s),
-        ).fetchone()[0]
-        or 0
-    )
-    petroleo = float(
-        conn.execute(
-            """
-            SELECT COALESCE(SUM(valor_imputado), 0) FROM petroleo
-            WHERE tipo = 'Salida' AND fecha BETWEEN ? AND ?
-            """,
-            (fi_s, ff_s),
-        ).fetchone()[0]
-        or 0
-    )
-    _, fi, ff = temporada_sel(demo)
-    rrhh = float(demo._calcular_rrhh_temporada(conn, fi, ff) or 0)
-    return {
-        "bodega": bodega,
-        "petroleo": petroleo,
-        "rrhh": rrhh,
-    }
-
-
 def _resumen_imputacion_historial(demo, conn, compras_total: float, fi, ff) -> dict | None:
-    """Compras = registrado; imputado CC = subset que ya llegó a Costos vía facturas."""
+    """Compras bruto vs imputación neto (criterio Costos). Compras ≥ neto imputado + pendiente bruto."""
     if compras_total <= 0:
         return None
     try:
-        imputado = _total_imputado_cc_historial(demo, conn, fi, ff)
+        imputado_neto = _total_imputado_cc_historial(demo, conn, fi, ff)
+        imputado_bruto = _total_imputado_cc_bruto_historial(demo, conn, fi, ff)
         pendiente = _total_pendiente_imputar_historial(conn, fi, ff)
-        out: dict = {
+        return {
             "registrado_fmt": demo.f_peso(compras_total),
-            "imputado_fmt": demo.f_peso(imputado),
+            "imputado_neto_fmt": demo.f_peso(imputado_neto),
+            "imputado_bruto_fmt": demo.f_peso(imputado_bruto),
             "pendiente_fmt": demo.f_peso(pendiente),
-            "registrado_mayor": compras_total >= imputado - 0.5,
+            "coherente": compras_total + 0.5 >= imputado_neto,
+            "notas": [
+                "Historial Compras: montos **brutos** (con IVA cuando aplica).",
+                "Imputado a CC: mismo criterio que Costos (**neto** en Agroquímicos, Repuestos y Energía eléctrica).",
+                "Pendiente: facturas en historial sin centros de costo asignados.",
+                "Bodega y petróleo: en Compras al ingresar; en Costos al salir/consumir (aún no imputados).",
+                "RRHH: solo módulo Costos, no pasa por Compras.",
+            ],
         }
-        if is_concepcion_tenant():
-            hoy = hoy_demo(demo)
-            _, fi_t, ff_t = temporada_sel(demo)
-            es_vigente = fi_t <= hoy <= ff_t
-            fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi_t, ff_t, es_vigente)
-            extra = _desglose_costos_fuera_compras_lc(conn, demo, fi_cons, ff_cons)
-            out["costos_adicionales"] = [
-                {"label": label, "monto_fmt": demo.f_peso(monto)}
-                for label, monto in [
-                    ("RRHH (liquidaciones, módulo RRHH)", extra["rrhh"]),
-                    ("Consumo bodega (imputa al salir, no al comprar)", extra["bodega"]),
-                    ("Petróleo (imputa al salir del estanque)", extra["petroleo"]),
-                ]
-                if monto > 0.5
-            ]
-        return out
     except Exception:
         return None
 

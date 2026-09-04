@@ -23,7 +23,11 @@ from demo_web.services.native._helpers import (
     prorrateo_rrhh,
     temporada_sel,
 )
-from demo_web.services.tenant_scope import cuarteles_oficiales, is_espino_tenant
+from demo_web.services.tenant_scope import cuarteles_oficiales
+
+
+def _costos_usa_neto_iva(demo) -> bool:
+    return bool(getattr(demo, "RUBROS_COSTOS_NETO_IVA", None))
 
 
 def _pdf_matriz_url(demo, show) -> str | None:
@@ -66,13 +70,13 @@ def _armar_matriz_costos_tenant(demo, conn, *, es_vigente, fi, ff, cuarteles_ful
         matriz = demo._armar_matriz_costos_vista_b(
             conn, fi_cons, ff_cons, cuarteles_full, prorr, nombre,
             fi_rrhh=fi, ff_rrhh=ff,
-            neto_facturas_espino=True,
+            neto_facturas_iva=True,
         )
         det_fi, det_ff = fi_cons, ff_cons
     else:
         matriz = demo._armar_matriz_costos_vista_b(
             conn, fi, ff, cuarteles_full, prorr, nombre,
-            neto_facturas_espino=True,
+            neto_facturas_iva=True,
         )
         det_fi, det_ff = fi, ff
     matriz = ajustar_matriz_costos_excluir_espino_lc(
@@ -82,20 +86,20 @@ def _armar_matriz_costos_tenant(demo, conn, *, es_vigente, fi, ff, cuarteles_ful
     return matriz, det_fi, det_ff
 
 
-def _armar_matriz_costos_bruta_espino(demo, conn, *, es_vigente, fi, ff, cuarteles_full, prorr, nombre):
-    """Matriz bruta (sin ÷ IVA) solo para KPI resumen Espino."""
+def _armar_matriz_costos_bruta(demo, conn, *, es_vigente, fi, ff, cuarteles_full, prorr, nombre):
+    """Matriz bruta (sin ÷ IVA en facturas) para KPI comparativo vs Compras."""
     if es_vigente:
         fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente)
         matriz = demo._armar_matriz_costos_vista_b(
             conn, fi_cons, ff_cons, cuarteles_full, prorr, nombre,
             fi_rrhh=fi, ff_rrhh=ff,
-            neto_facturas_espino=False,
+            neto_facturas_iva=False,
         )
         det_fi, det_ff = fi_cons, ff_cons
     else:
         matriz = demo._armar_matriz_costos_vista_b(
             conn, fi, ff, cuarteles_full, prorr, nombre,
-            neto_facturas_espino=False,
+            neto_facturas_iva=False,
         )
         det_fi, det_ff = fi, ff
     matriz = ajustar_matriz_costos_excluir_espino_lc(
@@ -229,8 +233,8 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
             cuarteles_full=cuarteles_full, prorr=prorr, nombre=nombre,
         )
         matriz_bruta = None
-        if is_espino_tenant():
-            matriz_bruta = _armar_matriz_costos_bruta_espino(
+        if _costos_usa_neto_iva(demo):
+            matriz_bruta = _armar_matriz_costos_bruta(
                 demo, conn, es_vigente=es_vigente, fi=fi, ff=ff,
                 cuarteles_full=cuarteles_full, prorr=prorr, nombre=nombre,
             )

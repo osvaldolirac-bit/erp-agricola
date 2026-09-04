@@ -49,7 +49,7 @@
       <div>
         <span class="small text-muted">{{ n_registros }} registro(s)</span>
         {% if historial_rows %}
-        <span class="small ms-2">· Acumulado filtrado: <strong>{{ historial_total_fmt }}</strong></span>
+        <span class="small ms-2">· Acumulado bruto: <strong>{{ historial_total_fmt }}</strong></span>
         {% endif %}
       </div>
       {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL') }}
@@ -58,31 +58,27 @@
     <div class="alert alert-light border py-2 mb-3 small">
       <div class="row g-2">
         <div class="col-md-4">
-          <span class="text-muted d-block">Registrado en Compras</span>
+          <span class="text-muted d-block">Registrado (bruto)</span>
           <strong class="fs-6">{{ resumen_imputacion.registrado_fmt }}</strong>
-          <span class="text-muted d-block mt-1">Todo lo ingresado en historial (incl. doc. interno INT-).</span>
         </div>
         <div class="col-md-4">
-          <span class="text-muted d-block">Imputado a centros de costo</span>
-          <strong class="fs-6">{{ resumen_imputacion.imputado_fmt }}</strong>
-          <span class="text-muted d-block mt-1">Lo que ya llegó a Costos vía imputación al ingresar.</span>
+          <span class="text-muted d-block">Imputado a CC (neto)</span>
+          <strong class="fs-6">{{ resumen_imputacion.imputado_neto_fmt }}</strong>
+          <span class="text-muted d-block mt-1">Bruto imputado: {{ resumen_imputacion.imputado_bruto_fmt }}</span>
         </div>
         <div class="col-md-4">
-          <span class="text-muted d-block">Pendiente de imputar</span>
+          <span class="text-muted d-block">Pendiente imputar (bruto)</span>
           <strong class="fs-6">{{ resumen_imputacion.pendiente_fmt }}</strong>
-          <span class="text-muted d-block mt-1">Facturas en historial sin CC asignado aún.</span>
         </div>
       </div>
-      {% if resumen_imputacion.costos_adicionales %}
-      <hr class="my-2">
-      <p class="mb-1">El módulo <strong>Costos</strong> puede mostrar un total mayor porque suma también (no pasan por Compras o se imputan al consumir):</p>
-      <ul class="mb-1">
-        {% for it in resumen_imputacion.costos_adicionales %}
-        <li>{{ it.label }}: <strong>{{ it.monto_fmt }}</strong></li>
+      {% if not resumen_imputacion.coherente %}
+      <div class="alert alert-warning py-2 mt-2 mb-0">El registrado bruto es menor que lo imputado neto: revise documentos duplicados o imputaciones.</div>
+      {% endif %}
+      <ul class="mb-0 mt-2 text-muted">
+        {% for n in resumen_imputacion.notas %}
+        <li>{{ n }}</li>
         {% endfor %}
       </ul>
-      <p class="mb-0 text-muted">Ej.: petróleo y bodega aparecen en Compras al comprar/ingresar, pero en Costos cuando salen o se consumen. Por eso lo <em>registrado</em> suele ser mayor que lo <em>imputado a CC</em>.</p>
-      {% endif %}
     </div>
     {% endif %}
     <div class="table-responsive">
@@ -91,7 +87,7 @@
           <tr>
             <th style="min-width:9rem">Correlativo</th>
             <th>N° Doc</th><th>Proveedor</th><th>Razón social</th><th>Fecha</th>
-            <th>Tipo</th><th>Tipo gasto CC</th><th>Concepto</th><th>Monto</th>
+            <th>Tipo</th><th>Tipo gasto CC</th><th>Concepto</th><th>Monto bruto</th>
           </tr>
         </thead>
         <tbody>
