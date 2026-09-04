@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Marca arriendos María Paola may-2026 como Pagado (sin depender de streamlit)."""
+"""Repara Tesorería LC: Paola, aplicación tracto, gastos_espino históricos."""
 from __future__ import annotations
 
 import sqlite3
@@ -11,19 +11,53 @@ sys.path.insert(0, str(ROOT))
 
 DB = sys.argv[1] if len(sys.argv) > 1 else "/root/erp_concepcion_v6.db"
 
-from demo_web.services.arriendos_pagados_lc import (  # noqa: E402
+from demo_web.services.tesoreria_cxp import saldo_cxp_neto, sql_imputado_costos_subquery, sql_solo_cxp_tesoreria  # noqa: E402
+from demo_web.services.tesoreria_reparar_lc import (  # noqa: E402
     aplicar_fix_sqlite_directo,
-    sql_buscar_arriendos_paola_mayo2026_pendientes,
+    sql_buscar_aplicacion_tracto_historica_pendiente,
+    sql_buscar_arriendos_paola_pendientes,
+    sql_buscar_facturas_gastos_espino_pendientes,
+    sql_buscar_montos_canonicos_lc_pendientes,
 )
+
+
+def _listar(conn, titulo: str, sql: str) -> None:
+    print(f"\n=== {titulo} ===")
+    try:
+        rows = conn.execute(sql).fetchall()
+    except sqlite3.OperationalError as e:
+        print(f"(skip: {e})")
+        return
+    if not rows:
+        print("(ninguno)")
+        return
+    for r in rows:
+        print(r)
+
+
+def _deuda_neta(conn) -> float:
+    imp = sql_imputado_costos_subquery("f")
+    rows = conn.execute(
+        f"""
+        SELECT f.monto_total, f.monto_pagado, {imp} AS imp
+        FROM facturas f
+        WHERE TRIM(COALESCE(f.estado,'')) = 'Pendiente'
+          AND f.monto_total > 0
+          {sql_solo_cxp_tesoreria('f')}
+        """
+    ).fetchall()
+    return sum(saldo_cxp_neto(r[0], r[1], r[2]) for r in rows)
 
 
 def main() -> int:
     print(f"DB: {DB}")
     conn = sqlite3.connect(DB)
     try:
-        print("\n=== Pendientes Paola (antes) ===")
-        for r in conn.execute(sql_buscar_arriendos_paola_mayo2026_pendientes()).fetchall():
-            print(r)
+        _listar(conn, "Paola pendiente (antes)", sql_buscar_arriendos_paola_pendientes())
+        _listar(conn, "Aplicación tracto pendiente (antes)", sql_buscar_aplicacion_tracto_historica_pendiente())
+        _listar(conn, "Match gastos_espino pendiente (antes)", sql_buscar_facturas_gastos_espino_pendientes())
+        _listar(conn, "Canónicos LC pendiente (antes)", sql_buscar_montos_canonicos_lc_pendientes())
+        print(f"\nDeuda neta CxP (antes): ${_deuda_neta():,.0f}")
     finally:
         conn.close()
 
@@ -32,27 +66,9 @@ def main() -> int:
 
     conn = sqlite3.connect(DB)
     try:
-        print("\n=== Pendientes Paola (después) ===")
-        rest = conn.execute(sql_buscar_arriendos_paola_mayo2026_pendientes()).fetchall()
-        if rest:
-            for r in rest:
-                print("AÚN PENDIENTE:", r)
-            return 1
-        print("(ninguno)")
-
-        pend = conn.execute(
-            """
-            SELECT COALESCE(SUM(
-              MAX(0, monto_total - COALESCE(monto_pagado, 0))
-            ), 0)
-            FROM facturas
-            WHERE TRIM(COALESCE(estado,'')) = 'Pendiente'
-              AND nro_documento NOT LIKE '%_P' AND monto_total > 0
-              AND UPPER(TRIM(nro_documento)) NOT GLOB 'INT-*'
-              AND UPPER(TRIM(nro_documento)) NOT GLOB 'GE-*'
-            """
-        ).fetchone()[0]
-        print(f"\nDeuda CxP pendiente (sin INT-/GE-): ${float(pend):,.0f}")
+        _listar(conn, "Paola pendiente (después)", sql_buscar_arriendos_paola_pendientes())
+        _listar(conn, "Aplicación tracto pendiente (después)", sql_buscar_aplicacion_tracto_historica_pendiente())
+        print(f"\nDeuda neta CxP (después): ${_deuda_neta():,.0f}")
     finally:
         conn.close()
     return 0
