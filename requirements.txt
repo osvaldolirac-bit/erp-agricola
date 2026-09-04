@@ -3,3 +3,4 @@ pandas
 pydrive2
 oauth2client
 fpdf
+openpyxl>=3.1.0
