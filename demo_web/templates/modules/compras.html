@@ -46,22 +46,35 @@
       </div>
       {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL') }}
     </div>
-    {% if nota_compras_costos %}
-    <div class="alert alert-secondary py-2 mb-3 small">
-      <strong>Compras vs Costos (temporada {{ nota_compras_costos.temporada }}):</strong>
-      este historial suma facturas de compra reales del período filtrado
-      (<strong>{{ nota_compras_costos.compras_fmt }}</strong>, sin documentos INT- ni razón social El Espino).
-      El módulo <strong>Costos</strong> muestra gasto imputado por cuartel
-      (<strong>{{ nota_compras_costos.costos_fmt }}</strong>) e incluye además:
-      {% if nota_compras_costos.lineas %}
-      <ul class="mb-1 mt-1">
-        {% for it in nota_compras_costos.lineas %}
+    {% if resumen_imputacion %}
+    <div class="alert alert-light border py-2 mb-3 small">
+      <div class="row g-2">
+        <div class="col-md-4">
+          <span class="text-muted d-block">Registrado en Compras</span>
+          <strong class="fs-6">{{ resumen_imputacion.registrado_fmt }}</strong>
+          <span class="text-muted d-block mt-1">Todo lo ingresado en historial (incl. doc. interno INT-).</span>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block">Imputado a centros de costo</span>
+          <strong class="fs-6">{{ resumen_imputacion.imputado_fmt }}</strong>
+          <span class="text-muted d-block mt-1">Lo que ya llegó a Costos vía imputación al ingresar.</span>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block">Pendiente de imputar</span>
+          <strong class="fs-6">{{ resumen_imputacion.pendiente_fmt }}</strong>
+          <span class="text-muted d-block mt-1">Facturas en historial sin CC asignado aún.</span>
+        </div>
+      </div>
+      {% if resumen_imputacion.costos_adicionales %}
+      <hr class="my-2">
+      <p class="mb-1">El módulo <strong>Costos</strong> puede mostrar un total mayor porque suma también (no pasan por Compras o se imputan al consumir):</p>
+      <ul class="mb-1">
+        {% for it in resumen_imputacion.costos_adicionales %}
         <li>{{ it.label }}: <strong>{{ it.monto_fmt }}</strong></li>
         {% endfor %}
       </ul>
+      <p class="mb-0 text-muted">Ej.: petróleo y bodega aparecen en Compras al comprar/ingresar, pero en Costos cuando salen o se consumen. Por eso lo <em>registrado</em> suele ser mayor que lo <em>imputado a CC</em>.</p>
       {% endif %}
-      La diferencia (~{{ nota_compras_costos.gap_fmt }}) es esperada: Compras registra documentos;
-      Costos distribuye el gasto operativo (RRHH, bodega, petróleo usado, imputaciones a centros de costo).
     </div>
     {% endif %}
     <div class="table-responsive">
