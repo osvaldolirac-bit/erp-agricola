@@ -167,16 +167,34 @@ def _proveedores_options(conn) -> list[dict]:
     ]
 
 
+def _rango_fechas_historial_compras(conn, demo) -> tuple:
+    """Desde/hasta por defecto: primera y última compra en historial LC."""
+    from datetime import timedelta
+
+    hoy = hoy_demo(demo)
+    excl = sql_and_excluir_razon_social_espino()
+    row = conn.execute(
+        f"""
+        SELECT MIN(fecha_compra), MAX(fecha_compra)
+        FROM facturas
+        WHERE monto_total > 0
+          {_sql_historial_compras()}
+          {excl}
+        """
+    ).fetchone()
+    if row and row[0] and row[1]:
+        try:
+            return parse_date(str(row[0])[:10], hoy), parse_date(str(row[1])[:10], hoy)
+        except Exception:
+            pass
+    return hoy - timedelta(days=365), hoy
+
+
 def _historial(demo, conn) -> dict:
     _ensure_folio_interno_col(conn)
-    hoy = hoy_demo(demo)
-    fi_def = demo._fecha_minima_facturas_compras(conn)
-    row_fc = conn.execute(
-        "SELECT MAX(fecha_compra) FROM facturas WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P'"
-    ).fetchone()
-    fmax_db = pd.to_datetime(row_fc[0]).date() if row_fc and row_fc[0] else hoy
+    fi_def, ff_def = _rango_fechas_historial_compras(conn, demo)
     fi = parse_date(request.args.get("desde"), fi_def)
-    ff = parse_date(request.args.get("hasta"), max(hoy, fmax_db))
+    ff = parse_date(request.args.get("hasta"), ff_def)
     q = (request.args.get("q") or "").strip()
     tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
     tipos_gasto_filtro = ["Todas"] + tipos_gasto
@@ -323,7 +341,7 @@ def _historial(demo, conn) -> dict:
     return {
         "historial_rows": rows,
         "historial_total": compras_total,
-        "historial_total_fmt": demo.f_peso(compras_total) if rows else "—",
+        "historial_total_fmt": demo.f_peso(compras_total),
         "filtro_q": q,
         "filtro_tipo_gasto": tg_filtro,
         "tipos_gasto_filtro": tipos_gasto_filtro,

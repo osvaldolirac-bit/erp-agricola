@@ -46,11 +46,7 @@
   </div>
   <div class="panel-card">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-      {% if historial_rows %}
-      <div class="fw-semibold">Acumulado: {{ historial_total_fmt }}</div>
-      {% else %}
-      <div></div>
-      {% endif %}
+      <div class="fw-semibold fs-5">{{ historial_total_fmt }}</div>
       {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL') }}
     </div>
     <div class="table-responsive">
@@ -107,9 +103,6 @@
         </tbody>
       </table>
     </div>
-    {% if not historial_rows %}
-    <p class="text-muted p-3 mb-0">Sin compras para los filtros seleccionados.</p>
-    {% endif %}
   </div>
 
 
