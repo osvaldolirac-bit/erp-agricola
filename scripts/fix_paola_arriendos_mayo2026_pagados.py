@@ -64,7 +64,7 @@ def main() -> int:
         _listar(conn, "gastos_espino mal clasificados (antes)", sql_buscar_facturas_gastos_espino_mal_clasificadas())
         _listar(conn, "Paola mal clasificada (antes)", sql_buscar_arriendos_paola_pendientes())
         _listar(conn, "Tracto/aplicación mal clasificada (antes)", sql_buscar_aplicacion_tracto_historica_pendiente())
-        print(f"\nDeuda neta CxP LC (antes): ${_deuda_neta_lc():,.0f}")
+        print(f"\nDeuda neta CxP LC (antes): ${_deuda_neta_lc(conn):,.0f}")
     finally:
         conn.close()
 
@@ -75,7 +75,7 @@ def main() -> int:
     try:
         _listar(conn, "gastos_espino mal clasificados (después)", sql_buscar_facturas_gastos_espino_mal_clasificadas())
         _listar(conn, "Paola mal clasificada (después)", sql_buscar_arriendos_paola_pendientes())
-        print(f"\nDeuda neta CxP LC (después): ${_deuda_neta_lc():,.0f}")
+        print(f"\nDeuda neta CxP LC (después): ${_deuda_neta_lc(conn):,.0f}")
     finally:
         conn.close()
     return 0
