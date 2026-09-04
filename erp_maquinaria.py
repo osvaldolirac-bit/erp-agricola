@@ -388,6 +388,44 @@ def migrar_maestra_maquinaria(conn):
     conn.commit()
 
 
+def sincronizar_maestra_maquinaria_desde_lc(conn_dst, lc_db_path: str | None = None) -> int:
+    """Copia equipos faltantes desde La Concepción (INSERT OR IGNORE por código)."""
+    import os
+    import sqlite3
+
+    path = (lc_db_path or os.environ.get("ERP_LC_DB") or "/root/erp_concepcion_v6.db").strip()
+    if not path or not os.path.isfile(path):
+        return 0
+    migrar_maestra_maquinaria(conn_dst)
+    src = sqlite3.connect(path)
+    try:
+        rows = src.execute(
+            """SELECT codigo, nombre, tipo, activo, orden, notas
+               FROM maestra_maquinaria ORDER BY orden, codigo"""
+        ).fetchall()
+    finally:
+        src.close()
+    n = 0
+    for codigo, nombre, tipo, activo, orden, notas in rows:
+        cur = conn_dst.execute(
+            """INSERT OR IGNORE INTO maestra_maquinaria (codigo, nombre, tipo, activo, orden, notas)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                codigo,
+                nombre,
+                tipo or "Otro",
+                int(activo if activo is not None else 1),
+                int(orden or 0),
+                notas or "",
+            ),
+        )
+        if cur.rowcount:
+            n += 1
+    if n:
+        conn_dst.commit()
+    return n
+
+
 def listar_maquinaria(conn, solo_activos=False, tipos=None):
     migrar_maestra_maquinaria(conn)
     q = """SELECT codigo, nombre, tipo, activo, notas, orden

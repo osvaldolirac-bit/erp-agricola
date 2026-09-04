@@ -10,7 +10,7 @@ from flask import flash, jsonify, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
-from demo_web.services.tenant_scope import centros_costo, libro_campo_especies
+from demo_web.services.tenant_scope import centros_costo, is_espino_tenant, libro_campo_especies
 
 # Especies de cultivo (≠ GAP_ESPECIES / ámbitos GlobalGAP).
 _LIBRO_CAMPO_ESPECIES_DEFAULT = ("Cerezos", "Ciruelos", "Nogales")
@@ -212,14 +212,30 @@ def _pop_alertas() -> dict:
     return out
 
 
-def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tuple[str, str]]:
-    from erp_maquinaria import etiqueta_maquinaria, listar_maquinaria
+def _opciones_maquinaria(
+    conn,
+    tipos,
+    permitir_vacio: bool = False,
+    valor_actual=None,
+) -> list[tuple[str, str]]:
+    from erp_maquinaria import _lista_select_maquinaria, etiqueta_maquinaria
 
-    items = listar_maquinaria(conn, solo_activos=True, tipos=tipos)
+    items = _lista_select_maquinaria(
+        conn, tipos=tipos, valor_actual=valor_actual, solo_activos=True
+    )
     opts = [(m["codigo"], etiqueta_maquinaria(m["codigo"], m["nombre"])) for m in items]
     if permitir_vacio:
         return [("", "— Sin tractor —")] + opts
     return opts
+
+
+def _ensure_maquinaria_tenant(conn) -> None:
+    if not is_espino_tenant():
+        return
+    from erp_maquinaria import migrar_maestra_maquinaria, sincronizar_maestra_maquinaria_desde_lc
+
+    migrar_maestra_maquinaria(conn)
+    sincronizar_maestra_maquinaria_desde_lc(conn)
 
 
 def _productos_stock(demo, conn) -> list[dict]:
@@ -355,8 +371,15 @@ def _ingreso(demo, conn) -> dict:
         "phi_def": phi_def,
         "pppl_ok": demo.producto_pppl_aprobado(conn, prod_sel) if prod_sel else False,
         "unidades_dosis": UNIDADES_DOSIS,
-        "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
-        "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
+        "maquinaria_opts": _opciones_maquinaria(
+            conn, TIPOS_MAQUINARIA_APLICACION, valor_actual=meta.get("maquinaria")
+        ),
+        "tractor_opts": _opciones_maquinaria(
+            conn,
+            TIPOS_MAQUINARIA_TRACTOR,
+            permitir_vacio=True,
+            valor_actual=meta.get("tractor"),
+        ),
         "lc_car": car_rows,
         "lc_car_raw": car,
     }
@@ -578,8 +601,17 @@ def _modificar(demo, conn) -> dict:
         "cuarteles": centros_costo(demo),
         "especies": _especies_libro_campo(demo),
         "unidades_dosis": UNIDADES_DOSIS,
-        "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
-        "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
+        "maquinaria_opts": _opciones_maquinaria(
+            conn,
+            TIPOS_MAQUINARIA_APLICACION,
+            valor_actual=(edit_linea or {}).get("maquina"),
+        ),
+        "tractor_opts": _opciones_maquinaria(
+            conn,
+            TIPOS_MAQUINARIA_TRACTOR,
+            permitir_vacio=True,
+            valor_actual=(edit_linea or {}).get("tractor"),
+        ),
     }
 
 
@@ -793,6 +825,7 @@ def gather_libro_campo(user_email: str, user_rol: str) -> dict:
 
     conn = demo.conectar_db()
     try:
+        _ensure_maquinaria_tenant(conn)
         ctx: dict = {
             "secciones": secciones,
             "sec_activa": sec,

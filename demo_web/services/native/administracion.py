@@ -11,7 +11,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
-from demo_web.services.tenant_scope import centros_costo, cuarteles_oficiales
+from demo_web.services.tenant_scope import centros_costo, cuarteles_oficiales, is_espino_tenant
 
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
 SECCION_DEFS = [
@@ -244,6 +244,10 @@ def _gather_maquinaria(conn) -> dict:
     )
 
     migrar_maestra_maquinaria(conn)
+    if is_espino_tenant():
+        from erp_maquinaria import sincronizar_maestra_maquinaria_desde_lc
+
+        sincronizar_maestra_maquinaria_desde_lc(conn)
     maqs = listar_maquinaria(conn)
     rows = []
     for m in maqs:
