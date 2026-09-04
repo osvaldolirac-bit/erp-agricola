@@ -198,6 +198,23 @@ MENU_CERTIFICACION = [
 ]
 
 def ruta_logo_empresa():
+    try:
+        from demo_web.services.branding import logo_path_for_pdf
+
+        found = logo_path_for_pdf()
+        if found:
+            return found
+    except Exception:
+        pass
+    slug = ""
+    try:
+        from demo_web.services.branding import resolve_tenant_slug
+
+        slug = resolve_tenant_slug()
+    except Exception:
+        pass
+    if slug == "espino":
+        return None
     for nombre in ("logo_concepcion.png", "logo_concepcion.jpg", "logo_concepcion.jpeg", "logo_concepcion.svg"):
         ruta = os.path.join(LOGO_DIR, nombre)
         if os.path.exists(ruta):
@@ -208,6 +225,7 @@ def logo_img_html(ancho=220, clase="logo-empresa"):
     ruta = ruta_logo_empresa()
     if not ruta:
         return ""
+    alt = (TENANT_NOMBRE or NOMBRE_ERP or "ERP Agrícola").strip()
     try:
         with open(ruta, "rb") as f:
             data = f.read()
@@ -221,7 +239,7 @@ def logo_img_html(ancho=220, clase="logo-empresa"):
         return (
             f'<img src="{src}" class="{clase}" '
             f'style="max-width:{ancho}px;width:100%;height:auto;display:block;margin:0 auto;" '
-            f'alt="Agrícola La Concepción" />'
+            f'alt="{html_lib.escape(alt)}" />'
         )
     except Exception:
         return ""
@@ -4655,18 +4673,14 @@ def _render_widget_usuarios_dashboard_al_final(conn):
 
 def ruta_logo_pdf():
     try:
-        from demo_web.services.branding import find_tenant_logo_path
-        from demo_web.services.tenant_scope import tenant_slug
+        from demo_web.services.branding import logo_path_for_pdf
 
-        slug = tenant_slug()
-        if slug:
-            found = find_tenant_logo_path(slug)
-            if found:
-                return str(found)
-            if slug == "espino":
-                return None
+        return logo_path_for_pdf()
     except Exception:
         pass
+    slug = (TENANT_SLUG or "").strip().lower()
+    if slug == "espino" or "espino" in (NOMBRE_DB or "").lower():
+        return None
     for nombre in ("logo_concepcion.jpg", "logo_concepcion.png", "logo_concepcion.jpeg"):
         ruta = os.path.join(LOGO_DIR, nombre)
         if os.path.exists(ruta):
