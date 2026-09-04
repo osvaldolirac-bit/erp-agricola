@@ -44,15 +44,38 @@
         {% endif %}
         <span>{{ erp_brand|default('ERP') }}</span>
       </a>
-      <div class="ms-auto d-flex align-items-center gap-2 gap-lg-3 order-2">
-        <span class="navbar-flag" title="Chile"><svg class="flag-cl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" aria-label="Chile" role="img" focusable="false">
+      <div class="ms-auto d-flex align-items-center gap-2 gap-md-3 order-2 demo-navbar-actions">
+        <span class="navbar-flag flex-shrink-0" title="Chile"><svg class="flag-cl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" aria-label="Chile" role="img" focusable="false">
   <rect width="24" height="16" rx="1.5" fill="#fff"/>
   <rect y="8" width="24" height="8" fill="#d52b1e"/>
   <rect width="8" height="8" fill="#0039a6"/>
   <polygon fill="#fff" points="4,1.6 4.65,3.55 6.8,3.55 5.05,4.75 5.7,6.7 4,5.5 2.3,6.7 2.95,4.75 1.2,3.55 3.35,3.55"/>
 </svg></span>
-        <span class="d-none d-lg-inline text-white-50 small">{{ current_user.email }}</span>
-        <form method="post" action="{{ url_for('auth.logout') }}" class="m-0">
+        <span class="demo-user-email text-white-50 small text-truncate" title="{{ current_user.email }}">{{ current_user.email }}</span>
+        {% if tenant_switch_options %}
+        <div class="dropdown demo-tenant-switch flex-shrink-0">
+          <button class="btn btn-sm btn-outline-light dropdown-toggle demo-tenant-switch-btn"
+                  type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                  aria-label="Cambiar empresa">
+            Cambiar empresa
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end demo-tenant-switch-menu">
+            <li><h6 class="dropdown-header">Empresa actual</h6></li>
+            <li><span class="dropdown-item-text fw-semibold">{{ tenant.nombre|default(current_user.tenant_nombre) }}</span></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><h6 class="dropdown-header">Ir a</h6></li>
+            {% for t in tenant_switch_options %}
+            <li>
+              <form method="post" action="{{ url_for('auth.cambiar_empresa') }}" class="m-0">
+                <input type="hidden" name="tenant_slug" value="{{ t.slug }}">
+                <button type="submit" class="dropdown-item">{{ t.nombre }}</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('auth.logout') }}" class="m-0 flex-shrink-0">
           <button class="btn btn-sm btn-outline-light">Salir</button>
         </form>
       </div>

@@ -446,10 +446,12 @@ def create_app(config_class=Config) -> Flask:
         menu = []
         nav_ops: list = []
         nav_sistema: list = []
+        tenant_switch_options: list = []
         home_url = url_for("auth.login")
         tenant = get_tenant(session.get("tenant_slug"))
         if session.get("email") and tenant:
             from demo_web.auth.login_next import default_landing_url
+            from demo_web.auth.tenant_access import other_tenant_switch_options
 
             home_url = default_landing_url()
             user = {
@@ -458,6 +460,15 @@ def create_app(config_class=Config) -> Flask:
                 "tenant_slug": tenant["slug"],
                 "tenant_nombre": tenant["nombre"],
             }
+            accessible = session.get("accessible_tenants") or []
+            if len(accessible) < 2:
+                from demo_web.auth.tenant_access import list_accessible_tenants
+
+                refreshed = list_accessible_tenants(session["email"])
+                if refreshed:
+                    accessible = refreshed
+                    session["accessible_tenants"] = refreshed
+            tenant_switch_options = other_tenant_switch_options(accessible, tenant["slug"])
             menu = build_menu(user["email"], user["rol"])
             for it in menu:
                 if it.get("key") in _SISTEMA_KEYS:
@@ -504,6 +515,7 @@ def create_app(config_class=Config) -> Flask:
             "erp_login_subtitle": subtitle,
             "erp_app": erp_app,
             "tenant": tenant,
+            "tenant_switch_options": tenant_switch_options,
             "logo_url": logo_url,
             "master_logo_url": master_logo_url,
             "static_version": config_class.static_version(),
