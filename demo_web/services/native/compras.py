@@ -245,7 +245,7 @@ def _nota_compras_vs_costos_lc(demo, conn, compras_total: float) -> dict | None:
             "compras_fmt": demo.f_peso(compras_total),
             "costos_fmt": demo.f_peso(costos_total),
             "gap_fmt": demo.f_peso(max(0.0, costos_total - compras_total)),
-            "items": [
+            "lineas": [
                 {"label": label, "monto_fmt": demo.f_peso(monto)}
                 for label, monto in items
                 if monto > 0.5

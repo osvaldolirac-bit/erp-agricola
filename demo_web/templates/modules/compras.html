@@ -53,9 +53,9 @@
       (<strong>{{ nota_compras_costos.compras_fmt }}</strong>, sin documentos INT- ni razón social El Espino).
       El módulo <strong>Costos</strong> muestra gasto imputado por cuartel
       (<strong>{{ nota_compras_costos.costos_fmt }}</strong>) e incluye además:
-      {% if nota_compras_costos.items %}
+      {% if nota_compras_costos.lineas %}
       <ul class="mb-1 mt-1">
-        {% for it in nota_compras_costos.items %}
+        {% for it in nota_compras_costos.lineas %}
         <li>{{ it.label }}: <strong>{{ it.monto_fmt }}</strong></li>
         {% endfor %}
       </ul>
