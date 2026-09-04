@@ -2032,14 +2032,17 @@ def _query_historial_abonos_tesoreria(conn, fi, ff, bsq="", met="TODOS"):
 
 
 def _cargar_facturas_pendientes_saldo(conn):
-    """Facturas con saldo pendiente real (monto − abonos). Misma lógica que Tesorería y Dashboard."""
+    """Facturas con saldo pendiente real (monto − abonos). Misma lógica que Flujo CxP."""
+    from demo_web.services.tesoreria_cxp import sql_solo_cxp_tesoreria
+
     df = pd.read_sql_query(
-        """SELECT id, nro_documento, proveedor,
+        f"""SELECT id, nro_documento, proveedor,
                   IFNULL(razon_social, 'La Concepción') AS razon_social,
                   fecha_vencimiento, monto_total, COALESCE(monto_pagado, 0) AS monto_pagado,
                   estado, metodo_pago, fecha_pago, concepto, tipo
            FROM facturas
-           WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0""",
+           WHERE estado='Pendiente' AND monto_total > 0
+             {sql_solo_cxp_tesoreria()}""",
         conn,
     )
     if df.empty:

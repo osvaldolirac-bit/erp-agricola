@@ -8,6 +8,7 @@ from flask import flash, render_template, request, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.lc_excluir_espino import filtrar_df_facturas_espino_lc, sql_and_excluir_razon_social_espino
+from demo_web.services.tesoreria_cxp import sql_solo_cxp_tesoreria
 from demo_web.services.native._helpers import hoy_demo
 from demo_web.services.tenant_scope import razon_social_default
 
@@ -156,7 +157,8 @@ def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
         f"""SELECT nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           WHERE proveedor=? AND estado='Pendiente' AND monto_total > 0
+           {sql_solo_cxp_tesoreria()}
            {sql_and_excluir_razon_social_espino()}
            ORDER BY fecha_vencimiento ASC""",
         conn,
@@ -228,7 +230,8 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
     excl = sql_and_excluir_razon_social_espino()
     prvs = pd.read_sql_query(
         f"""SELECT DISTINCT proveedor FROM facturas
-           WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           WHERE estado='Pendiente' AND monto_total > 0
+           {sql_solo_cxp_tesoreria()}
            {excl}
            ORDER BY proveedor""",
         conn,
@@ -383,7 +386,8 @@ def _docs_pendientes_proveedor(demo, conn, proveedor: str) -> pd.DataFrame:
                   COALESCE(monto_pagado, 0) AS monto_pagado,
                   COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           WHERE proveedor=? AND estado='Pendiente' AND monto_total > 0
+           {sql_solo_cxp_tesoreria()}
            {sql_and_excluir_razon_social_espino()}
            ORDER BY fecha_vencimiento ASC""",
         conn,
