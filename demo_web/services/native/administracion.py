@@ -586,7 +586,7 @@ def _post_crear_usuario(demo, conn, user_email: str) -> dict:
             if hasattr(demo, "enviar_correo_invitacion_concepcion"):
                 mail_ok = demo.enviar_correo_invitacion_concepcion(nu, np, nr, user_email)
                 if mail_ok:
-                    msg += " Invitación enviada por correo (clave automática, no se muestra aquí)."
+                    msg += " Invitación enviada por correo (clave automática, solo al colaborador)."
                 else:
                     msg += " No se pudo enviar el correo de invitación (revise SMTP)."
             return {"ok": True, "msg": msg}

@@ -2983,14 +2983,12 @@ def enviar_correo_invitacion_concepcion(email_nuevo, clave_plana, rol, admin_ema
         nombre_erp=marca,
         pie=f"Mensaje automático al crear su usuario en {marca}. Ante dudas, contacte al administrador.",
     )
-    conf = _conf_smtp_prod()
-    cc_admin = admin_email or (conf["receptor_admin"] if conf else None)
-    return _enviar_correo_html(
+    ok_invitado = _enviar_correo_html(
         f"🍒 Invitación — Integración a {marca}",
         cuerpo,
         [email_nuevo],
-        cc=cc_admin,
     )
+    return ok_invitado
 
 
 def reenviar_correo_invitacion_concepcion(email_usuario, admin_email):
@@ -12957,7 +12955,7 @@ def modulo_seguridad():
             "Perfil **certificacion**: solo GlobalGAP, Libro de Campo y Bodega (PPPL). "
             "Perfil **lector**: consulta con menú acotado (asigne módulos en la pestaña correspondiente). "
             "La casilla **Solo lectura** aplica a cualquier perfil excepto administrador. "
-            "Al crear un usuario se genera una clave automática y se envía solo por correo al colaborador (copia al administrador)."
+            "Al crear un usuario se genera una clave automática enviada solo al correo del colaborador (sin copia al administrador)."
         )
         with st.form("seg_nuevo_usuario", clear_on_submit=True):
             nu = st.text_input("Email nuevo usuario")
@@ -12991,7 +12989,7 @@ def modulo_seguridad():
                         )
                         msg = f"Usuario {email_nuevo} creado con perfil {nr} (acceso permanente)."
                         if mail_ok:
-                            msg += " Invitación enviada por correo (clave automática, no se muestra aquí)."
+                            msg += " Invitación enviada por correo (clave automática, solo al colaborador)."
                         else:
                             msg += " Usuario creado; no se pudo enviar el correo (revise SMTP en secrets)."
                         st.success(msg)
