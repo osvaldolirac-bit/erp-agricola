@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_temporada %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Costos — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Temporada {{ temp_sel }} · {{ fi }} → {{ ff }}{% if es_vigente %} · vigente{% endif %}</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_temporada('modules.costos', temporadas, temp_sel, {'vista': vista_activa, 'det_q': det_q, 'det_rubro': det_rubro, 'det_ord': det_ord}) }}
+
+  <ul class="nav nav-pills flex-wrap demo-nav-seccion gap-1 mb-3">
+    {% for key, label in vistas %}
+    <li class="nav-item">
+      <a class="nav-link {% if vista_activa == key %}active{% endif %}"
+         href="{{ url_for('modules.costos', temp=temp_sel, vista=key) }}">{{ label }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% if sin_datos %}
+  <div class="alert alert-info">Sin datos de costos para esta temporada.</div>
+  {% elif vista_activa == 'resumen' %}
+  {% if caption %}<p class="small text-muted mb-3">{{ caption }}</p>{% endif %}
+  {% set av = resumen_avance or {} %}
+  <style>
+    .costos-dona-wrap { max-width: 240px; margin: 0 auto; position: relative; }
+    .costos-dona-center {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; pointer-events: none;
+    }
+    .costos-dona-center .pct { font-size: 1.55rem; font-weight: 800; color: #1b4332; line-height: 1; }
+    .costos-dona-center .sub { font-size: .72rem; color: #6c757d; margin-top: .15rem; }
+    .costos-avance-kpi { border: 1px solid #dde5dc; border-radius: 10px; padding: .85rem 1rem; background: #f7faf6; height: 100%; }
+    .costos-avance-kpi .lbl { font-size: .72rem; color: #6c757d; text-transform: uppercase; letter-spacing: .04em; }
+    .costos-avance-kpi .val { font-size: 1.1rem; font-weight: 800; color: #1b4332; margin-top: .15rem; }
+    .costos-avance-bar { height: 8px; background: #e8efe6; border-radius: 999px; overflow: hidden; }
+    .costos-avance-bar > span { display: block; height: 100%; border-radius: 999px; transition: width .35s ease; }
+    .costos-avance-bar > span.ok { background: #2e7d32; }
+    .costos-avance-bar > span.warn { background: #e65100; }
+    .costos-avance-bar > span.over { background: #c62828; }
+    .costos-avance-bar > span.sin_ppto { background: #9aa8b8; }
+    .costos-cc-list { display: flex; flex-direction: column; gap: .45rem; }
+    a.costos-cc-fila {
+      display: grid;
+      grid-template-columns: minmax(7rem, 1.35fr) minmax(5rem, .9fr) minmax(5rem, .9fr) minmax(5rem, .9fr) minmax(5.5rem, 1fr) auto;
+      gap: .55rem;
+      align-items: center;
+      padding: .55rem .75rem;
+      border: 1px solid #dde5df;
+      border-left: 3px solid #90a4ae;
+      border-radius: 10px;
+      background: #fff;
+      color: #1b4332 !important;
+      text-decoration: none !important;
+      transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+      cursor: pointer;
+    }
+    a.costos-cc-fila:hover,
+    a.costos-cc-fila:focus {
+      background: var(--demo-green-light, #e8f5e9);
+      border-color: #a5d6a7;
+      color: var(--demo-green-dark, #0d3d12) !important;
+      box-shadow: 0 1px 0 rgba(27, 94, 32, .08);
+      outline: none;
+    }
+    a.costos-cc-fila:active {
+      background: #dcedc8;
+      border-color: var(--demo-green-mid, #2e7d32);
+    }
+    a.costos-cc-fila.estado-ok { border-left-color: #2e7d32; }
+    a.costos-cc-fila.estado-warn { border-left-color: #e65100; }
+    a.costos-cc-fila.estado-over { border-left-color: #c62828; }
+    a.costos-cc-fila.estado-sin_ppto { border-left-color: #90a4ae; }
+    .costos-cc-fila .cc-nombre {
+      font-weight: 700;
+      color: inherit;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .costos-cc-fila .cc-metrica {
+      font-size: .82rem;
+      font-weight: 600;
+      color: #37474f;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .costos-cc-fila .cc-metrica small {
+      display: block;
+      font-size: .65rem;
+      font-weight: 600;
+      color: #78909c;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      line-height: 1.1;
+    }
+    .costos-cc-fila .cc-avance-cell { min-width: 0; }
+    .costos-cc-fila .badge-costos {
+      display: inline-block;
+      min-width: 3.4rem;
+      text-align: center;
+      padding: 0.18rem 0.45rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #1f2933;
+      background: #eceff1;
+      border: 1px solid #cfd8dc;
+    }
+    .costos-cc-fila .badge-costos.costos-badge-verde {
+      color: #2e7d32 !important; background: #e8f5e9 !important; border-color: #a5d6a7;
+    }
+    .costos-cc-fila .badge-costos.costos-badge-amarillo {
+      color: #f9a825 !important; background: #fff8e1 !important; border-color: #ffe082;
+    }
+    .costos-cc-fila .badge-costos.costos-badge-naranja {
+      color: #e65100 !important; background: #fff3e0 !important; border-color: #ffcc80;
+    }
+    .costos-cc-fila .badge-costos.costos-badge-rojo {
+      color: #c62828 !important; background: #ffebee !important; border-color: #ef9a9a;
+    }
+    .costos-cc-fila .cc-end {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      justify-self: end;
+    }
+    .costos-cc-fila .cc-go {
+      color: var(--demo-green-mid, #2e7d32);
+      font-weight: 700;
+      font-size: 1.15rem;
+      line-height: 1;
+      opacity: .65;
+    }
+    a.costos-cc-fila:hover .cc-go { opacity: 1; }
+    .costos-cc-head {
+      display: grid;
+      grid-template-columns: minmax(7rem, 1.35fr) minmax(5rem, .9fr) minmax(5rem, .9fr) minmax(5rem, .9fr) minmax(5.5rem, 1fr) auto;
+      gap: .55rem;
+      padding: 0 .75rem .35rem;
+      font-size: .68rem;
+      font-weight: 700;
+      color: #78909c;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .costos-cc-head span:nth-child(2),
+    .costos-cc-head span:nth-child(3),
+    .costos-cc-head span:nth-child(4) { text-align: right; }
+    .costos-cc-head span:last-child { text-align: right; }
+    @media (max-width: 767.98px) {
+      .costos-cc-head { display: none; }
+      a.costos-cc-fila {
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+          "nombre end"
+          "ppto gasto"
+          "disp barra";
+      }
+      .costos-cc-fila .cc-nombre { grid-area: nombre; }
+      .costos-cc-fila .cc-ppto { grid-area: ppto; text-align: left; }
+      .costos-cc-fila .cc-gasto { grid-area: gasto; text-align: right; }
+      .costos-cc-fila .cc-disp { grid-area: disp; text-align: left; }
+      .costos-cc-fila .cc-avance-cell { grid-area: barra; }
+      .costos-cc-fila .cc-end { grid-area: end; }
+      .costos-cc-fila .cc-metrica small { display: inline; margin-right: .25rem; }
+    }
+  </style>
+  <div class="panel-card mb-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+      <div>
+        <h2 class="h6 panel-title mb-1">Avance gasto / presupuesto</h2>
+        <p class="small text-muted mb-0">Total temporada: gasto imputado vs presupuesto de todos los cuarteles.</p>
+      </div>
+      {% if not av.tiene_presupuesto %}
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('modules.admin', sec='ppto') }}">Definir presupuestos</a>
+      {% endif %}
+    </div>
+    {% if not av.tiene_presupuesto %}
+    <div class="alert alert-info py-2 mb-0">
+      Sin presupuesto cargado para esta temporada. Defínalo en <strong>Administración → Ppto y producción</strong> para ver el avance y la dona.
+    </div>
+    {% else %}
+    <div class="row g-3 mb-3">
+      <div class="col-6 {% if av.mostrar_gasto_bruto %}col-lg{% else %}col-md-3{% endif %}">
+        <div class="costos-avance-kpi">
+          <div class="lbl">Presupuesto total</div>
+          <div class="val">{{ av.ppto_fmt }}</div>
+        </div>
+      </div>
+      <div class="col-6 {% if av.mostrar_gasto_bruto %}col-lg{% else %}col-md-3{% endif %}">
+        <div class="costos-avance-kpi">
+          <div class="lbl">{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}</div>
+          <div class="val">{{ av.gasto_fmt }}</div>
+        </div>
+      </div>
+      {% if av.mostrar_gasto_bruto %}
+      <div class="col-6 col-lg">
+        <div class="costos-avance-kpi">
+          <div class="lbl">Gasto bruto</div>
+          <div class="val">{{ av.gasto_bruto_fmt }}</div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="col-6 {% if av.mostrar_gasto_bruto %}col-lg{% else %}col-md-3{% endif %}">
+        <div class="costos-avance-kpi">
+          <div class="lbl">Disponible</div>
+          <div class="val">{{ av.disponible_fmt }}</div>
+        </div>
+      </div>
+      <div class="col-6 {% if av.mostrar_gasto_bruto %}col-lg{% else %}col-md-3{% endif %}">
+        <div class="costos-avance-kpi">
+          <div class="lbl">Avance global</div>
+          <div class="val costos-kpi-value {{ av.avance_tone }}">{{ av.pct_fmt }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3 align-items-center">
+      <div class="col-md-4">
+        <div class="costos-dona-wrap">
+          <canvas id="costosDonaAvance" height="220" aria-label="Dona gasto vs disponible"></canvas>
+          <div class="costos-dona-center">
+            <div class="pct">{{ '%.0f'|format(av.pct) }}%</div>
+            <div class="sub">utilizado</div>
+          </div>
+        </div>
+        <div class="d-flex justify-content-center gap-3 mt-2 small text-muted">
+          <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#c62828;margin-right:4px"></span>{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}</span>
+          <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#2e7d32;margin-right:4px"></span>Disponible</span>
+        </div>
+      </div>
+      <div class="col-md-8">
+        {% if av.filas %}
+        <div class="costos-cc-head" aria-hidden="true">
+          <span>Centro</span><span>Ppto</span><span>{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}</span><span>Disponible</span><span>Avance</span><span>%</span>
+        </div>
+        <div class="costos-cc-list">
+          {% for f in av.filas %}
+          <a class="costos-cc-fila estado-{{ f.estado }}"
+             href="{{ url_for('modules.costos', temp=temp_sel, vista=f.nombre) }}"
+             title="Ver detalle de {{ f.nombre }}">
+            <span class="cc-nombre">{{ f.nombre }}</span>
+            <span class="cc-metrica cc-ppto"><small>Ppto</small>{{ f.ppto_fmt }}</span>
+            <span class="cc-metrica cc-gasto"><small>{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}</small>{{ f.gasto_fmt }}</span>
+            <span class="cc-metrica cc-disp"><small>Disponible</small>{{ f.disponible_fmt }}</span>
+            <span class="cc-avance-cell">
+              {% if f.ppto %}
+              <div class="costos-avance-bar" title="{{ f.pct_fmt }}">
+                <span class="{{ f.estado }}" style="width: {% if f.pct > 100 %}100{% else %}{{ f.pct }}{% endif %}%"></span>
+              </div>
+              {% else %}
+              <span class="small text-muted">Sin ppto</span>
+              {% endif %}
+            </span>
+            <span class="cc-end">
+              {% if f.ppto %}
+              <span class="badge-costos {{ f.badge_tone }}">{{ f.pct_fmt }}</span>
+              {% else %}
+              <span class="badge-costos">—</span>
+              {% endif %}
+              <span class="cc-go" aria-hidden="true">›</span>
+            </span>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Sin centros de costo en la matriz.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="panel-card costos-matriz-resumen">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h2 class="h6 panel-title mb-0">Matriz por rubro y centro de costo</h2>
+      {{ pdf_btn(pdf_matriz_url, '📥 PDF COSTOS') }}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered w-100 costos-matriz-table">
+        <thead><tr>{% for c in matriz_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in matriz_rows %}
+          <tr class="{{ row._row_class }}">
+            {% for c in matriz_cols %}
+            <td class="{{ row.get('__cls_' ~ c, '') }}">{{ row[c] }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if av.tiene_presupuesto %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+  (function () {
+    var el = document.getElementById('costosDonaAvance');
+    if (!el || typeof Chart === 'undefined') return;
+    var gastado = Number({{ av.gasto }}) || 0;
+    var disponible = Number({{ av.disponible }}) || 0;
+    if (gastado <= 0 && disponible <= 0) return;
+    var labels = ['{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}', 'Disponible'];
+    var values = [gastado, disponible];
+    var colors = ['#c62828', '#2e7d32'];
+    if (disponible <= 0 && gastado > 0) {
+      labels = ['{% if av.mostrar_gasto_bruto %}Gasto neto (sobre ppto){% else %}Gastado (sobre ppto){% endif %}'];
+      values = [gastado];
+      colors = ['#c62828'];
+    }
+    new Chart(el, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        cutout: '68%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var v = ctx.parsed || 0;
+                return ctx.label + ': $ ' + Math.round(v).toLocaleString('es-CL');
+              }
+            }
+          }
+        },
+        animation: { animateRotate: true, duration: 700 }
+      }
+    });
+  })();
+  </script>
+  {% endif %}
+  {% else %}
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="kpi-card"><div class="kpi-label">Kg estimados</div><div class="kpi-value">{{ cc_meta.kg }}</div></div></div>
+    <div class="col-md-3"><div class="kpi-card"><div class="kpi-label">Costo acum. USD/kg</div><div class="kpi-value">{{ cc_meta.usd_kg }}</div></div></div>
+    <div class="col-md-3"><div class="kpi-card"><div class="kpi-label">Meta presup. USD/kg</div><div class="kpi-value">{{ cc_meta.meta_usd_kg }}</div></div></div>
+    <div class="col-md-3"><div class="kpi-card"><div class="kpi-label">Avance dashboard</div><div class="kpi-value">{{ cc_meta.avance }}</div></div></div>
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">📂 Desglose por rubro — {{ cc_meta.cuartel }}</h2>
+    {% if detalle_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr>{% for c in detalle_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in detalle_rows %}<tr>{% for c in detalle_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Sin gastos imputados por rubro en este cuartel.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">📊 Avance y resumen del cuartel</h2>
+    {% if cc_meta.sin_ppto %}
+    <div class="alert alert-info py-2 mb-3">Sin presupuesto configurado. Cárguelo en <strong>Administración → Ppto y producción</strong>.</div>
+    {% endif %}
+    <div class="row g-3">
+      <div class="col-md-2"><div class="kpi-card costos-kpi-card"><div class="kpi-label">Presup. utilizado</div><div class="kpi-value costos-kpi-value {{ cc_meta.avance_tone }}">{{ cc_meta.avance_ppto }}</div></div></div>
+      <div class="col-md-2"><div class="kpi-card costos-kpi-card"><div class="kpi-label">Participación temporada</div><div class="kpi-value">{{ cc_meta.participacion }}</div></div></div>
+      <div class="col-md-3"><div class="kpi-card costos-kpi-card"><div class="kpi-label">Gasto acumulado</div><div class="kpi-value">{{ cc_meta.gasto }}</div></div></div>
+      <div class="col-md-2"><div class="kpi-card costos-kpi-card"><div class="kpi-label">Presupuesto</div><div class="kpi-value">{{ cc_meta.ppto }}</div></div></div>
+      <div class="col-md-3"><div class="kpi-card costos-kpi-card {{ cc_meta.saldo_kpi_cls }}"><div class="kpi-label">Saldo disponible</div><div class="kpi-value">{{ cc_meta.saldo }}</div></div></div>
+    </div>
+  </div>
+
+  <div class="panel-card">
+    <h2 class="h6 panel-title">📋 Detalle de gastos imputados — {{ cc_meta.cuartel }}</h2>
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="vista" value="{{ vista_activa }}">
+      <div class="col-md-5">
+        <label class="form-label small">Buscar</label>
+        <input type="search" name="det_q" class="form-control form-control-sm" value="{{ det_q }}" placeholder="Detalle, proveedor, documento…">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Rubro</label>
+        <select name="det_rubro" class="form-select form-select-sm">
+          {% for r in rubros_filtro %}
+          <option value="{{ r }}" {% if r == det_rubro %}selected{% endif %}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Orden</label>
+        <select name="det_ord" class="form-select form-select-sm">
+          {% for o in ['Fecha ↓', 'Fecha ↑', 'Monto ↓', 'Monto ↑'] %}
+          <option value="{{ o }}" {% if o == det_ord %}selected{% endif %}>{{ o }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary btn-sm w-100">Filtrar</button>
+      </div>
+    </form>
+    {% if mov_caption %}<p class="small text-muted">{{ mov_caption }}</p>{% endif %}
+    {% if mov_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in mov_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in mov_rows %}<tr>{% for c in mov_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% elif cc_meta.sin_movimientos %}
+    <div class="alert alert-info mb-0">Sin movimientos imputados a <strong>{{ cc_meta.cuartel }}</strong>.</div>
+    {% else %}
+    <p class="text-muted mb-0">Sin registros para los filtros seleccionados.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
