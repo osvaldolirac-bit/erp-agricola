@@ -71,6 +71,20 @@ def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | No
         return default
 
 
+def parse_decimal_input(raw: str | None, default: float | None = 0.0) -> float | None:
+    """Parsea decimal desde formularios web: coma chilena o punto (inputs type=number)."""
+    s = (raw or "").strip()
+    if not s:
+        return default
+    val = parse_decimal_cl(s, None)
+    if val is not None:
+        return val
+    try:
+        return float(s.replace(" ", "").replace("$", "").replace(",", "."))
+    except ValueError:
+        return None
+
+
 def temporada_sel(demo, param: str = "temp", temporadas=None) -> tuple[str, date, date]:
     from flask import request
 
