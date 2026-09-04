@@ -46,12 +46,11 @@
   </div>
   <div class="panel-card">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-      <div>
-        <span class="small text-muted">{{ n_registros }} registro(s)</span>
-        {% if historial_rows %}
-        <span class="small ms-2">· Acumulado: <strong>{{ historial_total_fmt }}</strong></span>
-        {% endif %}
-      </div>
+      {% if historial_rows %}
+      <div class="fw-semibold">Acumulado: {{ historial_total_fmt }}</div>
+      {% else %}
+      <div></div>
+      {% endif %}
       {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL') }}
     </div>
     <div class="table-responsive">
