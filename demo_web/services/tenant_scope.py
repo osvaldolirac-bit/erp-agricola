@@ -7,6 +7,7 @@ ESPINO_CC = "Cerezos"
 ESPINO_CCS = [ESPINO_CC]
 RAZON_SOCIAL_ESPINO = "El Espino"
 RAZONES_SOCIALES_ESPINO = [RAZON_SOCIAL_ESPINO]
+RAZONES_SOCIALES_LC = ["La Concepción", "Carlos Lira"]
 
 
 def tenant_slug() -> str:
@@ -69,10 +70,9 @@ def libro_campo_especies(demo: Any) -> list[str]:
 def razones_sociales_compras(demo: Any) -> list[str]:
     if is_espino_tenant():
         return list(RAZONES_SOCIALES_ESPINO)
-    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
     if is_concepcion_tenant():
-        razones = [r for r in razones if not (r or "").strip().casefold() == RAZON_SOCIAL_ESPINO.casefold()]
-    return razones
+        return list(RAZONES_SOCIALES_LC)
+    return list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
 
 
 def razon_social_compras_default(demo: Any) -> str:
