@@ -50,10 +50,11 @@ def main() -> int:
         [
             *ssh,
             (
+                f"python3 {SCRIPTS}/patch_master_invitacion_auto.py && "
                 f"cd {DEMO_WEB} && .venv/bin/python3 -m compileall -q "
                 f"erp_correo_html.py app_concepcion.py demo_web/services/erp_loader.py "
                 f"demo_web/services/native/administracion.py && "
-                f"cd {ERP_MASTER} && python3 -m compileall -q erp_master/tenant_admin.py erp_master/app.py && "
+                f"cd {ERP_MASTER} && .venv/bin/python3 -m compileall -q erp_master/tenant_admin.py && "
                 "systemctl restart erp-agricola-web erp-master-web && "
                 "systemctl is-active erp-agricola-web erp-master-web"
             ),
