@@ -99,6 +99,27 @@ def main() -> int:
         )
         insertados += 1
         print(f"INSERT {nro} | {prov} | ${float(monto):,.0f} | {str(item)[:50]}")
+
+    # Reparar filas ya insertadas como Pendiente (sync anterior)
+    reparados = conn.execute(
+        """
+        UPDATE facturas
+        SET estado='Pagado', monto_pagado=monto_total, fecha_pago=fecha_compra,
+            metodo_pago='Histórico (gastos_espino)'
+        WHERE TRIM(COALESCE(estado, '')) = 'Pendiente'
+          AND nro_documento NOT LIKE '%_P'
+          AND TRIM(COALESCE(tipo_gasto, '')) = 'Arriendos'
+          AND fecha_compra >= '2026-05-01' AND fecha_compra <= '2026-05-31'
+          AND (
+            UPPER(COALESCE(proveedor, '')) LIKE '%PAOLA%'
+            OR UPPER(COALESCE(concepto, '')) LIKE '%PAOLA%'
+            OR TRIM(nro_documento) = '39280236'
+          )
+        """
+    ).rowcount
+    if reparados:
+        print(f"REPARADOS {reparados} arriendo(s) Pendiente → Pagado")
+
     conn.commit()
     conn.close()
     print(f"OK — {insertados} arriendo(s) agregados al historial Compras.")

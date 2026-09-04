@@ -200,6 +200,16 @@ def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | 
 
 
 def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
+    from demo_web.services.arriendos_pagados_lc import marcar_arriendos_paola_mayo2026_pagados
+
+    marcar_arriendos_paola_mayo2026_pagados(
+        conn,
+        hora_chile_fn=demo.hora_chile,
+        ensure_abonos_fn=lambda c: (
+            getattr(demo, "_ensure_banco_pago_cols", lambda _x: None)(c),
+            getattr(demo, "_migrar_facturas_abonos", lambda _x: None)(c),
+        ),
+    )
     dfp = filtrar_df_facturas_espino_lc(
         demo._cargar_facturas_pendientes_saldo(conn)
     ).sort_values("fecha_vencimiento")
@@ -245,7 +255,8 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
                   COALESCE(monto_pagado, 0) AS monto_pagado,
                   COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           WHERE proveedor=? AND estado='Pendiente' AND monto_total > 0
+           {sql_solo_cxp_tesoreria()}
            {excl}
            ORDER BY fecha_vencimiento ASC""",
         conn,
