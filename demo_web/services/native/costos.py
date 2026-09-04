@@ -23,6 +23,10 @@ from demo_web.services.native._helpers import (
     prorrateo_rrhh,
     temporada_sel,
 )
+from demo_web.services.costos_compras_coherencia import (
+    total_imputado_bruto_historial,
+    total_registrado_compras_historial,
+)
 from demo_web.services.tenant_scope import cuarteles_oficiales
 
 
@@ -232,12 +236,6 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
             demo, conn, es_vigente=es_vigente, fi=fi, ff=ff,
             cuarteles_full=cuarteles_full, prorr=prorr, nombre=nombre,
         )
-        matriz_bruta = None
-        if _costos_usa_neto_iva(demo):
-            matriz_bruta = _armar_matriz_costos_bruta(
-                demo, conn, es_vigente=es_vigente, fi=fi, ff=ff,
-                cuarteles_full=cuarteles_full, prorr=prorr, nombre=nombre,
-            )
 
         if es_vigente:
             fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente)
@@ -261,6 +259,8 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
             "avance_tone": "",
             "filas": [],
             "mostrar_gasto_bruto": False,
+            "compras_registrado_fmt": None,
+            "coherente_compras": True,
         }
         pdf_matriz_url = None
         caption = ""
@@ -299,11 +299,23 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
                 matriz_cols, matriz_rows = matriz_costos_to_records(demo, show)
                 pdf_matriz_url = _pdf_matriz_url(demo, show)
                 resumen_avance = _avance_gasto_ppto_resumen(demo, matriz)
-                if matriz_bruta is not None and not matriz_bruta.empty:
-                    gasto_bruto = _total_gasto_matriz(matriz_bruta)
+                if _costos_usa_neto_iva(demo):
+                    imputado_bruto = total_imputado_bruto_historial(
+                        demo, conn, fi_cons, ff_cons,
+                    )
+                    registrado_compras = total_registrado_compras_historial(
+                        conn, fi_cons, ff_cons,
+                    )
                     resumen_avance["mostrar_gasto_bruto"] = True
-                    resumen_avance["gasto_bruto"] = gasto_bruto
-                    resumen_avance["gasto_bruto_fmt"] = demo.f_peso(gasto_bruto)
+                    resumen_avance["gasto_bruto"] = imputado_bruto
+                    resumen_avance["gasto_bruto_fmt"] = demo.f_peso(imputado_bruto)
+                    resumen_avance["compras_registrado_fmt"] = demo.f_peso(registrado_compras)
+                    resumen_avance["coherente_compras"] = (
+                        registrado_compras + 0.5 >= imputado_bruto
+                    )
+                    resumen_avance["rango_comparativo"] = (
+                        f"{fi_cons.strftime('%d-%m-%Y')} — {ff_cons.strftime('%d-%m-%Y')}"
+                    )
                 else:
                     resumen_avance["mostrar_gasto_bruto"] = False
             else:

@@ -71,7 +71,9 @@
           <strong class="fs-6">{{ resumen_imputacion.pendiente_fmt }}</strong>
         </div>
       </div>
-      {% if not resumen_imputacion.coherente %}
+      {% if not resumen_imputacion.coherente_bruto %}
+      <div class="alert alert-warning py-2 mt-2 mb-0">El registrado bruto es menor que lo imputado bruto a CC: revise imputaciones huérfanas o duplicadas.</div>
+      {% elif not resumen_imputacion.coherente %}
       <div class="alert alert-warning py-2 mt-2 mb-0">El registrado bruto es menor que lo imputado neto: revise documentos duplicados o imputaciones.</div>
       {% endif %}
       <ul class="mb-0 mt-2 text-muted">

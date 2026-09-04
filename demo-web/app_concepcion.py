@@ -11086,22 +11086,23 @@ def _factores_monto_bruto_facturas(conn, fi=None, ff=None):
     """Escala imputaciones _P al monto bruto del documento padre (mismo criterio que Compras)."""
     filtro = ""
     params = []
+    from demo_web.services.costos_compras_coherencia import (
+        sql_filtro_imputacion_en_historial,
+        sql_join_parent_imputacion,
+    )
+
     if fi and ff:
-        filtro = " AND p.fecha_compra BETWEEN ? AND ? "
+        filtro = " AND f.fecha_compra BETWEEN ? AND ? "
         params = [str(fi), str(ff)]
     rows = conn.execute(
         f"""
         SELECT p.nro_documento, p.proveedor,
-               MAX(par.monto_total) AS bruto,
+               MAX(f.monto_total) AS bruto,
                SUM(COALESCE(p.monto_imputado, 0)) AS imp
         FROM facturas p
-        INNER JOIN facturas par
-          ON par.nro_documento = REPLACE(p.nro_documento, '_P', '')
-         AND par.proveedor = p.proveedor
-         AND par.nro_documento NOT LIKE '%_P'
-        WHERE p.nro_documento LIKE '%_P'
-          AND p.nro_documento NOT LIKE '%_RRHH'
-          AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
+        {sql_join_parent_imputacion('p', 'f')}
+        WHERE 1=1
+          {sql_filtro_imputacion_en_historial('p', 'f')}
           {filtro}
         GROUP BY p.nro_documento, p.proveedor
         """,
@@ -11181,10 +11182,15 @@ def _armar_matriz_costos_vista_b(
         matriz[rubro][cc_key] += m
         matriz[rubro]["TOTAL"] += m
 
+    from demo_web.services.costos_compras_coherencia import (
+        sql_filtro_imputacion_en_historial,
+        sql_join_parent_imputacion,
+    )
+
     filtro_f = ""
     params_f = ()
     if fi and ff:
-        filtro_f = " AND fecha_compra BETWEEN ? AND ? "
+        filtro_f = " AND f.fecha_compra BETWEEN ? AND ? "
         params_f = (str(fi), str(ff))
     filtro_m = f" AND fecha BETWEEN ? AND ? " if fi and ff else ""
     params_m = (str(fi), str(ff)) if fi and ff else ()
@@ -11204,13 +11210,15 @@ def _armar_matriz_costos_vista_b(
         add(row[0], rubro, row[1])
 
     factores_bruto = _factores_monto_bruto_facturas(conn, fi, ff)
-    q_fac = f"""SELECT nro_documento, proveedor,
-                       UPPER(TRIM(centro_costo)) as cc,
-                       COALESCE(NULLIF(TRIM(tipo_gasto), ''), ?) as tg,
-                       monto_imputado as m
-                FROM facturas
-                WHERE nro_documento LIKE '%_P' AND nro_documento NOT LIKE '%_RRHH'
-                  AND ABS(COALESCE(monto_imputado,0))>0.01 {filtro_f}"""
+    q_fac = f"""SELECT p.nro_documento, p.proveedor,
+                       UPPER(TRIM(p.centro_costo)) as cc,
+                       COALESCE(NULLIF(TRIM(p.tipo_gasto), ''), ?) as tg,
+                       p.monto_imputado as m
+                FROM facturas p
+                {sql_join_parent_imputacion('p', 'f')}
+                WHERE 1=1
+                  {sql_filtro_imputacion_en_historial('p', 'f')}
+                  {filtro_f}"""
     for row in conn.execute(q_fac, (TIPO_GASTO_SIN_CLASIFICAR, *params_f)):
         rubro = _rubro_valido_matriz(row[3])
         if rubro:

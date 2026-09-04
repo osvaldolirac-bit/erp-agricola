@@ -7,6 +7,11 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
+from demo_web.services.costos_compras_coherencia import (
+    sql_historial_compras_parent,
+    total_imputado_bruto_historial,
+    total_imputado_neto_historial,
+)
 from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
 SECCIONES = [
@@ -86,11 +91,7 @@ def _es_doc_imputacion_costos(nro_documento: str | None) -> bool:
 
 def _sql_historial_compras(col_prefix: str = "") -> str:
     """Historial: todo lo registrado en Compras (incl. INT-). Excluye _P e imputaciones GE-*."""
-    p = f"{col_prefix}." if col_prefix else ""
-    return f"""
-          AND {p}nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'GE-*'
-    """
+    return sql_historial_compras_parent(col_prefix)
 
 
 def _sql_solo_compras_reales(col_prefix: str = "") -> str:
@@ -172,110 +173,12 @@ def _proveedores_options(conn) -> list[dict]:
 
 def _total_imputado_cc_historial(demo, conn, fi, ff) -> float:
     """Suma imputaciones _P de documentos visibles en historial (misma lógica que Costos)."""
-    sql = f"""
-        SELECT p.nro_documento, p.proveedor, p.monto_imputado,
-               COALESCE(NULLIF(TRIM(p.tipo_gasto), ''), ?) AS tg
-        FROM facturas p
-        INNER JOIN facturas f
-          ON f.nro_documento = SUBSTR(p.nro_documento, 1, LENGTH(p.nro_documento) - 2)
-         AND f.proveedor = p.proveedor
-        WHERE p.nro_documento LIKE '%_P' AND p.nro_documento NOT LIKE '%_RRHH'
-          AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
-          AND f.monto_total > 0
-          {_sql_historial_compras('f')}
-          AND f.fecha_compra BETWEEN ? AND ?
-          {sql_and_excluir_razon_social_espino('razon_social', 'f')}
-    """
-    tg_default = getattr(demo, "TIPO_GASTO_SIN_CLASIFICAR", "Sin clasificar")
-    rows = conn.execute(sql, (tg_default, str(fi), str(ff))).fetchall()
-    if not rows:
-        return 0.0
-    factores = {}
-    fn_fact = getattr(demo, "_factores_monto_bruto_facturas", None)
-    if callable(fn_fact):
-        try:
-            factores = fn_fact(conn, fi, ff) or {}
-        except Exception:
-            factores = {}
-    fn_imp = getattr(demo, "_monto_costos_factura_imputada", None)
-    fn_rubro = getattr(demo, "_rubro_valido_matriz", None) or getattr(
-        demo, "_rubro_matriz_desde_tipo_gasto", None
-    )
-    fn_neto = getattr(demo, "_monto_costos_factura_matriz", None)
-    total = 0.0
-    for nro_p, prov, m_raw, tg in rows:
-        monto = float(m_raw or 0)
-        if callable(fn_imp):
-            try:
-                monto = float(fn_imp(factores, nro_p, prov, monto) or 0)
-            except Exception:
-                pass
-        rubro = None
-        if callable(fn_rubro):
-            try:
-                rubro = fn_rubro(tg)
-            except Exception:
-                rubro = None
-        if callable(fn_neto) and rubro:
-            try:
-                monto = float(fn_neto(rubro, monto, neto_facturas_iva=True) or 0)
-            except TypeError:
-                try:
-                    monto = float(fn_neto(rubro, monto) or 0)
-                except Exception:
-                    pass
-            except Exception:
-                pass
-        total += monto
-    return total
+    return total_imputado_neto_historial(demo, conn, fi, ff)
 
 
 def _total_imputado_cc_bruto_historial(demo, conn, fi, ff) -> float:
     """Imputaciones _P en bruto (misma escala que monto_total del historial)."""
-    sql = f"""
-        SELECT p.nro_documento, p.proveedor, p.monto_imputado,
-               COALESCE(NULLIF(TRIM(p.tipo_gasto), ''), ?) AS tg
-        FROM facturas p
-        INNER JOIN facturas f
-          ON f.nro_documento = SUBSTR(p.nro_documento, 1, LENGTH(p.nro_documento) - 2)
-         AND f.proveedor = p.proveedor
-        WHERE p.nro_documento LIKE '%_P' AND p.nro_documento NOT LIKE '%_RRHH'
-          AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
-          AND f.monto_total > 0
-          {_sql_historial_compras('f')}
-          AND f.fecha_compra BETWEEN ? AND ?
-          {sql_and_excluir_razon_social_espino('razon_social', 'f')}
-    """
-    tg_default = getattr(demo, "TIPO_GASTO_SIN_CLASIFICAR", "Sin clasificar")
-    rows = conn.execute(sql, (tg_default, str(fi), str(ff))).fetchall()
-    if not rows:
-        return 0.0
-    factores = {}
-    fn_fact = getattr(demo, "_factores_monto_bruto_facturas", None)
-    if callable(fn_fact):
-        try:
-            factores = fn_fact(conn, fi, ff) or {}
-        except Exception:
-            factores = {}
-    fn_imp = getattr(demo, "_monto_costos_factura_imputada", None)
-    fn_neto = getattr(demo, "_monto_costos_factura_matriz", None)
-    total = 0.0
-    for nro_p, prov, m_raw, _tg in rows:
-        monto = float(m_raw or 0)
-        if callable(fn_imp):
-            try:
-                monto = float(fn_imp(factores, nro_p, prov, monto) or 0)
-            except Exception:
-                pass
-        if callable(fn_neto):
-            try:
-                monto = float(fn_neto("", monto, neto_facturas_iva=False) or 0)
-            except TypeError:
-                pass
-            except Exception:
-                pass
-        total += monto
-    return total
+    return total_imputado_bruto_historial(demo, conn, fi, ff)
 
 
 def _total_pendiente_imputar_historial(conn, fi, ff) -> float:
@@ -311,11 +214,12 @@ def _resumen_imputacion_historial(demo, conn, compras_total: float, fi, ff) -> d
             "imputado_bruto_fmt": demo.f_peso(imputado_bruto),
             "pendiente_fmt": demo.f_peso(pendiente),
             "coherente": compras_total + 0.5 >= imputado_neto,
+            "coherente_bruto": compras_total + 0.5 >= imputado_bruto,
             "notas": [
-                "Historial Compras: montos **brutos** (con IVA cuando aplica).",
-                "Imputado a CC: mismo criterio que Costos (**neto** en Agroquímicos, Repuestos y Energía eléctrica).",
+                "Historial Compras: montos brutos (con IVA cuando aplica).",
+                "Imputado a CC: criterio Costos (neto en Agroquímicos, Repuestos y Energía eléctrica).",
                 "Pendiente: facturas en historial sin centros de costo asignados.",
-                "Bodega y petróleo: en Compras al ingresar; en Costos al salir/consumir (aún no imputados).",
+                "Bodega y petróleo: en Compras al ingresar; en Costos al salir (aún no imputados).",
                 "RRHH: solo módulo Costos, no pasa por Compras.",
             ],
         }

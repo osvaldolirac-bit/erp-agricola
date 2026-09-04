@@ -204,8 +204,11 @@
       {% if av.mostrar_gasto_bruto %}
       <div class="col-6 col-lg">
         <div class="costos-avance-kpi">
-          <div class="lbl">Gasto bruto</div>
+          <div class="lbl">Imputado bruto (Compras)</div>
           <div class="val">{{ av.gasto_bruto_fmt }}</div>
+          {% if av.compras_registrado_fmt %}
+          <div class="small text-muted mt-1">Compras registrado: {{ av.compras_registrado_fmt }}</div>
+          {% endif %}
         </div>
       </div>
       {% endif %}
@@ -222,6 +225,15 @@
         </div>
       </div>
     </div>
+    {% if av.mostrar_gasto_bruto %}
+    <div class="small text-muted mb-2">
+      Comparativo Compras vs imputación: período {{ av.rango_comparativo or 'temporada' }}.
+      El gasto neto incluye RRHH, bodega y petróleo al consumir; no se compara con Compras.
+    </div>
+    {% if not av.coherente_compras %}
+    <div class="alert alert-warning py-2 mb-3">Compras registrado es menor que imputado bruto: revise imputaciones GE-* o sin factura padre en historial.</div>
+    {% endif %}
+    {% endif %}
     <div class="row g-3 align-items-center">
       <div class="col-md-4">
         <div class="costos-dona-wrap">
