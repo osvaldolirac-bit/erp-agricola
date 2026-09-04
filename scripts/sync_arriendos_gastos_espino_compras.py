@@ -6,7 +6,8 @@ import sqlite3
 import sys
 from datetime import datetime
 
-RAZON_DEFAULT = "La Concepción"
+# gastos_espino es historial El Espino — nunca debe quedar como La Concepción en LC
+RAZON_DEFAULT = "El Espino"
 TIPO_GASTO = "Arriendos"
 
 

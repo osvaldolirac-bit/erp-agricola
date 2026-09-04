@@ -2043,6 +2043,7 @@ def _query_historial_abonos_tesoreria(conn, fi, ff, bsq="", met="TODOS"):
 
 def _cargar_facturas_pendientes_saldo(conn):
     """CxP neta pendiente: bruto − abonos − imputado Costos (igual que Flujo)."""
+    from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
     from demo_web.services.tesoreria_cxp import (
         saldo_cxp_neto,
         sql_imputado_costos_subquery,
@@ -2050,6 +2051,7 @@ def _cargar_facturas_pendientes_saldo(conn):
     )
 
     imp_sql = sql_imputado_costos_subquery("f")
+    excl_espino = sql_and_excluir_razon_social_espino("razon_social", alias="f")
     df = pd.read_sql_query(
         f"""SELECT f.id, f.nro_documento, f.proveedor,
                   IFNULL(f.razon_social, 'La Concepción') AS razon_social,
@@ -2058,7 +2060,8 @@ def _cargar_facturas_pendientes_saldo(conn):
                   {imp_sql} AS imputado_costos
            FROM facturas f
            WHERE f.estado='Pendiente' AND f.monto_total > 0
-             {sql_solo_cxp_tesoreria('f')}""",
+             {sql_solo_cxp_tesoreria('f')}
+             {excl_espino}""",
         conn,
     )
     if df.empty:
