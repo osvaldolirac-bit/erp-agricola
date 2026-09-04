@@ -947,6 +947,14 @@ RUBROS_MATRIZ_COSTOS = [
 ]
 RUBROS_MATRIZ_FILAS_CIERRE = ("TOTAL GASTO", "PRESUPUESTO", "SALDO")
 
+# Tenant El Espino: costos en neto (sin IVA 19%) para rubros de compras/facturas.
+RUBROS_COSTOS_NETO_ESPINO = frozenset({
+    "Agroquímicos",
+    "Repuestos y talleres",
+    "Energía eléctrica",
+})
+IVA_COSTOS_FACTOR = 1.19
+
 FAMILIAS_AGROQUIMICOS_MATRIZ = {
     "ACARICIDA",
     "ADHERENTE / MOJANTE",
@@ -11109,6 +11117,18 @@ def _monto_costos_factura_imputada(factores, nro_p, prov, monto_imputado):
     return float(monto_imputado or 0) * factores.get((str(nro_p or ""), str(prov or "")), 1.0)
 
 
+def _es_tenant_espino_costos():
+    return (TENANT_SLUG or "").strip().lower() == "espino"
+
+
+def _monto_costos_factura_matriz(rubro, monto_bruto_escalado):
+    """En Espino, rubros de facturas se muestran valor neto (÷ 1.19). Bodega/movimientos no pasan por aquí."""
+    m = float(monto_bruto_escalado or 0)
+    if _es_tenant_espino_costos() and rubro in RUBROS_COSTOS_NETO_ESPINO:
+        return m / IVA_COSTOS_FACTOR
+    return m
+
+
 def _dataframe_facturas_detalle_cc(conn, cc_u, factores, fi_s=None, ff_s=None):
     base_sql = """
         SELECT fecha_compra as Fecha,
@@ -11133,11 +11153,14 @@ def _dataframe_facturas_detalle_cc(conn, cc_u, factores, fi_s=None, ff_s=None):
         df = pd.read_sql_query(base_sql, conn, params=(TIPO_GASTO_SIN_CLASIFICAR, cc_u))
     if df.empty:
         return df
+    df["Rubro"] = df["Rubro"].map(lambda tg: _rubro_matriz_desde_tipo_gasto(tg) or TIPO_GASTO_SIN_CLASIFICAR)
     df["Monto"] = df.apply(
-        lambda r: _monto_costos_factura_imputada(factores, r["nro_p"], r["prov"], r["Monto"]),
+        lambda r: _monto_costos_factura_matriz(
+            r["Rubro"],
+            _monto_costos_factura_imputada(factores, r["nro_p"], r["prov"], r["Monto"]),
+        ),
         axis=1,
     )
-    df["Rubro"] = df["Rubro"].map(lambda tg: _rubro_matriz_desde_tipo_gasto(tg) or TIPO_GASTO_SIN_CLASIFICAR)
     return df[["Fecha", "Rubro", "Detalle", "Monto"]]
 
 
@@ -11191,6 +11214,7 @@ def _armar_matriz_costos_vista_b(conn, fi, ff, cuarteles, prorrateo_rrhh, tempor
         rubro = _rubro_valido_matriz(row[3])
         if rubro:
             monto = _monto_costos_factura_imputada(factores_bruto, row[0], row[1], row[4])
+            monto = _monto_costos_factura_matriz(rubro, monto)
             add(row[2], rubro, monto)
 
     q_pet = f"""SELECT UPPER(TRIM(centro_costo)) as cc, SUM(valor_imputado) as m
