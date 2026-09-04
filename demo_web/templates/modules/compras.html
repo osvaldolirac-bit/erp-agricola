@@ -1,0 +1,705 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Compras — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Ingreso, historial y caja chica</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_modulo('modules.compras', secciones, sec_activa) }}
+
+  {% if sec_activa == 'historial' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">🔍 Filtros</h2>
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-4">
+        <label class="form-label">Buscador</label>
+        <input type="search" name="q" class="form-control" value="{{ filtro_q }}" placeholder="Doc, proveedor, concepto…">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Tipo gasto CC</label>
+        <select name="tipo_gasto" class="form-select">
+          {% for tg in tipos_gasto_filtro|default(['Todas']) %}
+          <option value="{{ tg }}" {% if tg == filtro_tipo_gasto|default('Todas') %}selected{% endif %}>{{ tg }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  {% if comparativo_costos %}
+  <div class="panel-card mb-3 border-primary border-opacity-25">
+    <div class="fw-semibold mb-2">Mismo cuadre que Costos → Resumen ({{ comparativo_costos.rango_fmt }})</div>
+    <div class="row g-2 small text-center">
+      <div class="col-md-3">
+        <span class="text-muted d-block">Compras registrado</span>
+        <strong class="fs-6 text-success">{{ comparativo_costos.registrado_fmt }}</strong>
+      </div>
+      <div class="col-md-3">
+        <span class="text-muted d-block">Imputado bruto CC</span>
+        <strong class="fs-6">{{ comparativo_costos.imputado_bruto_fmt }}</strong>
+      </div>
+      <div class="col-md-3">
+        <span class="text-muted d-block">Pendiente</span>
+        <strong class="fs-6">{{ comparativo_costos.pendiente_fmt }}</strong>
+      </div>
+      <div class="col-md-3">
+        <span class="text-muted d-block">Estado</span>
+        <strong class="fs-6 {% if comparativo_costos.coherente_bruto %}text-success{% else %}text-danger{% endif %}">
+          {% if comparativo_costos.coherente_bruto %}Cuadra{% else %}Descuadre{% endif %}
+        </strong>
+      </div>
+    </div>
+    <p class="small text-muted mb-0 mt-2">{{ comparativo_costos.explicacion }}</p>
+  </div>
+  {% endif %}
+  <div class="panel-card">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <div>
+        <span class="small text-muted">{{ n_registros }} registro(s)</span>
+        {% if historial_rows %}
+        <span class="small ms-2">· Acumulado tabla: <strong>{{ historial_total_fmt }}</strong></span>
+        {% if resumen_imputacion and resumen_imputacion.registrado_filtrado_fmt %}
+        <span class="small ms-2 text-warning">· Registrado período (sin filtros): <strong>{{ resumen_imputacion.registrado_fmt }}</strong></span>
+        {% endif %}
+        {% endif %}
+      </div>
+      {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL') }}
+    </div>
+    {% if resumen_imputacion %}
+    <div class="alert alert-light border py-2 mb-3 small">
+      <div class="row g-2">
+        <div class="col-md-4">
+          <span class="text-muted d-block">Registrado período (bruto)</span>
+          <strong class="fs-6">{{ resumen_imputacion.registrado_fmt }}</strong>
+          {% if resumen_imputacion.registrado_filtrado_fmt %}
+          <span class="text-muted d-block mt-1">Tabla filtrada: {{ resumen_imputacion.registrado_filtrado_fmt }}</span>
+          {% endif %}
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block">Imputado a CC (neto)</span>
+          <strong class="fs-6">{{ resumen_imputacion.imputado_neto_fmt }}</strong>
+          <span class="text-muted d-block mt-1">Bruto imputado: {{ resumen_imputacion.imputado_bruto_fmt }}</span>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block">Pendiente imputar (bruto)</span>
+          <strong class="fs-6">{{ resumen_imputacion.pendiente_fmt }}</strong>
+        </div>
+      </div>
+      {% if not resumen_imputacion.coherente_bruto %}
+      <div class="alert alert-warning py-2 mt-2 mb-0">El registrado bruto es menor que lo imputado bruto a CC: revise imputaciones huérfanas o duplicadas.</div>
+      {% elif not resumen_imputacion.coherente %}
+      <div class="alert alert-warning py-2 mt-2 mb-0">El registrado bruto es menor que lo imputado neto: revise documentos duplicados o imputaciones.</div>
+      {% endif %}
+      <ul class="mb-0 mt-2 text-muted">
+        {% for n in resumen_imputacion.notas %}
+        <li>{{ n }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead>
+          <tr>
+            <th style="min-width:9rem">Correlativo</th>
+            <th>N° Doc</th><th>Proveedor</th><th>Razón social</th><th>Fecha</th>
+            <th>Tipo</th><th>Tipo gasto CC</th><th>Concepto</th><th>Monto bruto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in historial_rows %}
+          <tr>
+            <td class="text-nowrap align-middle">
+              {% if row.es_doc_interno %}
+                <span class="text-muted" title="Sin factura real (documento interno): no lleva correlativo">—</span>
+              {% elif row.folio_interno %}
+                <strong>{{ row.folio_interno }}</strong>
+              {% elif puede_folio and row.puede_correlativo %}
+              <form method="post" class="d-flex align-items-center gap-1 mb-0">
+                <input type="hidden" name="action" value="asignar_folio_interno">
+                <input type="hidden" name="sec" value="historial">
+                <input type="hidden" name="factura_id" value="{{ row.id }}">
+                <input type="hidden" name="q" value="{{ filtro_q }}">
+                <input type="hidden" name="desde" value="{{ filtro_desde }}">
+                <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+                <input type="text" name="folio_interno" class="form-control form-control-sm corr-input"
+                       inputmode="numeric" autocomplete="off" required
+                       placeholder="{{ row.siguiente_correlativo or siguiente_correlativo or '' }}"
+                       title="Correlativo por razón social (puede repetirse entre razones)"
+                       aria-label="Correlativo (por razón social)">
+                <button type="submit" class="btn-act abono" title="Ingresar correlativo (factura real)" aria-label="Ingresar">
+                  <i class="bi bi-check-lg" aria-hidden="true"></i>
+                </button>
+              </form>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {{ row.nro_documento }}
+              {% if row.es_doc_interno %}<span class="badge text-bg-secondary ms-1" title="Documento interno (sin factura real)">INT</span>{% endif %}
+            </td>
+            <td>{{ row.proveedor }}</td>
+            <td>{{ row.razon_social }}</td>
+            <td>{{ row.fecha_compra }}</td>
+            <td>{{ row.tipo }}</td>
+            <td>{{ row.tipo_gasto_cc }}</td>
+            <td class="small">{{ row.concepto }}</td>
+            <td class="fw-semibold">{{ row.monto_total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not historial_rows %}
+    <p class="text-muted p-3 mb-0">Sin compras para los filtros seleccionados.</p>
+    {% endif %}
+  </div>
+
+
+
+  {% if es_admin and factura_edit %}
+  <div class="panel-card mt-3" id="corr-factura">
+    <h2 class="h6 panel-title">✏️ Corregir documento</h2>
+    <p class="small text-muted mb-2">Solo administrador. Requiere clave maestra. Actualiza el documento y sincroniza imputaciones <code>_P</code> asociadas.</p>
+    <form method="get" class="mb-3">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="q" value="{{ filtro_q }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <label class="form-label small">Documento</label>
+      <select name="factura_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for o in factura_opts %}
+        <option value="{{ o.id }}" {% if o.id == factura_edit.id %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <form method="post" class="row g-2 mb-3">
+      <input type="hidden" name="action" value="corregir_factura">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="factura_id" value="{{ factura_edit.id }}">
+      <input type="hidden" name="q" value="{{ filtro_q }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-3">
+        {% with label_class='small', selected=factura_edit.razon_social, required=true %}
+        {% include 'partials/razon_social_compras.html' %}
+        {% endwith %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Proveedor</label>
+        <select name="proveedor" class="form-select form-select-sm" required>
+          {% for p in proveedores_hist %}
+          <option value="{{ p.nombre }}" {% if p.nombre == factura_edit.proveedor %}selected{% endif %}>{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">N° Documento</label>
+        <input type="text" name="nro_documento" class="form-control form-control-sm" value="{{ factura_edit.nro_documento }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Correlativo</label>
+        {% if factura_edit.es_doc_interno %}
+        <input type="text" class="form-control form-control-sm" value="" disabled
+               title="Solo documentos con N° de factura real">
+        <input type="hidden" name="folio_interno" value="">
+        <div class="form-text small">No aplica a docs internos (INT-…)</div>
+        {% else %}
+        <input type="text" name="folio_interno" class="form-control form-control-sm"
+               value="{{ factura_edit.folio_interno }}" autocomplete="off"
+               placeholder="{{ factura_edit.siguiente_correlativo or siguiente_correlativo or '' }}"
+               title="Correlativo por razón social (puede repetirse entre razones)">
+        <div class="form-text small">Por razón social; puede repetirse en otras razones.</div>
+        {% endif %}
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Fecha compra</label>
+        <input type="date" name="fecha_compra" class="form-control form-control-sm" value="{{ factura_edit.fecha_compra }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Fecha vencimiento</label>
+        <input type="date" name="fecha_vencimiento" class="form-control form-control-sm" value="{{ factura_edit.fecha_vencimiento }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Monto bruto ($)</label>
+        <input type="number" name="monto_total" class="form-control form-control-sm" value="{{ factura_edit.monto_raw }}" min="0" step="any" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Concepto</label>
+        <input type="text" name="concepto" class="form-control form-control-sm" value="{{ factura_edit.concepto_full }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Tipo gasto (matriz CC)</label>
+        <select name="tipo_gasto" class="form-select form-select-sm">
+          {% for tg in tipos_gasto_historial %}
+          <option value="{{ tg }}" {% if tg == factura_edit.tipo_gasto_sel %}selected{% endif %}>{{ tg }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Clave maestra</label>
+        <input type="password" name="clave_maestra" class="form-control form-control-sm" required autocomplete="off">
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+    {% elif sec_activa == 'ingreso' %}
+  <div class="mb-3">
+    <div class="small text-muted mb-1">Tipo de ingreso</div>
+    <div class="btn-group flex-wrap">
+      {% for key, label in modos_ingreso %}
+      <a class="btn btn-sm {% if modo_ingreso == key %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="{{ url_for('modules.compras', sec='ingreso', modo=key) }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if sin_proveedores %}
+  <div class="alert alert-warning">No hay proveedores activos. Créelos en Administración → Maestra proveedores.</div>
+  {% else %}
+
+  <div class="panel-card mb-3">
+    <h2 class="h6">Datos del documento</h2>
+    {% if modo_ingreso == 'gastos' %}
+    <form method="post">
+      <input type="hidden" name="action" value="save_gastos">
+      <div class="row g-2">
+        <div class="col-md-12">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="sinDoc"
+                   onchange="toggleNroDoc(this.checked)">
+            <label class="form-check-label small" for="sinDoc">Sin documento oficial (folio interno)</label>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">N° Factura / Doc</label>
+          <input type="text" name="nro_doc" id="nroDoc" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Proveedor</label>
+          <select name="proveedor" class="form-select form-select-sm" required>
+            <option value="">— Seleccione —</option>
+            {% for p in proveedores %}<option value="{{ p.nombre }}">{{ p.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Emisión</label>
+          <input type="date" name="fecha_emision" class="form-control form-control-sm" value="{{ hoy }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Vence</label>
+          <input type="date" name="fecha_vence" class="form-control form-control-sm" value="{{ hoy }}" required>
+        </div>
+      </div>
+      <hr>
+      <div class="row g-2">
+        <div class="col-md-4">
+          {% include 'partials/razon_social_compras.html' %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Tipo de gasto (matriz CC)</label>
+          <select name="tipo_gasto" class="form-select form-select-sm">
+            {% for t in tipos_gasto %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Detalle / Concepto</label>
+          <input type="text" name="concepto" class="form-control form-control-sm">
+        </div>
+        <div class="col-12">
+          <label class="form-label">Centros de costo</label>
+          <div class="row g-1">
+            {% for cc in centros_costo %}
+            <div class="col-md-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="cc_{{ cc }}" value="1" id="cc_{{ loop.index }}">
+                <label class="form-check-label small" for="cc_{{ loop.index }}">{{ cc }}</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Bruto ($)</label>
+          <input type="number" name="monto" class="form-control form-control-sm" min="0" step="any" required>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="iva_bruto" value="1" id="ivaBruto" checked>
+            <label class="form-check-label small" for="ivaBruto">Monto es bruto (con IVA)</label>
+          </div>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary btn-sm">Guardar gasto operacional</button>
+        </div>
+      </div>
+    </form>
+
+    {% elif modo_ingreso == 'pet' %}
+    <form method="post">
+      <input type="hidden" name="action" value="save_petroleo">
+      <div class="row g-2">
+        <div class="col-md-12">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="sinDoc"
+                   onchange="toggleNroDoc(this.checked)">
+            <label class="form-check-label small" for="sinDoc">Sin documento oficial (folio interno)</label>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">N° Factura / Doc</label>
+          <input type="text" name="nro_doc" id="nroDoc" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Proveedor</label>
+          <select name="proveedor" class="form-select form-select-sm" required>
+            <option value="">— Seleccione —</option>
+            {% for p in proveedores %}<option value="{{ p.nombre }}">{{ p.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Emisión</label>
+          <input type="date" name="fecha_emision" class="form-control form-control-sm" value="{{ hoy }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Vence</label>
+          <input type="date" name="fecha_vence" class="form-control form-control-sm" value="{{ hoy }}" required>
+        </div>
+      </div>
+      <hr>
+      <div class="alert alert-info small">Litros + monto cargan el estanque; la factura queda en Tesorería.</div>
+      <div class="row g-2">
+        <div class="col-md-3">
+          <label class="form-label">Litros al estanque</label>
+          <input type="number" name="litros" class="form-control form-control-sm" min="0" step="0.01" required>
+        </div>
+        <div class="col-md-3">
+          {% include 'partials/razon_social_compras.html' %}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Total factura ($)</label>
+          <input type="number" name="monto" class="form-control form-control-sm" min="0" step="any" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Detalle / Concepto</label>
+          <input type="text" name="concepto" class="form-control form-control-sm">
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary btn-sm">Guardar compra petróleo</button>
+        </div>
+      </div>
+    </form>
+
+    {% else %}
+    <div class="alert alert-info small mb-0">
+      Si el insumo no existe en bodega, regístrelo como producto nuevo. La compra creará stock y PMP.
+    </div>
+    {% endif %}
+  </div>
+
+  {% if modo_ingreso == 'agro' %}
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="panel-card">
+        <h2 class="h6">Agregar ítem al carro</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="add_car">
+          <input type="hidden" name="modo" value="agro">
+          <div class="col-12">
+            <div class="btn-group btn-group-sm w-100 mb-2" role="group">
+              <input type="radio" class="btn-check" name="modo_prod" id="prodExistente" value="existente" checked>
+              <label class="btn btn-outline-primary" for="prodExistente">Producto existente</label>
+              <input type="radio" class="btn-check" name="modo_prod" id="prodNuevo" value="nuevo">
+              <label class="btn btn-outline-primary" for="prodNuevo">Producto nuevo</label>
+            </div>
+          </div>
+          <div class="col-12" id="blkExistente">
+            <label class="form-label small">Insumo en bodega</label>
+            <select name="producto_id" class="form-select form-select-sm">
+              <option value="">— Seleccione —</option>
+              {% for p in productos %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-12 d-none" id="blkNuevo">
+            <label class="form-label small">Nombre producto nuevo</label>
+            <input type="text" name="prod_nuevo" class="form-control form-control-sm">
+            <div class="row g-2 mt-1">
+              <div class="col-6">
+                <select name="familia" class="form-select form-select-sm">
+                  {% for f in familias %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-6">
+                <select name="um" class="form-select form-select-sm">
+                  {% for u in unidades %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Cantidad</label>
+            <input type="number" name="cantidad" class="form-control form-control-sm" min="0" step="0.01" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Neto unitario ($)</label>
+            <input type="number" name="neto" class="form-control form-control-sm" min="0" step="any" required>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Agregar al carro</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="panel-card">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="h6 mb-0">Carro ({{ car_count }} ítem(s))</h2>
+          {% if car_count > 0 %}
+          <span class="small">Total bruto est.: <strong>{{ car_total_bruto }}</strong></span>
+          {% endif %}
+        </div>
+        {% if car_rows %}
+        <div class="table-responsive mb-2">
+          <table class="table table-sm table-bordered mb-0">
+            <thead><tr><th>Producto</th><th>Cant.</th><th>UM</th><th>Neto</th><th>Total neto</th></tr></thead>
+            <tbody>
+              {% for r in car_rows %}
+              <tr><td>{{ r.producto }}</td><td>{{ r.cantidad }}</td><td>{{ r.um }}</td><td>{{ r.neto }}</td><td>{{ r.total }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <form method="post" class="d-inline me-2">
+          <input type="hidden" name="action" value="undo_car">
+          <input type="hidden" name="modo" value="agro">
+          <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar último ítem</button>
+        </form>
+        <form method="post" class="d-inline" id="formAgroSave">
+          <input type="hidden" name="action" value="save_agro">
+          <input type="hidden" name="modo" value="agro">
+          <div class="row g-2 mt-2">
+            <div class="col-md-2"><input type="text" name="nro_doc" class="form-control form-control-sm" placeholder="N° Doc" required></div>
+            <div class="col-md-3">
+              <select name="proveedor" class="form-select form-select-sm" required>
+                <option value="">Proveedor</option>
+                {% for p in proveedores %}<option value="{{ p.nombre }}">{{ p.label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-2"><input type="date" name="fecha_emision" class="form-control form-control-sm" value="{{ hoy }}" required></div>
+            <div class="col-md-2"><input type="date" name="fecha_vence" class="form-control form-control-sm" value="{{ hoy }}" required></div>
+            <div class="col-md-3">
+              <select name="tipo_gasto" class="form-select form-select-sm" title="Tipo de gasto (matriz CC)">
+                {% for t in tipos_gasto %}
+                <option value="{{ t }}" {% if t == 'Agroquímicos' %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              {% include 'partials/razon_social_compras.html' %}
+            </div>
+            <div class="col-md-2"><button type="submit" class="btn btn-primary btn-sm w-100">Guardar factura</button></div>
+          </div>
+        </form>
+        {% else %}
+        <p class="text-muted small mb-0">Agregue productos al carro antes de guardar la factura.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {% elif sec_activa == 'caja' %}
+  {% if caja_vacia %}
+  <div class="alert alert-warning">No hay encargados activos. Créelos en Administración → Encargados compras.</div>
+  {% else %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="caja">
+      <div class="col-md-3">
+        <label class="form-label">Encargado</label>
+        <select name="encargado" class="form-select" onchange="this.form.submit()">
+          {% for eid, nombre in encargados.items() %}
+          <option value="{{ eid }}" {% if eid == encargado_sel %}selected{% endif %}>{{ nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Buscar</label>
+        <input type="search" name="q" class="form-control" value="{{ filtro_q }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+    </form>
+  </div>
+  <div class="kpi-card mb-3 d-inline-block">
+    <div class="kpi-label">Saldo al cierre del período</div>
+    <div class="kpi-value">{{ saldo_cierre }}</div>
+  </div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            {% if show_encargado_col %}<th>Encargado</th>{% endif %}
+            <th>Documento</th><th>Proveedor</th><th>Debe</th><th>Haber</th><th>Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in caja_rows %}
+          <tr>
+            <td>{{ row.fecha }}</td>
+            {% if show_encargado_col %}<td>{{ row.encargado }}</td>{% endif %}
+            <td>{{ row.documento }}</td>
+            <td>{{ row.proveedor }}</td>
+            <td>{{ row.debe }}</td>
+            <td>{{ row.haber }}</td>
+            <td class="fw-semibold">{{ row.saldo }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not caja_rows %}
+    <p class="text-muted p-3 mb-0">Sin movimientos para los filtros seleccionados.</p>
+    {% endif %}
+  </div>
+  {% if caja_pdf_encargados %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 mb-1">PDF por encargado</h2>
+    <p class="small text-muted mb-2">Libro mayor de cada encargado según fechas y búsqueda actuales.</p>
+    <div class="d-flex flex-wrap gap-2">
+      {% for p in caja_pdf_encargados %}
+      {{ pdf_btn(p.url, '📥 PDF ' ~ p.nombre, rows=p.rows) }}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <div class="panel-card">
+    <h2 class="h6">Registrar movimiento</h2>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="caja_mov">
+      <div class="col-md-3">
+        <label class="form-label">Encargado</label>
+        <select name="encargado_id" class="form-select form-select-sm" required>
+          {% for e in encargados_list %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Tipo</label>
+        <select name="tipo_mov" id="cajaTipoMov" class="form-select form-select-sm">
+          <option value="egreso">Egreso (gasto)</option>
+          <option value="ingreso">Ingreso (abono fondo)</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Documento</label>
+        <input type="text" name="documento" id="cajaDocumento" class="form-control form-control-sm"
+               placeholder="N° boleta, factura…" required>
+      </div>
+      <div class="col-md-3" id="cajaProveedorBlk">
+        <label class="form-label">Proveedor / detalle</label>
+        <input type="text" name="proveedor" id="cajaProveedor" class="form-control form-control-sm"
+               placeholder="Proveedor o concepto del gasto">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Monto ($)</label>
+        <input type="number" name="monto" class="form-control form-control-sm" min="0" step="any" required>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary btn-sm">Registrar movimiento</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleNroDoc(sinDoc) {
+  const inp = document.getElementById('nroDoc');
+  if (!inp) return;
+  if (sinDoc) {
+    inp.value = 'AUTOGENERADO';
+    inp.readOnly = true;
+    inp.removeAttribute('required');
+  } else {
+    inp.value = '';
+    inp.readOnly = false;
+    inp.setAttribute('required', 'required');
+  }
+}
+document.querySelectorAll('input[name="modo_prod"]').forEach(function(r) {
+  r.addEventListener('change', function() {
+    const ex = document.getElementById('blkExistente');
+    const nu = document.getElementById('blkNuevo');
+    if (!ex || !nu) return;
+    if (this.value === 'nuevo') {
+      ex.classList.add('d-none');
+      nu.classList.remove('d-none');
+    } else {
+      ex.classList.remove('d-none');
+      nu.classList.add('d-none');
+    }
+  });
+});
+
+function toggleCajaProveedor() {
+  const sel = document.getElementById('cajaTipoMov');
+  const blk = document.getElementById('cajaProveedorBlk');
+  const inp = document.getElementById('cajaProveedor');
+  const doc = document.getElementById('cajaDocumento');
+  if (!sel || !blk || !inp) return;
+  const esEgreso = sel.value === 'egreso';
+  blk.classList.toggle('d-none', !esEgreso);
+  inp.required = esEgreso;
+  if (!esEgreso) inp.value = '';
+  if (doc) doc.placeholder = esEgreso ? 'N° boleta, factura…' : 'Transferencia, depósito…';
+}
+
+const cajaTipo = document.getElementById('cajaTipoMov');
+if (cajaTipo) {
+  cajaTipo.addEventListener('change', toggleCajaProveedor);
+  toggleCajaProveedor();
+}
+</script>
+{% endblock %}
