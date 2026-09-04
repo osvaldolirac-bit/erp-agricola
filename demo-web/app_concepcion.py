@@ -1999,14 +1999,25 @@ def _fecha_minima_historial_tesoreria(conn):
 
 
 def _query_historial_abonos_tesoreria(conn, fi, ff, bsq="", met="TODOS"):
+    from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
+
+    excl_espino = sql_and_excluir_razon_social_espino("razon_social", alias="f")
     base = "f.nro_documento NOT LIKE '%_P'"
-    filtros_abono = [base, f"a.fecha BETWEEN '{fi}' AND '{ff}'"]
+    filtros_abono = [
+        base,
+        f"a.fecha BETWEEN '{fi}' AND '{ff}'",
+        "UPPER(COALESCE(a.usuario,'')) != 'MIGRACION'",
+        "UPPER(COALESCE(a.metodo_pago,'')) NOT LIKE 'HISTÓRICO%'",
+        "UPPER(COALESCE(a.metodo_pago,'')) NOT LIKE 'HISTORICO%'",
+    ]
     filtros_legacy = [
         base,
         "f.estado='Pagado'",
         "f.fecha_pago IS NOT NULL",
         f"f.fecha_pago BETWEEN '{fi}' AND '{ff}'",
         "NOT EXISTS (SELECT 1 FROM facturas_abonos a2 WHERE a2.factura_id = f.id)",
+        "UPPER(COALESCE(f.metodo_pago,'')) NOT LIKE 'HISTÓRICO%'",
+        "UPPER(COALESCE(f.metodo_pago,'')) NOT LIKE 'HISTORICO%'",
     ]
     if bsq.strip():
         s = bsq.strip().replace("'", "''")
@@ -2019,8 +2030,8 @@ def _query_historial_abonos_tesoreria(conn, fi, ff, bsq="", met="TODOS"):
     if met != "TODOS":
         filtros_abono.append(f"a.metodo_pago='{met}'")
         filtros_legacy.append(f"f.metodo_pago='{met}'")
-    where_abono = " AND ".join(filtros_abono)
-    where_legacy = " AND ".join(filtros_legacy)
+    where_abono = " AND ".join(filtros_abono) + excl_espino
+    where_legacy = " AND ".join(filtros_legacy) + excl_espino
     return pd.read_sql_query(
         f"""SELECT f.nro_documento, f.proveedor,
                    IFNULL(f.razon_social, 'La Concepción') AS razon_social,

@@ -44,77 +44,16 @@
       </div>
     </form>
   </div>
-  {% if comparativo_costos %}
-  <div class="panel-card mb-3 border-primary border-opacity-25">
-    <div class="fw-semibold mb-2">Mismo cuadre que Costos → Resumen ({{ comparativo_costos.rango_fmt }})</div>
-    <div class="row g-2 small text-center">
-      <div class="col-md-3">
-        <span class="text-muted d-block">Compras registrado</span>
-        <strong class="fs-6 text-success">{{ comparativo_costos.registrado_fmt }}</strong>
-      </div>
-      <div class="col-md-3">
-        <span class="text-muted d-block">Imputado bruto CC</span>
-        <strong class="fs-6">{{ comparativo_costos.imputado_bruto_fmt }}</strong>
-      </div>
-      <div class="col-md-3">
-        <span class="text-muted d-block">Pendiente</span>
-        <strong class="fs-6">{{ comparativo_costos.pendiente_fmt }}</strong>
-      </div>
-      <div class="col-md-3">
-        <span class="text-muted d-block">Estado</span>
-        <strong class="fs-6 {% if comparativo_costos.coherente_bruto %}text-success{% else %}text-danger{% endif %}">
-          {% if comparativo_costos.coherente_bruto %}Cuadra{% else %}Descuadre{% endif %}
-        </strong>
-      </div>
-    </div>
-    <p class="small text-muted mb-0 mt-2">{{ comparativo_costos.explicacion }}</p>
-  </div>
-  {% endif %}
   <div class="panel-card">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
       <div>
         <span class="small text-muted">{{ n_registros }} registro(s)</span>
         {% if historial_rows %}
-        <span class="small ms-2">· Acumulado tabla: <strong>{{ historial_total_fmt }}</strong></span>
-        {% if resumen_imputacion and resumen_imputacion.registrado_filtrado_fmt %}
-        <span class="small ms-2 text-warning">· Registrado período (sin filtros): <strong>{{ resumen_imputacion.registrado_fmt }}</strong></span>
-        {% endif %}
+        <span class="small ms-2">· Acumulado: <strong>{{ historial_total_fmt }}</strong></span>
         {% endif %}
       </div>
       {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL') }}
     </div>
-    {% if resumen_imputacion %}
-    <div class="alert alert-light border py-2 mb-3 small">
-      <div class="row g-2">
-        <div class="col-md-4">
-          <span class="text-muted d-block">Registrado período (bruto)</span>
-          <strong class="fs-6">{{ resumen_imputacion.registrado_fmt }}</strong>
-          {% if resumen_imputacion.registrado_filtrado_fmt %}
-          <span class="text-muted d-block mt-1">Tabla filtrada: {{ resumen_imputacion.registrado_filtrado_fmt }}</span>
-          {% endif %}
-        </div>
-        <div class="col-md-4">
-          <span class="text-muted d-block">Imputado a CC (neto)</span>
-          <strong class="fs-6">{{ resumen_imputacion.imputado_neto_fmt }}</strong>
-          <span class="text-muted d-block mt-1">Bruto imputado: {{ resumen_imputacion.imputado_bruto_fmt }}</span>
-        </div>
-        <div class="col-md-4">
-          <span class="text-muted d-block">Pendiente imputar (bruto)</span>
-          <strong class="fs-6">{{ resumen_imputacion.pendiente_fmt }}</strong>
-        </div>
-      </div>
-      {% if not resumen_imputacion.coherente_bruto %}
-      <div class="alert alert-warning py-2 mt-2 mb-0">El registrado bruto es menor que lo imputado bruto a CC: revise imputaciones huérfanas o duplicadas.</div>
-      {% elif not resumen_imputacion.coherente %}
-      <div class="alert alert-warning py-2 mt-2 mb-0">El registrado bruto es menor que lo imputado neto: revise documentos duplicados o imputaciones.</div>
-      {% endif %}
-      <ul class="mb-0 mt-2 text-muted">
-        {% for n in resumen_imputacion.notas %}
-        <li>{{ n }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
     <div class="table-responsive">
       <table class="table table-sm table-striped demo-datatable w-100">
         <thead>

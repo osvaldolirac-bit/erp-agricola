@@ -371,20 +371,11 @@ def _historial(demo, conn) -> dict:
         siguiente_corr = ""
 
     compras_total = sum(r["monto_raw"] for r in rows)
-    resumen_imputacion = _resumen_imputacion_historial(demo, conn, compras_total, fi, ff)
-    comparativo_costos = None
-    if getattr(demo, "RUBROS_COSTOS_NETO_IVA", None):
-        try:
-            comparativo_costos = resumen_comparativo_compras_costos(demo, conn)
-        except Exception:
-            comparativo_costos = None
 
     return {
         "historial_rows": rows,
         "historial_total": compras_total,
         "historial_total_fmt": demo.f_peso(compras_total) if rows else "—",
-        "resumen_imputacion": resumen_imputacion,
-        "comparativo_costos": comparativo_costos,
         "filtro_q": q,
         "filtro_tipo_gasto": tg_filtro,
         "tipos_gasto_filtro": tipos_gasto_filtro,

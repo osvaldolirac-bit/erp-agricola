@@ -95,7 +95,7 @@ def main() -> int:
                 "Pagado",
                 float(monto),
                 fv,
-                "Histórico (gastos_espino)",
+                "Transferencia",
             ),
         )
         insertados += 1

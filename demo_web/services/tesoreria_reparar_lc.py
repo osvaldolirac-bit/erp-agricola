@@ -84,7 +84,7 @@ def _reclasificar_fila_espino(cur, fid: int, nro: str, prov: str, monto: float, 
                estado='Pagado',
                monto_pagado=?,
                fecha_pago=COALESCE(NULLIF(TRIM(fecha_pago), ''), ?),
-               metodo_pago=COALESCE(NULLIF(TRIM(metodo_pago), ''), 'Histórico (gastos_espino)')
+               metodo_pago=COALESCE(NULLIF(TRIM(metodo_pago), ''), 'Transferencia')
            WHERE id=?
              AND TRIM(COALESCE(razon_social, '')) != ?""",
         (RAZON_SOCIAL_ESPINO, monto, fp_s, fid, RAZON_SOCIAL_ESPINO),
@@ -96,12 +96,10 @@ def _reclasificar_fila_espino(cur, fid: int, nro: str, prov: str, monto: float, 
            WHERE nro_documento=? AND proveedor=?""",
         (RAZON_SOCIAL_ESPINO, f"{nro}_P", prov),
     )
-    if not cur.execute("SELECT 1 FROM facturas_abonos WHERE factura_id=?", (fid,)).fetchone():
-        cur.execute(
-            """INSERT INTO facturas_abonos (factura_id, fecha, monto, metodo_pago, usuario, fecha_registro)
-               VALUES (?,?,?,?,?,?)""",
-            (fid, fp_s, monto, "Histórico (gastos_espino)", "MIGRACION", f_reg),
-        )
+    cur.execute(
+        "DELETE FROM facturas_abonos WHERE factura_id=? AND UPPER(COALESCE(usuario,'')) = 'MIGRACION'",
+        (fid,),
+    )
     return True
 
 
