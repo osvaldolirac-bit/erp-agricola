@@ -78,8 +78,8 @@ def main() -> int:
             """
             INSERT INTO facturas
             (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, tipo,
-             concepto, razon_social, tipo_gasto)
-            VALUES (?,?,?,?,?,?,?,?,?)
+             concepto, razon_social, tipo_gasto, estado, monto_pagado, fecha_pago, metodo_pago)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 nro,
@@ -91,6 +91,10 @@ def main() -> int:
                 str(item or "").strip()[:500],
                 RAZON_DEFAULT,
                 TIPO_GASTO,
+                "Pagado",
+                float(monto),
+                fv,
+                "Histórico (gastos_espino)",
             ),
         )
         insertados += 1

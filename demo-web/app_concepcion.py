@@ -1912,6 +1912,59 @@ def _sincronizar_abonos_huerfanos_tesoreria(conn):
         conn.commit()
 
 
+def _migrar_arriendos_paola_mayo2026_pagados(conn):
+    """Arriendos María Paola (may-2026) ya pagados: sacarlos de Tesorería pendiente."""
+    conn.execute("CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)")
+    cur = conn.cursor()
+    if cur.execute(
+        "SELECT 1 FROM schema_meta WHERE clave='paola_arriendos_mayo2026_pagados_v1'"
+    ).fetchone():
+        return
+    _ensure_banco_pago_cols(conn)
+    _migrar_facturas_abonos(conn)
+    rows = cur.execute(
+        """
+        SELECT id, nro_documento, monto_total, fecha_compra
+        FROM facturas
+        WHERE nro_documento NOT LIKE '%_P'
+          AND estado = 'Pendiente'
+          AND fecha_compra BETWEEN '2026-05-01' AND '2026-05-31'
+          AND (
+            UPPER(COALESCE(proveedor, '')) LIKE '%PAOLA%'
+            OR UPPER(COALESCE(concepto, '')) LIKE '%PAOLA%'
+          )
+          AND (
+            ABS(COALESCE(monto_total, 0) - 7000000) < 1
+            OR ABS(COALESCE(monto_total, 0) - 6433506) < 1
+          )
+        """
+    ).fetchall()
+    f_reg = hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+    metodo = "Histórico (arriendo pagado)"
+    for fid, nro, monto, fp in rows:
+        m = float(monto or 0)
+        if m <= 0:
+            continue
+        fp_s = str(fp or "")[:10]
+        cur.execute(
+            """UPDATE facturas
+               SET estado='Pagado', monto_pagado=?, fecha_pago=?, metodo_pago=?
+               WHERE id=?""",
+            (m, fp_s, metodo, fid),
+        )
+        if not cur.execute("SELECT 1 FROM facturas_abonos WHERE factura_id=?", (fid,)).fetchone():
+            cur.execute(
+                """INSERT INTO facturas_abonos (factura_id, fecha, monto, metodo_pago, usuario, fecha_registro)
+                   VALUES (?,?,?,?,?,?)""",
+                (fid, fp_s, m, metodo, "MIGRACION", f_reg),
+            )
+    cur.execute(
+        "INSERT INTO schema_meta (clave, valor) VALUES ('paola_arriendos_mayo2026_pagados_v1', '1')"
+    )
+    if rows:
+        conn.commit()
+
+
 
 def _ensure_banco_pago_cols(conn):
     """Agrega columna banco a facturas_abonos / facturas (idempotente)."""
@@ -2092,6 +2145,7 @@ def _aplicar_migraciones_db(conn):
     _migrar_pagos_rrhh_huerfanos(conn)
     _migrar_facturas_abonos(conn)
     _sincronizar_abonos_huerfanos_tesoreria(conn)
+    _migrar_arriendos_paola_mayo2026_pagados(conn)
     _migrar_tipo_gasto_operacional(conn)
     try:
         from erp_soporte import migrar_tickets_soporte
