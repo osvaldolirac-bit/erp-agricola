@@ -11121,10 +11121,14 @@ def _es_tenant_espino_costos():
     return (TENANT_SLUG or "").strip().lower() == "espino"
 
 
-def _monto_costos_factura_matriz(rubro, monto_bruto_escalado):
-    """En Espino, rubros de facturas se muestran valor neto (÷ 1.19). Bodega/movimientos no pasan por aquí."""
+def _monto_costos_factura_matriz(rubro, monto_bruto_escalado, neto_facturas_espino=True):
+    """En Espino, rubros de facturas pueden mostrarse neto (÷ 1.19) o bruto. Bodega/movimientos no pasan por aquí."""
     m = float(monto_bruto_escalado or 0)
-    if _es_tenant_espino_costos() and rubro in RUBROS_COSTOS_NETO_ESPINO:
+    if (
+        neto_facturas_espino
+        and _es_tenant_espino_costos()
+        and rubro in RUBROS_COSTOS_NETO_ESPINO
+    ):
         return m / IVA_COSTOS_FACTOR
     return m
 
@@ -11164,7 +11168,10 @@ def _dataframe_facturas_detalle_cc(conn, cc_u, factores, fi_s=None, ff_s=None):
     return df[["Fecha", "Rubro", "Detalle", "Monto"]]
 
 
-def _armar_matriz_costos_vista_b(conn, fi, ff, cuarteles, prorrateo_rrhh, temporada, fi_rrhh=None, ff_rrhh=None):
+def _armar_matriz_costos_vista_b(
+    conn, fi, ff, cuarteles, prorrateo_rrhh, temporada, fi_rrhh=None, ff_rrhh=None,
+    neto_facturas_espino=True,
+):
     cols_cc = list(cuarteles)
     cols = cols_cc + ["TOTAL"]
     matriz = {rubro: {c: 0.0 for c in cols} for rubro in RUBROS_MATRIZ_COSTOS}
@@ -11214,7 +11221,7 @@ def _armar_matriz_costos_vista_b(conn, fi, ff, cuarteles, prorrateo_rrhh, tempor
         rubro = _rubro_valido_matriz(row[3])
         if rubro:
             monto = _monto_costos_factura_imputada(factores_bruto, row[0], row[1], row[4])
-            monto = _monto_costos_factura_matriz(rubro, monto)
+            monto = _monto_costos_factura_matriz(rubro, monto, neto_facturas_espino=neto_facturas_espino)
             add(row[2], rubro, monto)
 
     q_pet = f"""SELECT UPPER(TRIM(centro_costo)) as cc, SUM(valor_imputado) as m
