@@ -524,9 +524,8 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
             request.form.get("rol") or "operador",
             dias_demo=int(request.form.get("dias_demo") or 30),
             invitado_por=master_email,
-            enviar_invitacion=(
-                kind != "demo" or request.form.get("enviar_invitacion") == "1"
-            ),
+            enviar_invitacion=request.form.get("enviar_invitacion") == "1",
+            tenant=tenant,
         )
 
     if action == "reseed_demo":

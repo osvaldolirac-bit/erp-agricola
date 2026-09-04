@@ -168,10 +168,39 @@ def list_users(db_path: str, kind: str) -> list[dict[str, Any]]:
     return out
 
 
-def _ensure_demo_web_path() -> None:
+def _ensure_agricola_web_paths() -> None:
     root = (DEMO_WEB_ROOT or "").strip()
     if root and root not in sys.path and os.path.isdir(root):
         sys.path.insert(0, root)
+    pkg = os.path.join(root, "demo_web") if root else ""
+    if pkg and os.path.isdir(pkg) and pkg not in sys.path:
+        sys.path.insert(0, pkg)
+
+
+def _ensure_demo_web_path() -> None:
+    _ensure_agricola_web_paths()
+
+
+def _load_lc_erp_module(tenant: dict[str, Any]):
+    _ensure_agricola_web_paths()
+    try:
+        from demo_web.services.streamlit_mock import install_streamlit_mock, set_secrets_path
+
+        install_streamlit_mock()
+        set_secrets_path(tenant.get("secrets") or "")
+    except Exception:
+        pass
+    import app_concepcion as erp  # noqa: WPS433
+
+    erp.NOMBRE_DB = tenant["db"]
+    erp.SECRETS_PATH = tenant.get("secrets") or erp.SECRETS_PATH
+    slug = (tenant.get("slug") or "concepcion").strip().lower()
+    erp.TENANT_SLUG = slug or "concepcion"
+    erp.TENANT_NOMBRE = (tenant.get("nombre") or slug or "concepcion").strip()
+    nombre_erp = (tenant.get("nombre_erp") or "").strip()
+    if nombre_erp:
+        erp.NOMBRE_ERP = nombre_erp
+    return erp
 
 
 def create_user(
@@ -184,6 +213,7 @@ def create_user(
     dias_demo: int = 30,
     invitado_por: str = "",
     enviar_invitacion: bool = True,
+    tenant: dict[str, Any] | None = None,
 ) -> tuple[bool, str]:
     email_n = (email or "").strip().lower()
     if not email_n or not _EMAIL_RE.match(email_n):
@@ -233,7 +263,36 @@ def create_user(
             msg = f"{msg} {mail_txt}"
             if not ok_mail:
                 return True, msg
+    elif kind == "lc" and enviar_invitacion and tenant:
+        ok_mail, mail_txt = send_lc_invitation(
+            tenant,
+            email_n,
+            password,
+            rol,
+            invitado_por or "",
+        )
+        msg = f"{msg} {mail_txt}"
     return True, msg
+
+
+def send_lc_invitation(
+    tenant: dict[str, Any],
+    email: str,
+    password_plain: str,
+    rol: str,
+    admin_email: str,
+) -> tuple[bool, str]:
+    """Envía correo de invitación LC/Espino (usa helpers de app_concepcion)."""
+    try:
+        erp = _load_lc_erp_module(tenant)
+        ok = erp.enviar_correo_invitacion_concepcion(
+            email, password_plain, rol, admin_email
+        )
+        if ok:
+            return True, f"Correo de invitación enviado a {email}."
+        return False, "No se pudo enviar el correo de invitación (revise SMTP)."
+    except Exception as exc:
+        return False, f"Invitación no enviada: {exc}"
 
 
 def send_demo_invitation(

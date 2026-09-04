@@ -78,6 +78,8 @@
           <label>Días demo
             <input type="number" name="dias_demo" value="30" min="1" max="365">
           </label>
+          {% endif %}
+          {% if tenant.kind in ('demo', 'lc') %}
           <label class="check-inline">
             <input type="checkbox" name="enviar_invitacion" value="1" checked>
             Enviar invitación por correo

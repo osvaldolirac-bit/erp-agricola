@@ -582,7 +582,14 @@ def _post_crear_usuario(demo, conn, user_email: str) -> dict:
             )
             conn.commit()
             demo.registrar_accion("USUARIO NUEVO", f"{nu} ({nr})")
-            return {"ok": True, "msg": f"Usuario {nu} creado."}
+            msg = f"Usuario {nu} creado."
+            if hasattr(demo, "enviar_correo_invitacion_concepcion"):
+                mail_ok = demo.enviar_correo_invitacion_concepcion(nu, np, nr, user_email)
+                if mail_ok:
+                    msg += " Correo de invitación enviado al colaborador (copia al administrador)."
+                else:
+                    msg += " No se pudo enviar el correo de invitación (revise SMTP)."
+            return {"ok": True, "msg": msg}
         fecha_fin = demo.fecha_fin_prueba_demo()
         conn.execute(
             """INSERT INTO usuarios (email, password, rol, fecha_expira, invitado_por,

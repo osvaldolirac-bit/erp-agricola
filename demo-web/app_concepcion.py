@@ -167,6 +167,7 @@ ROLES_USUARIO = ("admin", "operador", "certificacion", "lector")
 SUPER_ADMIN_EMAILS = frozenset({"osvaldolira@laconcepcion.cl"})
 PROD_URL = "https://erpmaster.cl"
 PROD_URL_ALT = "https://erpmaster.cl/laconcepcion"
+AGRICOLA_LOGIN_URL = os.environ.get("ERP_AGRICOLA_LOGIN_URL", "https://erpmaster.cl/agricola/login")
 PERFILES_USUARIO_TXT = {
     "admin": "Administrador",
     "operador": "Operador",
@@ -2907,15 +2908,36 @@ def _enviar_correo_html(asunto, cuerpo_html, destinatarios, cc=None):
             pass
         return False
 
+def _invitacion_marca():
+    return (NOMBRE_ERP or "ERP Agrícola La Concepción").strip()
+
+
+def _invitacion_nombre_corto():
+    return (TENANT_NOMBRE or "La Concepción").strip()
+
+
+def _invitacion_enlaces_html():
+    slug = (TENANT_SLUG or "concepcion").strip().lower()
+    links = [AGRICOLA_LOGIN_URL]
+    if slug == "concepcion" and PROD_URL_ALT and PROD_URL_ALT not in links:
+        links.append(PROD_URL_ALT)
+    return "\n".join(
+        f"<p style='margin: 4px 0;'><a href='{url}' style='color: #5E35B1; font-weight: bold;'>{url}</a></p>"
+        for url in links
+    )
+
+
 def enviar_correo_invitacion_concepcion(email_nuevo, clave_plana, rol, admin_email):
     from erp_correo_html import plantilla_correo_html
 
     f_h = hora_chile().strftime("%d-%m-%Y %H:%M")
     perfil_txt = PERFILES_USUARIO_TXT.get(rol, rol)
-    admin_txt = admin_email or "Administrador ERP La Concepción"
+    marca = _invitacion_marca()
+    nombre_corto = _invitacion_nombre_corto()
+    admin_txt = admin_email or f"Administrador {marca}"
     interior = f"""
             <p style='color: #1F2933; line-height: 1.55;'>Estimado/a colaborador/a,</p>
-            <p style='color: #1F2933; line-height: 1.55;'>Ha sido invitado/a a <b>integrar el equipo del ERP Agrícola La Concepción</b>.
+            <p style='color: #1F2933; line-height: 1.55;'>Ha sido invitado/a a <b>integrar el equipo de {marca}</b>.
             A partir de ahora podrá acceder a la plataforma de gestión del campo para registrar operaciones,
             consultar información y trabajar según el perfil asignado por administración.</p>
             <div style='background: #F3E5F5; border: 1px solid #CE93D8; border-radius: 10px; padding: 18px 20px; margin: 20px 0;'>
@@ -2925,29 +2947,28 @@ def enviar_correo_invitacion_concepcion(email_nuevo, clave_plana, rol, admin_ema
                 <p style='margin: 6px 0;'><b>Perfil asignado:</b> {perfil_txt}</p>
                 <p style='margin: 6px 0;'><b>Vigencia:</b> Acceso permanente al equipo</p>
                 <p style='margin: 10px 0 0;'><b>Enlaces de acceso:</b></p>
-                <p style='margin: 4px 0;'><a href='{PROD_URL}' style='color: #5E35B1; font-weight: bold;'>{PROD_URL}</a></p>
-                <p style='margin: 4px 0;'><a href='{PROD_URL_ALT}' style='color: #5E35B1; font-weight: bold;'>{PROD_URL_ALT}</a></p>
+                {_invitacion_enlaces_html()}
             </div>
-            <p style='color: #1F2933; line-height: 1.55;'><b>Primeros pasos sugeridos:</b> ingrese con sus credenciales, revise el menú lateral según su perfil
-            y consulte el módulo <b>Manual</b> para una guía rápida de uso.</p>
+            <p style='color: #1F2933; line-height: 1.55;'><b>Primeros pasos sugeridos:</b> ingrese con sus credenciales, elija <b>{nombre_corto}</b> si el acceso es multi-empresa,
+            revise el menú lateral según su perfil y consulte el módulo <b>Manual</b> para una guía rápida de uso.</p>
             <p style='text-align: center; margin: 24px 0;'>
-                <a href='{PROD_URL}' style='display: inline-block; background: linear-gradient(135deg, #5E35B1, #7E57C2); color: white; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 800;'>ACCEDER AL ERP LA CONCEPCIÓN</a>
+                <a href='{AGRICOLA_LOGIN_URL}' style='display: inline-block; background: linear-gradient(135deg, #5E35B1, #7E57C2); color: white; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 800;'>ACCEDER A {marca.upper()}</a>
             </p>
             <p style='font-size: 13px; color: #5F6B7A; margin: 6px 0;'><b>Invitación emitida por:</b> {admin_txt}</p>
             <p style='font-size: 13px; color: #5F6B7A; margin: 6px 0;'><b>Fecha:</b> {f_h} (Chile UTC-4)</p>
-            <p style='font-size: 13px; color: #5F6B7A; margin: 6px 0;'><b>Entorno:</b> Producción — Campo Agrícola La Concepción</p>
+            <p style='font-size: 13px; color: #5F6B7A; margin: 6px 0;'><b>Entorno:</b> Producción — {nombre_corto}</p>
     """
     cuerpo = plantilla_correo_html(
         "invitacion",
-        "🍒 Bienvenido al equipo ERP La Concepción",
+        f"🍒 Bienvenido al equipo {marca}",
         interior,
-        nombre_erp="ERP La Concepción",
-        pie="Mensaje automático al crear su usuario en Administración. Ante dudas, contacte al administrador.",
+        nombre_erp=marca,
+        pie=f"Mensaje automático al crear su usuario en {marca}. Ante dudas, contacte al administrador.",
     )
     conf = _conf_smtp_prod()
     cc_admin = admin_email or (conf["receptor_admin"] if conf else None)
     return _enviar_correo_html(
-        "🍒 Invitación — Integración al ERP Agrícola La Concepción",
+        f"🍒 Invitación — Integración a {marca}",
         cuerpo,
         [email_nuevo],
         cc=cc_admin,
