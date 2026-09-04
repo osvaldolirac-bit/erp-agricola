@@ -98,6 +98,68 @@ def total_imputado_bruto_historial(demo: Any, conn, fi, ff) -> float:
     return total
 
 
+def total_pendiente_imputar_historial(conn, fi, ff) -> float:
+    """Parent en historial sin filas _P (aún no imputado a CC)."""
+    sql = f"""
+        SELECT COALESCE(SUM(f.monto_total), 0)
+        FROM facturas f
+        WHERE f.monto_total > 0
+          {sql_historial_compras_parent('f')}
+          AND f.fecha_compra BETWEEN ? AND ?
+          {sql_and_excluir_razon_social_espino('razon_social', 'f')}
+          AND NOT EXISTS (
+            SELECT 1 FROM facturas p
+            WHERE p.nro_documento = f.nro_documento || '_P'
+              AND p.proveedor = f.proveedor
+              AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
+          )
+    """
+    return float(conn.execute(sql, (str(fi), str(ff))).fetchone()[0] or 0)
+
+
+def rango_comparativo_compras_costos(demo: Any, conn) -> tuple[str, Any, Any]:
+    """Mismo rango de fechas que usa Costos para comparar con Compras."""
+    from demo_web.services.native._helpers import hoy_demo, temporada_sel
+
+    hoy = hoy_demo(demo)
+    nombre, fi, ff = temporada_sel(demo)
+    es_vigente = fi <= hoy <= ff
+    if es_vigente:
+        fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente)
+    else:
+        fi_cons, ff_cons = fi, ff
+    return nombre, fi_cons, ff_cons
+
+
+def resumen_comparativo_compras_costos(demo: Any, conn) -> dict:
+    """Totales alineados entre módulos Compras y Costos (mismo SQL y fechas)."""
+    nombre, fi, ff = rango_comparativo_compras_costos(demo, conn)
+    registrado = total_registrado_compras_historial(conn, fi, ff)
+    imputado_bruto = total_imputado_bruto_historial(demo, conn, fi, ff)
+    imputado_neto = total_imputado_neto_historial(demo, conn, fi, ff)
+    pendiente = total_pendiente_imputar_historial(conn, fi, ff)
+    return {
+        "temporada": nombre,
+        "fi": fi,
+        "ff": ff,
+        "rango_fmt": f"{fi.strftime('%d-%m-%Y')} — {ff.strftime('%d-%m-%Y')}",
+        "registrado": registrado,
+        "registrado_fmt": demo.f_peso(registrado),
+        "imputado_bruto": imputado_bruto,
+        "imputado_bruto_fmt": demo.f_peso(imputado_bruto),
+        "imputado_neto": imputado_neto,
+        "imputado_neto_fmt": demo.f_peso(imputado_neto),
+        "pendiente": pendiente,
+        "pendiente_fmt": demo.f_peso(pendiente),
+        "coherente_bruto": registrado + 0.5 >= imputado_bruto,
+        "explicacion": (
+            "Compras registrado = facturas en historial (bruto). "
+            "Imputado bruto = lo asignado a centros de costo desde esas facturas. "
+            "Registrado debe ser ≥ imputado bruto + pendiente."
+        ),
+    }
+
+
 def total_imputado_neto_historial(demo: Any, conn, fi, ff) -> float:
     """Imputaciones _P en neto (criterio Costos: ÷1.19 en rubros con IVA)."""
     fn_rubro = getattr(demo, "_rubro_valido_matriz", None) or getattr(

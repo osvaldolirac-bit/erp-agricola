@@ -23,10 +23,7 @@ from demo_web.services.native._helpers import (
     prorrateo_rrhh,
     temporada_sel,
 )
-from demo_web.services.costos_compras_coherencia import (
-    total_imputado_bruto_historial,
-    total_registrado_compras_historial,
-)
+from demo_web.services.costos_compras_coherencia import resumen_comparativo_compras_costos
 from demo_web.services.tenant_scope import cuarteles_oficiales
 
 
@@ -260,7 +257,9 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
             "filas": [],
             "mostrar_gasto_bruto": False,
             "compras_registrado_fmt": None,
+            "pendiente_compras_fmt": None,
             "coherente_compras": True,
+            "temporada_comparativo": None,
         }
         pdf_matriz_url = None
         caption = ""
@@ -300,22 +299,15 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
                 pdf_matriz_url = _pdf_matriz_url(demo, show)
                 resumen_avance = _avance_gasto_ppto_resumen(demo, matriz)
                 if _costos_usa_neto_iva(demo):
-                    imputado_bruto = total_imputado_bruto_historial(
-                        demo, conn, fi_cons, ff_cons,
-                    )
-                    registrado_compras = total_registrado_compras_historial(
-                        conn, fi_cons, ff_cons,
-                    )
+                    cmp = resumen_comparativo_compras_costos(demo, conn)
                     resumen_avance["mostrar_gasto_bruto"] = True
-                    resumen_avance["gasto_bruto"] = imputado_bruto
-                    resumen_avance["gasto_bruto_fmt"] = demo.f_peso(imputado_bruto)
-                    resumen_avance["compras_registrado_fmt"] = demo.f_peso(registrado_compras)
-                    resumen_avance["coherente_compras"] = (
-                        registrado_compras + 0.5 >= imputado_bruto
-                    )
-                    resumen_avance["rango_comparativo"] = (
-                        f"{fi_cons.strftime('%d-%m-%Y')} — {ff_cons.strftime('%d-%m-%Y')}"
-                    )
+                    resumen_avance["gasto_bruto"] = cmp["imputado_bruto"]
+                    resumen_avance["gasto_bruto_fmt"] = cmp["imputado_bruto_fmt"]
+                    resumen_avance["compras_registrado_fmt"] = cmp["registrado_fmt"]
+                    resumen_avance["pendiente_compras_fmt"] = cmp["pendiente_fmt"]
+                    resumen_avance["coherente_compras"] = cmp["coherente_bruto"]
+                    resumen_avance["rango_comparativo"] = cmp["rango_fmt"]
+                    resumen_avance["temporada_comparativo"] = cmp["temporada"]
                 else:
                     resumen_avance["mostrar_gasto_bruto"] = False
             else:

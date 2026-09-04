@@ -11,6 +11,9 @@ from demo_web.services.costos_compras_coherencia import (
     sql_historial_compras_parent,
     total_imputado_bruto_historial,
     total_imputado_neto_historial,
+    total_pendiente_imputar_historial,
+    total_registrado_compras_historial,
+    resumen_comparativo_compras_costos,
 )
 from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
@@ -182,45 +185,34 @@ def _total_imputado_cc_bruto_historial(demo, conn, fi, ff) -> float:
 
 
 def _total_pendiente_imputar_historial(conn, fi, ff) -> float:
-    """Parent en historial sin filas _P (aún no imputado a CC)."""
-    sql = f"""
-        SELECT COALESCE(SUM(f.monto_total), 0)
-        FROM facturas f
-        WHERE f.monto_total > 0
-          {_sql_historial_compras('f')}
-          AND f.fecha_compra BETWEEN ? AND ?
-          {sql_and_excluir_razon_social_espino('razon_social', 'f')}
-          AND NOT EXISTS (
-            SELECT 1 FROM facturas p
-            WHERE p.nro_documento = f.nro_documento || '_P'
-              AND p.proveedor = f.proveedor
-              AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
-          )
-    """
-    return float(conn.execute(sql, (str(fi), str(ff))).fetchone()[0] or 0)
+    return total_pendiente_imputar_historial(conn, fi, ff)
 
 
-def _resumen_imputacion_historial(demo, conn, compras_total: float, fi, ff) -> dict | None:
-    """Compras bruto vs imputación neto (criterio Costos). Compras ≥ neto imputado + pendiente bruto."""
-    if compras_total <= 0:
+def _resumen_imputacion_historial(
+    demo, conn, compras_total_filtrado: float, fi, ff,
+) -> dict | None:
+    """Compras bruto vs imputación (fechas del filtro; registrado = todo el período, no solo tabla filtrada)."""
+    registrado = total_registrado_compras_historial(conn, fi, ff)
+    if registrado <= 0 and compras_total_filtrado <= 0:
         return None
     try:
         imputado_neto = _total_imputado_cc_historial(demo, conn, fi, ff)
         imputado_bruto = _total_imputado_cc_bruto_historial(demo, conn, fi, ff)
         pendiente = _total_pendiente_imputar_historial(conn, fi, ff)
+        hay_filtro_extra = abs(compras_total_filtrado - registrado) > 0.5
         return {
-            "registrado_fmt": demo.f_peso(compras_total),
+            "registrado_fmt": demo.f_peso(registrado),
+            "registrado_filtrado_fmt": demo.f_peso(compras_total_filtrado) if hay_filtro_extra else None,
             "imputado_neto_fmt": demo.f_peso(imputado_neto),
             "imputado_bruto_fmt": demo.f_peso(imputado_bruto),
             "pendiente_fmt": demo.f_peso(pendiente),
-            "coherente": compras_total + 0.5 >= imputado_neto,
-            "coherente_bruto": compras_total + 0.5 >= imputado_bruto,
+            "coherente": registrado + 0.5 >= imputado_neto,
+            "coherente_bruto": registrado + 0.5 >= imputado_bruto,
             "notas": [
-                "Historial Compras: montos brutos (con IVA cuando aplica).",
+                "Registrado = suma bruta de facturas del período (fechas arriba), sin filtros de búsqueda/tipo.",
+                "Acumulado de la tabla = solo filas visibles si aplicó búsqueda o tipo de gasto.",
                 "Imputado a CC: criterio Costos (neto en Agroquímicos, Repuestos y Energía eléctrica).",
-                "Pendiente: facturas en historial sin centros de costo asignados.",
-                "Bodega y petróleo: en Compras al ingresar; en Costos al salir (aún no imputados).",
-                "RRHH: solo módulo Costos, no pasa por Compras.",
+                "Comparar registrado ≥ imputado bruto + pendiente. No comparar con Gasto neto de Costos.",
             ],
         }
     except Exception:
@@ -379,13 +371,20 @@ def _historial(demo, conn) -> dict:
         siguiente_corr = ""
 
     compras_total = sum(r["monto_raw"] for r in rows)
-    resumen_imputacion = _resumen_imputacion_historial(demo, conn, compras_total, fi, ff) if rows else None
+    resumen_imputacion = _resumen_imputacion_historial(demo, conn, compras_total, fi, ff)
+    comparativo_costos = None
+    if getattr(demo, "RUBROS_COSTOS_NETO_IVA", None):
+        try:
+            comparativo_costos = resumen_comparativo_compras_costos(demo, conn)
+        except Exception:
+            comparativo_costos = None
 
     return {
         "historial_rows": rows,
         "historial_total": compras_total,
         "historial_total_fmt": demo.f_peso(compras_total) if rows else "—",
         "resumen_imputacion": resumen_imputacion,
+        "comparativo_costos": comparativo_costos,
         "filtro_q": q,
         "filtro_tipo_gasto": tg_filtro,
         "tipos_gasto_filtro": tipos_gasto_filtro,
