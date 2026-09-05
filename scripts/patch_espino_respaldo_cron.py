@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Agrega tenant El Espino a /root/scripts/erp_respaldo_cron.py si falta."""
+"""DEPRECATED: use scripts/respaldo_cron_tenants.py --sync
+
+Agrega tenant El Espino a /root/scripts/erp_respaldo_cron.py si falta.
+"""
 from __future__ import annotations
 
 import sys

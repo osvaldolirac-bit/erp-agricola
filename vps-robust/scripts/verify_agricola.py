@@ -321,6 +321,35 @@ def check_libro_campo_session_meta() -> None:
     print("OK  libro_campo session meta roundtrip")
 
 
+def check_espino_post_deploy() -> None:
+    """Reglas Espino + CxP (obligatorio si DB Espino existe en VPS)."""
+    espino_db = os.environ.get("ERP_ESPINO_DB", "/root/espino/erp_espino.db")
+    if not os.path.isfile(espino_db):
+        print("SKIP espino verify (DB not on disk)")
+        return
+    scripts = os.environ.get("SCRIPTS_ROOT", "/root/scripts")
+    verify = os.path.join(scripts, "verify_espino.py")
+    if not os.path.isfile(verify):
+        verify = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "verify_espino.py")
+        verify = os.path.normpath(verify)
+    if not os.path.isfile(verify):
+        raise CheckFailed("verify_espino.py not found — sync scripts on deploy")
+    import subprocess
+
+    env = {**os.environ, "APP_ROOT": APP_ROOT}
+    proc = subprocess.run(
+        [sys.executable, verify],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if proc.stdout:
+        print(proc.stdout.rstrip())
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip() or "unknown"
+        raise CheckFailed(f"verify_espino: {detail}")
+
+
 def main() -> int:
     checks = [
         check_regression_manifest,
@@ -333,10 +362,12 @@ def main() -> int:
         check_libro_campo_module,
         check_libro_campo_session_meta,
         check_native_modules_compile,
+        check_tenant_registry_espino,
         check_login,
         check_globalgap_login,
         check_salida_petroleo_route,
-        check_consola_globalgap_tenant,
+        check_consola_agricola_tenants,
+        check_espino_post_deploy,
     ]
     failed = 0
     for fn in checks:
