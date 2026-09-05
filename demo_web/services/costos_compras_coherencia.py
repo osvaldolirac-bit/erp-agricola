@@ -22,6 +22,33 @@ def sql_historial_compras_parent(col_prefix: str = "") -> str:
     """
 
 
+def sql_excluir_ge_duplicado_factura_real(col_prefix: str = "") -> str:
+    """Espino: GE-* duplicado si ya hay factura real con mismo N° doc (proveedor GE), fecha y monto."""
+    from demo_web.services.tenant_scope import is_espino_tenant
+
+    if not is_espino_tenant():
+        return ""
+    p = f"{col_prefix}." if col_prefix else ""
+    return f"""
+          AND NOT (
+            UPPER(TRIM({p}nro_documento)) GLOB 'GE-*'
+            AND EXISTS (
+              SELECT 1 FROM facturas f_dup
+              WHERE f_dup.nro_documento NOT GLOB 'GE-*'
+                AND f_dup.nro_documento NOT LIKE '%\\_P' ESCAPE '\\'
+                AND TRIM(f_dup.nro_documento) = TRIM({p}proveedor)
+                AND f_dup.fecha_compra = {p}fecha_compra
+                AND ABS(f_dup.monto_total - {p}monto_total) < 500
+            )
+          )
+    """
+
+
+def sql_historial_compras_listado(col_prefix: str = "") -> str:
+    """Filtro historial visible (listado Compras / registrado): sin GE duplicados de factura real."""
+    return sql_historial_compras_parent(col_prefix) + sql_excluir_ge_duplicado_factura_real(col_prefix)
+
+
 def sql_join_parent_imputacion(alias_p: str = "p", alias_f: str = "f") -> str:
     return f"""
         INNER JOIN facturas {alias_f}
@@ -47,7 +74,7 @@ def total_registrado_compras_historial(conn, fi, ff) -> float:
         SELECT COALESCE(SUM(f.monto_total), 0)
         FROM facturas f
         WHERE f.monto_total > 0
-          {sql_historial_compras_parent('f')}
+          {sql_historial_compras_listado('f')}
           AND f.fecha_compra BETWEEN ? AND ?
           {sql_and_excluir_razon_social_espino('razon_social', 'f')}
     """
@@ -109,7 +136,7 @@ def total_pendiente_imputar_historial(conn, fi, ff) -> float:
         SELECT COALESCE(SUM(f.monto_total), 0)
         FROM facturas f
         WHERE f.monto_total > 0
-          {sql_historial_compras_parent('f')}
+          {sql_historial_compras_listado('f')}
           AND f.fecha_compra BETWEEN ? AND ?
           {sql_and_excluir_razon_social_espino('razon_social', 'f')}
           AND NOT EXISTS (

@@ -8,7 +8,7 @@ from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
 from demo_web.services.tenant_scope import is_espino_tenant
-from demo_web.services.costos_compras_coherencia import sql_historial_compras_parent
+from demo_web.services.costos_compras_coherencia import sql_historial_compras_listado, sql_historial_compras_parent
 from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
 SECCIONES = [
@@ -87,8 +87,8 @@ def _es_doc_imputacion_costos(nro_documento: str | None) -> bool:
 
 
 def _sql_historial_compras(col_prefix: str = "") -> str:
-    """Historial: todo lo registrado en Compras (incl. INT-). Excluye _P e imputaciones GE-*."""
-    return sql_historial_compras_parent(col_prefix)
+    """Historial listado Compras (sin GE duplicados de factura real en tenant Espino)."""
+    return sql_historial_compras_listado(col_prefix)
 
 
 def _sql_solo_compras_reales(col_prefix: str = "") -> str:
@@ -268,7 +268,13 @@ def _historial(demo, conn) -> dict:
         )
     pdf_url = None
     if not df.empty:
-        df_pdf = df.rename(
+        df_pdf = df.copy()
+        if is_espino_tenant():
+            ge_mask = df_pdf["nro_documento"].astype(str).str.upper().str.startswith(DOC_IMPUTACION_COSTOS_PREFIX)
+            if ge_mask.any():
+                df_pdf.loc[ge_mask, "nro_documento"] = df.loc[ge_mask, "proveedor"].astype(str).str.strip()
+                df_pdf.loc[ge_mask, "proveedor"] = "—"
+        df_pdf = df_pdf.rename(
             columns={
                 "folio_interno": "CORRELATIVO",
                 "nro_documento": "N° DOCUMENTO",
