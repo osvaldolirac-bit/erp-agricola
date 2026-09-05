@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Petróleo — {{ erp_title|default('ERP') }}{% endblock %}
+{% block extra_head %}
+<link href="{{ url_for('static', filename='css/salida-link.css') }}?v={{ static_version }}" rel="stylesheet">
+{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Gestión de estanque y despachos por cuartel</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  <div class="row g-3 mb-3 align-items-start">
+    <div class="col-lg-7">
+      <div class="salida-petroleo-estanque petroleo-estanque-hero" role="status" aria-live="polite">
+        <div class="salida-petroleo-estanque-kicker">🛢️ Saldo actual en tanque</div>
+        <div class="salida-petroleo-estanque-valor">{{ saldo_actual }} L</div>
+        <div class="salida-petroleo-estanque-meta">
+          Cargas al estanque: {{ tot_cargas }} L · Despachos acumulados: {{ tot_salidas }} L
+        </div>
+      </div>
+      <p class="small text-muted mb-0 mt-2">
+        Temporada <strong>{{ temp_nombre }}</strong> — litros por equipo, mes y gasto CC en el resumen →
+      </p>
+    </div>
+    <div class="col-lg-5">
+      {{ widget_html|safe }}
+    </div>
+  </div>
+
+  {{ nav_modulo('modules.petroleo', secciones, sec_activa) }}
+
+  {% if solo_lectura %}
+  <div class="alert alert-warning small mb-3">Modo solo lectura: puede consultar saldo e historial, pero no registrar despachos ni generar planillas.</div>
+  {% endif %}
+
+  {% if bitacora_desfase %}
+  <div class="alert alert-warning mb-3">
+    <strong>Desfase Salida Link ↔ salidas reales:</strong>
+    hay <strong>{{ bitacora_pendientes }}</strong> registro(s) de campo pendientes de autorizar.
+    Revise en <a href="{{ url_for('modules.petroleo', sec='bitacora') }}" class="alert-link">Salida Link</a>.
+  </div>
+  {% endif %}
+
+  <div class="alert alert-info small">
+    La <strong>carga al estanque</strong> se registra en <strong>Compras → INGRESO</strong>
+    (casilla <em>Compra de petróleo</em> + litros y monto). El camino normal de despacho es
+    <strong>Salida Link → Autorizar</strong>; <strong>Salida manual</strong> es solo para excepciones.
+  </div>
+
+  {% if sec_activa == 'salida' %}
+  <div class="panel-card petroleo-salida-manual">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+      <div>
+        <h2 class="h6 panel-title mb-1">Salida manual</h2>
+        <p class="small text-muted mb-0">
+          Solo si no hubo registro con enlace personal. Preferible: Salida Link → Autorizar.
+        </p>
+      </div>
+      <div class="petroleo-pmp-pill small">
+        PMP neto <strong>${{ pmp_neto }}/L</strong>
+      </div>
+    </div>
+
+    {% if not maquinaria_opts %}
+    <div class="alert alert-warning mb-3">No hay maquinaria registrada. Cárguela en Administración → Maestra maquinaria.</div>
+    {% endif %}
+
+    <form method="post" id="formDespachoPetroleo" {% if solo_lectura %}aria-disabled="true"{% endif %}>
+      <fieldset class="petroleo-salida-fieldset" {% if solo_lectura %}disabled{% endif %}>
+        <input type="hidden" name="action" value="despachar">
+        <input type="hidden" name="sec" value="salida">
+
+        <div class="row g-3">
+          <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="pet_litros">Litros</label>
+            <input id="pet_litros" type="number" name="litros" class="form-control form-control-lg"
+                   min="0.1" step="0.1" inputmode="decimal" placeholder="0,0" required>
+          </div>
+          <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="pet_fecha">Fecha</label>
+            <input id="pet_fecha" type="date" name="fecha" class="form-control form-control-lg"
+                   value="{{ form_fecha }}" required>
+          </div>
+          <div class="col-md-6 col-lg-3">
+            <label class="form-label" for="pet_vehiculo">Equipo / vehículo</label>
+            <select id="pet_vehiculo" name="vehiculo" class="form-select form-select-lg" required>
+              <option value="">— Seleccione —</option>
+              {% for cod, etiq in maquinaria_opts %}
+              <option value="{{ cod }}">{{ etiq }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6 col-lg-3">
+            <label class="form-label" for="pet_responsable">Responsable</label>
+            <input id="pet_responsable" type="text" name="responsable" class="form-control form-control-lg"
+                   placeholder="Nombre quien retira" autocomplete="name" required>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <label class="form-label mb-1">Cuarteles</label>
+          <p class="small text-muted mb-2">Toque uno o más. Los litros se reparte en partes iguales entre los marcados.</p>
+          <div class="salida-petroleo-cuarteles">
+            {% for cc in cuarteles %}
+            <label class="salida-petroleo-cc-chip" for="pet_cc_{{ loop.index }}">
+              <input class="form-check-input" type="checkbox" name="cuarteles" value="{{ cc }}"
+                     id="pet_cc_{{ loop.index }}">
+              <span class="salida-petroleo-cc-label">{{ cc }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          {% if not cuarteles %}
+          <p class="small text-danger mb-0">No hay cuarteles configurados.</p>
+          {% endif %}
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-3 mt-4">
+          <button type="submit" id="btnDespacharPetroleo" class="btn btn-primary btn-lg"
+                  {% if not maquinaria_opts or solo_lectura %}disabled{% endif %}>
+            Despachar petróleo
+          </button>
+          <span class="small text-muted">
+            Imputación = litros × PMP neto (bruto ÷ 1,19 − ${{ impuesto_litro }}/L imp. específico)
+          </span>
+        </div>
+      </fieldset>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'bitacora' %}
+  <div class="panel-card salida-petroleo-qr-page">
+    <h2 class="h6 panel-title">🔗 Salida Link</h2>
+    <p class="small text-muted mb-3">
+      Registro desde celular con <strong>enlace personal</strong>. Mientras no se autorice, es solo informativo (no descuenta estanque).
+      Un <strong>administrador</strong> autoriza aquí para imputar a CC con prorrateo de Administración y PMP neto.
+    </p>
+    {% if bitacora_habilitada %}
+    {% if bitacora_admin_qr %}
+    <div class="mb-3">
+      <h3 class="h6 mb-1">Enlaces personales (único acceso de campo)</h3>
+      <p class="small text-muted mb-2">
+        No hay enlace público en el estanque. Cada operador usa <strong>solo su link</strong>
+        (WhatsApp / favoritos). Así se evita que cualquiera registre una salida.
+      </p>
+      {% if bitacora_links_personales %}
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Operador</th>
+              <th>Enlace personal</th>
+              <th class="text-nowrap">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for op in bitacora_links_personales %}
+            <tr>
+              <td class="text-nowrap"><strong>{{ op.nombre }}</strong></td>
+              <td>
+                <input type="text" class="form-control form-control-sm font-monospace js-link-personal"
+                       id="linkOp-{{ loop.index }}" value="{{ op.url }}" readonly>
+              </td>
+              <td class="text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-primary js-copiar-link"
+                        data-target="linkOp-{{ loop.index }}">Copiar</button>
+                <a class="btn btn-sm btn-outline-success" href="{{ op.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="alert alert-warning mb-0 py-2 small">
+        No hay operadores autorizados. En RRHH → Personal marque trabajadores o agregue dueños/extras.
+      </div>
+      {% endif %}
+    </div>
+    <hr class="my-3">
+    {% endif %}
+    <h3 class="h6 mb-2">Registros Salida Link</h3>
+    <p class="small text-muted">
+      Pendientes: {{ bitacora_pendientes|default(0) }} ·
+      Al autorizar se crea la salida real en Historial e imputa el monto al CC del link (Costos).
+    </p>
+    {% if bitacora_registros %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered w-100 mb-0 align-middle">
+        <thead>
+          <tr>
+            <th>Código</th><th>Fecha/hora</th><th>Litros</th><th>Cuarteles link</th>
+            <th>Maquinaria</th><th>Responsable</th><th>Estado / imputación CC</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in bitacora_registros %}
+          <tr class="{% if r.pendiente %}table-warning{% elif r.rechazado %}table-secondary{% endif %}">
+            <td><strong>{{ r.codigo }}</strong></td>
+            <td>{{ r.fecha_hora }}</td>
+            <td>{{ r.litros }}</td>
+            <td>{{ r.huerto }}</td>
+            <td>{{ r.maquinaria }}</td>
+            <td>{{ r.responsable }}</td>
+            <td>
+              {% if r.pendiente %}
+              <span class="badge bg-warning text-dark">Pendiente</span>
+              {% elif r.rechazado %}
+              <span class="badge bg-secondary">Rechazado</span>
+              {% if r.rechazado_en %}<div class="small text-muted">{{ r.rechazado_en }}</div>{% endif %}
+              {% if r.rechazo_motivo %}<div class="small">{{ r.rechazo_motivo }}</div>{% endif %}
+              {% else %}
+              <span class="badge bg-success">Autorizado</span>
+              {% if r.autorizado_en %}<div class="small text-muted">{{ r.autorizado_en }}</div>{% endif %}
+              {% if r.cc_imputados %}
+              <div class="small mt-1"><strong>Imputado a:</strong> {{ r.cc_imputados }}</div>
+              {% endif %}
+              {% endif %}
+            </td>
+            <td class="text-nowrap">
+              {% if r.pendiente and bitacora_puede_autorizar %}
+              <form method="post" class="d-inline" onsubmit="return confirm('¿Autorizar {{ r.codigo }} e imputar al estanque y al CC {{ r.huerto }}?');">
+                <input type="hidden" name="action" value="autorizar_bitacora">
+                <input type="hidden" name="sec" value="bitacora">
+                <input type="hidden" name="codigo" value="{{ r.codigo }}">
+                <button type="submit" class="btn btn-sm btn-success">AUTORIZAR</button>
+              </form>
+              <form method="post" class="d-inline ms-1" onsubmit="return confirm('¿Rechazar {{ r.codigo }}? Quedará en Salida Link como rechazado (se conserva el código).');">
+                <input type="hidden" name="action" value="rechazar_bitacora">
+                <input type="hidden" name="sec" value="bitacora">
+                <input type="hidden" name="codigo" value="{{ r.codigo }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">RECHAZAR</button>
+              </form>
+              {% elif r.pendiente %}
+              <span class="small text-muted">Solo admin</span>
+              {% elif r.rechazado %}
+              <span class="small text-muted">Sin imputación</span>
+              {% elif r.autorizado %}
+              <span class="small text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-light border mb-0">Sin registros aún{% if bitacora_admin_qr %}. Envíe a cada operador su enlace personal{% endif %}.</div>
+    {% endif %}
+    {% else %}
+    <div class="alert alert-warning mb-0">Salida Link disponible solo en {{ erp_title|default('este tenant') }}.</div>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'historial' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">🔍 Filtros</h2>
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-3">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL PETRÓLEO', 'btn-outline-success w-100') }}
+      </div>
+    </form>
+  </div>
+
+  {% if historial_eventos %}
+  <p class="small text-muted mb-3">
+    <strong>{{ historial_stats.total }}</strong> movimiento(s) ·
+    <strong>{{ historial_stats.entradas }}</strong> entrada(s) ·
+    <strong>{{ historial_stats.salidas }}</strong> salida(s) · más reciente arriba
+  </p>
+  {% for ev in historial_eventos %}
+  {% if ev.kind == 'carga' %}
+  <div class="lc-evento-banner mb-2" style="background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border-color:#2E7D32;">
+    <strong>Movimiento {{ '%03d'|format(ev.num) }} — ENTRADA</strong> &nbsp;|&nbsp;
+    {{ ev.fecha }} &nbsp;|&nbsp; {{ ev.litros }} L &nbsp;|&nbsp;
+    Total bruto compra: {{ ev.bruto }}
+  </div>
+  {% else %}
+  <div class="lc-evento-banner mb-2" style="background:linear-gradient(135deg,#FFF3E0,#FFF8E1);border-color:#FFB74D;">
+    <strong>Movimiento {{ '%03d'|format(ev.num) }} — SALIDA</strong>
+    {% if ev.bitacora_codigo %} &nbsp;|&nbsp; <span class="badge bg-success">{{ ev.bitacora_codigo }}</span>{% endif %}
+    &nbsp;|&nbsp;
+    {{ ev.fecha }} &nbsp;|&nbsp; {{ ev.vehiculo }} &nbsp;|&nbsp; {{ ev.responsable }} &nbsp;|&nbsp;
+    <strong>Total: {{ ev.litros }} L</strong> &nbsp;|&nbsp;
+    <strong>Neto imputado: {{ ev.neto }}</strong> &nbsp;|&nbsp; {{ ev.n_cuarteles }} cuartel(es)
+  </div>
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0">
+        <thead><tr><th>Cuartel</th><th>Litros</th><th>Valor neto imp.</th></tr></thead>
+        <tbody>
+          {% for d in ev.detalle %}
+          <tr><td>{{ d.cuartel }}</td><td>{{ d.litros }}</td><td>{{ d.neto }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+  {% else %}
+  <div class="alert alert-info">No hay movimientos en el período seleccionado.</div>
+  {% endif %}
+
+  {% elif sec_activa == 'planilla' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Planilla maestra del estanque</h2>
+    <p class="small text-muted">
+      Imprima y deje en el estanque para <strong>anotar salidas a mano</strong>.
+      Columnas: fecha, litros, huerto, maquinaria y quien retira.
+    </p>
+    <form method="post" class="row g-3">
+      <fieldset class="border-0 p-0 m-0" {% if solo_lectura %}disabled{% endif %}>
+      <input type="hidden" name="action" value="planilla_pdf">
+      <input type="hidden" name="sec" value="planilla">
+      <div class="col-md-4">
+        <label class="form-label">Fecha de carga</label>
+        <input type="date" name="fecha" class="form-control" value="{{ plan_fecha }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Carga (Lts)</label>
+        <input type="number" name="litros" class="form-control" min="0" step="1" value="{{ plan_litros|int }}" required>
+      </div>
+      <div class="col-md-4 d-flex align-items-end gap-2">
+        <button type="submit" class="btn btn-primary" {% if solo_lectura %}disabled{% endif %}>Imprimir planilla maestra</button>
+        {{ pdf_btn(pdf_planilla_url, '📥 DESCARGAR PDF') }}
+      </div>
+      </fieldset>
+    </form>
+    <p class="small text-muted mt-2 mb-0">Formato carta · una página con recuadros para completar en terreno.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if sec_activa == 'bitacora' and bitacora_admin_qr %}
+<script>
+(function () {
+  (function () {
+    var form = document.getElementById('formDespachoPetroleo');
+    var btn = document.getElementById('btnDespacharPetroleo');
+    if (!form || !btn) return;
+    var enviando = false;
+    form.addEventListener('submit', function (ev) {
+      if (enviando) { ev.preventDefault(); return false; }
+      enviando = true;
+      btn.disabled = true;
+      var prev = btn.textContent;
+      btn.textContent = 'Registrando…';
+      setTimeout(function () {
+        enviando = false;
+        btn.disabled = false;
+        btn.textContent = prev;
+      }, 70000);
+    });
+  })();
+
+  function copiarTexto(btn, valor) {
+    var ok = false;
+    function done() {
+      var prev = btn.getAttribute('data-label') || 'Copiar';
+      btn.textContent = ok ? 'Copiado ✓' : prev;
+      setTimeout(function () { btn.textContent = prev; }, 2000);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(valor).then(function () { ok = true; done(); }).catch(done);
+      return;
+    }
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = valor;
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    } catch (e) {}
+    done();
+  }
+
+  document.querySelectorAll('.js-copiar-link').forEach(function (b) {
+    b.setAttribute('data-label', 'Copiar');
+    b.addEventListener('click', function () {
+      var el = document.getElementById(b.getAttribute('data-target') || '');
+      if (el) copiarTexto(b, el.value || '');
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
