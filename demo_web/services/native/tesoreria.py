@@ -8,7 +8,7 @@ from flask import flash, render_template, request, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.lc_excluir_espino import filtrar_df_facturas_espino_lc, sql_and_excluir_razon_social_espino
-from demo_web.services.tesoreria_cxp import saldo_cxp_neto, sql_imputado_costos_subquery, sql_solo_cxp_tesoreria
+from demo_web.services.tesoreria_cxp import saldo_factura_tesoreria, sql_imputado_costos_subquery, sql_solo_cxp_tesoreria
 from demo_web.services.native._helpers import hoy_demo
 from demo_web.services.tenant_scope import razon_social_default
 
@@ -200,6 +200,10 @@ def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | 
 
 
 def _reparar_tesoreria_lc(conn, demo) -> None:
+    from demo_web.services.tenant_scope import is_concepcion_tenant
+
+    if not is_concepcion_tenant():
+        return
     from demo_web.services.tesoreria_reparar_lc import reparar_tesoreria_lc_pendientes
 
     reparar_tesoreria_lc_pendientes(
@@ -269,7 +273,7 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
         params=(psel,),
     )
     dfpr["saldo"] = dfpr.apply(
-        lambda r: saldo_cxp_neto(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
+        lambda r: saldo_factura_tesoreria(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
         axis=1,
     )
     dfpr = dfpr[dfpr["saldo"] > 0.01].copy()
@@ -415,7 +419,7 @@ def _docs_pendientes_proveedor(demo, conn, proveedor: str) -> pd.DataFrame:
     if dfpr.empty:
         return dfpr
     dfpr["saldo"] = dfpr.apply(
-        lambda r: saldo_cxp_neto(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
+        lambda r: saldo_factura_tesoreria(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
         axis=1,
     )
     return dfpr[dfpr["saldo"] > 0.01].copy()

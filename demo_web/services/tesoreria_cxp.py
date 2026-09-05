@@ -29,3 +29,20 @@ def saldo_cxp_neto(monto_total, monto_pagado, imputado_costos) -> float:
     bruto = max(0.0, float(monto_total or 0) - float(monto_pagado or 0))
     imp = max(0.0, float(imputado_costos or 0))
     return max(0.0, bruto - min(bruto, imp))
+
+
+def usar_saldo_cxp_neto_en_tesoreria() -> bool:
+    """LC alinea CxP con Costos; Espino muestra deuda hasta el pago en Tesorería."""
+    try:
+        from demo_web.services.tenant_scope import is_espino_tenant
+
+        return not is_espino_tenant()
+    except Exception:
+        return True
+
+
+def saldo_factura_tesoreria(monto_total, monto_pagado, imputado_costos=0) -> float:
+    bruto = max(0.0, float(monto_total or 0) - float(monto_pagado or 0))
+    if usar_saldo_cxp_neto_en_tesoreria():
+        return saldo_cxp_neto(monto_total, monto_pagado, imputado_costos)
+    return bruto
