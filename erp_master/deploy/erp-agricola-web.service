@@ -1,0 +1,32 @@
+[Unit]
+Description=ERP Rubro Agricola multi-tenant (Flask)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/demo-web
+Environment=PYTHONPATH=/root/demo-web
+Environment=ERP_APP=agricola
+Environment=ERP_DEMO_URL_PREFIX=/agricola
+Environment=ERP_SESSION_COOKIE=erp_agricola_session
+Environment=ERP_COOKIE_SECURE=1
+Environment=ERP_DEMO_SECRET_KEY=change-me-agricola-production
+Environment=ERP_LC_DB=/root/erp_concepcion_v6.db
+Environment=ERP_DEMO_DB=/root/demo/erp_demo.db
+Environment=ERP_GLOBALGAP_DB=/root/globalgap/erp_globalgap.db
+Environment=ERP_GLOBALGAP_SECRETS=/root/globalgap/.streamlit/secrets.toml
+Environment=ERP_GLOBALGAP_DOCS=/root/globalgap/docs
+Environment=ERP_SECRETS=/root/.streamlit/secrets.toml
+Environment=ERP_DEMO_SECRETS=/root/demo/.streamlit/secrets.toml
+Environment=ERP_LOGO_DIR=/root/static
+Environment=ERP_PDF_CACHE=/tmp/erp_pdf_cache
+Environment=ERP_STATUS_DIR=/root/erp_status
+Environment=ERP_MASTER_BRIDGE_SECRET=change-me-bridge-shared-with-master
+ExecStart=/root/demo-web/.venv/bin/gunicorn --chdir /root/demo-web --bind 127.0.0.1:8508 --workers 2 --timeout 120 demo_web.wsgi:app
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
