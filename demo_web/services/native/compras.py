@@ -7,6 +7,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
+from demo_web.services.tenant_scope import is_espino_tenant
 from demo_web.services.costos_compras_coherencia import sql_historial_compras_parent
 from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
@@ -232,20 +233,28 @@ def _historial(demo, conn) -> dict:
     rows = []
     for _, r in df.iterrows():
         nro = str(r["nro_documento"] or "").strip()
+        es_ge = _es_doc_imputacion_costos(nro)
         es_interno = _es_documento_interno(nro)
-        folio = "" if es_interno else (r["folio_interno"] or "").strip()
+        folio = "" if es_interno or es_ge else (r["folio_interno"] or "").strip()
         razon = str(r["razon_social"] or "").strip()
         if razon not in siguientes_por_razon:
             siguientes_por_razon[razon] = _siguiente_correlativo_interno(conn, razon)
+        # GE-* (migración gastos_espino): mostrar documento e ítem como en módulo Espino LC.
+        if is_espino_tenant() and es_ge:
+            nro_show = str(r["proveedor"] or "S/N").strip() or "S/N"
+            proveedor_show = "—"
+        else:
+            nro_show = nro
+            proveedor_show = r["proveedor"]
         rows.append(
             {
                 "id": int(r["id"]),
-                "nro_documento": nro,
+                "nro_documento": nro_show,
                 "folio_interno": folio,
-                "es_doc_interno": es_interno,
-                "puede_correlativo": (not es_interno),
+                "es_doc_interno": es_interno or es_ge,
+                "puede_correlativo": (not es_interno and not es_ge),
                 "siguiente_correlativo": siguientes_por_razon.get(razon, ""),
-                "proveedor": r["proveedor"],
+                "proveedor": proveedor_show,
                 "razon_social": r["razon_social"],
                 "fecha_compra": str(r["fecha_compra"])[:10],
                 "fecha_vencimiento": str(r["fecha_vencimiento"] or r["fecha_compra"])[:10],

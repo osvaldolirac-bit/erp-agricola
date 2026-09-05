@@ -9,11 +9,16 @@ DOC_IMPUTACION_COSTOS_PREFIX = "GE-"
 
 
 def sql_historial_compras_parent(col_prefix: str = "") -> str:
-    """Parent en historial Compras: incluye INT-, excluye _P y GE-*."""
+    """Parent en historial Compras: incluye INT-; excluye _P. GE-* solo fuera de tenant Espino."""
+    from demo_web.services.tenant_scope import is_espino_tenant
+
     p = f"{col_prefix}." if col_prefix else ""
+    ge = ""
+    if not is_espino_tenant():
+        ge = f"AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'GE-*'"
     return f"""
           AND {p}nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'GE-*'
+          {ge}
     """
 
 
