@@ -113,6 +113,15 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 "MES", "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY",
                 "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES", "EERR_ACUM",
             ]
+            if "CAJA_INICIAL" in df_flujo.columns and float(df_flujo["CAJA_INICIAL"].sum() or 0) > 0.01:
+                display_cols = [
+                    "MES", "INGRESOS", "CAJA INICIAL", "RRHH SUELDOS", "TESO REAL", "TESO PROY",
+                    "EGRESOS REAL", "EGRESOS PROY", "EGRESOS TOTAL", "RESULTADO MES", "EERR ACUM",
+                ]
+                base_cols = [
+                    "MES", "INGRESOS", "CAJA_INICIAL", "RRHH", "TESO_REAL", "TESO_PROY",
+                    "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES", "EERR_ACUM",
+                ]
             n_meses = len(df_flujo)
             df_show = df_flujo[base_cols].copy()
             df_show = pd.concat(
@@ -165,9 +174,11 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 )
             if meta.get("saldo_caja_inicial", 0) > 0.01 and meta.get("mes_caja_aplicada"):
                 _extra = (
-                    f"El ingreso de {meta['mes_caja_aplicada']} incluye flujo proyectado "
-                    f"({demo.f_peso(meta.get('ingresos_flujo_mes_caja', 0))}) + saldo caja inicial "
-                    f"({demo.f_peso(meta['saldo_caja_inicial'])}), cargado en Administración → Ingresos flujo."
+                    f"Saldo caja inicial ({demo.f_peso(meta['saldo_caja_inicial'])}) "
+                    f"en columna aparte en {meta['mes_caja_aplicada']} "
+                    f"(ingresos operacionales del mes: "
+                    f"{demo.f_peso(meta.get('ingresos_flujo_mes_caja', 0))}). "
+                    f"Cargado en Administración → Ingresos flujo."
                 )
                 caja_info = f"{caja_info} {_extra}".strip() if caja_info else _extra
 

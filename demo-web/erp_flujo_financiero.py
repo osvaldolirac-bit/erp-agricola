@@ -625,15 +625,16 @@ def armar_flujo_financiero(
         rrhh_real = row["rrhh_real"]
         teso_proy = row["teso_proy"] * factor_teso
         rrhh_proy = row["rrhh_proy"] * factor_rrhh
-        ing = ingresos.get((anio, mes), 0.0)
+        ing = float(ingresos.get((anio, mes), 0.0) or 0.0)
+        caja_inicial = 0.0
         if mes_caja_aplicada and (anio, mes) == mes_caja_aplicada and saldo_caja_inicial > 0.01:
-            ing += saldo_caja_inicial
+            caja_inicial = saldo_caja_inicial
         eg_real = teso_real + rrhh_real + gastado_imputado
         eg_proy = teso_proy + rrhh_proy
         eg_total = eg_real + eg_proy
         rrhh_total = rrhh_real + rrhh_proy
         teso_total = teso_real + teso_proy
-        resultado = ing - eg_total
+        resultado = ing + caja_inicial - eg_total
         if row.get("en_eerr"):
             if not eerr_started:
                 eerr = 0.0
@@ -649,6 +650,7 @@ def armar_flujo_financiero(
                 "anio": anio,
                 "mes": mes,
                 "INGRESOS": ing,
+                "CAJA_INICIAL": caja_inicial,
                 "RRHH": rrhh_total,
                 "TESORERIA": teso_total,
                 "EGRESOS_REAL": eg_real,
@@ -753,13 +755,17 @@ def fila_total_flujo_mensual(df_flujo):
         return {}
     tot = {"MES": "TOTAL"}
     for col in (
-        "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY",
+        "INGRESOS", "CAJA_INICIAL", "RRHH", "TESO_REAL", "TESO_PROY",
         "EGRESOS_REAL", "EGRESOS_PROY",
     ):
         if col in df_flujo.columns:
             tot[col] = float(df_flujo[col].sum())
     tot["EGRESOS_TOTAL"] = tot.get("EGRESOS_REAL", 0.0) + tot.get("EGRESOS_PROY", 0.0)
-    tot["RESULTADO_MES"] = tot.get("INGRESOS", 0.0) - tot["EGRESOS_TOTAL"]
+    tot["RESULTADO_MES"] = (
+        tot.get("INGRESOS", 0.0)
+        + tot.get("CAJA_INICIAL", 0.0)
+        - tot["EGRESOS_TOTAL"]
+    )
     if "EN_EERR" in df_flujo.columns:
         df_eerr = df_flujo[df_flujo["EN_EERR"].astype(bool)]
         if not df_eerr.empty:
@@ -775,10 +781,12 @@ def df_flujo_para_pdf(df_flujo):
     if df_flujo.empty:
         return df_flujo
     cols = [
-        "MES", "INGRESOS", "RRHH", "TESO_REAL", "TESO_PROY",
+        "MES", "INGRESOS", "CAJA_INICIAL", "RRHH", "TESO_REAL", "TESO_PROY",
         "EGRESOS_REAL", "EGRESOS_PROY", "EGRESOS_TOTAL", "RESULTADO_MES", "EERR_ACUM",
     ]
     cols = [c for c in cols if c in df_flujo.columns]
+    if "CAJA_INICIAL" in cols and float(df_flujo["CAJA_INICIAL"].sum() or 0) < 0.01:
+        cols.remove("CAJA_INICIAL")
     df_out = df_flujo[cols].copy()
     df_out = pd.concat([df_out, pd.DataFrame([fila_total_flujo_mensual(df_flujo)])], ignore_index=True)
     return df_out.rename(
@@ -791,5 +799,6 @@ def df_flujo_para_pdf(df_flujo):
             "EGRESOS_TOTAL": "EGRESOS TOTAL",
             "RESULTADO_MES": "RESULTADO MES",
             "EERR_ACUM": "EERR ACUM",
+            "CAJA_INICIAL": "CAJA INICIAL",
         }
     )

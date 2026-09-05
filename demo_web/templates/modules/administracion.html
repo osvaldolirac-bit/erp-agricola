@@ -374,6 +374,7 @@
       <div class="col-md-4">
         <label class="form-label small">Saldo caja inicial ($)</label>
         <input type="number" name="caja_inicial" class="form-control form-control-sm" value="{{ caja_inicial|int }}" min="0" step="100000">
+        <div class="form-text">Efectivo al inicio de temporada. En Flujo financiero va en columna aparte (no se suma a ingresos por cuartel).</div>
       </div>
     </div>
     {% for cc in flujo_cuarteles %}
