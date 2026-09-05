@@ -15,10 +15,6 @@ def _registrar_acceso_sesion(demo, email: str, modulo: str = "") -> None:
     from demo_web.services.erp_loader import get_erp_app
     from flask import session
 
-    # Ingreso desde Super Consola: no contaminar la bitácora del tenant.
-    if session.get("from_master_console"):
-        return
-
     try:
         from demo_web.services.mantenimiento import bitacora_erp_activa
 
@@ -37,7 +33,12 @@ def _registrar_acceso_sesion(demo, email: str, modulo: str = "") -> None:
     try:
         conn = demo.conectar_db()
         f_h = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
-        detalle = "Sesión Detectada (Flask LC)" if app_tag == "lc" else "Sesión Detectada (Flask demo)"
+        if session.get("from_master_console"):
+            detalle = "Sesión Detectada (Super Consola → Flask LC)"
+        elif app_tag == "lc":
+            detalle = "Sesión Detectada (Flask LC)"
+        else:
+            detalle = "Sesión Detectada (Flask demo)"
         conn.execute(
             "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
             (email, "ACCESO", detalle, f_h),

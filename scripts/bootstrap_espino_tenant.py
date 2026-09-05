@@ -100,6 +100,12 @@ def main() -> int:
     print(f"  DB: {db_path}")
     print(f"  Secrets: {secrets}")
     print(f"  Usuarios replicados desde LC: {n_users}")
+    status_dir = Path(os.environ.get("ERP_STATUS_DIR", "/root/erp_status"))
+    bitacora_flag = status_dir / "espino.bitacora"
+    bitacora_flag.parent.mkdir(parents=True, exist_ok=True)
+    if not bitacora_flag.is_file():
+        bitacora_flag.write_text("1\n", encoding="utf-8")
+        print(f"  Bitácora: activada ({bitacora_flag})")
     print("  URL: https://erpmaster.cl/agricola/login")
     return 0
 

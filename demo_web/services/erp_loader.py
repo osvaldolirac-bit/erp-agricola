@@ -200,6 +200,12 @@ def bind_tenant_context(slug: str | None) -> dict[str, Any] | None:
     g.tenant_slug = t["slug"] if t else None
     g.tenant = t
     if t:
+        try:
+            from demo_web.services.mantenimiento import ensure_bitacora_erp_activa
+
+            ensure_bitacora_erp_activa(t["slug"])
+        except Exception:
+            pass
         get_erp_module_for(t["slug"])
     return t
 

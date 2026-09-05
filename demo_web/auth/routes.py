@@ -186,6 +186,7 @@ def master_entry():
         tenant_slug=token_slug,
         from_master=True,
     )
+    _maybe_alert_login(email=row[0], exitoso=True, tenant_slug=token_slug)
     return redirect(default_landing_url())
 
 
@@ -275,6 +276,7 @@ def elegir_empresa():
         if not chosen or not get_tenant(slug):
             flash("Elige una empresa válida.", "warning")
             return redirect(url_for("auth.elegir_empresa"))
+        _maybe_alert_login(email=email, exitoso=True, tenant_slug=slug)
         _activate_session(
             email=email,
             rol=chosen.get("rol") or "operador",

@@ -101,6 +101,21 @@ def set_bitacora_erp(slug: str, activo: bool) -> None:
         pass
 
 
+def ensure_bitacora_erp_activa(slug: str) -> bool:
+    """Activa bitácora si el tenant no tiene flag (p. ej. Espino nuevo)."""
+    safe = _safe_slug(slug)
+    if not safe or safe == "demo":
+        return False
+    path = _bitacora_path(safe)
+    try:
+        if os.path.isfile(path):
+            return bitacora_erp_activa(safe)
+        set_bitacora_erp(safe, True)
+        return True
+    except OSError:
+        return False
+
+
 def acceso_login_path(app: Flask) -> str:
     """Login limpio del rubro agrícola (sin ?next= a módulos viejos)."""
     prefix = (app.config.get("APPLICATION_ROOT") or "/agricola").strip().rstrip("/")
