@@ -467,6 +467,8 @@ def armar_flujo_financiero(
     hoy,
     cuarteles,
     resumen_costos,
+    *,
+    imputar_gastado_contable: bool = True,
 ):
     # Toda la temporada: meses pasados = solo real; mes en curso y futuros = real + proyección.
     inicio_temp = date(fi.year, fi.month, 1)
@@ -615,7 +617,8 @@ def armar_flujo_financiero(
             teso_real += teso_atrasado
             atrasado_aplicado = True
         if (
-            not gastado_aplicado
+            imputar_gastado_contable
+            and not gastado_aplicado
             and row.get("en_eerr")
             and gastado_contable > 0.01
             and (anio, mes) == mes_inicio_eerr

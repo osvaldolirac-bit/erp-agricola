@@ -12120,6 +12120,7 @@ def _render_flujo_temporada(conn, nombre, fi, ff, key_prefix):
     resumen_costos = _resumen_costos_para_flujo(conn, nombre, fi, ff)
     df_flujo, df_cc, df_eg_cc, meta = armar_flujo_financiero(
         conn, nombre, fi, ff, hoy, CUARTELES_OFICIALES, resumen_costos,
+        imputar_gastado_contable=False,
     )
 
     if df_flujo.empty:

@@ -14,7 +14,7 @@ from demo_web.services.native._helpers import (
     flujo_th_class,
     temporada_sel,
 )
-from demo_web.services.tenant_scope import cuarteles_oficiales
+from demo_web.services.tenant_scope import cuarteles_oficiales, is_espino_tenant
 
 
 def gather_flujo(user_email: str, user_rol: str) -> dict:
@@ -39,6 +39,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         cuarteles = cuarteles_costos_lc(cuarteles_oficiales(demo))
         df_flujo, df_cc, df_eg_cc, meta = armar_flujo_financiero(
             conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
+            imputar_gastado_contable=is_espino_tenant(),
         )
 
         flujo_rows = []
@@ -258,6 +259,7 @@ def export_flujo_excel(user_email: str, user_rol: str):
         cuarteles = cuarteles_costos_lc(cuarteles_oficiales(demo))
         df_flujo, _, _, _ = armar_flujo_financiero(
             conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
+            imputar_gastado_contable=is_espino_tenant(),
         )
     finally:
         conn.close()
