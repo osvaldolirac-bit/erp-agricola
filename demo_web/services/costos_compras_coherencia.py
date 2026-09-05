@@ -28,7 +28,7 @@ def sql_excluir_ge_duplicado_factura_real(col_prefix: str = "") -> str:
 
     if not is_espino_tenant():
         return ""
-    p = f"{col_prefix}." if col_prefix else ""
+    p = f"{col_prefix}." if col_prefix else "facturas."
     return f"""
           AND NOT (
             UPPER(TRIM({p}nro_documento)) GLOB 'GE-*'
