@@ -171,6 +171,47 @@ def check_tenant_registry_espino() -> None:
     print("OK  tenants.py has espino")
 
 
+def check_respaldo_cron_tenants() -> None:
+    """Todos los tenants agrícola en tenants.py deben estar en el cron de respaldo."""
+    if APP_ROOT not in sys.path:
+        sys.path.insert(0, APP_ROOT)
+    from demo_web.services.respaldo_cron_clientes import (
+        clientes_respaldo_datos,
+        tenants_agricola_sin_respaldo_cron,
+    )
+
+    faltan = tenants_agricola_sin_respaldo_cron()
+    if faltan:
+        raise CheckFailed(
+            f"tenants agrícola sin respaldo cron: {', '.join(faltan)} "
+            "(registrar en demo_web/tenants.py)"
+        )
+
+    cron_path = os.environ.get(
+        "ERP_RESPALDO_CRON",
+        "/root/scripts/erp_respaldo_cron.py",
+    )
+    if os.path.isfile(cron_path):
+        with open(cron_path, encoding="utf-8") as fh:
+            cron_src = fh.read()
+        if "clientes_respaldo_datos" not in cron_src:
+            raise CheckFailed(
+                f"{cron_path} no usa clientes_respaldo_datos() — lista hardcodeada obsoleta"
+            )
+    else:
+        print(f"SKIP respaldo cron script (not on disk: {cron_path})")
+
+    slugs = {
+        c["slug"]
+        for c in clientes_respaldo_datos()
+        if c.get("producto") == "agricola"
+    }
+    for need in ("concepcion", "espino", "demo", "globalgap"):
+        if need not in slugs:
+            raise CheckFailed(f"respaldo cron missing agricola tenant slug: {need}")
+    print("OK  respaldo cron covers all agricola tenants")
+
+
 def _parse_list_constant(source: str, name: str) -> list[str]:
     import ast
 
@@ -336,7 +377,9 @@ def main() -> int:
         check_login,
         check_globalgap_login,
         check_salida_petroleo_route,
-        check_consola_globalgap_tenant,
+        check_consola_agricola_tenants,
+        check_tenant_registry_espino,
+        check_respaldo_cron_tenants,
     ]
     failed = 0
     for fn in checks:
