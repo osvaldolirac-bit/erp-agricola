@@ -520,26 +520,57 @@ def _historial(demo, conn) -> dict:
     }
 
 
+def _safe_n_aplicacion(val) -> int | None:
+    """Convierte n_aplicacion de SQLite/pandas a int; ignora históricos no numéricos."""
+    try:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return None
+        s = str(val).strip()
+        if not s:
+            return None
+        return int(float(s))
+    except (TypeError, ValueError):
+        return None
+
+
+def _modificar_sector_sql() -> tuple[str, list]:
+    """Filtro opcional por sector (tenant Espino)."""
+    if not is_espino_tenant():
+        return "", []
+    from demo_web.services.native.espino_bodega import CC_ESPINO, ETIQUETA_BODEGA
+
+    sectores = {CC_ESPINO.upper(), ETIQUETA_BODEGA.upper()}
+    placeholders = ",".join("?" for _ in sectores)
+    return f" WHERE UPPER(TRIM(sector)) IN ({placeholders})", sorted(sectores)
+
+
 def _modificar(demo, conn) -> dict:
     from erp_maquinaria import TIPOS_MAQUINARIA_APLICACION, TIPOS_MAQUINARIA_TRACTOR
 
+    where_sec, sec_params = _modificar_sector_sql()
     df_mod = pd.read_sql_query(
-        """SELECT n_aplicacion, fecha, sector,
+        f"""SELECT n_aplicacion, fecha, sector,
                   GROUP_CONCAT(producto, ' + ') AS productos,
                   COUNT(*) AS n_prod
            FROM libro_campo
+           {where_sec}
            GROUP BY n_aplicacion, fecha, sector
-           ORDER BY n_aplicacion DESC""",
+           ORDER BY CAST(n_aplicacion AS INTEGER) DESC""",
         conn,
+        params=sec_params or None,
     )
     eventos = []
     for _, r in df_mod.iterrows():
+        n_app = _safe_n_aplicacion(r["n_aplicacion"])
+        if n_app is None:
+            continue
+        n_prod = int(r["n_prod"]) if r["n_prod"] is not None else 0
         eventos.append(
             {
-                "n_app": int(r["n_aplicacion"]),
+                "n_app": n_app,
                 "label": (
-                    f"{int(r['n_aplicacion']):05d} | {r['fecha']} | {r['sector']} | "
-                    f"{r['productos']} ({int(r['n_prod'])} prod.)"
+                    f"{n_app:05d} | {r['fecha']} | {r['sector']} | "
+                    f"{r['productos']} ({n_prod} prod.)"
                 ),
             }
         )
@@ -549,9 +580,9 @@ def _modificar(demo, conn) -> dict:
     lineas: list = []
     if eventos:
         app_sel = request.args.get("n_app")
-        if app_sel and str(app_sel).isdigit():
-            edit_app = int(app_sel)
-        else:
+        edit_app = _safe_n_aplicacion(app_sel) if app_sel else None
+        n_apps = {e["n_app"] for e in eventos}
+        if edit_app not in n_apps:
             edit_app = eventos[0]["n_app"]
 
         df_lineas = pd.read_sql_query(
@@ -560,45 +591,57 @@ def _modificar(demo, conn) -> dict:
             params=(edit_app,),
         )
         lineas = []
+        ids_validos: set[int] = set()
         for _, r in df_lineas.iterrows():
-            lineas.append({"id": int(r["id"]), "producto": r["producto"], "label": f"ID {int(r['id'])} | {r['producto']}"})
+            lid = int(r["id"])
+            ids_validos.add(lid)
+            lineas.append({"id": lid, "producto": r["producto"], "label": f"ID {lid} | {r['producto']}"})
 
         linea_sel = request.args.get("linea_id")
+        lid = None
         if linea_sel and str(linea_sel).isdigit():
-            lid = int(linea_sel)
-        elif lineas:
+            cand = int(linea_sel)
+            if cand in ids_validos:
+                lid = cand
+        if lid is None and lineas:
             lid = lineas[0]["id"]
-        else:
-            lid = None
 
         if lid is not None:
-            row = df_lineas[df_lineas["id"] == lid].iloc[0]
-            u_d = str(row.get("unidad_dosis") or "")
-            edit_linea = {
-                "id": int(row["id"]),
-                "n_app": edit_app,
-                "fecha": str(row["fecha"])[:10],
-                "sector": row["sector"],
-                "especie": row["especie"],
-                "producto": row["producto"],
-                "lote": row.get("lote_producto") or "",
-                "ingrediente": row.get("ingrediente") or "",
-                "dosis": float(row.get("dosis") or 0),
-                "unidad_dosis": u_d if u_d in UNIDADES_DOSIS else UNIDADES_DOSIS[0],
-                "vol_total": float(row.get("vol_total") or 0),
-                "gasto_total": float(row.get("gasto_total") or 0),
-                "fecha_viable": str(row.get("fecha_viable") or row["fecha"])[:10],
-                "aplicadores": row.get("aplicadores") or "",
-                "maquina": row.get("maquina") or "",
-                "tractor": row.get("tractor") or "",
-            }
+            matches = df_lineas[df_lineas["id"] == lid]
+            if not matches.empty:
+                row = matches.iloc[0]
+                u_d = str(row.get("unidad_dosis") or "")
+                edit_linea = {
+                    "id": int(row["id"]),
+                    "n_app": edit_app,
+                    "fecha": str(row["fecha"])[:10],
+                    "sector": row["sector"],
+                    "especie": row["especie"],
+                    "producto": row["producto"],
+                    "lote": row.get("lote_producto") or "",
+                    "ingrediente": row.get("ingrediente") or "",
+                    "dosis": float(row.get("dosis") or 0),
+                    "unidad_dosis": u_d if u_d in UNIDADES_DOSIS else UNIDADES_DOSIS[0],
+                    "vol_total": float(row.get("vol_total") or 0),
+                    "gasto_total": float(row.get("gasto_total") or 0),
+                    "fecha_viable": str(row.get("fecha_viable") or row["fecha"])[:10],
+                    "aplicadores": row.get("aplicadores") or "",
+                    "maquina": row.get("maquina") or "",
+                    "tractor": row.get("tractor") or "",
+                }
+
+    cuarteles = list(centros_costo(demo))
+    if edit_linea:
+        sec = str(edit_linea.get("sector") or "").strip()
+        if sec and sec not in cuarteles:
+            cuarteles.insert(0, sec)
 
     return {
         "mod_eventos": eventos,
         "mod_lineas": lineas,
         "mod_edit": edit_linea,
         "mod_app_sel": edit_app,
-        "cuarteles": centros_costo(demo),
+        "cuarteles": cuarteles,
         "especies": _especies_libro_campo(demo),
         "unidades_dosis": UNIDADES_DOSIS,
         "maquinaria_opts": _opciones_maquinaria(

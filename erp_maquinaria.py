@@ -210,6 +210,8 @@ def migrar_registros_maquinaria_legacy(conn):
     stats = {"petroleo": 0, "libro_maquina": 0, "libro_tractor": 0, "bitacora": 0}
 
     def _actualizar_campo(tabla, col_id, col_valor, stat_key):
+        if not _table_exists(conn, tabla):
+            return
         for row_id, val in conn.execute(
             f"SELECT {col_id}, {col_valor} FROM {tabla} "
             f"WHERE TRIM(COALESCE({col_valor}, '')) != ''"
@@ -225,7 +227,8 @@ def migrar_registros_maquinaria_legacy(conn):
     _actualizar_campo("petroleo", "id", "vehiculo", "petroleo")
     _actualizar_campo("libro_campo", "id", "maquina", "libro_maquina")
     _actualizar_campo("libro_campo", "id", "tractor", "libro_tractor")
-    _actualizar_campo("bitacora_maquinaria", "id", "id_maquinaria", "bitacora")
+    if _table_exists(conn, "bitacora_maquinaria"):
+        _actualizar_campo("bitacora_maquinaria", "id", "id_maquinaria", "bitacora")
 
     cur.execute(
         "INSERT INTO schema_meta (clave, valor) VALUES ('maestra_maquinaria_v3_registros', '1')"
@@ -340,6 +343,14 @@ def _sembrar_tractores_predeterminados(conn):
             max_ord += 1
 
 
+def _table_exists(conn, name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+        (name,),
+    ).fetchone()
+    return bool(row)
+
+
 def migrar_maestra_maquinaria(conn):
     if conn_en_solo_lectura(conn):
         return
@@ -362,20 +373,21 @@ def migrar_maestra_maquinaria(conn):
             for r in conn.execute("SELECT codigo FROM maestra_maquinaria").fetchall()
         }
         max_ord = conn.execute("SELECT COALESCE(MAX(orden), -1) FROM maestra_maquinaria").fetchone()[0]
-        for (raw,) in conn.execute(
-            """SELECT DISTINCT TRIM(id_maquinaria) FROM bitacora_maquinaria
-               WHERE id_maquinaria IS NOT NULL AND TRIM(id_maquinaria) != ''"""
-        ).fetchall():
-            cod = _normalizar_codigo(raw)
-            if not cod or cod in existentes:
-                continue
-            max_ord += 1
-            conn.execute(
-                """INSERT OR IGNORE INTO maestra_maquinaria (codigo, nombre, tipo, activo, orden, notas)
-                   VALUES (?, ?, 'Otro', 1, ?, 'Importado desde bitácora histórica')""",
-                (cod, str(raw).strip(), max_ord),
-            )
-            existentes.add(cod)
+        if _table_exists(conn, "bitacora_maquinaria"):
+            for (raw,) in conn.execute(
+                """SELECT DISTINCT TRIM(id_maquinaria) FROM bitacora_maquinaria
+                   WHERE id_maquinaria IS NOT NULL AND TRIM(id_maquinaria) != ''"""
+            ).fetchall():
+                cod = _normalizar_codigo(raw)
+                if not cod or cod in existentes:
+                    continue
+                max_ord += 1
+                conn.execute(
+                    """INSERT OR IGNORE INTO maestra_maquinaria (codigo, nombre, tipo, activo, orden, notas)
+                       VALUES (?, ?, 'Otro', 1, ?, 'Importado desde bitácora histórica')""",
+                    (cod, str(raw).strip(), max_ord),
+                )
+                existentes.add(cod)
         cur.execute("INSERT INTO schema_meta (clave, valor) VALUES ('maestra_maquinaria_v1', '1')")
     if not cur.execute("SELECT 1 FROM schema_meta WHERE clave='maestra_maquinaria_v2_tractores'").fetchone():
         _sembrar_tractores_predeterminados(conn)
