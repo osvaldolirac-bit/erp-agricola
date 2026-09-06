@@ -1,0 +1,38 @@
+<div class="us-widget-anchor">
+  <div class="clima-widget-compact us-widget-donut" title="Tiempo de uso estimado · últimos 7 días">
+    <div class="clima-widget-kicker">👥 Usuarios ERP</div>
+    <div class="us-donut-wrap">
+      <div class="us-donut" style="background: conic-gradient({{ usuarios_donut.gradient }});">
+        <div class="us-donut-hole"></div>
+        <div class="us-donut-center">
+          <div class="us-donut-num">{{ usuarios_donut.n_online }}</div>
+          <div class="us-donut-lbl">en línea</div>
+        </div>
+      </div>
+    </div>
+    {% if usuarios_donut.vacio %}
+    <div class="us-leyenda us-leyenda-vacia">Sin actividad en 7 días</div>
+    {% else %}
+    <div class="us-leyenda">
+      {% for item in usuarios_donut.leyenda %}
+      {% if item.otros %}
+      <div class="us-ley-fila us-ley-otros">
+        <span class="us-ley-nom">Otros</span>
+        <span class="us-ley-pct">{{ item.pct }}%</span>
+      </div>
+      {% else %}
+      <div class="us-ley-fila" title="{{ item.usuario }}">
+        <span class="us-ley-dot" style="background: {{ item.color }};"></span>
+        <span class="us-ley-nom">{{ item.nombre }}</span>
+        <span class="us-ley-pct">{{ item.pct }}%</span>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="clima-widget-meta">
+      {{ usuarios_donut.n_usuarios_7d }} usuario(s) · ~{{ usuarios_donut.total_min }} min totales<br>
+      {{ usuarios_donut.meta_online }}
+    </div>
+  </div>
+</div>

@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "description": "Marcadores obligatorios — deploy falla si falta alguno (anti-regresión Libro de Campo / agrícola)",
+  "files": {
+    "demo_web/services/native/libro_campo.py": {
+      "min_lines": 820,
+      "must_contain": [
+        "META_KEY = \"lc_evento_meta\"",
+        "def _guardar_evento_meta(",
+        "def _leer_evento_meta(",
+        "def _especies_libro_campo(",
+        "\"form_fecha\":",
+        "\"form_cuartel\":",
+        "\"form_vol_agua\":",
+        "_guardar_evento_meta(demo, request.form)",
+        "from erp_inventario_ia import resolver_ingrediente_activo",
+        "session.pop(META_KEY, None)"
+      ],
+      "must_not_contain": [
+        "pppl_catalogo_sag import resolver_ingrediente_activo",
+        "demo.GAP_ESPECIES",
+        "\"especies\": demo.GAP_ESPECIES"
+      ]
+    },
+    "demo_web/services/native/espino_libro_campo.py": {
+      "min_lines": 400,
+      "must_contain": [
+        "from demo_web.services.native.libro_campo import _especies_libro_campo",
+        "_especies_libro_campo(demo)"
+      ],
+      "must_not_contain": [
+        "demo.GAP_ESPECIES"
+      ]
+    },
+    "demo_web/templates/modules/libro_campo.html": {
+      "min_lines": 350,
+      "must_contain": [
+        "form_fecha",
+        "form_cuartel",
+        "form_vol_agua",
+        "lcSyncCabecera",
+        "lcCabeceraFields"
+      ]
+    },
+    "app_concepcion.py": {
+      "must_contain": [
+        "LIBRO_CAMPO_ESPECIES = [",
+        "GAP_ESPECIES = [",
+        "GAP_AMBITOS = GAP_ESPECIES"
+      ],
+      "must_not_contain": []
+    },
+    "demo_web/services/tenant_rules.py": {
+      "min_lines": 80,
+      "must_contain": [
+        "class TenantRuleSet",
+        "CONCEPCION = TenantRuleSet",
+        "ESPINO = TenantRuleSet",
+        "def verify_implementation_errors",
+        "cxp_usar_saldo_neto",
+        "cxp_incluye_documentos_int"
+      ],
+      "must_not_contain": []
+    }
+  }
+}
