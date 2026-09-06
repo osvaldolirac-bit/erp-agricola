@@ -489,7 +489,7 @@ def create_app(config_class=Config) -> Flask:
                 logo_url = url_for("tenant_logo_asset")
             else:
                 logo_url = None
-            if tenant["slug"] == "concepcion" and find_master_logo_path():
+            if tenant.get("kind") == "lc" and find_master_logo_path():
                 master_logo_url = url_for("master_logo_asset")
         else:
             title = app.config.get("ERP_TITLE", RUBRO_TITLE)
