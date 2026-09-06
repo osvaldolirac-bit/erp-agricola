@@ -53,7 +53,7 @@ def main() -> int:
         [
             *ssh,
             (
-                f"python3 {SCRIPTS}/bootstrap_espino_logo.py --force && "
+                f"APP_ROOT={DEMO_WEB} python3 {SCRIPTS}/bootstrap_espino_logo.py --force && "
                 f"test -f {STATIC}/logo_espino.png && "
                 f"systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web"
             ),

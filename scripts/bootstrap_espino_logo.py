@@ -24,12 +24,30 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _search_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    for raw in (
+        os.environ.get("APP_ROOT"),
+        os.environ.get("DEMO_WEB_ROOT"),
+        str(_repo_root()),
+        str(_repo_root() / "demo-web"),
+        "/root/demo-web",
+    ):
+        if not raw:
+            continue
+        p = Path(raw)
+        if p.is_dir() and p not in dirs:
+            dirs.append(p)
+    return dirs
+
+
 def _bundled_source() -> Path | None:
-    img_dir = _repo_root() / "demo_web" / "static" / "img"
-    for name in _NAMES:
-        p = img_dir / name
-        if p.is_file():
-            return p
+    for root in _search_dirs():
+        img_dir = root / "demo_web" / "static" / "img"
+        for name in _NAMES:
+            p = img_dir / name
+            if p.is_file():
+                return p
     return None
 
 
