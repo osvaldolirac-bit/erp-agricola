@@ -3174,6 +3174,18 @@ def guardar_prorrateo_superficies_cc(conn, datos):
 
 def _clasificar_cc_seleccionados(seleccionados):
     sel = [str(c).strip().upper() for c in seleccionados if c]
+    try:
+        from demo_web.services.native.espino_bodega import ETIQUETA_BODEGA
+        from demo_web.services.tenant_scope import ESPINO_CCS, is_espino_tenant
+
+        if is_espino_tenant():
+            valid = {c.upper() for c in ESPINO_CCS}
+            valid.add(ETIQUETA_BODEGA.upper())
+            directos = [c for c in sel if c in valid]
+            invalid = [c for c in sel if c not in valid]
+            return directos, [], invalid
+    except Exception:
+        pass
     directos = [c for c in sel if c in CUARTELES_IMPUTACION_DIRECTA]
     prorr = [c for c in sel if c in CUARTELES_PRORRATEO]
     invalid = [c for c in sel if c not in directos and c not in prorr]

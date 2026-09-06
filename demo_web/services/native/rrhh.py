@@ -11,6 +11,12 @@ from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 from demo_web.services.tenant_scope import centros_costo, cuarteles_oficiales
 
+
+def _cc_ctx(demo) -> dict:
+    """Centros de costo RRHH; cc_unico cuando el tenant solo tiene uno (Espino)."""
+    ccs = list(centros_costo(demo))
+    return {"centros_costo": ccs, "cc_unico": ccs[0] if len(ccs) == 1 else None}
+
 SECCIONES = [
     ("personal", "📋 PERSONAL"),
     ("contratistas", "🤝 CONTRATISTAS"),
@@ -176,7 +182,7 @@ def _contratistas_maestro(demo, conn) -> dict:
         "contratistas_rows": rows,
         "n_contratistas": len(rows),
         "contratista_edit": edit_item,
-        "centros_costo": centros_costo(demo),
+        **_cc_ctx(demo),
     }
 
 
@@ -195,7 +201,7 @@ def _contratistas_servicio(demo, conn) -> dict:
         "servicio_contratistas": contratistas,
         "servicio_sel_id": sel,
         "servicio_sel": sel_item,
-        "centros_costo": centros_costo(demo),
+        **_cc_ctx(demo),
         "razones_sociales": demo.RAZONES_SOCIALES_COMPRAS,
         "hoy": hoy_demo(demo).isoformat(),
         "sin_contratistas": not contratistas,
@@ -761,6 +767,9 @@ def _post_crear_contratista(demo, conn) -> dict:
     if not ok_rut:
         return {"ok": False, "msg": msg_rut}
     cc = request.form.get("cc_habitual") or ""
+    ccs = centros_costo(demo)
+    if len(ccs) == 1 and (not cc or cc == "—"):
+        cc = ccs[0]
     cc_h = None if not cc or cc == "—" else cc
     conn.execute(
         """INSERT INTO contratistas
@@ -800,6 +809,9 @@ def _post_editar_contratista(demo, conn) -> dict:
     if not ok_rut:
         return {"ok": False, "msg": msg_rut}
     cc = request.form.get("cc_habitual") or ""
+    ccs = centros_costo(demo)
+    if len(ccs) == 1 and (not cc or cc == "—"):
+        cc = ccs[0]
     cc_h = None if not cc or cc == "—" else cc
     conn.execute(
         """UPDATE contratistas SET rut=?, razon_social=?, rubro=?, contacto=?, cc_habitual=?, estado=?, notas=?,
@@ -837,7 +849,10 @@ def _post_registrar_servicio(demo, conn) -> dict:
         monto = float(request.form.get("monto") or 0)
     except ValueError:
         return {"ok": False, "msg": "Monto inválido."}
-    selcc = [c for c in centros_costo(demo) if request.form.get(f"cc_{c}") == "1"]
+    ccs = list(centros_costo(demo))
+    selcc = [c for c in ccs if request.form.get(f"cc_{c}") == "1"]
+    if not selcc and len(ccs) == 1:
+        selcc = ccs
 
     row = conn.execute("SELECT razon_social FROM contratistas WHERE id=?", (cid,)).fetchone()
     if not row:
