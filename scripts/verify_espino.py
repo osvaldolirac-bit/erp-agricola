@@ -209,6 +209,31 @@ def check_master_brand_logo() -> None:
     print(f"OK  logo ERP Master ({path.name}, {len(uri)} bytes data-uri)")
 
 
+def check_master_brand_markup() -> None:
+    """Logo Espino/LC: template, CSS ::after y JS fallback presentes en deploy."""
+    root = APP_ROOT / "demo_web"
+    css_path = root / "static/css/erp.css"
+    js_path = root / "static/js/demo.js"
+    base_path = root / "templates/base.html"
+    dash_path = root / "templates/dashboard/index.html"
+    for p in (css_path, js_path, base_path, dash_path):
+        if not p.is_file():
+            raise CheckFailed(f"falta archivo logo: {p}")
+    css = css_path.read_text(encoding="utf-8")
+    js = js_path.read_text(encoding="utf-8")
+    base = base_path.read_text(encoding="utf-8")
+    dash = dash_path.read_text(encoding="utf-8")
+    if "tenant-espino::after" not in css:
+        raise CheckFailed("erp.css sin fallback CSS tenant-espino")
+    if "ensureErpMasterBrand" not in js:
+        raise CheckFailed("demo.js sin ensureErpMasterBrand")
+    if "data-erp-master-brand" not in base or "body_tenant_class" not in base:
+        raise CheckFailed("base.html sin marcadores logo multi-capa")
+    if "show_master = show_master_brand" not in dash:
+        raise CheckFailed("dashboard/index.html sin fallback logo Espino")
+    print("OK  markup logo ERP Master (CSS + JS + templates)")
+
+
 def main() -> int:
     scripts_dir = str(Path(__file__).resolve().parent)
     if scripts_dir not in sys.path:
@@ -222,6 +247,7 @@ def main() -> int:
         check_respaldo_cron,
         check_tenant_rules_code,
         check_master_brand_logo,
+        check_master_brand_markup,
         check_compras_module_loader,
         check_cxp_parity_db,
     ]

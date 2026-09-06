@@ -70,8 +70,9 @@
     </div>
   </div>
 
-  {% if show_master_brand %}
-  <div class="dashboard-master-logo" aria-hidden="true">
+  {% set show_master = show_master_brand or (tenant and tenant.slug in ['concepcion', 'espino']) %}
+  {% if show_master %}
+  <div class="dashboard-master-logo" id="erpmaster-sello-root" aria-hidden="true">
     <img src="{% if master_brand_src %}{{ master_brand_src }}{% else %}{{ master_logo_url or url_for('static', filename='img/logo_erpmaster.png') }}?v={{ static_version }}{% endif %}" alt="ERP Master">
   </div>
   {% endif %}

@@ -407,9 +407,51 @@
     });
   }
 
+  function ensureErpMasterBrand() {
+    var body = document.body;
+    if (!body) return;
+    var tenantClass = body.classList.contains('tenant-espino') ||
+      body.classList.contains('tenant-concepcion');
+    if (!tenantClass && body.getAttribute('data-erp-master-brand') !== '1') return;
+
+    var src = body.getAttribute('data-erp-master-src') ||
+      body.getAttribute('data-erp-master-static');
+    if (!src) return;
+
+    var existing = document.querySelector('.erp-master-brand img, .dashboard-master-logo img, #erpmaster-sello-root img');
+    if (existing) {
+      if (!existing.getAttribute('src') || existing.getAttribute('src') === window.location.href) {
+        existing.setAttribute('src', src);
+      }
+      existing.addEventListener('error', function onErr() {
+        existing.removeEventListener('error', onErr);
+        if (body.getAttribute('data-erp-master-src')) {
+          existing.setAttribute('src', body.getAttribute('data-erp-master-src'));
+        }
+      }, { once: true });
+      return;
+    }
+
+    var root = document.createElement('div');
+    root.id = 'erpmaster-sello-root';
+    root.className = 'erp-master-brand';
+    root.setAttribute('aria-hidden', 'true');
+    var img = document.createElement('img');
+    img.alt = 'ERP Master';
+    img.src = src;
+    img.addEventListener('error', function onErr() {
+      img.removeEventListener('error', onErr);
+      var inline = body.getAttribute('data-erp-master-src');
+      if (inline && img.src !== inline) img.src = inline;
+    }, { once: true });
+    root.appendChild(img);
+    body.appendChild(root);
+  }
+
   $(function () {
     initRutInputs();
     initDecimalComaInputs();
+    ensureErpMasterBrand();
   });
 
   window.demoInitDataTable = initDataTable;

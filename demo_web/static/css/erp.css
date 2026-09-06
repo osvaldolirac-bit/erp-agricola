@@ -1470,6 +1470,37 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   .dashboard-master-logo img { max-height: 32px; }
   .erp-master-brand img { max-height: 28px; }
 }
+
+/* Fallback CSS: logo fijo LC/Espino aunque falle el template o /static */
+body.demo-body.tenant-espino::after,
+body.demo-body.tenant-concepcion::after {
+  content: "";
+  position: fixed;
+  right: max(1.15rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  width: 110px;
+  height: 34px;
+  z-index: 2147483000;
+  pointer-events: none;
+  opacity: 0.88;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  background: url("../img/logo_erpmaster.png") no-repeat right bottom / contain;
+}
+body.demo-body:has(.erp-master-brand img,
+                    .dashboard-master-logo img,
+                    #erpmaster-sello-root img)::after {
+  display: none;
+}
+@media (max-width: 767.98px) {
+  body.demo-body.tenant-espino::after,
+  body.demo-body.tenant-concepcion::after {
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
+    width: 96px;
+    height: 28px;
+  }
+}
 .demo-sidebar-logo {
   padding-top: 0.85rem;
   padding-bottom: 0.25rem;

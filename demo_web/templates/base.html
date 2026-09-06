@@ -29,7 +29,10 @@
   </style>
   {% endif %}
 </head>
-<body class="demo-body{% if body_class %} {{ body_class }}{% endif %}{% if solo_lectura %} erp-solo-lectura{% endif %}">
+<body class="demo-body{% if body_tenant_class %} {{ body_tenant_class }}{% endif %}{% if body_class %} {{ body_class }}{% endif %}{% if solo_lectura %} erp-solo-lectura{% endif %}{% if show_master_brand or (tenant and tenant.slug in ['concepcion', 'espino']) %} erp-master-brand-on{% endif %}"
+      {% if show_master_brand or (tenant and tenant.slug in ['concepcion', 'espino']) %}data-erp-master-brand="1"{% endif %}
+      {% if master_brand_src %}data-erp-master-src="{{ master_brand_src }}"{% endif %}
+      data-erp-master-static="{{ url_for('static', filename='img/logo_erpmaster.png') }}?v={{ static_version }}">
   {% if current_user %}
   <nav class="navbar navbar-expand-lg navbar-dark demo-navbar sticky-top">
     <div class="container-fluid">
@@ -153,8 +156,9 @@
     {% endif %}
   {% block content %}{% endblock %}
   </main>
-  {% if show_master_brand and request.endpoint != 'modules.dashboard' %}
-  <div class="erp-master-brand" aria-hidden="true">
+  {% set show_master = show_master_brand or (tenant and tenant.slug in ['concepcion', 'espino']) %}
+  {% if show_master and request.endpoint != 'modules.dashboard' %}
+  <div class="erp-master-brand" id="erpmaster-sello-root" aria-hidden="true">
     <img src="{% if master_brand_src %}{{ master_brand_src }}{% else %}{{ master_logo_url or url_for('static', filename='img/logo_erpmaster.png') }}?v={{ static_version }}{% endif %}" alt="ERP Master">
   </div>
   {% endif %}

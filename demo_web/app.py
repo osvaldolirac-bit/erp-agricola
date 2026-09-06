@@ -480,8 +480,10 @@ def create_app(config_class=Config) -> Flask:
         master_logo_url = None
         master_brand_src = None
         show_master_brand = False
+        body_tenant_class = ""
         # Login/selector: marca del rubro. Dentro del ERP: nombre del tenant.
         if session.get("email") and tenant:
+            body_tenant_class = f"tenant-{tenant.get('slug', '').strip().lower()}"
             title = tenant["nombre"]
             brand = tenant["nombre"]
             subtitle = tenant.get("descripcion") or ""
@@ -525,6 +527,7 @@ def create_app(config_class=Config) -> Flask:
             "master_logo_url": master_logo_url,
             "master_brand_src": master_brand_src,
             "show_master_brand": show_master_brand,
+            "body_tenant_class": body_tenant_class,
             "static_version": config_class.static_version(),
             "session_idle_limit": int(app.config.get("SESSION_IDLE_SECONDS") or 1200),
             "session_idle_warn": int(app.config.get("SESSION_IDLE_WARN_SECONDS") or 120),
