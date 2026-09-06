@@ -238,6 +238,32 @@ def check_master_brand_markup() -> None:
     print("OK  markup logo ERP Master (CSS + JS + templates)")
 
 
+def check_tenant_logo_espino() -> None:
+    """Logo cliente El Espino (no placeholder verde 420×120)."""
+    _ensure_app_path()
+    from demo_web.services.branding import find_tenant_logo_path
+
+    path = find_tenant_logo_path("espino")
+    if not path or not path.is_file():
+        raise CheckFailed("logo tenant Espino no encontrado (logo_espino.png en static/img o /root/static)")
+    size = path.stat().st_size
+    if size <= 6000:
+        try:
+            from PIL import Image
+
+            with Image.open(path) as im:
+                if im.size == (420, 120):
+                    raise CheckFailed(
+                        f"logo Espino sigue siendo placeholder verde ({path}, {size} bytes)"
+                    )
+        except CheckFailed:
+            raise
+        except Exception:
+            if size <= 5000:
+                raise CheckFailed(f"logo Espino demasiado pequeño ({path}, {size} bytes)")
+    print(f"OK  logo tenant Espino ({path.name}, {size} bytes)")
+
+
 def main() -> int:
     scripts_dir = str(Path(__file__).resolve().parent)
     if scripts_dir not in sys.path:
@@ -252,6 +278,7 @@ def main() -> int:
         check_tenant_rules_code,
         check_master_brand_logo,
         check_master_brand_markup,
+        check_tenant_logo_espino,
         check_compras_module_loader,
         check_cxp_parity_db,
     ]

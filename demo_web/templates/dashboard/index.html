@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — {{ erp_title|default('ERP') }}{% endblock %}
 {% block content %}
-<div class="container-fluid py-3 dashboard-page{% if erp_app == 'concepcion' %} dashboard-page--concepcion{% endif %}">
+<div class="container-fluid py-3 dashboard-page{% if tenant and tenant.slug == 'concepcion' %} dashboard-page--concepcion{% elif tenant and tenant.slug == 'espino' %} dashboard-page--espino{% endif %}">
   {% if logo_url %}
   <div class="text-center mb-3 dashboard-tenant-logo">
     <img src="{{ logo_url }}" alt="{{ erp_title }}" class="logo-modulo">
