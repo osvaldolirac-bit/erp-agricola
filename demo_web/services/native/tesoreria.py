@@ -492,16 +492,67 @@ def _avisos_pago(demo, conn, proveedor, lineas, monto_total, metodo, fecha_pago,
     return mail_ok, mensaje_avisos_pago_proveedor(conn, proveedor, mail_prov_ok, mail_prov, wa_ok, wa_dest, wa_err)
 
 
+def _proveedor_unico_desde_ids(conn, doc_ids: list[int]) -> tuple[str | None, str | None]:
+    """Proveedor real según facturas seleccionadas (no confía en hidden field)."""
+    if not doc_ids:
+        return None, "Sin documentos seleccionados."
+    ph = ",".join("?" * len(doc_ids))
+    rows = conn.execute(
+        f"""SELECT DISTINCT TRIM(proveedor) AS p FROM facturas
+            WHERE id IN ({ph}) AND estado='Pendiente' AND monto_total > 0""",
+        doc_ids,
+    ).fetchall()
+    provs = [str(r[0]).strip() for r in rows if r and r[0]]
+    if not provs:
+        return None, "Los documentos seleccionados no existen o ya están pagados."
+    if len(provs) > 1:
+        return None, "Seleccione documentos de un solo proveedor por pago."
+    return provs[0], None
+
+
+def _siguiente_proveedor_con_deuda(demo, conn, excluir: str | None = None) -> str | None:
+    """Tras un pago, ir al siguiente proveedor con CxP (evita quedar en proveedor vacío)."""
+    proveedores, _, _, _ = _deuda_rows(demo, conn, None)
+    for p in proveedores:
+        if excluir and p == excluir:
+            continue
+        if not _docs_pendientes_proveedor(demo, conn, p).empty:
+            return p
+    for p in proveedores:
+        if not _docs_pendientes_proveedor(demo, conn, p).empty:
+            return p
+    return proveedores[0] if proveedores else None
+
+
+def _extra_deuda_tras_pago(demo, conn, proveedor_pagado: str) -> dict:
+    if _docs_pendientes_proveedor(demo, conn, proveedor_pagado).empty:
+        nxt = _siguiente_proveedor_con_deuda(demo, conn, excluir=proveedor_pagado)
+        if nxt:
+            return {"sec": "deuda", "proveedor": nxt}
+    return {"sec": "deuda", "proveedor": proveedor_pagado}
+
+
 def _post_pagar_documentos(demo, conn, user_email: str) -> dict:
-    proveedor = (request.form.get("proveedor") or "").strip()
-    if not proveedor:
-        return {"ok": False, "msg": "Seleccione un proveedor.", "extra": {"sec": "deuda"}}
+    proveedor_form = (request.form.get("proveedor") or "").strip()
     try:
         ids_pagar = [int(x) for x in request.form.getlist("doc_ids") if x]
     except ValueError:
         ids_pagar = []
     if not ids_pagar:
-        return {"ok": False, "msg": "Seleccione al menos un documento para pagar.", "extra": {"sec": "deuda", "proveedor": proveedor}}
+        extra = {"sec": "deuda"}
+        if proveedor_form:
+            extra["proveedor"] = proveedor_form
+        return {"ok": False, "msg": "Seleccione al menos un documento para pagar.", "extra": extra}
+    proveedor, err_prov = _proveedor_unico_desde_ids(conn, ids_pagar)
+    if err_prov:
+        extra = {"sec": "deuda"}
+        if proveedor_form:
+            extra["proveedor"] = proveedor_form
+        return {"ok": False, "msg": err_prov, "extra": extra}
+    assert proveedor is not None
+    if proveedor_form and proveedor_form != proveedor:
+        # Hidden field desactualizado (p. ej. pagó Duilio y el form seguía en Duilio al elegir FERMACO).
+        proveedor_form = proveedor
     metodo = request.form.get("metodo_pago") or METODOS_PAGO[0]
     if metodo not in METODOS_PAGO:
         metodo = METODOS_PAGO[0]
@@ -552,15 +603,32 @@ def _post_pagar_documentos(demo, conn, user_email: str) -> dict:
     msg += avisos
     if errores:
         msg += " Advertencias: " + " ".join(errores)
-    return {"ok": True, "msg": msg, "extra": {"sec": "deuda", "proveedor": proveedor}}
+    return {
+        "ok": True,
+        "msg": msg,
+        "extra": _extra_deuda_tras_pago(demo, conn, proveedor),
+    }
 
 
 def _post_abono_parcial(demo, conn, user_email: str) -> dict:
-    proveedor = (request.form.get("proveedor") or "").strip()
-    if not proveedor:
-        return {"ok": False, "msg": "Seleccione un proveedor.", "extra": {"sec": "deuda"}}
+    proveedor_form = (request.form.get("proveedor") or "").strip()
     try:
         doc_id = int(request.form.get("doc_id") or 0)
+    except ValueError:
+        doc_id = 0
+    if doc_id <= 0:
+        extra = {"sec": "deuda"}
+        if proveedor_form:
+            extra["proveedor"] = proveedor_form
+        return {"ok": False, "msg": "Seleccione un documento.", "extra": extra}
+    proveedor, err_prov = _proveedor_unico_desde_ids(conn, [doc_id])
+    if err_prov:
+        extra = {"sec": "deuda"}
+        if proveedor_form:
+            extra["proveedor"] = proveedor_form
+        return {"ok": False, "msg": err_prov, "extra": extra}
+    assert proveedor is not None
+    try:
         monto_ab = float(request.form.get("monto_abono") or 0)
     except ValueError:
         return {"ok": False, "msg": "Datos de abono inválidos.", "extra": {"sec": "deuda", "proveedor": proveedor}}
@@ -607,7 +675,11 @@ def _post_abono_parcial(demo, conn, user_email: str) -> dict:
     if enviar_mail:
         msg += " Correo de respaldo enviado al equipo." if mail_ok else " No se pudo enviar el correo al equipo."
     msg += avisos
-    return {"ok": True, "msg": msg, "extra": {"sec": "deuda", "proveedor": proveedor}}
+    return {
+        "ok": True,
+        "msg": msg,
+        "extra": _extra_deuda_tras_pago(demo, conn, proveedor),
+    }
 
 
 def gather_tesoreria(user_email: str, user_rol: str) -> dict:

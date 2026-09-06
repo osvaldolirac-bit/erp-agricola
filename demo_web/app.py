@@ -489,7 +489,8 @@ def create_app(config_class=Config) -> Flask:
                 logo_url = url_for("tenant_logo_asset")
             else:
                 logo_url = None
-            if tenant_shows_master_brand(tenant.get("slug"), tenant):
+            show_master = tenant_shows_master_brand(tenant.get("slug"), tenant)
+            if show_master:
                 master_logo_url = url_for("master_logo_asset")
         else:
             title = app.config.get("ERP_TITLE", RUBRO_TITLE)
@@ -518,7 +519,7 @@ def create_app(config_class=Config) -> Flask:
             "tenant_switch_options": tenant_switch_options,
             "logo_url": logo_url,
             "master_logo_url": master_logo_url,
-            "show_master_brand": bool(master_logo_url),
+            "show_master_brand": show_master if session.get("email") and tenant else False,
             "static_version": config_class.static_version(),
             "session_idle_limit": int(app.config.get("SESSION_IDLE_SECONDS") or 1200),
             "session_idle_warn": int(app.config.get("SESSION_IDLE_WARN_SECONDS") or 120),

@@ -63,7 +63,11 @@ def find_logo_path(prefer_master: bool = True) -> Path | None:
 
 def find_master_logo_path() -> Path | None:
     """Logo ERP Master (marca plataforma)."""
-    return _first_existing(_MASTER_LOGO_NAMES)
+    found = _first_existing(_MASTER_LOGO_NAMES)
+    if found:
+        return found
+    bundled = Path(__file__).resolve().parents[1] / "static" / "img" / "logo_erpmaster.svg"
+    return bundled if bundled.is_file() else None
 
 
 def tenant_shows_master_brand(slug: str | None, tenant: dict | None = None) -> bool:

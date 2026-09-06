@@ -1433,7 +1433,7 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   position: fixed;
   right: 1.15rem;
   bottom: 1rem;
-  z-index: 1050;
+  z-index: 9999;
   pointer-events: none;
   opacity: 0.92;
 }
@@ -1447,7 +1447,7 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   position: fixed;
   right: 1.15rem;
   bottom: 1rem;
-  z-index: 1050;
+  z-index: 9999;
   pointer-events: none;
   opacity: 0.88;
 }

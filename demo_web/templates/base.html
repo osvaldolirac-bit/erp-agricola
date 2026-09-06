@@ -153,9 +153,9 @@
     {% endif %}
   {% block content %}{% endblock %}
   </main>
-  {% if show_master_brand and request.endpoint != 'modules.dashboard' %}
+  {% if (show_master_brand or (tenant and tenant.slug in ['concepcion', 'espino'])) and request.endpoint != 'modules.dashboard' %}
   <div class="erp-master-brand" aria-hidden="true">
-    <img src="{{ master_logo_url }}" alt="ERP Master">
+    <img src="{{ master_logo_url or url_for('static', filename='img/logo_erpmaster.svg') }}?v={{ static_version }}" alt="ERP Master">
   </div>
   {% endif %}
 
