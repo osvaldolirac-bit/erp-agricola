@@ -177,3 +177,56 @@ def tenant_logo_path_or_none(slug: str | None) -> Path | None:
     if key:
         return find_tenant_logo_path(key)
     return None
+
+
+def _espino_pdf_logo_padded(src: Path, *, ratio: float = 0.16) -> Path:
+    """Logo Espino con margen blanco para PDFs (más aire alrededor del emblema)."""
+    out = src.parent / "logo_espino_pdf_pad.png"
+    try:
+        if out.is_file() and out.stat().st_mtime >= src.stat().st_mtime:
+            return out
+    except OSError:
+        pass
+    try:
+        from PIL import Image
+    except ImportError:
+        return src
+    try:
+        im = Image.open(src).convert("RGBA")
+        pad = max(24, int(min(im.size) * ratio))
+        canvas = Image.new("RGBA", (im.width + 2 * pad, im.height + 2 * pad), (255, 255, 255, 255))
+        canvas.paste(im, (pad, pad), im if im.mode == "RGBA" else None)
+        canvas.save(out, format="PNG", optimize=True)
+        return out
+    except OSError:
+        return src
+
+
+def pdf_logo_path_for_draw(demo: Any = None) -> str | None:
+    """Ruta de logo lista para PDF (Espino incluye padding)."""
+    raw = logo_path_for_pdf(demo)
+    if not raw:
+        return None
+    slug = resolve_tenant_slug(demo)
+    if slug == "espino":
+        return str(_espino_pdf_logo_padded(Path(raw)))
+    return raw
+
+
+def pdf_draw_tenant_logo(pdf, logo_path: str | None = None, demo: Any = None) -> bool:
+    """Dibuja logo tenant en membrete PDF. Retorna True si se dibujó."""
+    slug = resolve_tenant_slug(demo)
+    path = logo_path or pdf_logo_path_for_draw(demo)
+    if not path:
+        return False
+    if slug == "espino":
+        path = str(_espino_pdf_logo_padded(Path(path)))
+    try:
+        if slug == "espino":
+            # Emblema cuadrado: altura contenida + márgenes generosos
+            pdf.image(path, x=14, y=11, h=20)
+        else:
+            pdf.image(path, x=10, y=8, w=40)
+        return True
+    except Exception:
+        return False

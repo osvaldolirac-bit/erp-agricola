@@ -4753,12 +4753,21 @@ def _pdf_razon_social_default():
         return "La Concepción"
 
 def encabezado_pdf(pdf, titulo, modo_petroleo=False, saldo_petroleo=None):
-    logo = ruta_logo_pdf()
-    if logo:
-        try:
-            pdf.image(logo, x=10, y=8, w=40)
-        except Exception:
+    logo = None
+    try:
+        from demo_web.services.branding import pdf_draw_tenant_logo
+
+        if not pdf_draw_tenant_logo(pdf):
             logo = None
+        else:
+            logo = True
+    except Exception:
+        logo = ruta_logo_pdf()
+        if logo:
+            try:
+                pdf.image(logo, x=10, y=8, w=40)
+            except Exception:
+                logo = None
     if not logo:
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_xy(10, 10)

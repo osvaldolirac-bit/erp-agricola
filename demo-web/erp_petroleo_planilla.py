@@ -38,12 +38,19 @@ def _encabezado_planilla(pdf, titulo, logo_path=None, empresa="ERP AGRICOLA"):
     """Membrete planilla: logo tenant o nombre de empresa (sin LC por defecto)."""
     ancho_util = pdf.w - 20
     logo = logo_path
+    drawn = False
     if logo:
         try:
-            pdf.image(logo, x=10, y=8, w=40)
+            from demo_web.services.branding import pdf_draw_tenant_logo
+
+            drawn = pdf_draw_tenant_logo(pdf, logo)
         except Exception:
-            logo = None
-    if not logo:
+            try:
+                pdf.image(logo, x=10, y=8, w=40)
+                drawn = True
+            except Exception:
+                drawn = False
+    if not drawn:
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_xy(10, 10)
         pdf.cell(80, 6, _pdf_txt(empresa))
