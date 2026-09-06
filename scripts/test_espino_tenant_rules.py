@@ -18,42 +18,38 @@ class EspinoTenantRulesTest(unittest.TestCase):
             usar_saldo_cxp_neto_en_tesoreria,
         )
 
-        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=True):
+        with patch("demo_web.services.tenant_scope.tenant_slug", return_value="espino"):
             self.assertFalse(usar_saldo_cxp_neto_en_tesoreria())
             self.assertAlmostEqual(saldo_factura_tesoreria(500, 100, 300), 400.0)
 
     def test_lc_usa_saldo_neto(self) -> None:
         from demo_web.services.tesoreria_cxp import saldo_factura_tesoreria
 
-        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=False):
+        with patch("demo_web.services.tenant_scope.tenant_slug", return_value="concepcion"):
             self.assertAlmostEqual(saldo_factura_tesoreria(500, 100, 300), 100.0)
 
     def test_espino_incluye_int_en_sql(self) -> None:
         from demo_web.services.tesoreria_cxp import sql_solo_cxp_tesoreria
 
-        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=True):
+        with patch("demo_web.services.tenant_scope.tenant_slug", return_value="espino"):
             sql = sql_solo_cxp_tesoreria("f")
             self.assertNotIn("INT-*", sql)
 
     def test_lc_excluye_int_en_sql(self) -> None:
         from demo_web.services.tesoreria_cxp import sql_solo_cxp_tesoreria
 
-        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=False):
+        with patch("demo_web.services.tenant_scope.tenant_slug", return_value="concepcion"):
             sql = sql_solo_cxp_tesoreria("f")
             self.assertIn("INT-*", sql)
 
     def test_lc_excluye_razon_espino_no_espino(self) -> None:
         from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
 
-        with patch(
-            "demo_web.services.lc_excluir_espino.is_concepcion_tenant", return_value=True
-        ):
+        with patch("demo_web.services.tenant_scope.tenant_slug", return_value="concepcion"):
             sql = sql_and_excluir_razon_social_espino(alias="f")
             self.assertIn("El Espino", sql)
 
-        with patch(
-            "demo_web.services.lc_excluir_espino.is_concepcion_tenant", return_value=False
-        ):
+        with patch("demo_web.services.tenant_scope.tenant_slug", return_value="espino"):
             self.assertEqual(sql_and_excluir_razon_social_espino(alias="f"), "")
 
     def test_espino_muestra_master_brand(self) -> None:

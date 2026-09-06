@@ -2,13 +2,13 @@
 
 
 def sql_solo_cxp_tesoreria(col_prefix: str = "") -> str:
-    """Deuda real: excluye imputaciones _P y GE-*. INT- solo fuera de Espino."""
+    """Deuda real: excluye imputaciones _P y GE-*. INT- según tenant_rules."""
     p = f"{col_prefix}." if col_prefix else ""
     excl_int = ""
     try:
-        from demo_web.services.tenant_scope import is_espino_tenant
+        from demo_web.services.tenant_rules import cxp_incluye_documentos_int
 
-        if not is_espino_tenant():
+        if not cxp_incluye_documentos_int():
             excl_int = f"\n          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'INT-*'"
     except Exception:
         excl_int = f"\n          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'INT-*'"
@@ -42,9 +42,9 @@ def saldo_cxp_neto(monto_total, monto_pagado, imputado_costos) -> float:
 def usar_saldo_cxp_neto_en_tesoreria() -> bool:
     """LC alinea CxP con Costos; Espino muestra deuda hasta el pago en Tesorería."""
     try:
-        from demo_web.services.tenant_scope import is_espino_tenant
+        from demo_web.services.tenant_rules import cxp_usar_saldo_neto
 
-        return not is_espino_tenant()
+        return cxp_usar_saldo_neto()
     except Exception:
         return True
 

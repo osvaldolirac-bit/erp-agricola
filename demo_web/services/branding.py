@@ -72,8 +72,10 @@ def find_master_logo_path() -> Path | None:
 
 def tenant_shows_master_brand(slug: str | None, tenant: dict | None = None) -> bool:
     """Watermark ERP Master fijo (LC + El Espino)."""
+    from demo_web.services.tenant_rules import muestra_logo_erpmaster
+
     key = (slug or (tenant or {}).get("slug") or "").strip().lower()
-    if key in ("concepcion", "espino"):
+    if muestra_logo_erpmaster(key):
         return True
     kind = ((tenant or {}).get("kind") or "").strip().lower()
     return kind == "lc"

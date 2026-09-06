@@ -105,32 +105,12 @@ def check_respaldo_cron() -> None:
 
 def check_tenant_rules_code() -> None:
     _ensure_app_path()
-    from demo_web.services.tesoreria_cxp import (
-        saldo_factura_tesoreria,
-        sql_solo_cxp_tesoreria,
-        usar_saldo_cxp_neto_en_tesoreria,
-    )
+    from demo_web.services.tenant_rules import verify_implementation_errors
 
-    with _espino_tenant():
-        if usar_saldo_cxp_neto_en_tesoreria():
-            raise CheckFailed("Espino no debe usar saldo CxP neto (regla LC)")
-        sql = sql_solo_cxp_tesoreria("f")
-        if "NOT GLOB 'INT-*'" in sql:
-            raise CheckFailed("Espino no debe excluir documentos INT-* en CxP")
-        bruto = saldo_factura_tesoreria(1000, 0, 800)
-        if abs(bruto - 1000) > 0.01:
-            raise CheckFailed(f"Espino debe mostrar saldo bruto; got {bruto}")
-
-    with _lc_tenant():
-        neto = saldo_factura_tesoreria(1000, 0, 800)
-        if abs(neto - 200) > 0.01:
-            raise CheckFailed(f"LC debe restar imputado; got {neto}")
-
-    src = (APP_ROOT / "demo_web/services/native/flujo.py").read_text(encoding="utf-8")
-    if "imputar_gastado_contable=is_espino_tenant()" not in src:
-        raise CheckFailed("flujo.py no usa imputar_gastado_contable=is_espino_tenant()")
-
-    print("OK  reglas código Espino vs LC")
+    errors = verify_implementation_errors()
+    if errors:
+        raise CheckFailed("tenant_rules: " + "; ".join(errors))
+    print("OK  reglas código Espino vs LC (tenant_rules)")
 
 
 def _cxp_rows_espino(conn: sqlite3.Connection) -> list[tuple]:

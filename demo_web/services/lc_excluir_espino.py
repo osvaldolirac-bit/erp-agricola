@@ -5,13 +5,15 @@ from typing import Any
 
 import pandas as pd
 
-from demo_web.services.tenant_scope import RAZON_SOCIAL_ESPINO, is_concepcion_tenant
+from demo_web.services.tenant_scope import RAZON_SOCIAL_ESPINO
 
 CUARTEL_ESPINO_LC = "EL ESPINO"
 
 
 def excluir_razon_social_espino_en_lc() -> bool:
-    return is_concepcion_tenant()
+    from demo_web.services.tenant_rules import excluir_razon_social_espino_en_queries
+
+    return excluir_razon_social_espino_en_queries()
 
 
 def es_razon_social_espino_excluida(razon: str | None) -> bool:

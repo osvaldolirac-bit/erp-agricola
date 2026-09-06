@@ -66,8 +66,9 @@ done
 # 3. Scripts operativos → /root/scripts (verify, ensure, cron)
 log "Sync scripts → $SCRIPTS_ROOT"
 mkdir -p "$SCRIPTS_ROOT"
-for s in verify_agricola.py verify_espino.py ensure_espino_operativo.py \
-         respaldo_cron_tenants.py bootstrap_espino_tenant.py; do
+for s in verify_agricola.py verify_espino.py verify_tenant_parity.py ensure_espino_operativo.py \
+         respaldo_cron_tenants.py bootstrap_espino_tenant.py test_tenant_rules.py \
+         test_espino_tenant_rules.py test_tesoreria_proveedor_pago.py; do
   src=""
   if [[ -f "$SOURCE_ROOT/scripts/$s" ]]; then
     src="$SOURCE_ROOT/scripts/$s"
@@ -91,6 +92,17 @@ fi
 # 5. Reparar estado Espino (flags, cron) antes de verify
 log "ensure_espino_operativo"
 APP_ROOT="$DEPLOY_ROOT" python3 "$ENSURE_ESPINO"
+
+# 5b. Paridad tenants (reglas LC/Espino — funciona sin DB)
+VERIFY_PARITY="${VERIFY_PARITY:-${SCRIPTS_ROOT}/verify_tenant_parity.py}"
+if [[ -f "$SOURCE_ROOT/scripts/verify_tenant_parity.py" ]]; then
+  rsync -a "$SOURCE_ROOT/scripts/verify_tenant_parity.py" "$SCRIPTS_ROOT/"
+  rsync -a "$SOURCE_ROOT/scripts/test_tenant_rules.py" "$SCRIPTS_ROOT/" 2>/dev/null || true
+  rsync -a "$SOURCE_ROOT/scripts/test_espino_tenant_rules.py" "$SCRIPTS_ROOT/" 2>/dev/null || true
+  rsync -a "$SOURCE_ROOT/scripts/test_tesoreria_proveedor_pago.py" "$SCRIPTS_ROOT/" 2>/dev/null || true
+fi
+log "verify_tenant_parity"
+APP_ROOT="$DEPLOY_ROOT" python3 "$VERIFY_PARITY" || die "verify_tenant_parity failed — reglas LC/Espino rotas"
 
 # 6. Restart
 log "Restart $SERVICE"

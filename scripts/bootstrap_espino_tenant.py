@@ -107,6 +107,12 @@ def main() -> int:
         bitacora_flag.write_text("1\n", encoding="utf-8")
         print(f"  Bitácora: activada ({bitacora_flag})")
     print("  URL: https://erpmaster.cl/agricola/login")
+    scripts_dir = Path(__file__).resolve().parent
+    ensure = scripts_dir / "ensure_espino_operativo.py"
+    if ensure.is_file():
+        import subprocess
+
+        subprocess.run([sys.executable, str(ensure)], check=False)
     return 0
 
 
