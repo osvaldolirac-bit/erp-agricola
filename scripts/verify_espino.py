@@ -196,6 +196,19 @@ def check_compras_module_loader() -> None:
     print("OK  erp_loader bind tenant espino")
 
 
+def check_master_brand_logo() -> None:
+    _ensure_app_path()
+    from demo_web.services.branding import find_master_logo_path, master_logo_data_uri
+
+    path = find_master_logo_path()
+    if not path or not path.is_file():
+        raise CheckFailed("logo ERP Master no encontrado en disco")
+    uri = master_logo_data_uri()
+    if not uri or not uri.startswith("data:image/"):
+        raise CheckFailed("master_logo_data_uri no genera imagen")
+    print(f"OK  logo ERP Master ({path.name}, {len(uri)} bytes data-uri)")
+
+
 def main() -> int:
     scripts_dir = str(Path(__file__).resolve().parent)
     if scripts_dir not in sys.path:
@@ -208,6 +221,7 @@ def main() -> int:
         check_db,
         check_respaldo_cron,
         check_tenant_rules_code,
+        check_master_brand_logo,
         check_compras_module_loader,
         check_cxp_parity_db,
     ]

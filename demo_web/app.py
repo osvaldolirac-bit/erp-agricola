@@ -438,6 +438,7 @@ def create_app(config_class=Config) -> Flask:
         from demo_web.services.branding import (
             find_logo_path,
             find_tenant_logo_path,
+            master_logo_data_uri,
             tenant_shows_master_brand,
         )
         from flask import request, url_for
@@ -477,6 +478,8 @@ def create_app(config_class=Config) -> Flask:
                     nav_ops.append(it)
         prefix = (app.config.get("APPLICATION_ROOT") or "/agricola").rstrip("/")
         master_logo_url = None
+        master_brand_src = None
+        show_master_brand = False
         # Login/selector: marca del rubro. Dentro del ERP: nombre del tenant.
         if session.get("email") and tenant:
             title = tenant["nombre"]
@@ -489,8 +492,9 @@ def create_app(config_class=Config) -> Flask:
                 logo_url = url_for("tenant_logo_asset")
             else:
                 logo_url = None
-            show_master = tenant_shows_master_brand(tenant.get("slug"), tenant)
-            if show_master:
+            show_master_brand = tenant_shows_master_brand(tenant.get("slug"), tenant)
+            if show_master_brand:
+                master_brand_src = master_logo_data_uri()
                 master_logo_url = url_for("master_logo_asset")
         else:
             title = app.config.get("ERP_TITLE", RUBRO_TITLE)
@@ -519,7 +523,8 @@ def create_app(config_class=Config) -> Flask:
             "tenant_switch_options": tenant_switch_options,
             "logo_url": logo_url,
             "master_logo_url": master_logo_url,
-            "show_master_brand": show_master if session.get("email") and tenant else False,
+            "master_brand_src": master_brand_src,
+            "show_master_brand": show_master_brand,
             "static_version": config_class.static_version(),
             "session_idle_limit": int(app.config.get("SESSION_IDLE_SECONDS") or 1200),
             "session_idle_warn": int(app.config.get("SESSION_IDLE_WARN_SECONDS") or 120),

@@ -159,9 +159,16 @@ def verify_implementation_errors() -> list[str]:
     except ImportError as exc:
         errors.append(f"tesoreria import: {exc}")
 
-    # Logo embebido en repo
-    bundled = Path(__file__).resolve().parents[1] / "static/img/logo_erpmaster.svg"
-    if not bundled.is_file():
-        errors.append(f"falta logo embebido: {bundled}")
+    # Logo ERP Master embebido (PNG) + data-uri
+    bundled_png = Path(__file__).resolve().parents[1] / "static/img/logo_erpmaster.png"
+    if not bundled_png.is_file() or bundled_png.stat().st_size < 1000:
+        errors.append(f"falta logo PNG embebido: {bundled_png}")
+    try:
+        from demo_web.services.branding import master_logo_data_uri
+
+        if not master_logo_data_uri():
+            errors.append("master_logo_data_uri() vacío")
+    except Exception as exc:
+        errors.append(f"master_logo_data_uri: {exc}")
 
     return errors

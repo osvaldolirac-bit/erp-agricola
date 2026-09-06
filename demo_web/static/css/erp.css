@@ -1431,11 +1431,13 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 }
 .dashboard-master-logo {
   position: fixed;
-  right: 1.15rem;
-  bottom: 1rem;
-  z-index: 9999;
+  right: max(1.15rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  z-index: 2147483000;
   pointer-events: none;
   opacity: 0.92;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 .dashboard-master-logo img {
   max-height: 42px;
@@ -1445,11 +1447,13 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 }
 .erp-master-brand {
   position: fixed;
-  right: 1.15rem;
-  bottom: 1rem;
-  z-index: 9999;
+  right: max(1.15rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  z-index: 2147483000;
   pointer-events: none;
   opacity: 0.88;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 .erp-master-brand img {
   max-height: 34px;

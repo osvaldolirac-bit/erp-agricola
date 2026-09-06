@@ -29,11 +29,13 @@ _ESPINO_LOGO_NAMES = (
 
 def _logo_dirs() -> list[Path]:
     dirs: list[Path] = []
+    bundled = Path(__file__).resolve().parents[1] / "static" / "img"
+    if bundled.is_dir():
+        dirs.append(bundled)
     for raw in (
         os.environ.get("ERP_LOGO_DIR"),
         "/root/static",
         str(Path(__file__).resolve().parents[3] / "static"),
-        str(Path(__file__).resolve().parents[1] / "static" / "img"),
     ):
         if raw:
             p = Path(raw)
@@ -62,12 +64,26 @@ def find_logo_path(prefer_master: bool = True) -> Path | None:
 
 
 def find_master_logo_path() -> Path | None:
-    """Logo ERP Master (marca plataforma)."""
-    found = _first_existing(_MASTER_LOGO_NAMES)
-    if found:
-        return found
-    bundled = Path(__file__).resolve().parents[1] / "static" / "img" / "logo_erpmaster.svg"
-    return bundled if bundled.is_file() else None
+    """Logo ERP Master (marca plataforma). Prioriza PNG embebido en repo."""
+    return _first_existing(_MASTER_LOGO_NAMES)
+
+
+def master_logo_data_uri() -> str | None:
+    """Data-URI del logo (sin depender de /static ni /assets en nginx)."""
+    import base64
+    import mimetypes
+
+    path = find_master_logo_path()
+    if not path:
+        return None
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    mime = mimetypes.guess_type(path.name)[0] or "image/png"
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
 def tenant_shows_master_brand(slug: str | None, tenant: dict | None = None) -> bool:
