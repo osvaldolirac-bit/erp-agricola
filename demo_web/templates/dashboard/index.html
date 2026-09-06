@@ -3,8 +3,15 @@
 {% block content %}
 <div class="container-fluid py-3 dashboard-page{% if tenant and tenant.slug == 'concepcion' %} dashboard-page--concepcion{% elif tenant and tenant.slug == 'espino' %} dashboard-page--espino{% endif %}">
   {% if logo_url %}
-  <div class="text-center mb-3 dashboard-tenant-logo">
+  <div class="text-center mb-3 dashboard-tenant-logo{% if tenant and tenant.slug == 'espino' %} dashboard-tenant-logo--espino{% endif %}">
+    {% if tenant and tenant.slug == 'espino' %}
+    <div class="tenant-espino-brand tenant-espino-brand--dashboard">
+      <img src="{{ logo_url }}" alt="" class="logo-modulo" aria-hidden="true">
+      <span class="tenant-espino-brand-name">EL ESPINO</span>
+    </div>
+    {% else %}
     <img src="{{ logo_url }}" alt="{{ erp_title }}" class="logo-modulo">
+    {% endif %}
   </div>
   {% endif %}
 

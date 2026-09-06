@@ -1432,8 +1432,33 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 .dashboard-page--espino .dashboard-tenant-logo .logo-modulo {
   max-width: 280px;
 }
-body.demo-body.tenant-espino .demo-sidebar-logo .logo-sidebar {
+/* El Espino: marca con texto bajo el emblema */
+.tenant-espino-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tenant-espino-brand-name {
+  font-family: "Manrope", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.16em;
+  color: #3c5b3e;
+  line-height: 1.1;
+}
+.dashboard-page--espino .tenant-espino-brand--dashboard .logo-modulo {
+  max-width: 224px;
+}
+body.demo-body.tenant-espino .tenant-espino-brand--sidebar .logo-sidebar {
   max-width: 200px;
+}
+body.demo-body.tenant-espino .demo-sidebar-logo--espino {
+  min-height: 128px;
+}
+body.demo-body.tenant-espino .tenant-espino-brand--sidebar .tenant-espino-brand-name {
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
 }
 .dashboard-master-logo {
   position: fixed;

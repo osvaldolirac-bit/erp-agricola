@@ -119,8 +119,15 @@
     </div>
     <div class="offcanvas-body p-0">
       {% if logo_url %}
-      <div class="demo-sidebar-logo text-center py-3 px-2">
+      <div class="demo-sidebar-logo text-center py-3 px-2{% if tenant and tenant.slug == 'espino' %} demo-sidebar-logo--espino{% endif %}">
+        {% if tenant and tenant.slug == 'espino' %}
+        <div class="tenant-espino-brand tenant-espino-brand--sidebar">
+          <img src="{{ logo_url }}" alt="" class="logo-sidebar" aria-hidden="true">
+          <span class="tenant-espino-brand-name">EL ESPINO</span>
+        </div>
+        {% else %}
         <img src="{{ logo_url }}" alt="{{ erp_title }}" class="logo-sidebar">
+        {% endif %}
       </div>
       {% endif %}
       <div class="demo-sidebar-head">Menú</div>
