@@ -1487,9 +1487,8 @@ body.demo-body.tenant-concepcion::after {
   transform: translateZ(0);
   background: url("../img/logo_erpmaster.png") no-repeat right bottom / contain;
 }
-body.demo-body:has(.erp-master-brand img,
-                    .dashboard-master-logo img,
-                    #erpmaster-sello-root img)::after {
+body.demo-body.erp-master-brand-dom-ok.tenant-espino::after,
+body.demo-body.erp-master-brand-dom-ok.tenant-concepcion::after {
   display: none;
 }
 @media (max-width: 767.98px) {

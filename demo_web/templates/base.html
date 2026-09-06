@@ -14,6 +14,33 @@
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/erp.css') }}?v={{ static_version }}" rel="stylesheet">
+  {% if tenant and tenant.slug in ['concepcion', 'espino'] %}
+  <style id="erp-master-brand-critical">
+    body.demo-body.tenant-{{ tenant.slug }}::after {
+      content: "";
+      position: fixed;
+      right: max(1.15rem, env(safe-area-inset-right, 0px));
+      bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+      width: 110px;
+      height: 34px;
+      z-index: 2147483000;
+      pointer-events: none;
+      opacity: 0.88;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+      background: url("{{ url_for('static', filename='img/logo_erpmaster.png') }}?v={{ static_version }}") no-repeat right bottom / contain;
+    }
+    body.demo-body.erp-master-brand-dom-ok::after { display: none !important; }
+    @media (max-width: 767.98px) {
+      body.demo-body.tenant-{{ tenant.slug }}::after {
+        right: max(0.65rem, env(safe-area-inset-right, 0px));
+        bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
+        width: 96px;
+        height: 28px;
+      }
+    }
+  </style>
+  {% endif %}
   {% block extra_head %}{% endblock %}
   {% if solo_lectura %}
   <style>
@@ -161,6 +188,44 @@
   <div class="erp-master-brand" id="erpmaster-sello-root" aria-hidden="true">
     <img src="{% if master_brand_src %}{{ master_brand_src }}{% else %}{{ master_logo_url or url_for('static', filename='img/logo_erpmaster.png') }}?v={{ static_version }}{% endif %}" alt="ERP Master">
   </div>
+  {% endif %}
+  {% if show_master %}
+  <script>
+  (function () {
+    var body = document.body;
+    if (!body) return;
+    var inlineSrc = {{ (master_brand_src or '')|tojson }};
+    var fallback = body.getAttribute('data-erp-master-src') ||
+      body.getAttribute('data-erp-master-static') || inlineSrc;
+    if (!fallback) return;
+    var root = document.getElementById('erpmaster-sello-root') ||
+      document.querySelector('.erp-master-brand, .dashboard-master-logo');
+    if (!root) {
+      root = document.createElement('div');
+      root.id = 'erpmaster-sello-root';
+      root.className = 'erp-master-brand';
+      root.setAttribute('aria-hidden', 'true');
+      var imgNew = document.createElement('img');
+      imgNew.alt = 'ERP Master';
+      root.appendChild(imgNew);
+      body.appendChild(root);
+    }
+    var img = root.querySelector('img');
+    if (!img) return;
+    var src = inlineSrc || fallback;
+    img.src = src;
+    img.onload = function () { body.classList.add('erp-master-brand-dom-ok'); };
+    img.onerror = function () {
+      var dataUri = body.getAttribute('data-erp-master-src');
+      if (dataUri && img.src !== dataUri) {
+        img.src = dataUri;
+        return;
+      }
+      if (root.parentNode) root.parentNode.removeChild(root);
+      body.classList.remove('erp-master-brand-dom-ok');
+    };
+  })();
+  </script>
   {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

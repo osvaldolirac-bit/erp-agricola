@@ -229,6 +229,10 @@ def check_master_brand_markup() -> None:
         raise CheckFailed("demo.js sin ensureErpMasterBrand")
     if "data-erp-master-brand" not in base or "body_tenant_class" not in base:
         raise CheckFailed("base.html sin marcadores logo multi-capa")
+    if "erp-master-brand-critical" not in base or "erp-master-brand-dom-ok" not in base:
+        raise CheckFailed("base.html sin CSS/script crítico logo fijo")
+    if "erp-master-brand-dom-ok" not in css:
+        raise CheckFailed("erp.css sin regla erp-master-brand-dom-ok (evita img roto ocultando fallback)")
     if "show_master = show_master_brand" not in dash:
         raise CheckFailed("dashboard/index.html sin fallback logo Espino")
     print("OK  markup logo ERP Master (CSS + JS + templates)")

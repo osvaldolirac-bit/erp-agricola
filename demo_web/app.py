@@ -494,8 +494,14 @@ def create_app(config_class=Config) -> Flask:
                 logo_url = url_for("tenant_logo_asset")
             else:
                 logo_url = None
-            show_master_brand = tenant_shows_master_brand(tenant.get("slug"), tenant)
+            slug_key = (tenant.get("slug") or "").strip().lower()
+            show_master_brand = tenant_shows_master_brand(slug_key, tenant)
             if show_master_brand:
+                master_brand_src = master_logo_data_uri()
+                master_logo_url = url_for("master_logo_asset")
+            elif slug_key in ("concepcion", "espino"):
+                # Fallback duro: LC/Espino siempre llevan sello aunque falle tenant_rules
+                show_master_brand = True
                 master_brand_src = master_logo_data_uri()
                 master_logo_url = url_for("master_logo_asset")
         else:
