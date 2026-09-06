@@ -1433,7 +1433,7 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   position: fixed;
   right: 1.15rem;
   bottom: 1rem;
-  z-index: 6;
+  z-index: 1050;
   pointer-events: none;
   opacity: 0.92;
 }
@@ -1447,7 +1447,7 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   position: fixed;
   right: 1.15rem;
   bottom: 1rem;
-  z-index: 6;
+  z-index: 1050;
   pointer-events: none;
   opacity: 0.88;
 }
@@ -1460,8 +1460,8 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 @media (max-width: 767.98px) {
   .dashboard-master-logo,
   .erp-master-brand {
-    right: 0.65rem;
-    bottom: 0.65rem;
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
   }
   .dashboard-master-logo img { max-height: 32px; }
   .erp-master-brand img { max-height: 28px; }

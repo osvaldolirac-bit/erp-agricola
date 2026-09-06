@@ -56,6 +56,14 @@ class EspinoTenantRulesTest(unittest.TestCase):
         ):
             self.assertEqual(sql_and_excluir_razon_social_espino(alias="f"), "")
 
+    def test_espino_muestra_master_brand(self) -> None:
+        from demo_web.services.branding import tenant_shows_master_brand
+
+        self.assertTrue(tenant_shows_master_brand("espino"))
+        self.assertTrue(tenant_shows_master_brand("concepcion"))
+        self.assertFalse(tenant_shows_master_brand("demo"))
+        self.assertFalse(tenant_shows_master_brand("globalgap"))
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main())

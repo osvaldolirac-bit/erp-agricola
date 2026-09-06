@@ -66,6 +66,15 @@ def find_master_logo_path() -> Path | None:
     return _first_existing(_MASTER_LOGO_NAMES)
 
 
+def tenant_shows_master_brand(slug: str | None, tenant: dict | None = None) -> bool:
+    """Watermark ERP Master fijo (LC + El Espino)."""
+    key = (slug or (tenant or {}).get("slug") or "").strip().lower()
+    if key in ("concepcion", "espino"):
+        return True
+    kind = ((tenant or {}).get("kind") or "").strip().lower()
+    return kind == "lc"
+
+
 _TENANT_LOGO_NAMES: dict[str, tuple[str, ...]] = {
     "concepcion": _LEGACY_LOGO_NAMES,
     "espino": _ESPINO_LOGO_NAMES,
