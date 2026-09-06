@@ -179,6 +179,14 @@ def tenant_logo_path_or_none(slug: str | None) -> Path | None:
     return None
 
 
+_ESPINO_BRAND_RGB = (60, 91, 62)
+_ESPINO_BRAND_HEX = "#3c5b3e"
+
+
+def _pdf_txt(texto: str) -> str:
+    return str(texto or "").encode("latin-1", "replace").decode("latin-1")
+
+
 def _espino_pdf_logo_padded(src: Path, *, ratio: float = 0.16) -> Path:
     """Logo Espino con margen blanco para PDFs (más aire alrededor del emblema)."""
     out = src.parent / "logo_espino_pdf_pad.png"
@@ -213,20 +221,28 @@ def pdf_logo_path_for_draw(demo: Any = None) -> str | None:
     return raw
 
 
-def pdf_draw_tenant_logo(pdf, logo_path: str | None = None, demo: Any = None) -> bool:
-    """Dibuja logo tenant en membrete PDF. Retorna True si se dibujó."""
+def pdf_draw_tenant_logo(pdf, logo_path: str | None = None, demo: Any = None) -> tuple[bool, float | None]:
+    """Dibuja logo tenant en membrete PDF.
+
+    Retorna (dibujado, y_titulo). y_titulo sugerido solo para Espino (logo + EL ESPINO).
+    """
     slug = resolve_tenant_slug(demo)
     path = logo_path or pdf_logo_path_for_draw(demo)
     if not path:
-        return False
+        return False, None
     if slug == "espino":
         path = str(_espino_pdf_logo_padded(Path(path)))
     try:
         if slug == "espino":
-            # Emblema cuadrado: altura contenida + márgenes generosos
-            pdf.image(path, x=14, y=11, h=20)
-        else:
-            pdf.image(path, x=10, y=8, w=40)
-        return True
+            logo_x, logo_y, logo_h = 14, 11, 20
+            pdf.image(path, x=logo_x, y=logo_y, h=logo_h)
+            pdf.set_font("Helvetica", "B", 17)
+            pdf.set_text_color(*_ESPINO_BRAND_RGB)
+            pdf.set_xy(logo_x, logo_y + logo_h + 1.2)
+            pdf.cell(logo_h, 6.5, _pdf_txt("EL ESPINO"), align="C")
+            pdf.set_text_color(0, 0, 0)
+            return True, logo_y + logo_h + 9.5
+        pdf.image(path, x=10, y=8, w=40)
+        return True, None
     except Exception:
-        return False
+        return False, None

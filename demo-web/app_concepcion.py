@@ -4754,13 +4754,17 @@ def _pdf_razon_social_default():
 
 def encabezado_pdf(pdf, titulo, modo_petroleo=False, saldo_petroleo=None):
     logo = None
+    title_y = 30
     try:
         from demo_web.services.branding import pdf_draw_tenant_logo
 
-        if not pdf_draw_tenant_logo(pdf):
-            logo = None
-        else:
+        drawn, espino_title_y = pdf_draw_tenant_logo(pdf)
+        if drawn:
             logo = True
+            if espino_title_y is not None:
+                title_y = espino_title_y
+        else:
+            logo = None
     except Exception:
         logo = ruta_logo_pdf()
         if logo:
@@ -4781,7 +4785,7 @@ def encabezado_pdf(pdf, titulo, modo_petroleo=False, saldo_petroleo=None):
         pdf.set_xy(175, 16)
         pdf.cell(112, 6, f"SALDO ESTANQUE: {f_decimal(saldo_petroleo)} L", align="R")
     pdf.set_font("Helvetica", "B", 13)
-    pdf.set_xy(10, 30)
+    pdf.set_xy(10, title_y)
     pdf.cell(277, 9, _pdf_txt(str(titulo)), align="C", ln=1)
     pdf.ln(6)
 

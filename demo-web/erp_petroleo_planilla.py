@@ -39,11 +39,14 @@ def _encabezado_planilla(pdf, titulo, logo_path=None, empresa="ERP AGRICOLA"):
     ancho_util = pdf.w - 20
     logo = logo_path
     drawn = False
+    title_y = 30
     if logo:
         try:
             from demo_web.services.branding import pdf_draw_tenant_logo
 
-            drawn = pdf_draw_tenant_logo(pdf, logo)
+            drawn, espino_title_y = pdf_draw_tenant_logo(pdf, logo)
+            if espino_title_y is not None:
+                title_y = espino_title_y
         except Exception:
             try:
                 pdf.image(logo, x=10, y=8, w=40)
@@ -61,7 +64,7 @@ def _encabezado_planilla(pdf, titulo, logo_path=None, empresa="ERP AGRICOLA"):
     pdf.cell(ancho_util, 5, f"Generado: {fh}", align="R")
 
     pdf.set_font("Helvetica", "B", 13)
-    pdf.set_xy(10, 30)
+    pdf.set_xy(10, title_y)
     pdf.cell(ancho_util, 9, _pdf_txt(str(titulo)), align="C", ln=1)
     pdf.ln(6)
 
