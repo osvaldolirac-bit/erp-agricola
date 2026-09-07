@@ -28,6 +28,13 @@ class EspinoTenantRulesTest(unittest.TestCase):
         with patch("demo_web.services.tenant_scope.tenant_slug", return_value="concepcion"):
             self.assertAlmostEqual(saldo_factura_tesoreria(500, 100, 300), 100.0)
 
+    def test_lc_pago_usa_saldo_bruto_aun_imputado(self) -> None:
+        from demo_web.services.tesoreria_cxp import saldo_factura_para_pago, saldo_factura_tesoreria
+
+        with patch("demo_web.services.tenant_scope.tenant_slug", return_value="concepcion"):
+            self.assertAlmostEqual(saldo_factura_tesoreria(443500, 0, 443500), 0.0)
+            self.assertAlmostEqual(saldo_factura_para_pago(443500, 0, 443500), 443500.0)
+
     def test_espino_incluye_int_en_sql(self) -> None:
         from demo_web.services.tesoreria_cxp import sql_solo_cxp_tesoreria
 

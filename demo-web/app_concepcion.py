@@ -2053,10 +2053,10 @@ def _query_historial_abonos_tesoreria(conn, fi, ff, bsq="", met="TODOS"):
 
 
 def _cargar_facturas_pendientes_saldo(conn):
-    """CxP neta pendiente: bruto − abonos − imputado Costos (igual que Flujo)."""
+    """Documentos por pagar: bruto − abonos (imputación Costos no oculta la deuda)."""
     from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
     from demo_web.services.tesoreria_cxp import (
-        saldo_factura_tesoreria,
+        saldo_factura_para_pago,
         sql_imputado_costos_subquery,
         sql_solo_cxp_tesoreria,
     )
@@ -2080,7 +2080,7 @@ def _cargar_facturas_pendientes_saldo(conn):
         df["dias_vencido"] = pd.Series(dtype="Int64")
         return df
     df["saldo"] = df.apply(
-        lambda r: saldo_factura_tesoreria(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
+        lambda r: saldo_factura_para_pago(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
         axis=1,
     )
     df = df[df["saldo"] > 0.01].copy()
@@ -8547,7 +8547,7 @@ def modulo_tesoreria():
         st.info("Para registrar pagos o abonos parciales, use la sección **🏢 Deuda por proveedor**.")
                 
     elif sec_teso == teso_secciones[1]:
-        from demo_web.services.tesoreria_cxp import saldo_factura_tesoreria, sql_imputado_costos_subquery, sql_solo_cxp_tesoreria
+        from demo_web.services.tesoreria_cxp import saldo_factura_para_pago, sql_imputado_costos_subquery, sql_solo_cxp_tesoreria
         from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
 
         excl = sql_and_excluir_razon_social_espino()
@@ -8577,7 +8577,7 @@ def modulo_tesoreria():
                 params=(psel,),
             )
             dfpr["saldo"] = dfpr.apply(
-                lambda r: saldo_factura_tesoreria(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
+                lambda r: saldo_factura_para_pago(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
                 axis=1,
             )
             dfpr = dfpr[dfpr["saldo"] > 0.01].copy()

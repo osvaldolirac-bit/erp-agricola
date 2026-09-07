@@ -49,8 +49,19 @@ def usar_saldo_cxp_neto_en_tesoreria() -> bool:
         return True
 
 
+def saldo_bruto_factura(monto_total, monto_pagado) -> float:
+    """Saldo por pagar al proveedor (documento − abonos)."""
+    return max(0.0, float(monto_total or 0) - float(monto_pagado or 0))
+
+
 def saldo_factura_tesoreria(monto_total, monto_pagado, imputado_costos=0) -> float:
-    bruto = max(0.0, float(monto_total or 0) - float(monto_pagado or 0))
+    """Saldo CxP neto para Flujo/resúmenes (LC descuenta imputación Costos)."""
+    bruto = saldo_bruto_factura(monto_total, monto_pagado)
     if usar_saldo_cxp_neto_en_tesoreria():
         return saldo_cxp_neto(monto_total, monto_pagado, imputado_costos)
     return bruto
+
+
+def saldo_factura_para_pago(monto_total, monto_pagado, imputado_costos=0) -> float:
+    """Cola de pago Tesorería: imputar a Costos no sustituye el pago al proveedor."""
+    return saldo_bruto_factura(monto_total, monto_pagado)
