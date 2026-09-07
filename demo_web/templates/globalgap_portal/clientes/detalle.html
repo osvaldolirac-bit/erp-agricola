@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} — GlobalGAP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-1 small">
+          <li class="breadcrumb-item"><a href="{{ url_for('globalgap_portal.clientes_list') }}">Clientes</a></li>
+          <li class="breadcrumb-item active">{{ cliente.nombre }}</li>
+        </ol>
+      </nav>
+      <h1 class="h3 mb-0">{{ cliente.nombre }}</h1>
+      {% if cliente.notas %}<p class="text-muted mb-0">{{ cliente.notas }}</p>{% endif %}
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ url_for('globalgap_portal.clientes_editar', etiqueta_id=cliente.id) }}" class="btn btn-outline-secondary btn-sm">Editar cliente</a>
+      <a href="{{ url_for('globalgap_portal.csg_nuevo', etiqueta_id=cliente.id) }}" class="btn btn-success btn-sm">+ CSG / predio</a>
+    </div>
+  </div>
+
+  {% if not csgs %}
+  <div class="panel-card">
+    <div class="alert alert-info mb-0">
+      Este cliente no tiene CSG registrados. Un CSG es el código/dirección del predio ante el SAG; bajo cada CSG puede haber varios ámbitos (huerto + especie).
+      <a href="{{ url_for('globalgap_portal.csg_nuevo', etiqueta_id=cliente.id) }}">Crear primer CSG</a>
+    </div>
+  </div>
+  {% else %}
+  {% for csg in csgs %}
+  <div class="panel-card mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+      <div>
+        <h2 class="h6 mb-1">CSG {{ csg.codigo_csg }} — {{ csg.nombre_predio }}</h2>
+        <div class="small text-muted">
+          {% if csg.direccion %}{{ csg.direccion }}{% endif %}
+          {% if csg.comuna %} · {{ csg.comuna }}{% endif %}
+          {% if csg.region %} · {{ csg.region }}{% endif %}
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('globalgap_portal.csg_editar', csg_id=csg.id) }}" class="btn btn-outline-secondary btn-sm">Editar CSG</a>
+        <a href="{{ url_for('globalgap_portal.ambito_nuevo', csg_id=csg.id) }}" class="btn btn-primary btn-sm">+ Ámbito</a>
+      </div>
+    </div>
+
+    {% if csg.ambitos %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0">
+        <thead>
+          <tr>
+            <th>Huerto · Especie</th>
+            <th>Plantilla</th>
+            <th class="text-end">Checklist</th>
+            <th class="text-end">NC</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in csg.ambitos %}
+          {% set card = cards_by_ambito.get(a.id) %}
+          <tr>
+            <td>{{ a.nombre_huerto }} · {{ a.especie_cultivo }}</td>
+            <td>{{ a.plantilla_docs|title }}</td>
+            <td class="text-end">{{ card.pct_checklist if card else 0 }}%</td>
+            <td class="text-end">{{ card.nc_abiertas if card else 0 }}</td>
+            <td class="text-end">
+              <a class="btn btn-outline-success btn-sm" href="{{ url_for('globalgap_portal.entrar_ambito', ambito_id=a.id) }}">Certificación</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="small text-muted mb-0">Sin ámbitos en este CSG — agregue huerto + especie.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}
