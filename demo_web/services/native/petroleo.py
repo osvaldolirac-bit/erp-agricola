@@ -51,28 +51,65 @@ def _opciones_maquinaria(conn):
     return [(m["codigo"], etiqueta_maquinaria(m["codigo"], m["nombre"])) for m in items]
 
 
+def _check_master(demo, clave: str) -> bool:
+    return (clave or "").strip() == getattr(demo, "CLAVE_MAESTRA", "")
+
+
+def _recalc_imputacion_petroleo(demo, conn) -> None:
+    try:
+        demo._recalcular_imputacion_salidas_petroleo(conn)
+    except Exception:
+        pass
+
+
+def _parse_event_key(event_key: str) -> tuple[str, int] | None:
+    ek = (event_key or "").strip()
+    if ek.startswith("c:"):
+        try:
+            return "carga", int(ek[2:])
+        except ValueError:
+            return None
+    if ek.startswith("s:"):
+        try:
+            return "salida", int(ek[2:])
+        except ValueError:
+            return None
+    return None
+
+
 def _eventos_historial(demo, conn, dfp) -> list[dict]:
     eventos_raw = demo._petroleo_eventos_historial(dfp)
     out = []
     for num, (kind, data, _) in reversed(list(enumerate(eventos_raw, start=1))):
         if kind == "carga":
             row = data
+            eid = int(row["id"])
             out.append(
                 {
                     "num": num,
                     "kind": "carga",
+                    "event_key": f"c:{eid}",
+                    "ids": [eid],
                     "fecha": pd.to_datetime(row["fecha"]).strftime("%Y-%m-%d"),
+                    "fecha_raw": pd.to_datetime(row["fecha"]).strftime("%Y-%m-%d"),
                     "litros": demo.f_decimal(row.get("litros", 0)),
+                    "litros_raw": float(row.get("litros", 0) or 0),
                     "bruto": demo.f_peso(row.get("monto_total_compra", 0) or 0),
+                    "monto_bruto_raw": float(row.get("monto_total_compra", 0) or 0),
+                    "tipo_raw": str(row.get("tipo") or "Carga"),
                 }
             )
         else:
             grp = data
+            ids = [int(x) for x in grp["id"].tolist()]
             detalle = []
+            cuarteles_raw = []
             for _, row in grp.iterrows():
+                cc = str(row["centro_costo"] or "").strip()
+                cuarteles_raw.append(cc)
                 detalle.append(
                     {
-                        "cuartel": row["centro_costo"],
+                        "cuartel": cc,
                         "litros": demo.f_decimal(row["litros"]),
                         "neto": demo.f_peso(row.get("valor_imputado", 0) or 0),
                     }
@@ -83,16 +120,24 @@ def _eventos_historial(demo, conn, dfp) -> list[dict]:
                     if v.strip():
                         cod_bit = v.strip()
                         break
+            litros_total = float(grp["litros"].sum())
             out.append(
                 {
                     "num": num,
                     "kind": "salida",
+                    "event_key": f"s:{min(ids)}",
+                    "ids": ids,
                     "fecha": pd.to_datetime(grp["fecha"].iloc[0]).strftime("%Y-%m-%d"),
+                    "fecha_raw": pd.to_datetime(grp["fecha"].iloc[0]).strftime("%Y-%m-%d"),
                     "vehiculo": grp["vehiculo"].iloc[0] or "—",
+                    "vehiculo_raw": str(grp["vehiculo"].iloc[0] or "").strip(),
                     "responsable": grp["responsable"].iloc[0] or "—",
-                    "litros": demo.f_decimal(float(grp["litros"].sum())),
+                    "responsable_raw": str(grp["responsable"].iloc[0] or "").strip(),
+                    "litros": demo.f_decimal(litros_total),
+                    "litros_raw": litros_total,
                     "neto": demo.f_peso(float(grp["valor_imputado"].fillna(0).sum())),
                     "n_cuarteles": len(grp),
+                    "cuarteles_raw": cuarteles_raw,
                     "bitacora_codigo": cod_bit,
                     "detalle": detalle,
                 }
@@ -228,6 +273,9 @@ def _historial(demo, conn, saldo_actual: float) -> dict:
             "filtro_desde": fi.isoformat(),
             "filtro_hasta": ff.isoformat(),
             "pdf_historial_url": None,
+            "es_admin_hist": False,
+            "mov_edit": None,
+            "mov_opts": [],
         }
 
     dfp = enriquecer_columna_maquinaria(conn, dfp, "vehiculo")
@@ -241,13 +289,174 @@ def _historial(demo, conn, saldo_actual: float) -> dict:
         token = store_pdf(blob, "petroleo.pdf")
         pdf_url = url_for("modules.pdf_download", token=token)
 
+    eventos = _eventos_historial(demo, conn, dfp)
+    es_admin = bool(demo.es_admin()) and not bool(demo.es_solo_lectura())
+    mov_edit = None
+    mov_opts = []
+    if es_admin and eventos:
+        for ev in eventos:
+            if ev["kind"] == "carga":
+                lbl = (
+                    f"Mov {ev['num']:03d} — ENTRADA — {ev['fecha']} — "
+                    f"{ev['litros']} L — {ev['bruto']}"
+                )
+            else:
+                lbl = (
+                    f"Mov {ev['num']:03d} — SALIDA — {ev['fecha']} — "
+                    f"{ev['vehiculo']} — {ev['litros']} L"
+                )
+            mov_opts.append({"event_key": ev["event_key"], "label": lbl})
+        ek = (request.args.get("event_key") or eventos[0]["event_key"]).strip()
+        mov_edit = next((e for e in eventos if e["event_key"] == ek), eventos[0])
+
     return {
-        "historial_eventos": _eventos_historial(demo, conn, dfp),
+        "historial_eventos": eventos,
         "historial_stats": {"total": len(eventos_raw), "entradas": n_car, "salidas": n_sal},
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "pdf_historial_url": pdf_url,
+        "es_admin_hist": es_admin,
+        "mov_edit": mov_edit,
+        "mov_opts": mov_opts,
+        "maquinaria_opts_hist": _opciones_maquinaria(conn),
     }
+
+
+def _post_corregir_petroleo_hist(demo, conn) -> dict:
+    if demo.es_solo_lectura():
+        return {"ok": False, "msg": "Modo solo lectura: no puede corregir movimientos."}
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Solo administradores pueden corregir movimientos."}
+    if not _check_master(demo, request.form.get("clave_maestra")):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+
+    parsed = _parse_event_key(request.form.get("event_key") or "")
+    if not parsed:
+        return {"ok": False, "msg": "Movimiento no válido."}
+    kind, ref_id = parsed
+    fi = parse_date(request.form.get("desde"), hoy_demo(demo))
+    ff = parse_date(request.form.get("hasta"), hoy_demo(demo))
+    fecha = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    if fecha < fi or fecha > ff:
+        return {"ok": False, "msg": "La fecha debe estar dentro del rango filtrado."}
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(petroleo)").fetchall()}
+    has_bit = "bitacora_codigo" in cols
+
+    if kind == "carga":
+        row = conn.execute(
+            "SELECT id, tipo FROM petroleo WHERE id=? AND lower(tipo) != 'salida'",
+            (ref_id,),
+        ).fetchone()
+        if not row:
+            return {"ok": False, "msg": "Entrada no encontrada."}
+        try:
+            litros = float(request.form.get("litros") or 0)
+            monto = float(request.form.get("monto_bruto") or 0)
+        except ValueError:
+            return {"ok": False, "msg": "Litros o monto inválidos."}
+        if litros <= 0:
+            return {"ok": False, "msg": "Los litros deben ser mayores a cero."}
+        conn.execute(
+            "UPDATE petroleo SET fecha=?, litros=?, monto_total_compra=? WHERE id=?",
+            (str(fecha), litros, monto, ref_id),
+        )
+        _recalc_imputacion_petroleo(demo, conn)
+        conn.commit()
+        demo.registrar_accion("PETROLEO", f"Corrección entrada ID {ref_id} — {litros} L")
+        return {"ok": True, "msg": "Entrada corregida. Imputaciones de salida recalculadas.", "event_key": f"c:{ref_id}"}
+
+    # salida — reemplazar filas del grupo
+    ids_raw = (request.form.get("ids") or "").strip()
+    ids = [int(x) for x in ids_raw.split(",") if x.strip().isdigit()]
+    if not ids:
+        ids = [ref_id]
+    placeholders = ",".join("?" * len(ids))
+    grp_rows = conn.execute(
+        f"SELECT id, bitacora_codigo FROM petroleo WHERE id IN ({placeholders}) AND tipo='Salida'",
+        ids,
+    ).fetchall()
+    if not grp_rows:
+        return {"ok": False, "msg": "Salida no encontrada."}
+    cod_bit = ""
+    for _, cb in grp_rows:
+        if cb and str(cb).strip():
+            cod_bit = str(cb).strip()
+            break
+
+    try:
+        ls = float(request.form.get("litros") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Litros inválidos."}
+    vehiculo = (request.form.get("vehiculo") or "").strip()
+    responsable = (request.form.get("responsable") or "").strip()
+    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in centros_costo(demo)]
+    if not vehiculo:
+        return {"ok": False, "msg": "Seleccione el equipo."}
+    if not responsable:
+        return {"ok": False, "msg": "Ingrese el responsable."}
+    if not ccs or ls <= 0:
+        return {"ok": False, "msg": "Indique litros y al menos un cuartel."}
+
+    conn.execute(f"DELETE FROM petroleo WHERE id IN ({placeholders})", ids)
+    litros_cc = ls / len(ccs)
+    pmp = demo._petroleo_pmp_neto(conn)
+    for c in ccs:
+        vals = ("Salida", litros_cc, vehiculo, responsable, c, str(fecha), litros_cc * pmp)
+        if has_bit:
+            conn.execute(
+                "INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, "
+                "valor_imputado, bitacora_codigo) VALUES (?,?,?,?,?,?,?,?)",
+                (*vals, cod_bit or None),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO petroleo (tipo, litros, vehiculo, responsable, centro_costo, fecha, "
+                "valor_imputado) VALUES (?,?,?,?,?,?,?)",
+                vals,
+            )
+    _recalc_imputacion_petroleo(demo, conn)
+    conn.commit()
+    demo.registrar_accion("PETROLEO", f"Corrección salida IDs {ids} — {ls} L — {vehiculo}")
+    return {"ok": True, "msg": "Salida corregida. Imputaciones recalculadas."}
+
+
+def _post_eliminar_petroleo_hist(demo, conn) -> dict:
+    if demo.es_solo_lectura():
+        return {"ok": False, "msg": "Modo solo lectura: no puede eliminar movimientos."}
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Solo administradores pueden eliminar movimientos."}
+    if not _check_master(demo, request.form.get("clave_maestra")):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+
+    parsed = _parse_event_key(request.form.get("event_key") or "")
+    if not parsed:
+        return {"ok": False, "msg": "Movimiento no válido."}
+    kind, ref_id = parsed
+    ids_raw = (request.form.get("ids") or "").strip()
+    ids = [int(x) for x in ids_raw.split(",") if x.strip().isdigit()]
+    if not ids:
+        ids = [ref_id]
+    placeholders = ",".join("?" * len(ids))
+
+    if kind == "carga":
+        row = conn.execute(
+            f"SELECT id, litros FROM petroleo WHERE id IN ({placeholders}) AND lower(tipo) != 'salida'",
+            ids,
+        ).fetchone()
+    else:
+        row = conn.execute(
+            f"SELECT id, litros FROM petroleo WHERE id IN ({placeholders}) AND tipo='Salida'",
+            ids,
+        ).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Movimiento no encontrado."}
+
+    conn.execute(f"DELETE FROM petroleo WHERE id IN ({placeholders})", ids)
+    _recalc_imputacion_petroleo(demo, conn)
+    conn.commit()
+    demo.registrar_accion("PETROLEO", f"Eliminado historial IDs {ids}")
+    return {"ok": True, "msg": "Movimiento eliminado. Estanque e imputaciones recalculados."}
 
 
 def _planilla(demo, conn) -> dict:
@@ -429,6 +638,30 @@ def view(user_email: str, user_rol: str):
                     title="⛽ Petróleo",
                     **ctx,
                 )
+            if action == "corregir_petroleo_hist":
+                result = _post_corregir_petroleo_hist(demo, conn)
+                flash(result["msg"], "success" if result["ok"] else "danger")
+                extra = {"sec": "historial"}
+                for k in ("desde", "hasta"):
+                    v = (request.form.get(k) or "").strip()
+                    if v:
+                        extra[k] = v
+                if result.get("ok") and result.get("event_key"):
+                    extra["event_key"] = result["event_key"]
+                elif result.get("ok"):
+                    ek = (request.form.get("event_key") or "").strip()
+                    if ek:
+                        extra["event_key"] = ek
+                return redirect_module("petroleo", **extra)
+            if action == "eliminar_petroleo_hist":
+                result = _post_eliminar_petroleo_hist(demo, conn)
+                flash(result["msg"], "success" if result["ok"] else "danger")
+                extra = {"sec": "historial"}
+                for k in ("desde", "hasta"):
+                    v = (request.form.get(k) or "").strip()
+                    if v:
+                        extra[k] = v
+                return redirect_module("petroleo", **extra)
         finally:
             conn.close()
 

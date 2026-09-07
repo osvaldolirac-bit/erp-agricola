@@ -319,6 +319,125 @@
   <div class="alert alert-info">No hay movimientos en el período seleccionado.</div>
   {% endif %}
 
+  {% if es_admin_hist and mov_edit %}
+  <div class="panel-card mt-3" id="pet-hist-edit">
+    <h2 class="h6 panel-title">✏️ Corregir o eliminar movimiento</h2>
+    <p class="small text-muted mb-2">Solo administrador. Requiere clave maestra. Al corregir o eliminar se recalculan imputaciones y saldo del estanque.</p>
+    <form method="get" class="mb-3">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <label class="form-label small">Movimiento</label>
+      <select name="event_key" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for o in mov_opts %}
+        <option value="{{ o.event_key }}" {% if o.event_key == mov_edit.event_key %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    {% if mov_edit.kind == 'carga' %}
+    <form method="post" class="row g-2 mb-2">
+      <input type="hidden" name="action" value="corregir_petroleo_hist">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="event_key" value="{{ mov_edit.event_key }}">
+      <input type="hidden" name="ids" value="{{ mov_edit.ids|join(',') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-3">
+        <label class="form-label small">Fecha</label>
+        <input type="date" name="fecha" class="form-control form-control-sm" value="{{ mov_edit.fecha_raw }}" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Litros</label>
+        <input type="number" name="litros" class="form-control form-control-sm" value="{{ mov_edit.litros_raw }}" min="0" step="any" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Total bruto compra ($)</label>
+        <input type="number" name="monto_bruto" class="form-control form-control-sm" value="{{ mov_edit.monto_bruto_raw }}" min="0" step="any" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Clave maestra</label>
+        <input type="password" name="clave_maestra" class="form-control form-control-sm" required autocomplete="off">
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button>
+      </div>
+    </form>
+    {% else %}
+    <form method="post" class="row g-2 mb-2">
+      <input type="hidden" name="action" value="corregir_petroleo_hist">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="event_key" value="{{ mov_edit.event_key }}">
+      <input type="hidden" name="ids" value="{{ mov_edit.ids|join(',') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-3">
+        <label class="form-label small">Fecha</label>
+        <input type="date" name="fecha" class="form-control form-control-sm" value="{{ mov_edit.fecha_raw }}" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Litros totales</label>
+        <input type="number" name="litros" class="form-control form-control-sm" value="{{ mov_edit.litros_raw }}" min="0" step="any" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Equipo</label>
+        <select name="vehiculo" class="form-select form-select-sm" required>
+          {% for cod, lbl in maquinaria_opts_hist %}
+          <option value="{{ cod }}" {% if cod == mov_edit.vehiculo_raw %}selected{% endif %}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Responsable</label>
+        <input type="text" name="responsable" class="form-control form-control-sm" value="{{ mov_edit.responsable_raw }}" required>
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Cuarteles</label>
+        <div class="row g-1">
+          {% for cc in cuarteles %}
+          <div class="col-md-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="cuarteles" value="{{ cc }}" id="phcc{{ loop.index }}"
+                     {% if cc in mov_edit.cuarteles_raw %}checked{% endif %}>
+              <label class="form-check-label small" for="phcc{{ loop.index }}">{{ cc }}</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% if mov_edit.bitacora_codigo %}
+      <div class="col-12"><span class="badge bg-success">Salida Link {{ mov_edit.bitacora_codigo }}</span></div>
+      {% endif %}
+      <div class="col-md-3">
+        <label class="form-label small">Clave maestra</label>
+        <input type="password" name="clave_maestra" class="form-control form-control-sm" required autocomplete="off">
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button>
+      </div>
+    </form>
+    {% endif %}
+
+    <hr class="my-3">
+    <form method="post" class="row g-2"
+          onsubmit="return confirm('¿Eliminar movimiento {{ mov_edit.num }} ({{ mov_edit.kind|upper }})? Se recalculará el estanque. Esta acción no se puede deshacer.');">
+      <input type="hidden" name="action" value="eliminar_petroleo_hist">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="event_key" value="{{ mov_edit.event_key }}">
+      <input type="hidden" name="ids" value="{{ mov_edit.ids|join(',') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-4">
+        <label class="form-label small">Clave maestra p/ eliminar</label>
+        <input type="password" name="clave_maestra" class="form-control form-control-sm" required autocomplete="off">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-danger btn-sm">Eliminar movimiento</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
   {% elif sec_activa == 'planilla' %}
   <div class="panel-card mb-3">
     <h2 class="h6 panel-title">Planilla maestra del estanque</h2>
