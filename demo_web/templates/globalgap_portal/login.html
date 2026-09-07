@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Acceso GlobalGAP Consultor{% endblock %}
+{% block content %}
+<section class="login-page login-page--industrial" aria-label="Acceso GlobalGAP Consultor">
+  <div class="login-bg" aria-hidden="true">
+    <div class="login-bg-photo"></div>
+    <div class="login-bg-rows"></div>
+    <div class="login-bg-steel"></div>
+  </div>
+  <div class="login-scrim" aria-hidden="true"></div>
+
+  {% if logo_url %}
+  <div class="login-logo-corner">
+    <img src="{{ logo_url }}" alt="GlobalGAP Consultor" class="logo-login">
+  </div>
+  {% endif %}
+
+  <div class="login-access">
+    <button type="button" class="btn-acceso" id="btnAcceso" aria-expanded="false"{% if open_panel %} aria-expanded="true"{% endif %}>Acceso</button>
+    <div class="login-panel{% if open_panel %} open{% endif %}" id="loginPanel" role="dialog" aria-label="Iniciar sesión GlobalGAP">
+      <form method="post" class="login-panel-form" autocomplete="off">
+        <label for="email">Usuario</label>
+        <input id="email" name="email" value="{{ acceso_pref or '' }}" type="email" autocomplete="username" required>
+        <label for="password">Clave</label>
+        <input id="password" name="password" type="password"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               required readonly>
+        <div class="form-check mt-2 mb-2">
+          <input class="form-check-input" type="checkbox" name="remember" id="remember">
+          <label class="form-check-label" for="remember">Recordar usuario</label>
+        </div>
+        <button class="btn-ingresar" type="submit">ACCEDER</button>
+      </form>
+    </div>
+  </div>
+
+  <main class="login-hero">
+    <p class="login-brand">ERP Master</p>
+    <h1>GLOBALGAP CONSULTOR</h1>
+    <p>Gestión certificación multi-cliente · documentos y trazabilidad por huerto</p>
+  </main>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const storageKey = {{ remember_key|tojson }};
+  const btn = document.getElementById('btnAcceso');
+  const panel = document.getElementById('loginPanel');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const rememberInput = document.getElementById('remember');
+  if (!btn || !panel) return;
+  const unlockPassword = () => passwordInput?.removeAttribute('readonly');
+  const readRemembered = () => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const data = raw ? JSON.parse(raw) : null;
+      if (data && data.remember && data.email && emailInput) {
+        emailInput.value = String(data.email).trim();
+        if (rememberInput) rememberInput.checked = true;
+      }
+    } catch (err) {}
+    if (passwordInput) passwordInput.value = '';
+  };
+  readRemembered();
+  btn.addEventListener('click', () => {
+    panel.classList.toggle('open');
+    btn.setAttribute('aria-expanded', panel.classList.contains('open') ? 'true' : 'false');
+    unlockPassword();
+  });
+  panel.querySelector('form')?.addEventListener('submit', () => {
+    try {
+      const email = (emailInput?.value || '').trim();
+      if (rememberInput?.checked && email) {
+        localStorage.setItem(storageKey, JSON.stringify({ remember: true, email }));
+      } else {
+        localStorage.removeItem(storageKey);
+      }
+    } catch (err) {}
+  });
+  if (panel.classList.contains('open')) unlockPassword();
+})();
+</script>
+{% endblock %}
