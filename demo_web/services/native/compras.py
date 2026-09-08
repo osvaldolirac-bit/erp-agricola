@@ -208,7 +208,9 @@ def _historial(demo, conn) -> dict:
                IFNULL(razon_social, 'ERP Demo Agrícola') AS razon_social,
                fecha_compra, fecha_vencimiento, {SQL_ETIQUETA_TIPO} AS tipo,
                COALESCE(NULLIF(TRIM(tipo_gasto), ''), ?) AS tipo_gasto_cc,
-               concepto, monto_total
+               concepto, monto_total,
+               COALESCE(monto_pagado, 0) AS monto_pagado,
+               COALESCE(estado, 'Pendiente') AS estado
         FROM facturas
         WHERE monto_total > 0
           {_sql_historial_compras()}
@@ -264,6 +266,12 @@ def _historial(demo, conn) -> dict:
                 "concepto_full": r["concepto"] or "",
                 "monto_total": demo.f_peso(r["monto_total"]),
                 "monto_raw": float(r["monto_total"] or 0),
+                "monto_pagado_raw": float(r["monto_pagado"] or 0),
+                "monto_pagado": demo.f_peso(r["monto_pagado"]) if float(r["monto_pagado"] or 0) > 0.01 else "—",
+                "saldo_raw": max(0.0, float(r["monto_total"] or 0) - float(r["monto_pagado"] or 0)),
+                "saldo": demo.f_peso(max(0.0, float(r["monto_total"] or 0) - float(r["monto_pagado"] or 0))),
+                "estado": str(r["estado"] or "Pendiente"),
+                "tiene_abonos": float(r["monto_pagado"] or 0) > 0.01,
             }
         )
     pdf_url = None
@@ -337,6 +345,22 @@ def _historial(demo, conn) -> dict:
             tg = tipos[0]
         factura_edit = dict(factura_edit)
         factura_edit["tipo_gasto_sel"] = tg
+        ab_rows = conn.execute(
+            """SELECT id, fecha, monto, metodo_pago, IFNULL(banco, '') AS banco, usuario, fecha_registro
+               FROM facturas_abonos WHERE factura_id=? ORDER BY fecha DESC, id DESC""",
+            (edit_id,),
+        ).fetchall()
+        factura_edit["abonos"] = [
+            {
+                "fecha": str(r[1])[:10],
+                "monto": demo.f_peso(r[2]),
+                "metodo_pago": r[3] or "",
+                "banco": r[4] or "",
+                "usuario": r[5] or "",
+                "fecha_registro": r[6] or "",
+            }
+            for r in ab_rows
+        ]
 
     razones = razones_sociales_compras(demo)
     proveedores = _proveedores_options(conn) if es_admin else []
@@ -888,6 +912,52 @@ def _post_corregir_factura(demo, conn) -> dict:
     return {"ok": True, "msg": msg}
 
 
+def _post_revertir_abonos_factura(demo, conn) -> dict:
+    """Quita abonos erróneos (Tesorería) y deja la factura pendiente de pago."""
+    if demo.es_solo_lectura():
+        return {"ok": False, "msg": "Modo solo lectura: no puede revertir abonos."}
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Solo administradores pueden revertir abonos."}
+    clave = (request.form.get("clave_maestra") or "").strip()
+    if clave != getattr(demo, "CLAVE_MAESTRA", ""):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+    try:
+        fid = int(request.form.get("factura_id") or 0)
+    except ValueError:
+        fid = 0
+    fila = conn.execute(
+        "SELECT id, nro_documento, proveedor, monto_total, COALESCE(monto_pagado, 0) "
+        "FROM facturas WHERE id=? AND nro_documento NOT LIKE '%_P'",
+        (fid,),
+    ).fetchone()
+    if not fila:
+        return {"ok": False, "msg": "Documento no encontrado."}
+    _id, doc, prov, monto_total, pagado = fila
+    if float(pagado or 0) <= 0.01:
+        return {"ok": False, "msg": "Este documento no tiene abonos registrados."}
+    n_ab = conn.execute(
+        "SELECT COUNT(*) FROM facturas_abonos WHERE factura_id=?",
+        (fid,),
+    ).fetchone()[0]
+    conn.execute("DELETE FROM facturas_abonos WHERE factura_id=?", (fid,))
+    conn.execute(
+        """UPDATE facturas
+           SET monto_pagado=0, estado='Pendiente', fecha_pago=NULL,
+               metodo_pago='', banco=''
+           WHERE id=?""",
+        (fid,),
+    )
+    conn.commit()
+    demo.registrar_accion(
+        "COMPRA",
+        f"Abonos revertidos ID {fid} ({doc} · {prov}): {n_ab} fila(s), ${float(pagado or 0):,.0f}",
+    )
+    return {
+        "ok": True,
+        "msg": f"Se revirtieron los abonos de {doc}. Quedó pendiente por {demo.f_peso(monto_total)}.",
+    }
+
+
 def _post_eliminar_factura(demo, conn) -> dict:
     if demo.es_solo_lectura():
         return {"ok": False, "msg": "Modo solo lectura: no puede eliminar documentos."}
@@ -976,6 +1046,8 @@ def view(user_email: str, user_rol: str):
                 result = _post_corregir_factura(demo, conn)
             elif action == "eliminar_factura":
                 result = _post_eliminar_factura(demo, conn)
+            elif action == "revertir_abonos_factura":
+                result = _post_revertir_abonos_factura(demo, conn)
 
             if result:
                 flash(result["msg"], "success" if result["ok"] else "danger")
@@ -984,7 +1056,12 @@ def view(user_email: str, user_rol: str):
                     extra["modo"] = modo
                 if action == "caja_mov":
                     extra["encargado"] = request.form.get("encargado_id", "")
-                if action in {"corregir_factura", "eliminar_factura", "asignar_folio_interno"}:
+                if action in {
+                    "corregir_factura",
+                    "eliminar_factura",
+                    "asignar_folio_interno",
+                    "revertir_abonos_factura",
+                }:
                     extra["sec"] = "historial"
                     for k in ("q", "desde", "hasta"):
                         v = (request.form.get(k) or "").strip()

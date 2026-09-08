@@ -56,6 +56,7 @@
             <th style="min-width:9rem">Correlativo</th>
             <th>N° Doc</th><th>Proveedor</th><th>Razón social</th><th>Fecha</th>
             <th>Tipo</th><th>Tipo gasto CC</th><th>Concepto</th><th>Monto bruto</th>
+            <th>Abonado</th><th>Saldo</th><th>Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -79,7 +80,7 @@
                        placeholder="{{ row.siguiente_correlativo or siguiente_correlativo or '' }}"
                        title="Correlativo por razón social (puede repetirse entre razones)"
                        aria-label="Correlativo (por razón social)">
-                <button type="submit" class="btn-act abono" title="Ingresar correlativo (factura real)" aria-label="Ingresar">
+                <button type="submit" class="btn-act correlativo" title="Ingresar correlativo (factura real)" aria-label="Ingresar">
                   <i class="bi bi-check-lg" aria-hidden="true"></i>
                 </button>
               </form>
@@ -98,6 +99,17 @@
             <td>{{ row.tipo_gasto_cc }}</td>
             <td class="small">{{ row.concepto }}</td>
             <td class="fw-semibold">{{ row.monto_total }}</td>
+            <td class="{% if row.tiene_abonos %}text-warning fw-semibold{% else %}text-muted{% endif %}">{{ row.monto_pagado }}</td>
+            <td>{{ row.saldo }}</td>
+            <td>
+              {% if row.estado == 'Pagado' %}
+              <span class="badge text-bg-success">Pagado</span>
+              {% elif row.tiene_abonos %}
+              <span class="badge text-bg-warning">Abono parcial</span>
+              {% else %}
+              <span class="badge text-bg-secondary">Pendiente</span>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -111,6 +123,35 @@
   <div class="panel-card mt-3" id="corr-factura">
     <h2 class="h6 panel-title">✏️ Corregir o eliminar documento</h2>
     <p class="small text-muted mb-2">Solo administrador. Requiere clave maestra. Al eliminar se borra también la imputación <code>_P</code> en centros de costo.</p>
+    {% if factura_edit.tiene_abonos %}
+    <div class="alert alert-warning py-2 small mb-2">
+      <strong>Tesorería:</strong> abonado {{ factura_edit.monto_pagado }} · saldo {{ factura_edit.saldo }} · estado {{ factura_edit.estado }}.
+      {% if factura_edit.abonos %}
+      <ul class="mb-0 mt-1">
+        {% for ab in factura_edit.abonos %}
+        <li>{{ ab.fecha }} — {{ ab.monto }} — {{ ab.metodo_pago }}{% if ab.banco %} ({{ ab.banco }}){% endif %} — {{ ab.usuario }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    <form method="post" class="row g-2 mb-3"
+          onsubmit="return confirm('¿Revertir todos los abonos de {{ factura_edit.nro_documento|e }}? La factura quedará pendiente de pago completo.');">
+      <input type="hidden" name="action" value="revertir_abonos_factura">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="factura_id" value="{{ factura_edit.id }}">
+      <input type="hidden" name="q" value="{{ filtro_q }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-4">
+        <label class="form-label small">Clave maestra p/ revertir abonos</label>
+        <input type="password" name="clave_maestra" class="form-control form-control-sm" required autocomplete="off">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-warning btn-sm">Revertir abonos (dejar pendiente)</button>
+      </div>
+    </form>
+    <hr class="my-2">
+    {% endif %}
     <form method="get" class="mb-3">
       <input type="hidden" name="sec" value="historial">
       <input type="hidden" name="q" value="{{ filtro_q }}">
