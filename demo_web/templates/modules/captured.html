@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 demo-module">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  <div class="demo-captured-content">
+    {% for frag in fragments %}
+      {{ frag|safe }}
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if extra_css %}
+<style>{% for css in extra_css %}{{ css }}{% endfor %}</style>
+{% endif %}
+<script>
+  document.querySelectorAll('.demo-captured-content form[method="post"]').forEach(function (f) {
+    if (!f.querySelector('input[name="_st_form"]') && !f.querySelector('button[name="_st_submit"]')) return;
+  });
+  document.querySelectorAll('.demo-captured-content table').forEach(function (t) {
+    if (t.classList.contains('demo-datatable') || t.closest('.demo-no-datatable')) return;
+    if (t.rows.length > 8) t.classList.add('table-sm');
+  });
+</script>
+{% endblock %}
