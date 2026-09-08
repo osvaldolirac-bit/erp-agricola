@@ -417,6 +417,7 @@ def _gather_ingreso(demo, conn) -> dict:
         "productos": productos,
         "familias": demo.listar_familias_producto(conn),
         "unidades": demo.UNIDADES_MEDIDA_INSUMO,
+        "um_default": demo.DEFAULT_UNIDAD_INSUMO,
         "razones_sociales": razones,
         "razon_social_fija": razones[0] if len(razones) == 1 else "",
         "tipos_gasto": demo.TIPOS_GASTO_ALTA,
@@ -570,7 +571,11 @@ def _post_add_car(demo) -> dict:
                 "p": neto,
                 "t": cant * neto,
                 "nuevo": True,
-                "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
+                "um": (
+                    request.form.get("unidad_medida")
+                    or request.form.get("um")
+                    or demo.DEFAULT_UNIDAD_INSUMO
+                ),
             }
         )
     _set_car(car)
