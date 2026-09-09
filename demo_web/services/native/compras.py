@@ -704,16 +704,18 @@ def _post_save_gastos(demo, conn) -> dict:
 
     ng = _folio_interno(conn, fe) if sin_doc else nro
     imp = mt if iva_bruto else mt / 1.19
+    imputar_bruto = 1 if iva_bruto else 0
     conn.execute(
         """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-           tipo, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?)""",
-        (ng, prov, fe, fv, mt, "Gasto Operacional", concepto, razon, tipo_gasto),
+           tipo, concepto, razon_social, tipo_gasto, imputar_bruto) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (ng, prov, fe, fv, mt, "Gasto Operacional", concepto, razon, tipo_gasto, imputar_bruto),
     )
     for c in selcc:
         conn.execute(
             """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-               tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (ng + "_P", prov, fe, fv, 0, "Gasto Operacional", c.upper(), imp / len(selcc), concepto, razon, tipo_gasto),
+               tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto, imputar_bruto)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (ng + "_P", prov, fe, fv, 0, "Gasto Operacional", c.upper(), imp / len(selcc), concepto, razon, tipo_gasto, imputar_bruto),
         )
     conn.commit()
     demo.registrar_accion("GASTO", ng)
