@@ -556,10 +556,71 @@
     });
   }
 
+  function ensureErpMasterBrand() {
+    var body = document.body;
+    if (!body) return;
+    var tenantClass = body.classList.contains('tenant-espino') ||
+      body.classList.contains('tenant-concepcion');
+    if (!tenantClass && body.getAttribute('data-erp-master-brand') !== '1') return;
+
+    var src = body.getAttribute('data-erp-master-src') ||
+      body.getAttribute('data-erp-master-static');
+    if (!src) return;
+
+    var root = document.getElementById('erpmaster-sello-root') ||
+      document.querySelector('.erp-master-brand, .dashboard-master-logo');
+    var existing = root && root.querySelector('img');
+    if (existing) {
+      if (!existing.getAttribute('src') || existing.getAttribute('src') === window.location.href) {
+        existing.setAttribute('src', src);
+      }
+      existing.addEventListener('load', function onLoad() {
+        existing.removeEventListener('load', onLoad);
+        body.classList.add('erp-master-brand-dom-ok');
+      }, { once: true });
+      existing.addEventListener('error', function onErr() {
+        existing.removeEventListener('error', onErr);
+        var inline = body.getAttribute('data-erp-master-src');
+        if (inline && existing.src !== inline) {
+          existing.src = inline;
+          return;
+        }
+        if (root && root.parentNode) root.parentNode.removeChild(root);
+        body.classList.remove('erp-master-brand-dom-ok');
+      }, { once: true });
+      return;
+    }
+
+    var root = document.createElement('div');
+    root.id = 'erpmaster-sello-root';
+    root.className = 'erp-master-brand';
+    root.setAttribute('aria-hidden', 'true');
+    var img = document.createElement('img');
+    img.alt = 'ERP Master';
+    img.src = src;
+    img.addEventListener('load', function onLoad() {
+      img.removeEventListener('load', onLoad);
+      body.classList.add('erp-master-brand-dom-ok');
+    }, { once: true });
+    img.addEventListener('error', function onErr() {
+      img.removeEventListener('error', onErr);
+      var inline = body.getAttribute('data-erp-master-src');
+      if (inline && img.src !== inline) {
+        img.src = inline;
+        return;
+      }
+      if (root.parentNode) root.parentNode.removeChild(root);
+      body.classList.remove('erp-master-brand-dom-ok');
+    }, { once: true });
+    root.appendChild(img);
+    body.appendChild(root);
+  }
+
   $(function () {
     initRutInputs();
     initDecimalComaInputs();
     initProveedorPickers();
+    ensureErpMasterBrand();
   });
 
   window.demoInitDataTable = initDataTable;

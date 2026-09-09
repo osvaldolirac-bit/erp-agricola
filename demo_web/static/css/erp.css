@@ -31,6 +31,45 @@ body.demo-body {
   flex-shrink: 0;
 }
 
+.demo-navbar-actions {
+  min-width: 0;
+  max-width: min(100%, 520px);
+}
+
+.demo-user-email {
+  display: none;
+  max-width: 11rem;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+@media (min-width: 576px) {
+  .demo-user-email {
+    display: inline-block;
+  }
+}
+
+@media (min-width: 992px) {
+  .demo-user-email {
+    max-width: 16rem;
+  }
+}
+
+.demo-tenant-switch-btn {
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.demo-tenant-switch-menu {
+  min-width: 14rem;
+}
+
+.demo-tenant-switch-menu .dropdown-item {
+  width: 100%;
+  text-align: left;
+}
+
 .demo-main {
   min-height: calc(100vh - 56px);
 }
@@ -282,6 +321,43 @@ body.demo-body {
   font-weight: 700;
   border: 1px solid rgba(255, 193, 7, 0.55);
   letter-spacing: 0.04em;
+}
+
+.login-tenant-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.15rem;
+  pointer-events: auto;
+}
+
+.login-tenant-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(18, 32, 24, 0.45);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+
+.login-tenant-chip:hover {
+  background: rgba(31, 77, 58, 0.72);
+  transform: translateY(-1px);
+  color: #fff;
+}
+
+.login-tenant-chip.is-active {
+  background: rgba(46, 125, 50, 0.88);
+  border-color: rgba(200, 230, 201, 0.75);
+  box-shadow: 0 0 0 2px rgba(129, 199, 132, 0.35);
 }
 
 .login-hero-select {
@@ -1353,13 +1429,51 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 .dashboard-page--concepcion .dashboard-tenant-logo .logo-modulo {
   max-width: 320px;
 }
+.dashboard-page--espino .dashboard-tenant-logo .logo-modulo {
+  max-width: 280px;
+}
+/* El Espino: marca con texto bajo el emblema */
+.tenant-espino-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tenant-espino-brand-name {
+  font-family: "Manrope", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 0.17em;
+  color: #3c5b3e;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+.dashboard-page--espino .tenant-espino-brand--dashboard .logo-modulo {
+  max-width: 224px;
+}
+.dashboard-page--espino .tenant-espino-brand--dashboard .tenant-espino-brand-name {
+  font-size: 1.45rem;
+  letter-spacing: 0.2em;
+}
+body.demo-body.tenant-espino .tenant-espino-brand--sidebar .logo-sidebar {
+  max-width: 200px;
+}
+body.demo-body.tenant-espino .demo-sidebar-logo--espino {
+  min-height: 136px;
+}
+body.demo-body.tenant-espino .tenant-espino-brand--sidebar .tenant-espino-brand-name {
+  font-size: 1.15rem;
+  letter-spacing: 0.15em;
+}
 .dashboard-master-logo {
   position: fixed;
-  right: 1.15rem;
-  bottom: 1rem;
-  z-index: 6;
+  right: max(1.15rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  z-index: 2147483000;
   pointer-events: none;
   opacity: 0.92;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 .dashboard-master-logo img {
   max-height: 42px;
@@ -1369,11 +1483,13 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 }
 .erp-master-brand {
   position: fixed;
-  right: 1.15rem;
-  bottom: 1rem;
-  z-index: 6;
+  right: max(1.15rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  z-index: 2147483000;
   pointer-events: none;
   opacity: 0.88;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 .erp-master-brand img {
   max-height: 34px;
@@ -1384,11 +1500,41 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 @media (max-width: 767.98px) {
   .dashboard-master-logo,
   .erp-master-brand {
-    right: 0.65rem;
-    bottom: 0.65rem;
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
   }
   .dashboard-master-logo img { max-height: 32px; }
   .erp-master-brand img { max-height: 28px; }
+}
+
+/* Fallback CSS: logo fijo LC/Espino aunque falle el template o /static */
+body.demo-body.tenant-espino::after,
+body.demo-body.tenant-concepcion::after {
+  content: "";
+  position: fixed;
+  right: max(1.15rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  width: 110px;
+  height: 34px;
+  z-index: 2147483000;
+  pointer-events: none;
+  opacity: 0.88;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  background: url("../img/logo_erpmaster.png") no-repeat right bottom / contain;
+}
+body.demo-body.erp-master-brand-dom-ok.tenant-espino::after,
+body.demo-body.erp-master-brand-dom-ok.tenant-concepcion::after {
+  display: none;
+}
+@media (max-width: 767.98px) {
+  body.demo-body.tenant-espino::after,
+  body.demo-body.tenant-concepcion::after {
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
+    width: 96px;
+    height: 28px;
+  }
 }
 .demo-sidebar-logo {
   padding-top: 0.85rem;
@@ -3153,6 +3299,7 @@ body.gap-comercial-page main.demo-main {
   line-height: 1.35;
 }
 
+
 /* Compras — buscador proveedor */
 .erp-proveedor-picker {
   position: relative;
@@ -3188,4 +3335,3 @@ body.gap-comercial-page main.demo-main {
   font-size: 0.8125rem;
   color: #6c757d;
 }
-

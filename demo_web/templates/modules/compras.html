@@ -31,14 +31,22 @@
         <label class="form-label">Hasta</label>
         <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
       </div>
+      <div class="col-md-3">
+        <label class="form-label">Tipo gasto CC</label>
+        <select name="tipo_gasto" class="form-select">
+          {% for tg in tipos_gasto_filtro|default(['Todas']) %}
+          <option value="{{ tg }}" {% if tg == filtro_tipo_gasto|default('Todas') %}selected{% endif %}>{{ tg }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="col-md-2 d-flex align-items-end">
         <button type="submit" class="btn btn-primary w-100">Filtrar</button>
       </div>
     </form>
   </div>
   <div class="panel-card">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <span class="small text-muted">{{ n_registros }} registro(s)</span>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <div class="fw-semibold fs-5">{{ historial_total_fmt }}</div>
       {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL') }}
     </div>
     <div class="table-responsive">
@@ -47,7 +55,8 @@
           <tr>
             <th style="min-width:9rem">Correlativo</th>
             <th>N° Doc</th><th>Proveedor</th><th>Razón social</th><th>Fecha</th>
-            <th>Tipo</th><th>Tipo gasto CC</th><th>Concepto</th><th>Monto</th>
+            <th>Tipo</th><th>Tipo gasto CC</th><th>Concepto</th><th>Monto bruto</th>
+            <th>Abonado</th><th>Saldo</th><th>Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -71,7 +80,7 @@
                        placeholder="{{ row.siguiente_correlativo or siguiente_correlativo or '' }}"
                        title="Correlativo por razón social (puede repetirse entre razones)"
                        aria-label="Correlativo (por razón social)">
-                <button type="submit" class="btn-act abono" title="Ingresar correlativo (factura real)" aria-label="Ingresar">
+                <button type="submit" class="btn-act correlativo" title="Ingresar correlativo (factura real)" aria-label="Ingresar">
                   <i class="bi bi-check-lg" aria-hidden="true"></i>
                 </button>
               </form>
@@ -79,7 +88,10 @@
                 <span class="text-muted">—</span>
               {% endif %}
             </td>
-            <td>{{ row.nro_documento }}</td>
+            <td>
+              {{ row.nro_documento }}
+              {% if row.es_doc_interno %}<span class="badge text-bg-secondary ms-1" title="Documento interno (sin factura real)">INT</span>{% endif %}
+            </td>
             <td>{{ row.proveedor }}</td>
             <td>{{ row.razon_social }}</td>
             <td>{{ row.fecha_compra }}</td>
@@ -87,22 +99,59 @@
             <td>{{ row.tipo_gasto_cc }}</td>
             <td class="small">{{ row.concepto }}</td>
             <td class="fw-semibold">{{ row.monto_total }}</td>
+            <td class="{% if row.tiene_abonos %}text-warning fw-semibold{% else %}text-muted{% endif %}">{{ row.monto_pagado }}</td>
+            <td>{{ row.saldo }}</td>
+            <td>
+              {% if row.estado == 'Pagado' %}
+              <span class="badge text-bg-success">Pagado</span>
+              {% elif row.tiene_abonos %}
+              <span class="badge text-bg-warning">Abono parcial</span>
+              {% else %}
+              <span class="badge text-bg-secondary">Pendiente</span>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% if not historial_rows %}
-    <p class="text-muted p-3 mb-0">Sin compras para los filtros seleccionados.</p>
-    {% endif %}
   </div>
 
 
 
   {% if es_admin and factura_edit %}
   <div class="panel-card mt-3" id="corr-factura">
-    <h2 class="h6 panel-title">✏️ Corregir documento</h2>
-    <p class="small text-muted mb-2">Solo administrador. Requiere clave maestra. Actualiza el documento y sincroniza imputaciones <code>_P</code> asociadas.</p>
+    <h2 class="h6 panel-title">✏️ Corregir o eliminar documento</h2>
+    <p class="small text-muted mb-2">Solo administrador. Requiere clave maestra. Al eliminar se borra también la imputación <code>_P</code> en centros de costo.</p>
+    {% if factura_edit.tiene_abonos %}
+    <div class="alert alert-warning py-2 small mb-2">
+      <strong>Tesorería:</strong> abonado {{ factura_edit.monto_pagado }} · saldo {{ factura_edit.saldo }} · estado {{ factura_edit.estado }}.
+      {% if factura_edit.abonos %}
+      <ul class="mb-0 mt-1">
+        {% for ab in factura_edit.abonos %}
+        <li>{{ ab.fecha }} — {{ ab.monto }} — {{ ab.metodo_pago }}{% if ab.banco %} ({{ ab.banco }}){% endif %} — {{ ab.usuario }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    <form method="post" class="row g-2 mb-3"
+          onsubmit="return confirm('¿Revertir todos los abonos de {{ factura_edit.nro_documento|e }}? La factura quedará pendiente de pago completo.');">
+      <input type="hidden" name="action" value="revertir_abonos_factura">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="factura_id" value="{{ factura_edit.id }}">
+      <input type="hidden" name="q" value="{{ filtro_q }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-4">
+        <label class="form-label small">Clave maestra p/ revertir abonos</label>
+        <input type="password" name="clave_maestra" class="form-control form-control-sm" required autocomplete="off">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-warning btn-sm">Revertir abonos (dejar pendiente)</button>
+      </div>
+    </form>
+    <hr class="my-2">
+    {% endif %}
     <form method="get" class="mb-3">
       <input type="hidden" name="sec" value="historial">
       <input type="hidden" name="q" value="{{ filtro_q }}">
@@ -123,12 +172,9 @@
       <input type="hidden" name="desde" value="{{ filtro_desde }}">
       <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
       <div class="col-md-3">
-        <label class="form-label small">Razón social</label>
-        <select name="razon_social" class="form-select form-select-sm" required>
-          {% for r in razones_sociales %}
-          <option value="{{ r }}" {% if r == factura_edit.razon_social %}selected{% endif %}>{{ r }}</option>
-          {% endfor %}
-        </select>
+        {% with label_class='small', selected=factura_edit.razon_social, required=true %}
+        {% include 'partials/razon_social_compras.html' %}
+        {% endwith %}
       </div>
       <div class="col-md-3">
         <label class="form-label small">Proveedor</label>
@@ -169,7 +215,8 @@
       </div>
       <div class="col-md-4">
         <label class="form-label small">Concepto</label>
-        <input type="text" name="concepto" class="form-control form-control-sm" value="{{ factura_edit.concepto_full }}">
+        <input type="text" name="concepto" class="form-control form-control-sm" autocomplete="off"
+               value="{{ factura_edit.concepto_full }}">
       </div>
       <div class="col-md-3">
         <label class="form-label small">Tipo gasto (matriz CC)</label>
@@ -185,6 +232,23 @@
       </div>
       <div class="col-md-3 d-flex align-items-end">
         <button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button>
+      </div>
+    </form>
+    <hr class="my-3">
+    <form method="post" class="row g-2"
+          onsubmit="return confirm('¿Eliminar el documento {{ factura_edit.nro_documento|e }} (ID {{ factura_edit.id }})? Se borrarán también las imputaciones _P. Esta acción no se puede deshacer.');">
+      <input type="hidden" name="action" value="eliminar_factura">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="factura_id" value="{{ factura_edit.id }}">
+      <input type="hidden" name="q" value="{{ filtro_q }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-4">
+        <label class="form-label small">Clave maestra p/ eliminar</label>
+        <input type="password" name="clave_maestra" class="form-control form-control-sm" required autocomplete="off">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-danger btn-sm">Eliminar documento</button>
       </div>
     </form>
   </div>
@@ -238,10 +302,7 @@
       <hr>
       <div class="row g-2">
         <div class="col-md-4">
-          <label class="form-label">Razón social</label>
-          <select name="razon_social" class="form-select form-select-sm">
-            {% for r in razones_sociales %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-          </select>
+          {% include 'partials/razon_social_compras.html' %}
         </div>
         <div class="col-md-4">
           <label class="form-label">Tipo de gasto (matriz CC)</label>
@@ -251,7 +312,8 @@
         </div>
         <div class="col-md-4">
           <label class="form-label">Detalle / Concepto</label>
-          <input type="text" name="concepto" class="form-control form-control-sm">
+          <input type="text" name="concepto" class="form-control form-control-sm" autocomplete="off"
+                 placeholder="Ej. ENERGIA ELECTRICA (opcional si coincide con tipo de gasto)">
         </div>
         <div class="col-12">
           <label class="form-label">Centros de costo</label>
@@ -318,10 +380,7 @@
           <input type="number" name="litros" class="form-control form-control-sm" min="0" step="0.01" required>
         </div>
         <div class="col-md-3">
-          <label class="form-label">Razón social</label>
-          <select name="razon_social" class="form-select form-select-sm">
-            {% for r in razones_sociales %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-          </select>
+          {% include 'partials/razon_social_compras.html' %}
         </div>
         <div class="col-md-3">
           <label class="form-label">Total factura ($)</label>
@@ -369,22 +428,24 @@
           </div>
           <div class="col-12 d-none" id="blkNuevo">
             <label class="form-label small">Nombre producto nuevo</label>
-            <input type="text" name="prod_nuevo" class="form-control form-control-sm">
+            <input type="text" name="prod_nuevo" class="form-control form-control-sm" autocomplete="off">
             <div class="row g-2 mt-1">
-              <div class="col-6">
+              <div class="col-md-6">
+                <label class="form-label small">Familia</label>
                 <select name="familia" class="form-select form-select-sm">
                   {% for f in familias %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
                 </select>
               </div>
-              <div class="col-6">
-                <select name="um" class="form-select form-select-sm">
-                  {% for u in unidades %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+              <div class="col-md-6">
+                <label class="form-label small">Unidad de medida</label>
+                <select name="unidad_medida" class="form-select form-select-sm" title="Unidad para stock y movimientos de bodega">
+                  {% for u in unidades %}<option value="{{ u }}" {% if u == um_default %}selected{% endif %}>{{ u }}</option>{% endfor %}
                 </select>
               </div>
             </div>
           </div>
           <div class="col-6">
-            <label class="form-label small">Cantidad</label>
+            <label class="form-label small">Cantidad <span class="text-muted" id="lblCantUm"></span></label>
             <input type="number" name="cantidad" class="form-control form-control-sm" min="0" step="0.01" required>
           </div>
           <div class="col-6">
@@ -439,9 +500,7 @@
               </select>
             </div>
             <div class="col-md-3">
-              <select name="razon_social" class="form-select form-select-sm">
-                {% for r in razones_sociales %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-              </select>
+              {% include 'partials/razon_social_compras.html' %}
             </div>
             <div class="col-md-2"><button type="submit" class="btn btn-primary btn-sm w-100">Guardar factura</button></div>
           </div>
@@ -603,8 +662,25 @@ document.querySelectorAll('input[name="modo_prod"]').forEach(function(r) {
       ex.classList.remove('d-none');
       nu.classList.add('d-none');
     }
+    updateCantUmHint();
   });
 });
+
+function updateCantUmHint() {
+  const lbl = document.getElementById('lblCantUm');
+  const modoNuevo = document.getElementById('prodNuevo');
+  const umSel = document.querySelector('#blkNuevo select[name="unidad_medida"]');
+  if (!lbl) return;
+  if (modoNuevo && modoNuevo.checked && umSel && umSel.value) {
+    lbl.textContent = '(' + umSel.value + ')';
+  } else {
+    lbl.textContent = '';
+  }
+}
+
+const umNuevo = document.querySelector('#blkNuevo select[name="unidad_medida"]');
+if (umNuevo) umNuevo.addEventListener('change', updateCantUmHint);
+updateCantUmHint();
 
 function toggleCajaProveedor() {
   const sel = document.getElementById('cajaTipoMov');
