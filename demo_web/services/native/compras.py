@@ -129,6 +129,61 @@ def _sql_solo_compras_reales(col_prefix: str = "") -> str:
     """
 
 
+_RE_CORRELATIVO_MENSUAL = re.compile(r"^(\d+)/(\d+)(?:/(\d{2,4}))?$")
+
+
+def _ym_fecha_corr(fecha) -> tuple[int, int]:
+    d = parse_date(str(fecha or "")[:10], hoy_demo(get_demo_module()))
+    return d.year, d.month
+
+
+def _numero_correlativo_mensual(folio: str, mes: int) -> int | None:
+    """Extrae el número secuencial de un correlativo (n/m, n/m/año o legacy n)."""
+    s = str(folio or "").strip()
+    if not s:
+        return None
+    m = _RE_CORRELATIVO_MENSUAL.match(s)
+    if m:
+        n, mo = int(m.group(1)), int(m.group(2))
+        if mo != mes:
+            return None
+        return n
+    if s.isdigit():
+        return int(s)
+    return None
+
+
+def _formato_correlativo_mensual(numero: int, mes: int) -> str:
+    return f"{int(numero)}/{int(mes)}"
+
+
+def _normalizar_correlativo_mensual(raw: str, fecha_compra) -> tuple[str | None, str | None]:
+    """Normaliza entrada manual a n/m según mes de la factura. Retorna (valor, error)."""
+    s = (raw or "").strip()
+    if not s:
+        return None, "Ingrese el correlativo."
+    year, month = _ym_fecha_corr(fecha_compra)
+    m = _RE_CORRELATIVO_MENSUAL.match(s)
+    if m:
+        n, mo = int(m.group(1)), int(m.group(2))
+        if mo != month:
+            return None, f"El mes del correlativo debe ser {month} (fecha de la factura)."
+        if m.group(3):
+            y_raw = int(m.group(3))
+            y = y_raw if y_raw > 99 else 2000 + y_raw
+            if y != year:
+                return None, f"El año del correlativo debe coincidir con la fecha de compra ({year})."
+        if n <= 0:
+            return None, "El correlativo debe ser mayor a cero."
+        return _formato_correlativo_mensual(n, month), None
+    if s.isdigit():
+        n = int(s)
+        if n <= 0:
+            return None, "El correlativo debe ser mayor a cero."
+        return _formato_correlativo_mensual(n, month), None
+    return None, "Formato inválido. Use n/m (ej. 3/9 = factura 3 del mes 9)."
+
+
 def _ensure_folio_interno_col(conn) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -155,35 +210,56 @@ def _ensure_folio_interno_col(conn) -> None:
         conn.commit()
 
 
-def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str:
-    """Siguiente correlativo por razón social (solo facturas reales, no INT-/GE-*)."""
+def _siguiente_correlativo_interno(
+    conn, razon_social: str | None = None, fecha_compra=None,
+) -> str:
+    """Siguiente correlativo mensual n/m por razón social (reinicia cada mes)."""
+    year, month = _ym_fecha_corr(fecha_compra or hoy_demo(get_demo_module()))
     sql = f"""
-        SELECT MAX(CAST(folio_interno AS INTEGER))
+        SELECT folio_interno
         FROM facturas
         WHERE TRIM(COALESCE(folio_interno, '')) != ''
-          AND folio_interno GLOB '[0-9]*'
+          AND CAST(strftime('%Y', fecha_compra) AS INTEGER) = ?
+          AND CAST(strftime('%m', fecha_compra) AS INTEGER) = ?
           {_sql_solo_compras_reales()}
     """
-    params: list = []
+    params: list = [year, month]
     if razon_social:
         sql += " AND TRIM(COALESCE(razon_social, '')) = ?"
         params.append(str(razon_social).strip())
-    row = conn.execute(sql, params).fetchone()
-    return str(int(row[0] or 0) + 1)
+    max_n = 0
+    for (folio,) in conn.execute(sql, params).fetchall():
+        n = _numero_correlativo_mensual(str(folio or ""), month)
+        if n is not None:
+            max_n = max(max_n, n)
+    return _formato_correlativo_mensual(max_n + 1, month)
 
 
-def _correlativo_duplicado(conn, folio: str, razon_social: str, exclude_id: int = 0):
-    """True si el correlativo ya existe en la misma razón social (puede repetirse entre razones)."""
-    return conn.execute(
-        f"""
-        SELECT id FROM facturas
-        WHERE TRIM(COALESCE(folio_interno,''))=?
-          AND TRIM(COALESCE(razon_social,''))=?
+def _correlativo_duplicado(
+    conn, folio: str, razon_social: str, exclude_id: int = 0, fecha_compra=None,
+):
+    """True si el correlativo n/m ya existe en la misma razón social y mes calendario."""
+    year, month = _ym_fecha_corr(fecha_compra)
+    norm, _err = _normalizar_correlativo_mensual(folio, fecha_compra)
+    if not norm:
+        return conn.execute("SELECT 1 WHERE 0").fetchone()
+    n_bus = _numero_correlativo_mensual(norm, month)
+    sql = f"""
+        SELECT id, folio_interno FROM facturas
+        WHERE TRIM(COALESCE(razon_social,''))=?
           AND id!=?
+          AND CAST(strftime('%Y', fecha_compra) AS INTEGER) = ?
+          AND CAST(strftime('%m', fecha_compra) AS INTEGER) = ?
+          AND TRIM(COALESCE(folio_interno, '')) != ''
           {_sql_solo_compras_reales()}
-        """,
-        (folio, (razon_social or "").strip(), exclude_id),
-    ).fetchone()
+    """
+    for fid, folio_ex in conn.execute(
+        sql, ((razon_social or "").strip(), exclude_id, year, month),
+    ).fetchall():
+        n_ex = _numero_correlativo_mensual(str(folio_ex or ""), month)
+        if n_ex is not None and n_ex == n_bus:
+            return (fid,)
+    return None
 
 
 def _proveedores_options(conn) -> list[dict]:
@@ -258,7 +334,7 @@ def _historial(demo, conn) -> dict:
     sql += " ORDER BY fecha_compra DESC, monto_total DESC, id DESC"
     df = pd.read_sql_query(sql, conn, params=params)
 
-    siguientes_por_razon: dict[str, str] = {}
+    siguientes_por_mes: dict[tuple[str, int, int], str] = {}
     rows = []
     for _, r in df.iterrows():
         nro = str(r["nro_documento"] or "").strip()
@@ -266,8 +342,11 @@ def _historial(demo, conn) -> dict:
         es_interno = _es_documento_interno(nro)
         folio = "" if es_interno or es_ge else (r["folio_interno"] or "").strip()
         razon = str(r["razon_social"] or "").strip()
-        if razon not in siguientes_por_razon:
-            siguientes_por_razon[razon] = _siguiente_correlativo_interno(conn, razon)
+        fc = str(r["fecha_compra"] or "")[:10]
+        y_corr, m_corr = _ym_fecha_corr(fc)
+        key_corr = (razon, y_corr, m_corr)
+        if key_corr not in siguientes_por_mes:
+            siguientes_por_mes[key_corr] = _siguiente_correlativo_interno(conn, razon, fc)
         # GE-* (migración gastos_espino): mostrar documento e ítem como en módulo Espino LC.
         if is_espino_tenant() and es_ge:
             nro_show = str(r["proveedor"] or "S/N").strip() or "S/N"
@@ -282,7 +361,7 @@ def _historial(demo, conn) -> dict:
                 "folio_interno": folio,
                 "es_doc_interno": es_interno or es_ge,
                 "puede_correlativo": (not es_interno and not es_ge),
-                "siguiente_correlativo": siguientes_por_razon.get(razon, ""),
+                "siguiente_correlativo": siguientes_por_mes.get(key_corr, ""),
                 "proveedor": proveedor_show,
                 "razon_social": r["razon_social"],
                 "fecha_compra": str(r["fecha_compra"])[:10],
@@ -395,10 +474,10 @@ def _historial(demo, conn) -> dict:
     puede_folio = not bool(demo.es_solo_lectura())
     if puede_folio and factura_edit:
         siguiente_corr = factura_edit.get("siguiente_correlativo") or _siguiente_correlativo_interno(
-            conn, factura_edit.get("razon_social")
+            conn, factura_edit.get("razon_social"), factura_edit.get("fecha_compra"),
         )
     elif puede_folio:
-        siguiente_corr = _siguiente_correlativo_interno(conn)
+        siguiente_corr = _siguiente_correlativo_interno(conn, fecha_compra=hoy_demo(demo))
     else:
         siguiente_corr = ""
 
@@ -815,7 +894,7 @@ def _post_asignar_folio_interno(demo, conn) -> dict:
         fid = 0
     fila = conn.execute(
         "SELECT id, nro_documento, COALESCE(folio_interno, ''), "
-        "TRIM(COALESCE(razon_social, '')) "
+        "TRIM(COALESCE(razon_social, '')), fecha_compra "
         "FROM facturas WHERE id=? AND nro_documento NOT LIKE '%_P'",
         (fid,),
     ).fetchone()
@@ -830,15 +909,20 @@ def _post_asignar_folio_interno(demo, conn) -> dict:
         }
     folio_old = str(fila[2] or "").strip()
     razon = str(fila[3] or "").strip()
-    folio_new = (request.form.get("folio_interno") or "").strip()
-    if not folio_new:
-        return {"ok": False, "msg": "Ingrese el correlativo."}
+    fecha_compra = str(fila[4] or "")[:10]
+    folio_raw = (request.form.get("folio_interno") or "").strip()
+    folio_new, err_corr = _normalizar_correlativo_mensual(folio_raw, fecha_compra)
+    if err_corr:
+        return {"ok": False, "msg": err_corr}
 
-    # Unicidad por razón social: el mismo número puede repetirse entre razones (mismo mes u otro).
-    if _correlativo_duplicado(conn, folio_new, razon, fid):
+    if _correlativo_duplicado(conn, folio_new, razon, fid, fecha_compra):
+        _, month = _ym_fecha_corr(fecha_compra)
         return {
             "ok": False,
-            "msg": f"El correlativo {folio_new} ya está usado en otra factura de esta razón social.",
+            "msg": (
+                f"El correlativo {folio_new} ya está usado en otra factura de "
+                f"esta razón social en el mes {month}."
+            ),
         }
 
     conn.execute("UPDATE facturas SET folio_interno=? WHERE id=?", (folio_new, fid))
@@ -901,15 +985,24 @@ def _post_corregir_factura(demo, conn) -> dict:
         tg_guardar = "Contratistas"
 
     _ensure_folio_interno_col(conn)
-    folio_new = (request.form.get("folio_interno") or "").strip()
-    # Correlativo solo si el N° documento es factura real; unicidad por razón social.
+    folio_raw = (request.form.get("folio_interno") or "").strip()
     if _es_documento_interno(doc_new):
         folio_new = ""
-    elif folio_new and _correlativo_duplicado(conn, folio_new, nrazon, fid):
-        return {
-            "ok": False,
-            "msg": f"El correlativo {folio_new} ya está usado en otra factura de esta razón social.",
-        }
+    elif folio_raw:
+        folio_new, err_corr = _normalizar_correlativo_mensual(folio_raw, nfe)
+        if err_corr:
+            return {"ok": False, "msg": err_corr}
+        if _correlativo_duplicado(conn, folio_new, nrazon, fid, nfe):
+            _, month = _ym_fecha_corr(nfe)
+            return {
+                "ok": False,
+                "msg": (
+                    f"El correlativo {folio_new} ya está usado en otra factura de "
+                    f"esta razón social en el mes {month}."
+                ),
+            }
+    else:
+        folio_new = ""
     conn.execute(
         "UPDATE facturas SET nro_documento=?, folio_interno=?, proveedor=?, fecha_compra=?, fecha_vencimiento=?, "
         "monto_total=?, concepto=?, razon_social=?, tipo_gasto=? WHERE id=?",
