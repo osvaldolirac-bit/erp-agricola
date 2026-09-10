@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import inspect
+
 import pandas as pd
 from flask import render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import store_pdf
+from demo_web.services.lc_excluir_espino import (
+    ajustar_matriz_costos_excluir_espino_lc,
+    cuarteles_costos_lc,
+    filtrar_detalle_movimientos_espino_lc,
+    ocultar_cuartel_espino_en_matriz_lc,
+    resumen_costos_para_flujo_lc,
+)
 from demo_web.services.native._helpers import (
     hoy_demo,
     avance_ppto_badge_tone,
@@ -17,6 +26,24 @@ from demo_web.services.native._helpers import (
     temporada_sel,
 )
 from demo_web.services.tenant_scope import cuarteles_oficiales
+
+
+def _costos_usa_neto_iva(demo) -> bool:
+    return bool(getattr(demo, "RUBROS_COSTOS_NETO_IVA", None))
+
+
+def _kwargs_netos_matriz_vista_b(demo, neto_facturas_iva: bool) -> dict:
+    """Solo tenants cuyo erp_app expone neto_facturas_iva (LC); demo agrícola no."""
+    fn = getattr(demo, "_armar_matriz_costos_vista_b", None)
+    if fn is None:
+        return {}
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return {}
+    if "neto_facturas_iva" not in params:
+        return {}
+    return {"neto_facturas_iva": neto_facturas_iva}
 
 
 def _pdf_matriz_url(demo, show) -> str | None:
@@ -41,6 +68,62 @@ def _rubros_filtro(demo) -> list[str]:
         if r != "Ajustes" or demo.es_admin():
             rubros.append(r)
     return rubros
+
+
+def _total_gasto_matriz(matriz: pd.DataFrame) -> float:
+    if matriz is None or matriz.empty:
+        return 0.0
+    tg = matriz[matriz["Rubro"] == "TOTAL GASTO"]
+    if tg.empty or "TOTAL" not in matriz.columns:
+        return 0.0
+    return float(tg.iloc[0].get("TOTAL", 0) or 0)
+
+
+def _armar_matriz_costos_tenant(demo, conn, *, es_vigente, fi, ff, cuarteles_full, prorr, nombre):
+    """Matriz de costos con exclusiones LC/Espino aplicadas."""
+    neto_kw = _kwargs_netos_matriz_vista_b(demo, True)
+    if es_vigente:
+        fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente)
+        matriz = demo._armar_matriz_costos_vista_b(
+            conn, fi_cons, ff_cons, cuarteles_full, prorr, nombre,
+            fi_rrhh=fi, ff_rrhh=ff,
+            **neto_kw,
+        )
+        det_fi, det_ff = fi_cons, ff_cons
+    else:
+        matriz = demo._armar_matriz_costos_vista_b(
+            conn, fi, ff, cuarteles_full, prorr, nombre,
+            **neto_kw,
+        )
+        det_fi, det_ff = fi, ff
+    matriz = ajustar_matriz_costos_excluir_espino_lc(
+        conn, demo, matriz, cuarteles_full, det_fi, det_ff
+    )
+    matriz = ocultar_cuartel_espino_en_matriz_lc(matriz)
+    return matriz, det_fi, det_ff
+
+
+def _armar_matriz_costos_bruta(demo, conn, *, es_vigente, fi, ff, cuarteles_full, prorr, nombre):
+    """Matriz bruta (sin ÷ IVA en facturas) para KPI comparativo vs Compras."""
+    neto_kw = _kwargs_netos_matriz_vista_b(demo, False)
+    if es_vigente:
+        fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente)
+        matriz = demo._armar_matriz_costos_vista_b(
+            conn, fi_cons, ff_cons, cuarteles_full, prorr, nombre,
+            fi_rrhh=fi, ff_rrhh=ff,
+            **neto_kw,
+        )
+        det_fi, det_ff = fi_cons, ff_cons
+    else:
+        matriz = demo._armar_matriz_costos_vista_b(
+            conn, fi, ff, cuarteles_full, prorr, nombre,
+            **neto_kw,
+        )
+        det_fi, det_ff = fi, ff
+    matriz = ajustar_matriz_costos_excluir_espino_lc(
+        conn, demo, matriz, cuarteles_full, det_fi, det_ff
+    )
+    return ocultar_cuartel_espino_en_matriz_lc(matriz)
 
 
 def _avance_gasto_ppto_resumen(demo, matriz: pd.DataFrame) -> dict:
@@ -153,7 +236,8 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     hoy = hoy_demo(demo)
     es_vigente = fi <= hoy <= ff
 
-    cuarteles = cuarteles_oficiales(demo)
+    cuarteles_full = cuarteles_oficiales(demo)
+    cuarteles = cuarteles_costos_lc(cuarteles_full)
     vistas = [("resumen", "📊 Resumen")] + [(c, c) for c in cuarteles]
     vista = request.args.get("vista", "resumen")
     if vista != "resumen" and vista not in cuarteles:
@@ -162,18 +246,21 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     conn = demo.conectar_db()
     try:
         prorr = prorrateo_rrhh(demo, conn)
-        fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente) if es_vigente else (fi, ff)
+        matriz, det_fi, det_ff = _armar_matriz_costos_tenant(
+            demo, conn, es_vigente=es_vigente, fi=fi, ff=ff,
+            cuarteles_full=cuarteles_full, prorr=prorr, nombre=nombre,
+        )
+        matriz_bruta = None
+        if _costos_usa_neto_iva(demo):
+            matriz_bruta = _armar_matriz_costos_bruta(
+                demo, conn, es_vigente=es_vigente, fi=fi, ff=ff,
+                cuarteles_full=cuarteles_full, prorr=prorr, nombre=nombre,
+            )
+
         if es_vigente:
-            matriz = demo._armar_matriz_costos_vista_b(
-                conn, fi_cons, ff_cons, cuarteles, prorr, nombre,
-                fi_rrhh=fi, ff_rrhh=ff,
-            )
-            det_fi, det_ff = fi_cons, ff_cons
+            fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente)
         else:
-            matriz = demo._armar_matriz_costos_vista_b(
-                conn, fi, ff, cuarteles, prorr, nombre,
-            )
-            det_fi, det_ff = fi, ff
+            fi_cons, ff_cons = fi, ff
 
         matriz_cols, matriz_rows = [], []
         detalle_cols, detalle_rows = [], []
@@ -191,6 +278,7 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
             "pct_fmt": "—",
             "avance_tone": "",
             "filas": [],
+            "mostrar_gasto_bruto": False,
         }
         pdf_matriz_url = None
         caption = ""
@@ -229,6 +317,13 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
                 matriz_cols, matriz_rows = matriz_costos_to_records(demo, show)
                 pdf_matriz_url = _pdf_matriz_url(demo, show)
                 resumen_avance = _avance_gasto_ppto_resumen(demo, matriz)
+                if matriz_bruta is not None and not matriz_bruta.empty:
+                    gasto_bruto = _total_gasto_matriz(matriz_bruta)
+                    resumen_avance["mostrar_gasto_bruto"] = True
+                    resumen_avance["gasto_bruto"] = gasto_bruto
+                    resumen_avance["gasto_bruto_fmt"] = demo.f_peso(gasto_bruto)
+                else:
+                    resumen_avance["mostrar_gasto_bruto"] = False
             else:
                 gasto = demo._total_gasto_cc_desde_matriz(matriz, vista)
                 ppto = demo._obtener_ppto_temporada(conn, nombre, vista)
@@ -270,6 +365,7 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
                 df_mov = demo._obtener_detalle_gastos_cc(
                     conn, vista, prorr, det_fi, det_ff, fi, ff,
                 )
+                df_mov = filtrar_detalle_movimientos_espino_lc(conn, df_mov)
                 if not df_mov.empty:
                     df_mov = df_mov.copy()
                     df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")

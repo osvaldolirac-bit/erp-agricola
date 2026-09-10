@@ -5,6 +5,8 @@ from typing import Any
 
 ESPINO_CC = "Cerezos"
 ESPINO_CCS = [ESPINO_CC]
+RAZON_SOCIAL_ESPINO = "El Espino"
+RAZONES_SOCIALES_ESPINO = [RAZON_SOCIAL_ESPINO]
 
 
 def tenant_slug() -> str:
@@ -22,6 +24,10 @@ def tenant_slug() -> str:
 
 def is_espino_tenant() -> bool:
     return tenant_slug() == "espino"
+
+
+def is_concepcion_tenant() -> bool:
+    return tenant_slug() == "concepcion"
 
 
 def centros_costo(demo: Any) -> list[str]:
@@ -58,6 +64,27 @@ def libro_campo_especies(demo: Any) -> list[str]:
     if is_espino_tenant():
         return list(ESPINO_CCS)
     return list(getattr(demo, "LIBRO_CAMPO_ESPECIES", []) or [])
+
+
+def razones_sociales_compras(demo: Any) -> list[str]:
+    if is_espino_tenant():
+        return list(RAZONES_SOCIALES_ESPINO)
+    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+    if is_concepcion_tenant():
+        razones = [r for r in razones if not (r or "").strip().casefold() == RAZON_SOCIAL_ESPINO.casefold()]
+    return razones
+
+
+def razon_social_compras_default(demo: Any) -> str:
+    razones = razones_sociales_compras(demo)
+    return razones[0] if razones else "El Espino"
+
+
+def razon_social_default() -> str:
+    """Razón social por defecto en PDFs y listados (según tenant activo)."""
+    if is_espino_tenant():
+        return RAZON_SOCIAL_ESPINO
+    return "La Concepción"
 
 
 def cuarteles_gap_especie(demo: Any, especie: str) -> list[str]:
