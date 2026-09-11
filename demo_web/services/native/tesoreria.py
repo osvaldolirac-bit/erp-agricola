@@ -153,21 +153,23 @@ def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
 
 
 def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
+    imp_sql = sql_imputado_costos_subquery("f")
     dfpr = pd.read_sql_query(
-        f"""SELECT nro_documento, fecha_vencimiento, monto_total,
-                  COALESCE(monto_pagado, 0) AS monto_pagado
-           FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND monto_total > 0
-           {sql_solo_cxp_tesoreria()}
-           {sql_and_excluir_razon_social_espino()}
-           ORDER BY fecha_vencimiento ASC""",
+        f"""SELECT f.nro_documento, f.fecha_vencimiento, f.monto_total,
+                  COALESCE(f.monto_pagado, 0) AS monto_pagado,
+                  {imp_sql} AS imputado_costos
+           FROM facturas f
+           WHERE f.proveedor=? AND f.estado='Pendiente' AND f.monto_total > 0
+           {sql_solo_cxp_tesoreria('f')}
+           {sql_and_excluir_razon_social_espino('razon_social', alias='f')}
+           ORDER BY f.fecha_vencimiento ASC""",
         conn,
         params=(proveedor,),
     )
     if dfpr.empty:
         return None
     dfpr["saldo_pendiente"] = dfpr.apply(
-        lambda r: demo._saldo_pendiente_factura(r["monto_total"], r["monto_pagado"]),  # noqa: SLF001
+        lambda r: saldo_factura_para_pago(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
         axis=1,
     )
     dfpr = dfpr[dfpr["saldo_pendiente"] > 0.01].copy()
