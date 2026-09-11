@@ -37,6 +37,7 @@ def _capture_lc_defaults(erp: Any) -> None:
         "GAP_ESPECIES": list(erp.GAP_ESPECIES),
         "GAP_ESPECIE_CUARTELES": dict(erp.GAP_ESPECIE_CUARTELES),
         "LIBRO_CAMPO_ESPECIES": list(erp.LIBRO_CAMPO_ESPECIES),
+        "RAZONES_SOCIALES_COMPRAS": list(getattr(erp, "RAZONES_SOCIALES_COMPRAS", []) or []),
     }
 
 
@@ -51,6 +52,7 @@ def _restore_lc_defaults(erp: Any) -> None:
     erp.GAP_ESPECIES = list(_LC_DEFAULTS["GAP_ESPECIES"])
     erp.GAP_ESPECIE_CUARTELES = dict(_LC_DEFAULTS["GAP_ESPECIE_CUARTELES"])
     erp.LIBRO_CAMPO_ESPECIES = list(_LC_DEFAULTS["LIBRO_CAMPO_ESPECIES"])
+    erp.RAZONES_SOCIALES_COMPRAS = list(_LC_DEFAULTS.get("RAZONES_SOCIALES_COMPRAS") or [])
 
 
 def _request_tenant_slug() -> str:

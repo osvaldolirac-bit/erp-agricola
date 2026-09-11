@@ -72,12 +72,27 @@ def razones_sociales_compras(demo: Any) -> list[str]:
     razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
     if is_concepcion_tenant():
         razones = [r for r in razones if not (r or "").strip().casefold() == RAZON_SOCIAL_ESPINO.casefold()]
+        if not razones:
+            try:
+                from demo_web.services.erp_loader import _LC_DEFAULTS
+
+                if _LC_DEFAULTS:
+                    razones = [
+                        r for r in _LC_DEFAULTS.get("RAZONES_SOCIALES_COMPRAS", [])
+                        if (r or "").strip().casefold() != RAZON_SOCIAL_ESPINO.casefold()
+                    ]
+            except Exception:
+                pass
+        if not razones:
+            razones = ["La Concepción", "Carlos Lira"]
     return razones
 
 
 def razon_social_compras_default(demo: Any) -> str:
     razones = razones_sociales_compras(demo)
-    return razones[0] if razones else "El Espino"
+    if razones:
+        return razones[0]
+    return razon_social_default()
 
 
 def razon_social_default() -> str:
