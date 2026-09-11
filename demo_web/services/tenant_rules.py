@@ -4,7 +4,7 @@ Todo cambio en Compras, Tesorería, Flujo o UI multi-tenant debe alinearse aquí
 verify_tenant_parity.py y verify_espino.py fallan si el código diverge.
 
 Matriz LC vs Espino (misma app, distintas reglas):
-  concepcion: CxP neta, sin INT-*, excluye razón El Espino, flujo sin imputar gastado
+  concepcion: CxP neta, con INT-* en Tesorería (gastos sin factura), excluye razón El Espino
   espino:     CxP bruta, con INT-*, solo El Espino, flujo imputa gastado contable
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ class TenantRuleSet:
 CONCEPCION = TenantRuleSet(
     slug="concepcion",
     cxp_saldo_neto=True,
-    cxp_incluye_documentos_int=False,
+    cxp_incluye_documentos_int=True,
     excluir_razon_social_el_espino=True,
     flujo_imputar_gastado_contable=False,
     muestra_logo_erpmaster=True,

@@ -2,7 +2,7 @@
 
 
 def sql_solo_cxp_tesoreria(col_prefix: str = "") -> str:
-    """Deuda real: excluye imputaciones _P y GE-*. INT- según tenant_rules."""
+    """Deuda real: excluye imputaciones _P y GE-*. INT- según tenant (LC incluye gastos sin factura)."""
     p = f"{col_prefix}." if col_prefix else ""
     excl_int = ""
     try:
