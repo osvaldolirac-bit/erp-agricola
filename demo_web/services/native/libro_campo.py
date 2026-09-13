@@ -812,8 +812,13 @@ def view(user_email: str, user_rol: str):
         lc_op = (request.args.get("op") or request.form.get("op") or op_map.get(sec_lc, "ingreso")).strip()
         temp = request.args.get("temp") or request.form.get("temp") or ""
         if not temp:
-            temps = getattr(demo, "TEMPORADAS_ESPINO", None) or getattr(demo, "TEMPORADAS", {})
-            temp = next(iter(temps), "") if temps else ""
+            from demo_web.services.native._helpers import temporada_sel
+
+            temps = getattr(demo, "TEMPORADAS_ESPINO", None) or getattr(demo, "TEMPORADAS_COSTOS", None)
+            if temps:
+                temp, _, _ = temporada_sel(demo, temporadas=temps)
+            else:
+                temp = ""
         passthrough = {
             k: request.values.get(k)
             for k in ("desde", "hasta", "q", "n_app", "cuartel", "ventana", "prod", "temp")
