@@ -719,11 +719,15 @@ _PRORRATEO_DEFAULTS: dict[str, dict[str, Any]] = {
             "SANTINA",
         ],
         "default_pct": {
-            "ROYAL DOWN": 33.33,
-            "SWEET ARYANA": 33.33,
-            "SANTINA": 33.34,
+            "SWEET ARYANA": 14.29,
+            "ROYAL DOWN": 21.43,
+            "SANTINA": 64.28,
         },
-        "default_ha": {},
+        "default_ha": {
+            "SWEET ARYANA": 1.0,
+            "ROYAL DOWN": 1.5,
+            "SANTINA": 4.5,
+        },
         "directos": ["EL ESPINO"],
     },
 }

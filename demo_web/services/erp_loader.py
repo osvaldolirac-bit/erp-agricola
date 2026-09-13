@@ -58,11 +58,10 @@ def _restore_lc_defaults(erp: Any) -> None:
 
 def _apply_espino_tenant_overrides(erp: Any) -> None:
     """Tenant El Espino: variedades como CC + ámbito GlobalGAP propio."""
-    from demo_web.services.espino_scope import VARIEDADES_ESPINO
+    from demo_web.services.espino_scope import VARIEDADES_ESPINO, prorrateo_pct_espino
 
     variedades = list(VARIEDADES_ESPINO)
-    prorrateo = {v: round(100.0 / len(variedades), 2) for v in variedades}
-    prorrateo[variedades[-1]] = round(100.0 - sum(prorrateo[v] for v in variedades[:-1]), 2)
+    prorrateo = prorrateo_pct_espino()
     erp.CENTROS_COSTO = variedades
     erp.CUARTELES_OFICIALES = variedades
     erp.CUARTELES_PRORRATEO = variedades
