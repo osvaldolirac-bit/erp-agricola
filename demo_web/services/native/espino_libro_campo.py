@@ -105,8 +105,9 @@ def _productos_stock_espino(demo, conn) -> list[dict]:
 
 
 def _cuarteles_lc(demo) -> list[str]:
-    raw = list(getattr(demo, "CENTROS_COSTO", None) or cuarteles_espino())
-    return raw if raw else cuarteles_espino()
+    """Variedades El Espino — siempre las 3 del huerto (independiente de otros CC)."""
+    _ = demo
+    return cuarteles_espino()
 
 
 def _evento_meta_defaults(demo) -> dict:

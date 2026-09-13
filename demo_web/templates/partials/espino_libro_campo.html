@@ -158,11 +158,18 @@
     <input type="hidden" name="temp" value="{{ temp_sel }}">
     <div class="row g-2 mb-3" id="lcCabeceraFields">
       <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
-      <div class="col-md-3"><label class="form-label small">Variedad / cuartel</label>
+      <div class="col-md-3"><label class="form-label small">Variedad</label>
         <select name="cuartel" class="form-select form-select-sm lc-cab" required>
-          {% for c in cuarteles|default(cuarteles_lc|default([])) %}
+          {% set vars = cuarteles|default(cuarteles_lc|default([])) %}
+          {% if not vars %}
+          <option value="ROYAL DOWN">ROYAL DOWN</option>
+          <option value="SWEET ARYANA">SWEET ARYANA</option>
+          <option value="SANTINA">SANTINA</option>
+          {% else %}
+          {% for c in vars %}
           <option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>
           {% endfor %}
+          {% endif %}
         </select>
       </div>
       <div class="col-md-3"><label class="form-label small">Especie</label>
