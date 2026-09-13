@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Clientes — GlobalGAP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">Clientes</h1>
+      <p class="text-muted mb-0">Cliente → CSG (predio SAG) → ámbito (huerto + especie)</p>
+    </div>
+    <a href="{{ url_for('globalgap_portal.clientes_nuevo') }}" class="btn btn-success btn-sm">+ Nuevo cliente</a>
+  </div>
+
+  <div class="panel-card">
+    {% if not clientes %}
+    <div class="alert alert-info mb-0">Sin clientes. Cree el primero para comenzar.</div>
+    {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th class="text-end">CSG</th>
+            <th class="text-end">Ámbitos</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in clientes %}
+          <tr>
+            <td><strong>{{ c.nombre }}</strong>{% if c.notas %}<div class="small text-muted">{{ c.notas }}</div>{% endif %}</td>
+            <td class="text-end">{{ c.n_csg }}</td>
+            <td class="text-end">{{ c.n_ambitos }}</td>
+            <td>{% if c.activo %}<span class="badge text-bg-success">Activo</span>{% else %}<span class="badge text-bg-secondary">Inactivo</span>{% endif %}</td>
+            <td class="text-end">
+              <a class="btn btn-outline-primary btn-sm" href="{{ url_for('globalgap_portal.clientes_detalle', etiqueta_id=c.id) }}">Ver</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
