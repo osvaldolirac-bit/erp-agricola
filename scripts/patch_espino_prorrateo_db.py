@@ -6,16 +6,23 @@ import sqlite3
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from demo_web.services.espino_scope import (  # noqa: E402
-    SUPERFICIE_HA_ESPINO,
-    VARIEDADES_ESPINO,
-    prorrateo_pct_espino,
-)
-
+VARIEDADES_ESPINO = ("ROYAL DOWN", "SWEET ARYANA", "SANTINA")
+SUPERFICIE_HA_ESPINO = {
+    "SWEET ARYANA": 1.0,
+    "ROYAL DOWN": 1.5,
+    "SANTINA": 4.5,
+}
 DEFAULT_DB = Path("/root/espino/erp_espino.db")
+
+
+def prorrateo_pct_espino() -> dict[str, float]:
+    total_ha = sum(SUPERFICIE_HA_ESPINO.get(v, 0.0) for v in VARIEDADES_ESPINO)
+    pcts = {
+        v: round(100.0 * SUPERFICIE_HA_ESPINO.get(v, 0.0) / total_ha, 2)
+        for v in VARIEDADES_ESPINO[:-1]
+    }
+    pcts[VARIEDADES_ESPINO[-1]] = round(100.0 - sum(pcts.values()), 2)
+    return pcts
 
 
 def patch(db_path: Path) -> None:
