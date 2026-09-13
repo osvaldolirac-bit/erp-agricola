@@ -22,9 +22,12 @@ DEMO_FILES = [
 ]
 
 MASTER_FILES = [
-    "erp_master/erp_master/tenant_admin.py",
-    "erp_master/erp_master/config.py",
-    "erp_master/erp_master/templates/super_consola.html",
+    ("erp_master/erp_master/tenant_admin.py", "erp_master/tenant_admin.py"),
+    ("erp_master/erp_master/config.py", "erp_master/config.py"),
+    (
+        "erp_master/erp_master/templates/super_consola.html",
+        "erp_master/templates/super_consola.html",
+    ),
 ]
 
 
@@ -47,12 +50,16 @@ def _ssh_base() -> list[str]:
     return base
 
 
-def scp_files(root: Path, rel_paths: list[str], remote_root: str) -> None:
-    for rel in rel_paths:
-        local = root / rel
+def scp_files(root: Path, files: list[str] | list[tuple[str, str]], remote_root: str) -> None:
+    for item in files:
+        if isinstance(item, tuple):
+            local_rel, remote_rel = item
+        else:
+            local_rel = remote_rel = item
+        local = root / local_rel
         if not local.is_file():
             raise SystemExit(f"Falta archivo local: {local}")
-        run([*_scp_base(), str(local), f"{HOST}:{remote_root}/{rel}"])
+        run([*_scp_base(), str(local), f"{HOST}:{remote_root}/{remote_rel}"])
 
 
 def main() -> None:
