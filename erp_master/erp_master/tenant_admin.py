@@ -71,9 +71,14 @@ MENU_GLOBALGAP = [
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+def _is_lc_family(kind: str) -> bool:
+    """La Concepción y El Espino comparten roles/módulos LC; prorrateo CC es distinto."""
+    return kind in ("lc", "espino")
+
+
 def hash_password(password: str, kind: str) -> str:
     raw = str(password or "")
-    if kind == "lc":
+    if _is_lc_family(kind):
         raw = raw.strip()
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -81,19 +86,19 @@ def hash_password(password: str, kind: str) -> str:
 def menu_for(kind: str) -> list[tuple[str, str]]:
     if kind == "globalgap":
         return list(MENU_GLOBALGAP)
-    return list(MENU_LC if kind == "lc" else MENU_DEMO)
+    return list(MENU_LC if _is_lc_family(kind) else MENU_DEMO)
 
 
 def roles_for(kind: str) -> tuple[str, ...]:
     if kind == "globalgap":
         return ROLES_GLOBALGAP
-    return ROLES_LC if kind == "lc" else ROLES_DEMO
+    return ROLES_LC if _is_lc_family(kind) else ROLES_DEMO
 
 
 def protected_role(kind: str) -> str:
     if kind == "globalgap":
         return "admin"
-    return "admin" if kind == "lc" else "super_admin"
+    return "admin" if _is_lc_family(kind) else "super_admin"
 
 
 @contextmanager
@@ -475,7 +480,7 @@ def set_mail_flags(
                 "UPDATE usuarios SET mail_riego_bitacora = ? WHERE id = ?",
                 (1 if mail_riego else 0, user_id),
             )
-        if kind == "lc":
+        if _is_lc_family(kind):
             if mail_petroleo is not None:
                 conn.execute(
                     "UPDATE usuarios SET mail_petroleo_bitacora = ? WHERE id = ?",
@@ -706,6 +711,20 @@ _PRORRATEO_DEFAULTS: dict[str, dict[str, Any]] = {
             "NOGALES CRUZ DEL SUR": 4.0,
         },
         "directos": ["EL ESPINO", "OTROS"],
+    },
+    "espino": {
+        "cuarteles": [
+            "ROYAL DOWN",
+            "SWEET ARYANA",
+            "SANTINA",
+        ],
+        "default_pct": {
+            "ROYAL DOWN": 33.33,
+            "SWEET ARYANA": 33.33,
+            "SANTINA": 33.34,
+        },
+        "default_ha": {},
+        "directos": ["EL ESPINO"],
     },
 }
 

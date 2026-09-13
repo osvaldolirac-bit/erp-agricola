@@ -32,7 +32,7 @@ def _build_tenants() -> dict[str, dict[str, Any]]:
         "espino": {
             "slug": "espino",
             "erp_app": "concepcion",
-            "kind": "lc",
+            "kind": "espino",
             "nombre": "El Espino",
             "nombre_erp": "ERP Agrícola El Espino",
             "db": _env("ERP_ESPINO_DB", "/root/espino/erp_espino.db"),
