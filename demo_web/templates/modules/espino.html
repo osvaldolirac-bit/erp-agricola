@@ -497,6 +497,12 @@
     .espino-bodega-heading-salida { color: #b71c1c; font-weight: 700; }
   </style>
   <p class="small text-muted mb-2">Stock bodega cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong> — Piriproxifen, Bioil spray y Cobre. El Libro de Campo rebaja stock al guardar aplicaciones.</p>
+  {% if op_activa == 'stock' %}
+  <div class="alert alert-info py-2 small mb-3">
+    <strong>Trazabilidad:</strong> use la pestaña <a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='kardex') }}">📋 Trazabilidad</a>
+    o el botón en cada fila para ver entradas, salidas y saldo (compras, LC, salidas manuales).
+  </div>
+  {% endif %}
 
   <ul class="nav nav-pills mb-3 gap-1 flex-wrap">
     {% for key, label in bodega_ops %}
@@ -588,21 +594,21 @@
   {% if stock_rows %}
   <div class="panel-card mb-3">
     <div class="table-responsive">
-      <table class="table table-sm table-striped demo-datatable w-100">
+      <table class="table table-sm table-striped w-100">
         <thead>
           <tr>
             {% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}
-            <th>KARDEX</th>
+            <th>TRAZABILIDAD</th>
           </tr>
         </thead>
         <tbody>
           {% for row in stock_rows %}
           <tr>
             {% for c in stock_cols %}<td>{{ row[c] }}</td>{% endfor %}
-            <td>
-              <a class="btn btn-outline-secondary btn-sm"
+            <td class="text-nowrap">
+              <a class="btn btn-outline-primary btn-sm"
                  href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='kardex', pid=row.id, q=filtro_q|default('')) }}">
-                Ver movimientos
+                📋 Ver trazabilidad
               </a>
             </td>
           </tr>
@@ -621,11 +627,28 @@
   {% endif %}
 
   {% elif op_activa == 'kardex' %}
-  <div class="mb-3">
-    <a class="btn btn-outline-primary btn-sm"
-       href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock', q=filtro_q|default('')) }}">
-      ← Volver a stock
-    </a>
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title mb-1">📋 Trazabilidad — libro mayor bodega</h2>
+    <p class="small text-muted mb-3">Entradas (compras/ingresos), salidas (LC y manuales) y saldo acumulado por producto.</p>
+    <form method="get" class="row g-2 align-items-end">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="bodega">
+      <input type="hidden" name="op" value="kardex">
+      <div class="col-md-8">
+        <label class="form-label">Producto</label>
+        <select name="pid" class="form-select form-select-sm" required onchange="this.form.submit()">
+          <option value="">— Seleccione producto —</option>
+          {% for p in productos_kardex|default([]) %}
+          <option value="{{ p.id }}" {% if p.id == pid_sel %}selected{% endif %}>
+            {{ p.producto }} ({{ p.unidad_medida }}) — stock {{ p.stock_fmt }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <button type="submit" class="btn btn-primary btn-sm w-100">Ver trazabilidad</button>
+      </div>
+    </form>
   </div>
   {% if kardex_error %}
   <div class="alert alert-warning">{{ kardex_error }}</div>

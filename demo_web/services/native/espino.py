@@ -277,7 +277,9 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
     bodega_op_override = None
     if sec == "bodega_stock":
         sec = "bodega"
-        bodega_op_override = "stock"
+        op_req = (request.args.get("op") or request.form.get("op") or "stock").strip().lower()
+        if op_req != "kardex":
+            bodega_op_override = "stock"
     if sec not in {k for k, _ in SECCIONES}:
         sec = "historial"
 
