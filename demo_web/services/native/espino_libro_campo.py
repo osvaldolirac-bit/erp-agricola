@@ -83,27 +83,10 @@ def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tupl
 
 
 def _productos_stock_espino(demo, conn) -> list[dict]:
-    stock_map = espino_bodega._stock_cc_map(conn)
-    dfi = pd.read_sql_query(
-        "SELECT id, producto, COALESCE(unidad_medida, ?) AS um FROM inventario ORDER BY producto",
-        conn,
-        params=(demo.DEFAULT_UNIDAD_INSUMO,),
-    )
-    out = []
-    for _, r in dfi.iterrows():
-        if not espino_bodega._es_producto_bodega_espino(str(r["producto"])):
-            continue
-        stock = stock_map.get(int(r["id"]), 0.0)
-        if stock <= 0:
-            continue
-        out.append(
-            {
-                "producto": r["producto"],
-                "stock_fmt": demo.f_cantidad(stock),
-                "um": r["um"],
-            }
-        )
-    return out
+    return [
+        {"producto": r["producto"], "stock_fmt": r["stock_fmt"], "um": r["um"]}
+        for r in espino_bodega.productos_bodega_con_stock(demo, conn)
+    ]
 
 
 def _cuarteles_lc(demo) -> list[str]:

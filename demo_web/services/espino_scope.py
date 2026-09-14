@@ -14,8 +14,11 @@ SUPERFICIE_HA_ESPINO: dict[str, float] = {
     "SANTINA": 4.5,
 }
 
-# CC de bodega Espino (stock compartido, distinto de cuarteles Libro de Campo).
+# Etiqueta UI / PDF bodega El Espino.
 BODEGA_CC_ESPINO = "EL ESPINO"
+
+# CC operativo en movimientos bodega (kardex imputado al huerto).
+CC_MOVIMIENTOS_BODEGA_ESPINO = "Cerezos"
 
 # Sector Libro de Campo antes del desglose por variedad (apps 1–5, etc.).
 LEGADO_SECTOR_LC_ESPINO = "CEREZOS"
@@ -62,4 +65,15 @@ def sectores_libro_campo_espino() -> frozenset[str]:
     """Sectores válidos en historial / desfase LC El Espino (incluye legado CEREZOS)."""
     return frozenset(
         {v.upper() for v in (*VARIEDADES_ESPINO, BODEGA_CC_ESPINO, LEGADO_SECTOR_LC_ESPINO)}
+    )
+
+
+def centros_costo_bodega_espino() -> frozenset[str]:
+    """CCs que acumulan stock bodega El Espino (histórico + actual)."""
+    return frozenset(
+        {
+            CC_MOVIMIENTOS_BODEGA_ESPINO.upper(),
+            LEGADO_SECTOR_LC_ESPINO.upper(),
+            BODEGA_CC_ESPINO.upper(),
+        }
     )
