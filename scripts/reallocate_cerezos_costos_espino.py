@@ -163,7 +163,7 @@ def verify(conn: sqlite3.Connection) -> list[str]:
     lines.append(f"facturas_P legacy Cerezos: {n} filas, ${float(t):,.2f}")
     for cc, cnt, tot in conn.execute(
         """SELECT centro_costo, COUNT(*), ROUND(SUM(monto_imputado),0) FROM facturas
-           WHERE nro_documento LIKE '%_P' GROUP BY centro_costo ORDER BY tot DESC"""
+           WHERE nro_documento LIKE '%_P' GROUP BY centro_costo ORDER BY 3 DESC"""
     ):
         lines.append(f"  {cc}: {cnt} filas, ${float(tot):,.0f}")
     for tbl in ("costos_ppto_temporada", "costos_kg_estimado_temporada"):
