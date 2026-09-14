@@ -502,6 +502,7 @@ def post_guardar_evento(demo, conn) -> dict:
             float(item.get("gasto_total") or 0),
             producto=str(item.get("producto") or ""),
             fecha=fe_app,
+            centro_costo=huerto,
         )
         if not ok:
             return {"ok": False, "msg": msg}
