@@ -11,12 +11,16 @@ HOST = "root@45.7.230.70"
 PORT = "40484"
 REMOTE = "/root/demo-web"
 FILES = [
+    ("demo_web/services/espino_scope.py", "demo_web/services/espino_scope.py"),
     ("demo_web/services/native/espino.py", "demo_web/services/native/espino.py"),
     ("demo_web/services/native/espino_bodega.py", "demo_web/services/native/espino_bodega.py"),
-    ("demo_web/services/native/espino_maquinaria.py", "demo_web/services/native/espino_maquinaria.py"),
     ("demo_web/services/native/espino_libro_campo.py", "demo_web/services/native/espino_libro_campo.py"),
     ("demo_web/templates/modules/espino.html", "demo_web/templates/modules/espino.html"),
     ("demo_web/templates/partials/espino_libro_campo.html", "demo_web/templates/partials/espino_libro_campo.html"),
+]
+
+OPTIONAL_FILES = [
+    ("demo_web/services/native/espino_maquinaria.py", "demo_web/services/native/espino_maquinaria.py"),
 ]
 
 
@@ -30,9 +34,12 @@ def main() -> None:
     scp_base = ["scp", "-o", "StrictHostKeyChecking=no", "-P", PORT]
     if os.environ.get("SSHPASS"):
         scp_base = ["sshpass", "-e", *scp_base]
-    for local_rel, remote_rel in FILES:
+    for local_rel, remote_rel in FILES + OPTIONAL_FILES:
         local = root / local_rel
         if not local.is_file():
+            if (local_rel, remote_rel) in OPTIONAL_FILES:
+                print(f"skip optional: {local_rel}")
+                continue
             raise SystemExit(f"Falta archivo local: {local}")
         run([*scp_base, str(local), f"{HOST}:{REMOTE}/{remote_rel}"])
     ssh_base = ["ssh", "-o", "StrictHostKeyChecking=no", "-p", PORT, HOST]

@@ -29,6 +29,8 @@ BODEGA_OPS = [
     ("nuevo", "➕ Crear producto"),
 ]
 
+_BODEGA_OPS_VALID = {k for k, _ in BODEGA_OPS} | {"kardex"}
+
 
 def bodega_secciones() -> list[tuple[str, str]]:
     return list(BODEGA_SECCIONES)
@@ -150,6 +152,7 @@ def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> li
         stock_cc = stock_map.get(pid, 0.0)
         rows.append(
             {
+                "id": pid,
                 "producto": r["producto"],
                 "ing_activo": r.get("ingrediente_activo", ""),
                 "familia": r.get("familia", ""),
@@ -159,6 +162,140 @@ def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> li
             }
         )
     return rows
+
+
+def _lc_lineas_producto(conn, producto: str) -> list[dict]:
+    rows = conn.execute(
+        """SELECT n_aplicacion, fecha, sector, gasto_total
+           FROM libro_campo WHERE UPPER(TRIM(producto))=?
+           ORDER BY CAST(n_aplicacion AS INTEGER), id""",
+        (producto.upper().strip(),),
+    ).fetchall()
+    return [
+        {
+            "n_app": int(r[0] or 0),
+            "fecha": str(r[1] or ""),
+            "sector": str(r[2] or ""),
+            "gasto": float(r[3] or 0),
+            "_used": False,
+        }
+        for r in rows
+    ]
+
+
+def _sector_coincide(sector: str, centro_costo: str) -> bool:
+    sec_u = (sector or "").strip().upper()
+    cc_u = (centro_costo or "").strip().upper()
+    if not sec_u or not cc_u:
+        return False
+    if sec_u == cc_u:
+        return True
+    nv = normalizar_cuartel_espino(sector)
+    nc = normalizar_cuartel_espino(centro_costo)
+    if nv and nc and nv == nc:
+        return True
+    return sec_u in cc_u or cc_u in sec_u
+
+
+def _origen_movimiento(
+    tipo: str,
+    cant: float,
+    fecha: str,
+    centro_costo: str,
+    lc_lineas: list[dict],
+) -> str:
+    if tipo == "Ingreso":
+        return "Compra / ingreso bodega"
+    for lc in lc_lineas:
+        if lc.get("_used"):
+            continue
+        if str(lc["fecha"]) != str(fecha):
+            continue
+        if abs(float(lc["gasto"]) - cant) > 1e-4:
+            continue
+        if not _sector_coincide(lc["sector"], centro_costo):
+            continue
+        lc["_used"] = True
+        return f"LC App N° {lc['n_app']:05d}"
+    cc = normalizar_cuartel_espino(centro_costo) or (centro_costo or "").strip() or "—"
+    return f"Salida manual → {cc}"
+
+
+def gather_kardex_producto(demo, conn, producto_id: int) -> dict:
+    """Libro mayor bodega: movimientos + saldo acumulado + enlace LC."""
+    row = conn.execute(
+        """SELECT id, producto, familia, COALESCE(unidad_medida, ?), COALESCE(stock, 0),
+                  COALESCE(ingrediente_activo, '')
+           FROM inventario WHERE id=?""",
+        (demo.DEFAULT_UNIDAD_INSUMO, producto_id),
+    ).fetchone()
+    if not row:
+        return {"kardex_error": "Producto no encontrado."}
+
+    pid, nombre, familia, um, _inv, ing_act = (
+        int(row[0]),
+        row[1],
+        row[2],
+        row[3],
+        float(row[4] or 0),
+        row[5],
+    )
+    lc_lineas = _lc_lineas_producto(conn, nombre)
+    movs = conn.execute(
+        """SELECT id, tipo, cantidad, fecha, centro_costo
+           FROM movimientos WHERE producto_id=?
+           ORDER BY fecha, id""",
+        (pid,),
+    ).fetchall()
+
+    saldo = 0.0
+    kardex_rows: list[dict] = []
+    for mid, tipo, cant, fecha, cc in movs:
+        qty = float(cant or 0)
+        delta = qty if str(tipo) == "Ingreso" else -qty
+        saldo += delta
+        kardex_rows.append(
+            {
+                "id": int(mid),
+                "fecha": str(fecha or ""),
+                "tipo": str(tipo),
+                "cantidad": demo.f_cantidad(qty),
+                "cant_raw": qty,
+                "delta_fmt": ("+" if delta >= 0 else "−") + demo.f_cantidad(abs(delta)),
+                "cuartel": (cc or "").strip() or "—",
+                "origen": _origen_movimiento(str(tipo), qty, str(fecha or ""), str(cc or ""), lc_lineas),
+                "saldo": demo.f_cantidad(max(saldo, 0.0)),
+            }
+        )
+
+    stock_ui = _stock_disponible_producto(conn, pid)
+    lc_sin_par = [lc for lc in lc_lineas if not lc.get("_used")]
+
+    ing_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Ingreso")
+    sal_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Salida")
+
+    return {
+        "kardex_producto": {
+            "id": pid,
+            "nombre": nombre,
+            "familia": familia,
+            "um": um,
+            "ing_activo": ing_act,
+            "stock": demo.f_cantidad(stock_ui),
+            "ing_total": demo.f_cantidad(ing_total),
+            "sal_total": demo.f_cantidad(sal_total),
+        },
+        "kardex_rows": kardex_rows,
+        "kardex_lc_pendientes": [
+            {
+                "n_app": lc["n_app"],
+                "fecha": lc["fecha"],
+                "sector": lc["sector"],
+                "gasto": demo.f_cantidad(lc["gasto"]),
+            }
+            for lc in lc_sin_par
+        ],
+    }
 
 
 def gather_bodega_stock(demo, conn) -> dict:
@@ -244,9 +381,17 @@ def _productos_todos(demo, conn) -> list[dict]:
 
 def _bodega_op_activa() -> str:
     op = (request.args.get("op") or request.form.get("op") or "stock").strip().lower()
-    if op not in {k for k, _ in BODEGA_OPS}:
+    if op not in _BODEGA_OPS_VALID:
         op = "stock"
     return op
+
+
+def _kardex_producto_id() -> int:
+    raw = (request.args.get("pid") or request.args.get("producto_id") or "0").strip()
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
 
 
 def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
@@ -261,6 +406,13 @@ def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
         "um_default": demo.DEFAULT_UNIDAD_INSUMO,
         "cc_espino": ETIQUETA_BODEGA,
     }
+    if op == "kardex":
+        pid = _kardex_producto_id()
+        if pid:
+            ctx.update(gather_kardex_producto(demo, conn, pid))
+        else:
+            ctx["kardex_error"] = "Seleccione un producto para ver el kardex."
+        return ctx
     ctx.update(gather_bodega_stock(demo, conn))
     return ctx
 
