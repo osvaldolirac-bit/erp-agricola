@@ -97,6 +97,7 @@ def create_app(config_class=Config) -> Flask:
             "auth.master_entry",
             "auth.select_tenant",
             "auth.elegir_empresa",
+            "auth.cambiar_empresa",
             "globalgap_portal.login",
             "globalgap_portal.logout",
             "globalgap_portal.root",

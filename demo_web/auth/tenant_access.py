@@ -5,7 +5,7 @@ from demo_web.services.erp_loader import get_erp_module_for
 from demo_web.tenants import get_tenant, list_tenants
 
 # Tenants entre los que se puede cambiar empresa sin re-login.
-_SWITCHABLE_KINDS = frozenset({"lc", "demo"})
+_SWITCHABLE_KINDS = frozenset({"lc", "demo", "espino"})
 
 
 def _tenant_access_row(email: str, tenant: dict) -> dict | None:
