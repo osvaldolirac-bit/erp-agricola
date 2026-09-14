@@ -8,9 +8,11 @@ from flask import request, session, url_for
 
 from demo_web.services.espino_scope import (
     BODEGA_CC_ESPINO,
+    LEGADO_SECTOR_LC_ESPINO,
     cuarteles_espino,
     es_cuartel_espino,
     normalizar_cuartel_espino,
+    sectores_libro_campo_espino,
 )
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
@@ -105,9 +107,23 @@ def _productos_stock_espino(demo, conn) -> list[dict]:
 
 
 def _cuarteles_lc(demo) -> list[str]:
-    """Variedades El Espino — siempre las 3 del huerto (independiente de otros CC)."""
-    _ = demo
-    return cuarteles_espino()
+    """Variedades El Espino + sector legado CEREZOS si hay historial."""
+    out = list(cuarteles_espino())
+    try:
+        conn = demo.conectar_db()
+        try:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM libro_campo WHERE UPPER(sector)=?",
+                (LEGADO_SECTOR_LC_ESPINO.upper(),),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        if n and LEGADO_SECTOR_LC_ESPINO not in out:
+            out.append(LEGADO_SECTOR_LC_ESPINO)
+    except Exception:
+        if LEGADO_SECTOR_LC_ESPINO not in out:
+            out.append(LEGADO_SECTOR_LC_ESPINO)
+    return out
 
 
 def _evento_meta_defaults(demo) -> dict:
@@ -175,9 +191,9 @@ def _sectores_historial_sql(cuartel: str) -> tuple[str, list]:
     if cuartel and cuartel != "TODOS":
         norm = normalizar_cuartel_espino(cuartel) or cuartel.strip().upper()
         return "UPPER(sector)=?", [norm]
-    sectores = {v.upper() for v in cuarteles_espino()} | {BODEGA_CC_ESPINO.upper()}
+    sectores = sorted(sectores_libro_campo_espino())
     placeholders = ",".join("?" * len(sectores))
-    return f"UPPER(sector) IN ({placeholders})", list(sectores)
+    return f"UPPER(sector) IN ({placeholders})", sectores
 
 
 def _ingreso(demo, conn) -> dict:
@@ -385,7 +401,7 @@ def _desfase(demo, conn) -> dict:
     dias_v = max(1, min(60, dias_v))
 
     df_lc_sin, df_bod_sin = demo._calcular_desfaces_lc_bodega(conn, fi, ff, dias_v)
-    sectores_lc = {v.upper() for v in cuarteles_espino()} | {BODEGA_CC_ESPINO.upper()}
+    sectores_lc = sectores_libro_campo_espino()
     cc_bod = BODEGA_CC.upper()
     if not df_lc_sin.empty and "CUARTEL" in df_lc_sin.columns:
         df_lc_sin = df_lc_sin[df_lc_sin["CUARTEL"].astype(str).str.upper().isin(sectores_lc)]

@@ -17,6 +17,9 @@ SUPERFICIE_HA_ESPINO: dict[str, float] = {
 # CC de bodega Espino (stock compartido, distinto de cuarteles Libro de Campo).
 BODEGA_CC_ESPINO = "EL ESPINO"
 
+# Sector Libro de Campo antes del desglose por variedad (apps 1–5, etc.).
+LEGADO_SECTOR_LC_ESPINO = "CEREZOS"
+
 _VARIEDADES_UPPER = {v.upper(): v for v in VARIEDADES_ESPINO}
 
 
@@ -53,3 +56,10 @@ def normalizar_cuartel_espino(nombre: str) -> str:
 def cuarteles_espino_sql_in() -> tuple[str, ...]:
     """Sectores Libro de Campo Espino (variedades + legado bodega)."""
     return tuple({*VARIEDADES_ESPINO, BODEGA_CC_ESPINO})
+
+
+def sectores_libro_campo_espino() -> frozenset[str]:
+    """Sectores válidos en historial / desfase LC El Espino (incluye legado CEREZOS)."""
+    return frozenset(
+        {v.upper() for v in (*VARIEDADES_ESPINO, BODEGA_CC_ESPINO, LEGADO_SECTOR_LC_ESPINO)}
+    )
