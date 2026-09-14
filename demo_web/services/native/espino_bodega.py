@@ -437,7 +437,8 @@ def gather_bodega_stock(demo, conn) -> dict:
     pdf_url = None
     if not dfs_view.empty:
         dfs_op = dfs_view.copy()
-        dfs_op["stock"] = dfs_op["stock_cc"].map(lambda v: demo.f_cantidad(v))
+        # Numérico para PDF: f_cantidad se aplica en generar_pdf_blob (evita doble formato "2,25"→0).
+        dfs_op["stock"] = dfs_op["stock_cc"].astype(float)
         dfs_op = dfs_op.drop(columns=["precio_medio", "id", "stock_inv", "stock_cc"], errors="ignore").rename(
             columns={"unidad_medida": "UM", "ingrediente_activo": "ING. ACTIVO"}
         )
