@@ -26,7 +26,6 @@ BODEGA_SECCIONES = [
 
 BODEGA_OPS = [
     ("stock", "📊 Stock actual"),
-    ("kardex", "📋 Trazabilidad"),
     ("nuevo", "➕ Crear producto"),
 ]
 
@@ -409,10 +408,10 @@ def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
     }
     if op == "kardex":
         pid = _kardex_producto_id()
-        ctx["productos_kardex"] = _productos_todos(demo, conn)
-        ctx["pid_sel"] = pid
         if pid:
             ctx.update(gather_kardex_producto(demo, conn, pid))
+        else:
+            ctx["kardex_error"] = "Seleccione un producto desde el listado de stock."
         return ctx
     ctx.update(gather_bodega_stock(demo, conn))
     return ctx
