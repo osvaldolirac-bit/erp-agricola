@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Repara salidas LC Espino app 6: elimina duplicados y reimputa a ROYAL DOWN.
+"""Repara salidas LC Espino: elimina duplicados y reimputa al cuartel/variedad.
+
+Por defecto repara aplicación N°6 (2026-09-03, ROYAL DOWN). Cantidades se leen
+desde libro_campo.
 
 Uso en VPS:
   python3 scripts/patch_espino_lc_bodega_rebaje.py /root/espino/erp_espino.db [--apply]
@@ -10,19 +13,23 @@ import sqlite3
 import sys
 from pathlib import Path
 
-# Aplicación LC El Espino (2026-09-03, sector ROYAL DOWN).
 N_APP = 6
-VARIEDAD = "ROYAL DOWN"
-FECHA_APP = "2026-09-03"
 
-# Cantidades esperadas por producto (gasto_total app 6).
-SALIDAS_APP6: dict[str, float] = {
-    "INDAR 2F": 0.5,
-    "NUTYRICHELATES ZINC PLUS": 0.5,
-    "POLIB": 0.5,
-    "ACETAMIPRID 70 WP": 0.25,
-    "EVOLUTION FIFTY": 0.5,
-}
+
+def _salidas_esperadas(conn: sqlite3.Connection) -> tuple[dict[str, tuple[float, str]], str]:
+    """producto → (gasto_total, sector/variedad)."""
+    rows = conn.execute(
+        """SELECT producto, gasto_total, sector, fecha
+           FROM libro_campo WHERE n_aplicacion=? ORDER BY id""",
+        (N_APP,),
+    ).fetchall()
+    if not rows:
+        raise SystemExit(f"No hay filas libro_campo para n_aplicacion={N_APP}")
+    fecha = str(rows[0][3])
+    out: dict[str, tuple[float, str]] = {}
+    for prod, gasto, sector, _ in rows:
+        out[str(prod).strip()] = (float(gasto or 0), str(sector or "").strip())
+    return out, fecha
 
 
 def _producto_id(conn: sqlite3.Connection, nombre: str) -> int | None:
@@ -34,7 +41,6 @@ def _producto_id(conn: sqlite3.Connection, nombre: str) -> int | None:
 
 
 def _salidas_producto(conn: sqlite3.Connection, pid: int) -> list[sqlite3.Row]:
-    conn.row_factory = sqlite3.Row
     return list(
         conn.execute(
             """SELECT id, cantidad, fecha, centro_costo, tipo
@@ -46,93 +52,73 @@ def _salidas_producto(conn: sqlite3.Connection, pid: int) -> list[sqlite3.Row]:
     )
 
 
-def _ingresos_pool(conn: sqlite3.Connection, pid: int) -> float:
-    ccs = ("CEREZOS", "CEREZOS", "EL ESPINO")  # upper match below
-    row = conn.execute(
-        """SELECT COALESCE(SUM(cantidad), 0) FROM movimientos
-           WHERE producto_id=? AND tipo='Ingreso'
-             AND UPPER(centro_costo) IN ('CEREZOS','CEREZOS','EL ESPINO')""",
-        (pid,),
-    ).fetchone()
-    return float(row[0] or 0)
-
-
-def _sync_inventario_stock(conn: sqlite3.Connection, pid: int) -> float:
-    """Ajusta inventario.stock cuando no hay kardex ingreso (pool bodega)."""
-    inv = conn.execute("SELECT COALESCE(stock, 0) FROM inventario WHERE id=?", (pid,)).fetchone()
-    stock_inv = float(inv[0] or 0) if inv else 0.0
-    ing = _ingresos_pool(conn, pid)
-    if ing > 1e-9:
-        return stock_inv
-    sal = conn.execute(
-        "SELECT COALESCE(SUM(cantidad), 0) FROM movimientos WHERE producto_id=? AND tipo='Salida'",
-        (pid,),
-    ).fetchone()
-    sal_total = float(sal[0] or 0)
-    # Stock inicial implícito = stock_inv actual + salidas (si nunca se rebajó inventario).
-    # Tras fix de código, stock = max(stock_base - salidas, 0).
-    # Aquí recalculamos desde stock actual + salidas duplicadas eliminadas externamente.
-    return stock_inv
-
-
 def plan(conn: sqlite3.Connection) -> list[str]:
-    lines: list[str] = []
-    dup_ids: list[int] = []
+    esperadas, fecha_app = _salidas_esperadas(conn)
+    lines: list[str] = [f"App N°{N_APP} · fecha {fecha_app} · {len(esperadas)} productos"]
 
-    for prod, cant in SALIDAS_APP6.items():
+    for prod, (cant, variedad) in esperadas.items():
         pid = _producto_id(conn, prod)
         if pid is None:
             lines.append(f"WARN: producto no encontrado: {prod}")
             continue
-        salidas = _salidas_producto(conn, pid)
-        matching = [
+        salidas = [
             s
-            for s in salidas
-            if abs(float(s["cantidad"]) - cant) < 1e-6
-            and str(s["fecha"]) in (FECHA_APP, "2026-09-14")
+            for s in _salidas_producto(conn, pid)
+            if abs(float(s["cantidad"]) - cant) < 1e-4
         ]
-        if len(matching) >= 2:
-            # Conservar la más antigua (fecha app); eliminar las posteriores.
-            keep = min(matching, key=lambda s: int(s["id"]))
-            for s in matching:
-                if int(s["id"]) != int(keep["id"]):
-                    dup_ids.append(int(s["id"]))
-                    lines.append(f"DELETE duplicado id={s['id']} {prod} {s['fecha']} cc={s['centro_costo']}")
-            lines.append(f"KEEP id={keep['id']} {prod} → cc={VARIEDAD}")
-        elif len(matching) == 1:
-            s = matching[0]
-            lines.append(f"UPDATE id={s['id']} {prod} cc={s['centro_costo']} → {VARIEDAD}")
-        else:
-            lines.append(f"WARN: sin salida esperada para {prod} ({cant})")
-
-    if dup_ids:
-        lines.insert(0, f"Duplicados a eliminar: {sorted(set(dup_ids))}")
+        if not salidas:
+            lines.append(f"INSERT pendiente: {prod} −{cant} → {variedad} (sin salida bodega)")
+            continue
+        keep = min(salidas, key=lambda s: (str(s["fecha"]) != fecha_app, int(s["id"])))
+        for s in salidas:
+            if int(s["id"]) == int(keep["id"]):
+                cc_old = s["centro_costo"]
+                if cc_old != variedad:
+                    lines.append(
+                        f"UPDATE id={s['id']} {prod} cc={cc_old} → {variedad} ({cant})"
+                    )
+                else:
+                    lines.append(f"OK id={s['id']} {prod} cc={variedad} ({cant})")
+            else:
+                lines.append(
+                    f"DELETE duplicado id={s['id']} {prod} {s['fecha']} cc={s['centro_costo']} ({cant})"
+                )
     return lines
 
 
 def apply(conn: sqlite3.Connection) -> None:
-    for prod, cant in SALIDAS_APP6.items():
+    esperadas, fecha_app = _salidas_esperadas(conn)
+    for prod, (cant, variedad) in esperadas.items():
         pid = _producto_id(conn, prod)
         if pid is None:
             continue
-        salidas = _salidas_producto(conn, pid)
-        matching = [
+        salidas = [
             s
-            for s in salidas
-            if abs(float(s["cantidad"]) - cant) < 1e-6
-            and str(s["fecha"]) in (FECHA_APP, "2026-09-14")
+            for s in _salidas_producto(conn, pid)
+            if abs(float(s["cantidad"]) - cant) < 1e-4
         ]
-        if not matching:
+        if not salidas:
+            row = conn.execute(
+                "SELECT precio_medio, COALESCE(unidad_medida,'L') FROM inventario WHERE id=?",
+                (pid,),
+            ).fetchone()
+            pmp = float(row[0] or 0)
+            um = row[1]
+            conn.execute(
+                """INSERT INTO movimientos
+                   (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (pid, "Salida", cant, fecha_app, variedad, cant * pmp, um),
+            )
             continue
-        keep = min(matching, key=lambda s: int(s["id"]))
-        for s in matching:
+        keep = min(salidas, key=lambda s: (str(s["fecha"]) != fecha_app, int(s["id"])))
+        for s in salidas:
             if int(s["id"]) != int(keep["id"]):
                 conn.execute("DELETE FROM movimientos WHERE id=?", (int(s["id"]),))
         conn.execute(
-            "UPDATE movimientos SET centro_costo=? WHERE id=?",
-            (VARIEDAD, int(keep["id"])),
+            "UPDATE movimientos SET centro_costo=?, fecha=? WHERE id=?",
+            (variedad, fecha_app, int(keep["id"])),
         )
-        # inventario.stock no se altera: el rebaje se refleja vía movimientos (Salida).
 
 
 def main() -> None:
@@ -147,7 +133,7 @@ def main() -> None:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
-        print(f"=== Plan rebaje LC app {N_APP} ({VARIEDAD}) ===")
+        print("=== Plan rebaje LC Espino ===")
         for line in plan(conn):
             print(line)
         if do_apply:
