@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ brand }}{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=1785543581" sizes="32x32">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v=1785543581">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}?v=1785543581" sizes="any">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=1785543581">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_sidebar.html" %}
+    <main class="main">
+      <div class="breadcrumb-bar">
+        {% block breadcrumb %}
+        <span>{{ brand }}</span><span>›</span><span class="current">Consola</span>
+        {% endblock %}
+      </div>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% if user %}
+
+<div id="sessionIdleGuard"
+     data-idle-limit="{{ session_idle_limit }}"
+     data-warn-seconds="{{ session_idle_warn }}"
+     data-continue-url="{{ request.script_root.rstrip('/') }}/api/session-continue"
+     data-login-url="{{ request.script_root.rstrip('/') }}/login"
+     data-logout-url="{{ request.script_root.rstrip('/') }}/logout"
+     data-logout-mode="post"
+     hidden></div>
+<div class="session-idle-overlay" id="sessionIdleOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sessionIdleTitle">
+  <div class="session-idle-card">
+    <h2 id="sessionIdleTitle">Sesión por inactividad</h2>
+    <p>
+      Por seguridad, tu sesión se cerrará en
+      <span class="session-idle-count" id="sessionIdleCount">2:00</span>
+      si no continúas.
+    </p>
+    <div class="session-idle-actions">
+      <button type="button" class="session-idle-continue" id="sessionIdleContinue">Continuar sesión</button>
+      <button type="button" class="session-idle-logout" id="sessionIdleLogout">Cerrar ahora</button>
+    </div>
+  </div>
+</div>
+<script>
+
+(function () {
+  const root = document.getElementById('sessionIdleGuard');
+  if (!root) return;
+  const idleLimit = Math.max(60, parseInt(root.dataset.idleLimit || '1200', 10) || 1200);
+  const warnSeconds = Math.max(30, parseInt(root.dataset.warnSeconds || '120', 10) || 120);
+  const prefix = (window.location.pathname || '').startsWith('/consola') ? '/consola' : '';
+  const continueUrl = root.dataset.continueUrl || (prefix + '/api/session-continue');
+  const loginUrl = root.dataset.loginUrl || (prefix + '/login');
+  const logoutUrl = root.dataset.logoutUrl || (prefix + '/logout');
+  const logoutMode = (root.dataset.logoutMode || 'post').toLowerCase();
+  const overlay = document.getElementById('sessionIdleOverlay');
+  const countEl = document.getElementById('sessionIdleCount');
+  const btnContinue = document.getElementById('sessionIdleContinue');
+  const btnLogout = document.getElementById('sessionIdleLogout');
+  if (!overlay || !countEl || !btnContinue || !btnLogout) return;
+
+  let lastActive = Date.now();
+  let warnOpen = false;
+  let pingBusy = false;
+  let lastPing = 0;
+
+  function fmt(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function goLogin(forceOut) {
+    var u = loginUrl || (prefix + "/login");
+    if (forceOut && u.indexOf("out=") < 0) {
+      u += (u.indexOf("?") >= 0 ? "&" : "?") + "out=1";
+    }
+    window.location = u;
+  }
+
+  async function doLogout() {
+    try {
+      if (logoutUrl) {
+        if (logoutMode === 'post') {
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = logoutUrl;
+          document.body.appendChild(form);
+          form.submit();
+          return;
+        }
+        window.location = logoutUrl;
+        return;
+      }
+    } catch (e) {}
+    goLogin(true);
+  }
+
+  async function pingContinue(force) {
+    const now = Date.now();
+    if (!force && (pingBusy || now - lastPing < 45000)) return;
+    pingBusy = true;
+    lastPing = now;
+    try {
+      const res = await fetch(continueUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (res.status === 401) { goLogin(true); return false; }
+      if (!res.ok) return false;
+      lastActive = Date.now();
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      pingBusy = false;
+    }
+  }
+
+  function closeWarn() {
+    warnOpen = false;
+    overlay.classList.remove('is-open');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  function openWarn() {
+    if (!warnOpen) {
+      warnOpen = true;
+      overlay.classList.add('is-open');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function onActivity() {
+    if (warnOpen) return; // exige Continuar explícito
+    lastActive = Date.now();
+  }
+
+  ['click', 'keydown', 'mousedown', 'touchstart', 'scroll'].forEach(function (evt) {
+    window.addEventListener(evt, onActivity, { passive: true, capture: true });
+  });
+
+  btnContinue.addEventListener('click', async function () {
+    const ok = await pingContinue(true);
+    if (ok !== false) {
+      lastActive = Date.now();
+      closeWarn();
+    }
+  });
+  btnLogout.addEventListener('click', function () { doLogout(); });
+
+  setInterval(async function () {
+    const idleSec = (Date.now() - lastActive) / 1000;
+    const left = idleLimit - idleSec;
+    if (left <= 0) {
+      await doLogout();
+      return;
+    }
+    if (left <= warnSeconds) {
+      openWarn();
+      countEl.textContent = fmt(left);
+    } else {
+      if (warnOpen) closeWarn();
+      // Mantener sesión servidor alineada si hay uso real
+      if (idleSec < 60) pingContinue(false);
+    }
+  }, 1000);
+})();
+
+</script>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>
