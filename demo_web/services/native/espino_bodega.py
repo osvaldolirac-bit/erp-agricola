@@ -30,8 +30,20 @@ def _pdf_filename_producto(nombre: str, prefix: str = "KARDEX") -> str:
 
 def _pdf_kardex_producto(demo, prod: dict, rows: list[dict]) -> tuple[str | None, str | None]:
     um = prod["um"]
+    resumen = pd.DataFrame(
+        [
+            {
+                "FECHA": "—",
+                "TIPO": "RESUMEN",
+                "CANTIDAD": f"Stock actual: {prod['stock']} {um}",
+                "CUARTEL": f"Ingresos: {prod['ing_total']} {um}",
+                "ORIGEN": f"Salidas: {prod['sal_total']} {um}",
+                "SALDO": "—",
+            }
+        ]
+    )
     if rows:
-        df = pd.DataFrame(
+        mov_df = pd.DataFrame(
             [
                 {
                     "FECHA": r["fecha"],
@@ -44,12 +56,10 @@ def _pdf_kardex_producto(demo, prod: dict, rows: list[dict]) -> tuple[str | None
                 for r in rows
             ]
         )
+        df = pd.concat([resumen, mov_df], ignore_index=True)
     else:
-        df = pd.DataFrame([{"INFO": "Sin movimientos registrados en bodega para este producto."}])
-    titulo = (
-        f"CUENTA CORRIENTE BODEGA — {prod['nombre']}\n"
-        f"Stock actual: {prod['stock']} {um} · Ingresos: {prod['ing_total']} · Salidas: {prod['sal_total']}"
-    )
+        df = resumen
+    titulo = f"CUENTA CORRIENTE BODEGA — {prod['nombre']}"
     fname = _pdf_filename_producto(prod["nombre"])
     blob = demo.generar_pdf_blob(df, titulo, incluir_precios=False)
     if not blob:
@@ -233,6 +243,15 @@ def _sector_coincide(sector: str, centro_costo: str) -> bool:
     return sec_u in cc_u or cc_u in sec_u
 
 
+def _normalize_tipo_mov(tipo: str) -> str:
+    t = (tipo or "").strip().lower()
+    if t.startswith("ing"):
+        return "Ingreso"
+    if t.startswith("sal"):
+        return "Salida"
+    return (tipo or "").strip() or "Salida"
+
+
 def _origen_movimiento(
     tipo: str,
     cant: float,
@@ -240,7 +259,7 @@ def _origen_movimiento(
     centro_costo: str,
     lc_lineas: list[dict],
 ) -> str:
-    if tipo == "Ingreso":
+    if _normalize_tipo_mov(tipo) == "Ingreso":
         return "Compra / ingreso bodega"
     for lc in lc_lineas:
         if lc.get("_used"):
@@ -255,6 +274,89 @@ def _origen_movimiento(
         return f"LC App N° {lc['n_app']:05d}"
     cc = normalizar_cuartel_espino(centro_costo) or (centro_costo or "").strip() or "—"
     return f"Salida manual → {cc}"
+
+
+def _kardex_row(
+    demo,
+    *,
+    row_id: int,
+    fecha: str,
+    tipo: str,
+    qty: float,
+    cuartel: str,
+    origen: str,
+    saldo: float,
+) -> dict:
+    tipo_n = _normalize_tipo_mov(tipo)
+    delta = qty if tipo_n == "Ingreso" else -qty
+    return {
+        "id": row_id,
+        "fecha": fecha,
+        "tipo": tipo_n,
+        "cantidad": demo.f_cantidad(qty),
+        "cant_raw": qty,
+        "delta_fmt": ("+" if delta >= 0 else "−") + demo.f_cantidad(abs(delta)),
+        "cuartel": cuartel,
+        "origen": origen,
+        "saldo": demo.f_cantidad(saldo),
+        "saldo_raw": saldo,
+    }
+
+
+def _build_kardex_rows(
+    demo,
+    movs: list[tuple],
+    lc_lineas: list[dict],
+    stock_ui: float,
+) -> list[dict]:
+    """Arma filas kardex; agrega ingreso implícito si stock + salidas > ingresos registrados."""
+    ing_mov = 0.0
+    sal_mov = 0.0
+    parsed: list[tuple[int, str, str, float, str, str]] = []
+    for mid, tipo, cant, fecha, cc in movs:
+        tipo_n = _normalize_tipo_mov(str(tipo))
+        qty = float(cant or 0)
+        parsed.append((int(mid), tipo_n, str(fecha or ""), qty, str(cc or ""), str(tipo)))
+        if tipo_n == "Ingreso":
+            ing_mov += qty
+        else:
+            sal_mov += qty
+
+    implicit = max(stock_ui + sal_mov - ing_mov, 0.0)
+    rows: list[dict] = []
+    saldo = 0.0
+    if implicit > 1e-6:
+        saldo += implicit
+        fecha_ap = parsed[0][2] if parsed else "Apertura"
+        rows.append(
+            _kardex_row(
+                demo,
+                row_id=0,
+                fecha=fecha_ap,
+                tipo="Ingreso",
+                qty=implicit,
+                cuartel=ETIQUETA_BODEGA,
+                origen="Stock inicial / ingreso sin kardex",
+                saldo=saldo,
+            )
+        )
+
+    for mid, tipo_n, fecha, qty, cc, tipo_raw in parsed:
+        delta = qty if tipo_n == "Ingreso" else -qty
+        saldo += delta
+        rows.append(
+            _kardex_row(
+                demo,
+                row_id=mid,
+                fecha=fecha,
+                tipo=tipo_n,
+                qty=qty,
+                cuartel=(cc or "").strip() or "—",
+                origen=_origen_movimiento(tipo_raw, qty, fecha, cc, lc_lineas),
+                saldo=saldo,
+            )
+        )
+    return rows
 
 
 def gather_kardex_producto(demo, conn, producto_id: int) -> dict:
@@ -284,27 +386,8 @@ def gather_kardex_producto(demo, conn, producto_id: int) -> dict:
         (pid,),
     ).fetchall()
 
-    saldo = 0.0
-    kardex_rows: list[dict] = []
-    for mid, tipo, cant, fecha, cc in movs:
-        qty = float(cant or 0)
-        delta = qty if str(tipo) == "Ingreso" else -qty
-        saldo += delta
-        kardex_rows.append(
-            {
-                "id": int(mid),
-                "fecha": str(fecha or ""),
-                "tipo": str(tipo),
-                "cantidad": demo.f_cantidad(qty),
-                "cant_raw": qty,
-                "delta_fmt": ("+" if delta >= 0 else "−") + demo.f_cantidad(abs(delta)),
-                "cuartel": (cc or "").strip() or "—",
-                "origen": _origen_movimiento(str(tipo), qty, str(fecha or ""), str(cc or ""), lc_lineas),
-                "saldo": demo.f_cantidad(max(saldo, 0.0)),
-            }
-        )
-
     stock_ui = _stock_disponible_producto(conn, pid)
+    kardex_rows = _build_kardex_rows(demo, movs, lc_lineas, stock_ui)
     lc_sin_par = [lc for lc in lc_lineas if not lc.get("_used")]
 
     ing_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Ingreso")
