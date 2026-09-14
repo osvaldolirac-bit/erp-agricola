@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ erp_title|default('ERP') }}{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32x32.png') }}?v={{ static_version }}" sizes="32x32">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}?v={{ static_version }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}?v={{ static_version }}" sizes="any">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v={{ static_version }}">
+  <link rel="shortcut icon" href="{{ url_for('favicon') }}?v={{ static_version }}">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/erp.css') }}?v={{ static_version }}" rel="stylesheet">
+  {% block extra_head %}{% endblock %}
+  {% if solo_lectura %}
+  <style>
+    body.erp-solo-lectura main.demo-main form[method="post"]:not([action*="logout"]) input:not([type="hidden"]),
+    body.erp-solo-lectura main.demo-main form[method="post"]:not([action*="logout"]) textarea,
+    body.erp-solo-lectura main.demo-main form[method="post"]:not([action*="logout"]) select,
+    body.erp-solo-lectura main.demo-main form[method="post"]:not([action*="logout"]) button[type="submit"],
+    body.erp-solo-lectura main.demo-main form[method="post"]:not([action*="logout"]) .btn {
+      pointer-events: none !important;
+      opacity: 0.55 !important;
+      cursor: not-allowed !important;
+    }
+  </style>
+  {% endif %}
+</head>
+<body class="demo-body{% if body_class %} {{ body_class }}{% endif %}{% if solo_lectura %} erp-solo-lectura{% endif %}">
+  {% if current_user %}
+  <nav class="navbar navbar-expand-lg navbar-dark demo-navbar sticky-top">
+    <div class="container-fluid">
+      <button class="navbar-toggler order-0" type="button" data-bs-toggle="offcanvas"
+              data-bs-target="#demoMenu" aria-controls="demoMenu" aria-label="Menú">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <a class="navbar-brand fw-bold d-flex align-items-center gap-2 order-1 demo-navbar-brand"
+         href="{{ url_for('modules.dashboard') }}">
+        {% if logo_url %}
+        <img src="{{ logo_url }}" alt="" class="demo-navbar-logo d-lg-none" aria-hidden="true">
+        {% endif %}
+        <span>{{ erp_brand|default('ERP') }}</span>
+      </a>
+      <div class="ms-auto d-flex align-items-center gap-2 gap-md-3 order-2 demo-navbar-actions">
+        <span class="navbar-flag flex-shrink-0" title="Chile"><svg class="flag-cl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" aria-label="Chile" role="img" focusable="false">
+  <rect width="24" height="16" rx="1.5" fill="#fff"/>
+  <rect y="8" width="24" height="8" fill="#d52b1e"/>
+  <rect width="8" height="8" fill="#0039a6"/>
+  <polygon fill="#fff" points="4,1.6 4.65,3.55 6.8,3.55 5.05,4.75 5.7,6.7 4,5.5 2.3,6.7 2.95,4.75 1.2,3.55 3.35,3.55"/>
+</svg></span>
+        <span class="demo-user-email text-white-50 small text-truncate" title="{{ current_user.email }}">{{ current_user.email }}</span>
+        {% if tenant_switch_options %}
+        <div class="dropdown demo-tenant-switch flex-shrink-0">
+          <button class="btn btn-sm btn-outline-light dropdown-toggle demo-tenant-switch-btn"
+                  type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                  aria-label="Cambiar empresa">
+            Cambiar empresa
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end demo-tenant-switch-menu">
+            <li><h6 class="dropdown-header">Empresa actual</h6></li>
+            <li><span class="dropdown-item-text fw-semibold">{{ tenant.nombre|default(current_user.tenant_nombre) }}</span></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><h6 class="dropdown-header">Ir a</h6></li>
+            {% for t in tenant_switch_options %}
+            <li>
+              <form method="post" action="{{ url_for('auth.cambiar_empresa') }}" class="m-0">
+                <input type="hidden" name="tenant_slug" value="{{ t.slug }}">
+                <button type="submit" class="dropdown-item">{{ t.nombre }}</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('auth.logout') }}" class="m-0 flex-shrink-0">
+          <button class="btn btn-sm btn-outline-light">Salir</button>
+        </form>
+      </div>
+    </div>
+  </nav>
+
+  <div class="offcanvas offcanvas-start demo-offcanvas" tabindex="-1" id="demoMenu"
+       data-bs-scroll="true" aria-labelledby="demoMenuLabel">
+    <div class="offcanvas-header d-lg-none border-0 pb-0">
+      <button type="button" class="btn-close ms-auto" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+    </div>
+    <div class="offcanvas-body p-0">
+      {% if logo_url %}
+      <div class="demo-sidebar-logo text-center py-3 px-2">
+        <img src="{{ logo_url }}" alt="{{ erp_title }}" class="logo-sidebar">
+      </div>
+      {% endif %}
+      <div class="demo-sidebar-head">Menú</div>
+      <nav class="demo-menu" aria-label="Módulos">
+        {% for item in (nav_ops if nav_ops is defined else nav_menu) %}
+        <a href="{{ url_for(item.endpoint) }}"
+           class="demo-nav-link {% if item.badge_count is defined and item.badge_count is not none %}nav-with-count{% endif %} {% if active_key == item.key %}active{% endif %}">
+          <span class="nav-link-main">
+            <i class="bi {{ item.icon|default('bi-circle') }}" aria-hidden="true"></i>
+            <span class="nav-link-label">{{ item.label }}</span>
+          </span>
+          {% if item.badge_count is defined and item.badge_count is not none %}
+          <span class="nav-count{% if item.badge_count > 0 %} nav-count-alert{% endif %}">{{ item.badge_count }}</span>
+          {% endif %}
+        </a>
+        {% endfor %}
+        {% if nav_sistema %}
+        <div class="demo-nav-section">Sistema</div>
+        {% for item in nav_sistema %}
+        <a href="{{ url_for(item.endpoint) }}"
+           class="demo-nav-link {% if item.badge_count is defined and item.badge_count is not none %}nav-with-count{% endif %} {% if active_key == item.key %}active{% endif %}">
+          <span class="nav-link-main">
+            <i class="bi {{ item.icon|default('bi-circle') }}" aria-hidden="true"></i>
+            <span class="nav-link-label">{{ item.label }}</span>
+          </span>
+          {% if item.badge_count is defined and item.badge_count is not none %}
+          <span class="nav-count{% if item.badge_count > 0 %} nav-count-alert{% endif %}">{{ item.badge_count }}</span>
+          {% endif %}
+        </a>
+        {% endfor %}
+        {% endif %}
+        {% if show_planes %}
+        <div class="demo-menu-foot">
+          <a href="{{ url_for('planes') }}"
+             class="demo-nav-link nav-planes {% if active_key == 'Planes' %}active{% endif %}">
+            <span class="nav-link-main"><i class="bi bi-tags-fill" aria-hidden="true"></i> <strong>Planes</strong></span>
+            <span class="nav-fee nav-fee-pack">REVISA TU PLAN</span>
+          </a>
+        </div>
+        {% endif %}
+      </nav>
+    </div>
+  </div>
+  {% endif %}
+
+  <main class="demo-main {% if not current_user %}demo-main-auth{% endif %}">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="container-fluid py-2">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category if category != 'message' else 'info' }} mb-2">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+    {% if solo_lectura and current_user %}
+    <div class="container-fluid pt-2">
+      <div class="alert alert-info py-2 mb-0 small">Modo solo lectura: puede consultar, pero no registrar ni modificar datos.</div>
+    </div>
+    {% endif %}
+  {% block content %}{% endblock %}
+  {% if master_logo_url and request.endpoint != 'modules.dashboard' %}
+  <div class="erp-master-brand" aria-hidden="true">
+    <img src="{{ master_logo_url }}" alt="ERP Master">
+  </div>
+  {% endif %}
+</main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+  <script src="{{ url_for('static', filename='js/demo.js') }}?v={{ static_version }}"></script>
+  {% if current_user %}
+
+<div id="sessionIdleGuard"
+     data-idle-limit="{{ session_idle_limit }}"
+     data-warn-seconds="{{ session_idle_warn }}"
+     data-continue-url="{{ url_for('session_continue') }}"
+     data-login-url="{{ url_for('auth.login') }}"
+     data-logout-url="{{ url_for('auth.logout') }}"
+     data-logout-mode="post"
+     hidden></div>
+<div class="session-idle-overlay" id="sessionIdleOverlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sessionIdleTitle">
+  <div class="session-idle-card">
+    <h2 id="sessionIdleTitle">Sesión por inactividad</h2>
+    <p>
+      Por seguridad, tu sesión se cerrará en
+      <span class="session-idle-count" id="sessionIdleCount">2:00</span>
+      si no continúas.
+    </p>
+    <div class="session-idle-actions">
+      <button type="button" class="session-idle-continue" id="sessionIdleContinue">Continuar sesión</button>
+      <button type="button" class="session-idle-logout" id="sessionIdleLogout">Cerrar ahora</button>
+    </div>
+  </div>
+</div>
+<script>
+
+(function () {
+  const root = document.getElementById('sessionIdleGuard');
+  if (!root) return;
+  const idleLimit = Math.max(60, parseInt(root.dataset.idleLimit || '1200', 10) || 1200);
+  const warnSeconds = Math.max(30, parseInt(root.dataset.warnSeconds || '120', 10) || 120);
+  const continueUrl = root.dataset.continueUrl || '/agricola/api/session-continue';
+  const loginUrl = root.dataset.loginUrl || '/agricola/login';
+  const logoutUrl = root.dataset.logoutUrl || '';
+  const logoutMode = (root.dataset.logoutMode || 'post').toLowerCase();
+  const overlay = document.getElementById('sessionIdleOverlay');
+  const countEl = document.getElementById('sessionIdleCount');
+  const btnContinue = document.getElementById('sessionIdleContinue');
+  const btnLogout = document.getElementById('sessionIdleLogout');
+  if (!overlay || !countEl || !btnContinue || !btnLogout) return;
+
+  let lastActive = Date.now();
+  let warnOpen = false;
+  let pingBusy = false;
+  let lastPing = 0;
+
+  function fmt(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function goLogin() {
+    window.location = loginUrl;
+  }
+
+  async function doLogout() {
+    try {
+      if (logoutUrl) {
+        if (logoutMode === 'post') {
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = logoutUrl;
+          document.body.appendChild(form);
+          form.submit();
+          return;
+        }
+        window.location = logoutUrl;
+        return;
+      }
+    } catch (e) {}
+    goLogin();
+  }
+
+  async function pingContinue(force) {
+    const now = Date.now();
+    if (!force && (pingBusy || now - lastPing < 45000)) return;
+    pingBusy = true;
+    lastPing = now;
+    try {
+      const res = await fetch(continueUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (res.status === 401) { goLogin(); return false; }
+      if (!res.ok) return false;
+      lastActive = Date.now();
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      pingBusy = false;
+    }
+  }
+
+  function closeWarn() {
+    warnOpen = false;
+    overlay.classList.remove('is-open');
+    overlay.setAttribute('hidden', '');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  function openWarn() {
+    if (!warnOpen) {
+      warnOpen = true;
+      overlay.removeAttribute('hidden');
+      overlay.classList.add('is-open');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function onActivity() {
+    if (warnOpen) return; // exige Continuar explícito
+    lastActive = Date.now();
+  }
+
+  ['click', 'keydown', 'mousedown', 'touchstart', 'scroll'].forEach(function (evt) {
+    window.addEventListener(evt, onActivity, { passive: true, capture: true });
+  });
+
+  btnContinue.addEventListener('click', async function () {
+    const ok = await pingContinue(true);
+    if (ok !== false) {
+      lastActive = Date.now();
+      closeWarn();
+    }
+  });
+  btnLogout.addEventListener('click', function () { doLogout(); });
+
+  setInterval(async function () {
+    const idleSec = (Date.now() - lastActive) / 1000;
+    const left = idleLimit - idleSec;
+    if (left <= 0) {
+      await doLogout();
+      return;
+    }
+    if (left <= warnSeconds) {
+      openWarn();
+      countEl.textContent = fmt(left);
+    } else {
+      if (warnOpen) closeWarn();
+      // Mantener sesión servidor alineada si hay uso real
+      if (idleSec < 60) pingContinue(false);
+    }
+  }, 1000);
+})();
+
+</script>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>
