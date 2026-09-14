@@ -13,8 +13,11 @@ REMOTE = "/root/demo-web"
 FILES = [
     ("demo_web/services/tenant_scope.py", "demo_web/services/tenant_scope.py"),
     ("demo_web/services/espino_scope.py", "demo_web/services/espino_scope.py"),
-    ("scripts/reallocate_cerezos_costos_espino.py", "scripts/reallocate_cerezos_costos_espino.py"),
+    ("demo_web/services/espino_costos.py", "demo_web/services/espino_costos.py"),
     ("scripts/patch_espino_clasificar_cc.py", "scripts/patch_espino_clasificar_cc.py"),
+    ("scripts/patch_costos_espino_cerezos.py", "scripts/patch_costos_espino_cerezos.py"),
+    ("scripts/restore_facturas_espino.py", "scripts/restore_facturas_espino.py"),
+    ("scripts/cleanup_ppto_cerezos_espino.py", "scripts/cleanup_ppto_cerezos_espino.py"),
 ]
 
 

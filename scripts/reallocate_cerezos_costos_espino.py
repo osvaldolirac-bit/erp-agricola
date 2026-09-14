@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Reasigna gastos imputados en CC Cerezos → variedades El Espino por prorrateo administración.
+"""DEPRECATED — prorratear facturas en BD desbalancea Costos (neto IVA + movimientos CEREZOS).
 
-- facturas *_P en Cerezos/CEREZOS → 3 filas por variedad (% prorrateo_cc)
-- Elimina ppto/kg estimado legacy en Cerezos (mantiene variedades)
-- NO toca movimientos bodega (ingresos ni salidas en Cerezos)
+Usar en su lugar:
+- `espino_costos.preparar_matriz_costos_espino` (redistribución en matriz, total intacto)
+- `scripts/cleanup_ppto_cerezos_espino.py` (solo ppto/kg legacy)
 
-Uso:
-  python3 scripts/reallocate_cerezos_costos_espino.py /root/espino/erp_espino.db
+Uso legacy (no recomendado):
   python3 scripts/reallocate_cerezos_costos_espino.py /root/espino/erp_espino.db --apply
 """
 from __future__ import annotations
