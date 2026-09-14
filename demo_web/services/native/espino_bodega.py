@@ -20,6 +20,42 @@ ETIQUETA_BODEGA = BODEGA_CC_ESPINO
 
 PDF_STOCK_FILENAME = "STOCK_BODEGA_EL_ESPINO.pdf"
 
+
+def _pdf_filename_producto(nombre: str, prefix: str = "KARDEX") -> str:
+    safe = "".join(c if c.isalnum() else "_" for c in (nombre or "PRODUCTO").upper())
+    while "__" in safe:
+        safe = safe.replace("__", "_")
+    return f"{prefix}_{safe.strip('_')[:48]}.pdf"
+
+
+def _pdf_kardex_producto(demo, prod: dict, rows: list[dict]) -> tuple[str | None, str | None]:
+    um = prod["um"]
+    if rows:
+        df = pd.DataFrame(
+            [
+                {
+                    "FECHA": r["fecha"],
+                    "TIPO": r["tipo"],
+                    "CANTIDAD": f"{r['delta_fmt']} {um}",
+                    "CUARTEL": r["cuartel"],
+                    "ORIGEN": r["origen"],
+                    "SALDO": f"{r['saldo']} {um}",
+                }
+                for r in rows
+            ]
+        )
+    else:
+        df = pd.DataFrame([{"INFO": "Sin movimientos registrados en bodega para este producto."}])
+    titulo = (
+        f"CUENTA CORRIENTE BODEGA — {prod['nombre']}\n"
+        f"Stock actual: {prod['stock']} {um} · Ingresos: {prod['ing_total']} · Salidas: {prod['sal_total']}"
+    )
+    fname = _pdf_filename_producto(prod["nombre"])
+    blob = demo.generar_pdf_blob(df, titulo, incluir_precios=False)
+    if not blob:
+        return None, None
+    return url_for("modules.pdf_download", token=store_pdf(blob, fname)), fname
+
 BODEGA_SECCIONES = [
     ("bodega", "📦 BODEGA"),
 ]
@@ -274,18 +310,23 @@ def gather_kardex_producto(demo, conn, producto_id: int) -> dict:
     ing_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Ingreso")
     sal_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Salida")
 
+    kardex_producto = {
+        "id": pid,
+        "nombre": nombre,
+        "familia": familia,
+        "um": um,
+        "ing_activo": ing_act,
+        "stock": demo.f_cantidad(stock_ui),
+        "ing_total": demo.f_cantidad(ing_total),
+        "sal_total": demo.f_cantidad(sal_total),
+    }
+    pdf_kardex_url, pdf_kardex_filename = _pdf_kardex_producto(demo, kardex_producto, kardex_rows)
+
     return {
-        "kardex_producto": {
-            "id": pid,
-            "nombre": nombre,
-            "familia": familia,
-            "um": um,
-            "ing_activo": ing_act,
-            "stock": demo.f_cantidad(stock_ui),
-            "ing_total": demo.f_cantidad(ing_total),
-            "sal_total": demo.f_cantidad(sal_total),
-        },
+        "kardex_producto": kardex_producto,
         "kardex_rows": kardex_rows,
+        "pdf_kardex_url": pdf_kardex_url,
+        "pdf_kardex_filename": pdf_kardex_filename,
         "kardex_lc_pendientes": [
             {
                 "n_app": lc["n_app"],
@@ -319,17 +360,16 @@ def gather_bodega_stock(demo, conn) -> dict:
         ]
 
     pdf_url = None
-    dfs_pdf = dfs_view[dfs_view["stock_cc"].fillna(0) > 0].copy()
-    if not dfs_pdf.empty:
-        dfs_op = dfs_pdf.copy()
-        dfs_op["stock"] = dfs_op["stock_cc"]
-        dfs_op = dfs_op.drop(columns=["precio_medio", "id", "stock_cc"], errors="ignore").rename(
+    if not dfs_view.empty:
+        dfs_op = dfs_view.copy()
+        dfs_op["stock"] = dfs_op["stock_cc"].map(lambda v: demo.f_cantidad(v))
+        dfs_op = dfs_op.drop(columns=["precio_medio", "id", "stock_inv", "stock_cc"], errors="ignore").rename(
             columns={"unidad_medida": "UM", "ingrediente_activo": "ING. ACTIVO"}
         )
         estilo = getattr(demo, "_pdf_estilo_stock_pppl", None)
         blob = demo.generar_pdf_blob(
             dfs_op,
-            f"STOCK BODEGA {ETIQUETA_BODEGA} — CON STOCK (SIN PRECIOS)",
+            f"STOCK BODEGA {ETIQUETA_BODEGA} — TODOS LOS PRODUCTOS (SIN PRECIOS)",
             incluir_precios=False,
             estilo_celda_fn=estilo,
         )

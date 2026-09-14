@@ -638,10 +638,15 @@
     <p class="small text-muted mb-2">
       {{ kardex_producto.familia }} · {{ kardex_producto.ing_activo }} · UM: {{ kardex_producto.um }}
     </p>
-    <div class="row g-2 small">
+    <div class="row g-2 small align-items-center">
       <div class="col-auto"><strong>Stock actual:</strong> {{ kardex_producto.stock }} {{ kardex_producto.um }}</div>
       <div class="col-auto"><strong>Ingresos:</strong> {{ kardex_producto.ing_total }} {{ kardex_producto.um }}</div>
       <div class="col-auto"><strong>Salidas:</strong> {{ kardex_producto.sal_total }} {{ kardex_producto.um }}</div>
+      {% if pdf_kardex_url %}
+      <div class="col-auto ms-auto">
+        {{ pdf_btn(pdf_kardex_url, '📥 PDF CUENTA CORRIENTE', css='btn-outline-success btn-sm', filename=pdf_kardex_filename|default('KARDEX.pdf')) }}
+      </div>
+      {% endif %}
     </div>
   </div>
   {% if kardex_lc_pendientes %}
