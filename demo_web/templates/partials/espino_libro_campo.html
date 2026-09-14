@@ -1,4 +1,5 @@
 {% from "partials/pdf_button.html" import pdf_btn %}
+{% set lc_ep = 'modules.libro_campo' if lc_standalone else 'modules.espino' %}
 <p class="small text-muted mb-2">
   Variedades <strong>ROYAL DOWN</strong>, <strong>SWEET ARYANA</strong>, <strong>SANTINA</strong> · stock desde bodega <strong>{{ bodega_cc|default('EL ESPINO') }}</strong>
 </p>
@@ -7,7 +8,7 @@
   {% for key, label in libro_ops %}
   <li class="nav-item">
     <a class="nav-link {% if key == lc_op_activa %}active{% endif %}"
-       href="{{ url_for('modules.espino', temp=temp_sel, sec='libro_campo', op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), cuartel=filtro_cuartel|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}">{{ label }}</a>
+       href="{% if lc_standalone %}{{ url_for('modules.libro_campo', temp=temp_sel, op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), cuartel=filtro_cuartel|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}{% else %}{{ url_for('modules.espino', temp=temp_sel, sec='libro_campo', op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), cuartel=filtro_cuartel|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}{% endif %}">{{ label }}</a>
   </li>
   {% endfor %}
 </ul>
@@ -28,7 +29,7 @@
   <h2 class="h6 panel-title">🔍 Filtros</h2>
   <form method="get" class="row g-2">
     <input type="hidden" name="temp" value="{{ temp_sel }}">
-    <input type="hidden" name="sec" value="libro_campo">
+    {% if not lc_standalone %}<input type="hidden" name="sec" value="libro_campo">{% endif %}
     <input type="hidden" name="op" value="historial">
     <div class="col-md-2">
       <label class="form-label">Desde</label>
@@ -104,7 +105,7 @@
 <div class="panel-card mb-3">
   <form method="get" class="row g-2">
     <input type="hidden" name="temp" value="{{ temp_sel }}">
-    <input type="hidden" name="sec" value="libro_campo">
+    {% if not lc_standalone %}<input type="hidden" name="sec" value="libro_campo">{% endif %}
     <input type="hidden" name="op" value="desfase">
     <div class="col-md-3"><label class="form-label">Desde</label><input type="date" name="desde" class="form-control" value="{{ filtro_desde }}"></div>
     <div class="col-md-3"><label class="form-label">Hasta</label><input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}"></div>
@@ -192,7 +193,7 @@
   <h2 class="h6">Agregar producto al evento</h2>
   <form method="get" class="mb-2" id="lcProdForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
     <input type="hidden" name="temp" value="{{ temp_sel }}">
-    <input type="hidden" name="sec" value="libro_campo">
+    {% if not lc_standalone %}<input type="hidden" name="sec" value="libro_campo">{% endif %}
     <input type="hidden" name="op" value="ingreso">
     <label class="form-label small">Producto (stock bodega El Espino)</label>
     <select name="prod" class="form-select form-select-sm" onchange="lcCambiarProducto(this.form)">
