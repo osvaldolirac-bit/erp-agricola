@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pandas as pd
-from flask import flash, redirect, render_template, request, session, url_for
+from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
@@ -746,22 +746,6 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
 def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
-
-    if request.method == "GET" and request.args.get("sec") == "kardex_pdf" and _is_espino_tenant():
-        pid = _kardex_pid()
-        if pid:
-            conn = demo.conectar_db()
-            try:
-                from demo_web.services.native import espino_bodega
-
-                k = espino_bodega.gather_kardex_producto(demo, conn, pid)
-                pdf_url = k.get("pdf_kardex_url")
-                if pdf_url:
-                    return redirect(pdf_url)
-            finally:
-                conn.close()
-        flash("No se pudo generar el PDF de cuenta corriente.", "danger")
-        return _redirect_bodega(sec="stock", q=request.args.get("q", ""))
 
     if request.method == "POST":
         action = request.form.get("action", "")

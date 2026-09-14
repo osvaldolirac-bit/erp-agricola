@@ -44,12 +44,7 @@
     {% endif %}
     <div class="table-responsive">
       <table class="table table-sm table-striped {% if not bodega_espino %}demo-datatable{% endif %} w-100">
-        <thead>
-          <tr>
-            {% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}
-            {% if bodega_espino %}<th>PDF</th>{% endif %}
-          </tr>
-        </thead>
+        <thead><tr>{% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for row in stock_rows %}
           <tr>
@@ -64,13 +59,6 @@
               {% endif %}
             </td>
             {% endfor %}
-            {% if bodega_espino and row.id %}
-            <td class="text-nowrap">
-              <a class="btn btn-outline-success btn-sm"
-                 href="{{ url_for('modules.bodega', sec='kardex_pdf', pid=row.id, q=filtro_q|default('')) }}"
-                 title="PDF cuenta corriente">📥 PDF</a>
-            </td>
-            {% endif %}
           </tr>
           {% endfor %}
         </tbody>

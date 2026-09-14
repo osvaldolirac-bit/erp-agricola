@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
-from flask import flash, redirect, render_template, request, url_for
+from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
@@ -315,28 +315,6 @@ def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
     nombre, fi, ff = temporada_sel(demo, temporadas=demo.TEMPORADAS_ESPINO)
-
-    if request.method == "GET" and request.args.get("sec") == "bodega" and request.args.get("op") == "kardex_pdf":
-        try:
-            pid = max(0, int(request.args.get("pid") or 0))
-        except (TypeError, ValueError):
-            pid = 0
-        if pid:
-            conn = demo.conectar_db()
-            try:
-                k = espino_bodega.gather_kardex_producto(demo, conn, pid)
-                pdf_url = k.get("pdf_kardex_url")
-                if pdf_url:
-                    return redirect(pdf_url)
-            finally:
-                conn.close()
-        flash("No se pudo generar el PDF de cuenta corriente.", "danger")
-        return _redirect_espino(
-            sec="bodega",
-            temp=request.args.get("temp") or nombre,
-            op="stock",
-            q=request.args.get("q", ""),
-        )
 
     if request.method == "POST":
         action = request.form.get("action", "")

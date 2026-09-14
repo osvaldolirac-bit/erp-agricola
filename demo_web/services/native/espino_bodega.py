@@ -67,7 +67,7 @@ BODEGA_OPS = [
     ("nuevo", "➕ Crear producto"),
 ]
 
-_BODEGA_OPS_VALID = {k for k, _ in BODEGA_OPS} | {"kardex", "kardex_pdf"}
+_BODEGA_OPS_VALID = {k for k, _ in BODEGA_OPS} | {"kardex"}
 
 
 def bodega_secciones() -> list[tuple[str, str]]:
