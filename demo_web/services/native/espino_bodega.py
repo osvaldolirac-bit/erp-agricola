@@ -65,15 +65,15 @@ def _salidas_totales(conn, producto_id: int) -> float:
 
 
 def _stock_disponible_producto(conn, producto_id: int, *, inventario_stock: float | None = None) -> float:
-    """Stock bodega: kardex pool (ingresos − salidas) o inventario.stock − salidas."""
+    """Stock bodega: kardex pool (ingresos − salidas) o inventario.stock (ya rebajado en cada salida)."""
     if inventario_stock is None:
         row = conn.execute("SELECT COALESCE(stock, 0) FROM inventario WHERE id=?", (producto_id,)).fetchone()
         inventario_stock = float(row[0] or 0) if row else 0.0
     ing = _ingresos_pool(conn, producto_id)
-    out = _salidas_totales(conn, producto_id)
     if ing > 1e-9:
+        out = _salidas_totales(conn, producto_id)
         return max(ing - out, 0.0)
-    return max(float(inventario_stock or 0) - out, 0.0)
+    return max(float(inventario_stock or 0), 0.0)
 
 
 def _stock_cc_map(conn) -> dict[int, float]:
@@ -316,6 +316,11 @@ def registrar_salida_bodega(
            VALUES (?,?,?,?,?,?,?)""",
         (iid, "Salida", cantidad, fecha_mov, cc_imputacion, cantidad * pmp, um_sel),
     )
+    if _ingresos_pool(conn, iid) <= 1e-9:
+        conn.execute(
+            "UPDATE inventario SET stock = MAX(COALESCE(stock, 0) - ?, 0) WHERE id=?",
+            (cantidad, iid),
+        )
     return True, prod_nombre
 
 
