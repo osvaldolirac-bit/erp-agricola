@@ -592,6 +592,7 @@
         <thead>
           <tr>
             {% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}
+            <th>PDF</th>
           </tr>
         </thead>
         <tbody>
@@ -608,6 +609,11 @@
               {% endif %}
             </td>
             {% endfor %}
+            <td class="text-nowrap">
+              <a class="btn btn-outline-success btn-sm"
+                 href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='kardex_pdf', pid=row.id, q=filtro_q|default('')) }}"
+                 title="PDF cuenta corriente">📥 PDF</a>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

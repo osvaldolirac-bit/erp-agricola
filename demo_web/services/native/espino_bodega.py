@@ -30,20 +30,12 @@ def _pdf_filename_producto(nombre: str, prefix: str = "KARDEX") -> str:
 
 def _pdf_kardex_producto(demo, prod: dict, rows: list[dict]) -> tuple[str | None, str | None]:
     um = prod["um"]
-    resumen = pd.DataFrame(
-        [
-            {
-                "FECHA": "—",
-                "TIPO": "RESUMEN",
-                "CANTIDAD": f"Stock actual: {prod['stock']} {um}",
-                "CUARTEL": f"Ingresos: {prod['ing_total']} {um}",
-                "ORIGEN": f"Salidas: {prod['sal_total']} {um}",
-                "SALDO": "—",
-            }
-        ]
+    titulo = (
+        f"CUENTA CORRIENTE BODEGA — {prod['nombre']} | "
+        f"Stock {prod['stock']} {um} | Ing {prod['ing_total']} {um} | Sal {prod['sal_total']} {um}"
     )
     if rows:
-        mov_df = pd.DataFrame(
+        df = pd.DataFrame(
             [
                 {
                     "FECHA": r["fecha"],
@@ -56,10 +48,10 @@ def _pdf_kardex_producto(demo, prod: dict, rows: list[dict]) -> tuple[str | None
                 for r in rows
             ]
         )
-        df = pd.concat([resumen, mov_df], ignore_index=True)
     else:
-        df = resumen
-    titulo = f"CUENTA CORRIENTE BODEGA — {prod['nombre']}"
+        df = pd.DataFrame(
+            [{"DETALLE": f"Sin movimientos. Stock actual: {prod['stock']} {um}"}]
+        )
     fname = _pdf_filename_producto(prod["nombre"])
     blob = demo.generar_pdf_blob(df, titulo, incluir_precios=False)
     if not blob:
@@ -75,7 +67,7 @@ BODEGA_OPS = [
     ("nuevo", "➕ Crear producto"),
 ]
 
-_BODEGA_OPS_VALID = {k for k, _ in BODEGA_OPS} | {"kardex"}
+_BODEGA_OPS_VALID = {k for k, _ in BODEGA_OPS} | {"kardex", "kardex_pdf"}
 
 
 def bodega_secciones() -> list[tuple[str, str]]:
