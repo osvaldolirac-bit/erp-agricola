@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — Clientes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Sora:wght@400;550;650&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='master.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <main class="console">
+      {% include "_topbar.html" %}
+
+      <div class="section-head">
+        <h2>Clientes</h2>
+        <p>Super Consola, acceso directo al ERP (dashboard) o mantención del sitio.</p>
+      </div>
+
+      <ul class="tenant-list">
+        {% for t in tenants %}
+        <li>
+          <div class="tenant-row">
+            {% if t.can_manage %}
+            <a class="tenant-main" href="{{ url_for('super_consola', slug=t.slug) }}">
+              <div>
+                <div class="name">{{ t.nombre }}</div>
+                <div class="desc">{{ t.descripcion }}</div>
+              </div>
+              <div class="meta">
+                {% if t.en_mantenimiento %}
+                <span class="status status-maint">mantención</span>
+                {% else %}
+                <span class="status">activo</span>
+                {% endif %}
+                <span class="go">Consola →</span>
+              </div>
+            </a>
+            {% else %}
+            <div class="tenant-main is-static">
+              <div>
+                <div class="name">{{ t.nombre }}</div>
+                <div class="desc">{{ t.descripcion }}{% if not t.can_manage %} · sin Super Consola aún{% endif %}</div>
+              </div>
+              <div class="meta">
+                {% if t.en_mantenimiento %}
+                <span class="status status-maint">mantención</span>
+                {% else %}
+                <span class="status">pendiente</span>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+
+            {% if t.url_dashboard %}
+            <a class="tenant-erp" href="{{ url_for('entrar_erp', slug=t.slug) }}" target="_blank" rel="noopener" title="Entrar al ERP (dashboard) en una pestaña nueva">
+              Abrir ERP
+            </a>
+            {% endif %}
+
+            {% if t.can_mantenimiento %}
+            <form method="post" action="{{ url_for('toggle_mantenimiento', slug=t.slug) }}" class="tenant-maint">
+              {% if t.en_mantenimiento %}
+              <input type="hidden" name="activo" value="0">
+              <button type="submit" class="btn-maint is-on" title="Quitar mantención">En mantención · clic para reactivar</button>
+              {% else %}
+              <input type="hidden" name="activo" value="1">
+              <button type="submit" class="btn-maint">Sitio en mantención</button>
+              {% endif %}
+            </form>
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+
+      <p class="foot">Mantención muestra un aviso en la página de acceso del ERP. La Super Consola sigue operativa.</p>
+    </main>
+  </div>
+</body>
+</html>

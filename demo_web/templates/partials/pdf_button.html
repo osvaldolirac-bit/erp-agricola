@@ -1,0 +1,11 @@
+{% macro pdf_btn(url, label='📥 PDF', css='btn-outline-success btn-sm', filename=None, rows=None) %}
+{% if url %}
+{% set pdf_name = filename or (label|replace('📥','')|replace('📤','')|replace('📄','')|trim|replace(' ','_')|upper ~ '.pdf') %}
+<a class="btn {{ css }} erp-pdf-btn" href="{{ url }}" download="{{ pdf_name }}"
+   data-pdf-label="{{ label }}"
+   data-pdf-filename="{{ pdf_name }}"
+   {% if rows is not none %}data-pdf-rows="{{ rows }}"{% endif %}>{{ label }}</a>{% if rows is not none %}<span class="small text-muted ms-1 erp-pdf-rows-hint">({{ rows }} reg. en PDF)</span>{% endif %}
+{% else %}
+<button type="button" class="btn btn-outline-secondary btn-sm" disabled>{{ label }} — sin datos</button>
+{% endif %}
+{% endmacro %}
