@@ -188,6 +188,9 @@ def patch_app_py(path: Path) -> None:
 
 def patch_super_consola(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
+    if 'extends "_base_app.html"' not in text:
+        print(f"SKIP super_consola (sin sidebar, no parchear): {path}")
+        return
     old_block = '''        <form method="post" class="form-grid">
           <input type="hidden" name="action" value="prorrateo_guardar">
           <input type="hidden" name="sec" value="prorrateo">

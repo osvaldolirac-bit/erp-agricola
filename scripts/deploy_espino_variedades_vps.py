@@ -24,10 +24,13 @@ DEMO_FILES = [
 MASTER_FILES = [
     ("erp_master/erp_master/tenant_admin.py", "erp_master/tenant_admin.py"),
     ("erp_master/erp_master/config.py", "erp_master/config.py"),
-    (
-        "erp_master/erp_master/templates/super_consola.html",
-        "erp_master/templates/super_consola.html",
-    ),
+    ("erp_master/erp_master/app.py", "erp_master/app.py"),
+]
+MASTER_TEMPLATE_FILES = [
+    "super_consola.html",
+    "_base_app.html",
+    "_sidebar.html",
+    "home.html",
 ]
 
 
@@ -67,6 +70,17 @@ def main() -> None:
     print("=== Deploy variedades Espino ===")
     scp_files(root, DEMO_FILES, REMOTE_DEMO)
     scp_files(root, MASTER_FILES, REMOTE_MASTER)
+    for tpl in MASTER_TEMPLATE_FILES:
+        local = root / "erp_master" / "erp_master" / "templates" / tpl
+        if not local.is_file():
+            raise SystemExit(f"Falta plantilla consola: {local}")
+        run(
+            [
+                *_scp_base(),
+                str(local),
+                f"{HOST}:{REMOTE_MASTER}/erp_master/templates/{tpl}",
+            ]
+        )
     remote_cmd = (
         "systemctl restart erp-agricola-web erp-master-web && "
         "systemctl is-active erp-agricola-web erp-master-web && "

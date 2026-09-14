@@ -120,6 +120,26 @@ def check_login_flow() -> None:
     print("OK  login POST processes credentials")
 
 
+def check_templates_sidebar() -> None:
+    from pathlib import Path
+
+    root = Path(os.environ.get("ERP_MASTER_ROOT", "/root/erp_master"))
+    tpl_dir = root / "erp_master" / "templates"
+    required = ("super_consola.html", "home.html", "_base_app.html", "_sidebar.html")
+    for name in required:
+        path = tpl_dir / name
+        if not path.is_file():
+            raise CheckFailed(f"missing template {path}")
+    for name in ("super_consola.html", "home.html"):
+        text = (tpl_dir / name).read_text(encoding="utf-8")
+        if 'extends "_base_app.html"' not in text:
+            raise CheckFailed(f"{name} must extend _base_app.html (sidebar)")
+    base = (tpl_dir / "_base_app.html").read_text(encoding="utf-8")
+    if "_sidebar.html" not in base or "app-shell" not in base:
+        raise CheckFailed("_base_app.html must include sidebar (app-shell)")
+    print("OK  templates sidebar")
+
+
 def check_logout_clears() -> None:
     code, hdrs, _ = http("GET", "/login?out=1")
     if code != 200:
@@ -138,6 +158,7 @@ def main() -> int:
     checks = [
         check_health,
         check_tenant_config,
+        check_templates_sidebar,
         check_login_ui,
         check_login_flow,
         check_logout_clears,

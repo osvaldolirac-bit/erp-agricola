@@ -656,8 +656,7 @@
     const sel = document.getElementById('switchTenant');
     if (!sel) return;
     sel.addEventListener('change', function () {
-      const sec = new URLSearchParams(window.location.search).get('sec') || 'usuarios';
-      window.location = '{{ request.script_root }}/cliente/' + encodeURIComponent(sel.value) + '?sec=' + encodeURIComponent(sec);
+      if (sel.form) sel.form.submit();
     });
   })();
 </script>
