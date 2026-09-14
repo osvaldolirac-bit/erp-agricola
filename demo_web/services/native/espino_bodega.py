@@ -40,10 +40,11 @@ def _pdf_kardex_producto(demo, prod: dict, rows: list[dict]) -> tuple[str | None
                 {
                     "FECHA": r["fecha"],
                     "TIPO": r["tipo"],
-                    "CANTIDAD": f"{r['delta_fmt']} {um}",
+                    "CANTIDAD": r["cant_raw"] if r["tipo"] == "Ingreso" else -r["cant_raw"],
+                    "UM": um,
                     "CUARTEL": r["cuartel"],
                     "ORIGEN": r["origen"],
-                    "SALDO": f"{r['saldo']} {um}",
+                    "SALDO": r["saldo_raw"],
                 }
                 for r in rows
             ]
