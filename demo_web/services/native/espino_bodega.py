@@ -1,9 +1,12 @@
 """Bodega sector El Espino — stock por CC del huerto, sin alterar inventario global ni La Concepción."""
 from __future__ import annotations
 
+import sqlite3
+
 import pandas as pd
 from flask import request, url_for
 
+from demo_web.services.espino_compras_kardex import origen_compra_ingreso
 from demo_web.services.espino_scope import (
     BODEGA_CC_ESPINO,
     CC_MOVIMIENTOS_BODEGA_ESPINO,
@@ -246,6 +249,9 @@ def _normalize_tipo_mov(tipo: str) -> str:
 
 
 def _origen_movimiento(
+    conn: sqlite3.Connection,
+    producto_id: int,
+    producto_nombre: str,
     tipo: str,
     cant: float,
     fecha: str,
@@ -253,7 +259,13 @@ def _origen_movimiento(
     lc_lineas: list[dict],
 ) -> str:
     if _normalize_tipo_mov(tipo) == "Ingreso":
-        return "Compra / ingreso bodega"
+        origen = origen_compra_ingreso(conn, producto_id, producto_nombre, cant, fecha)
+        if origen:
+            return origen
+        cc = (centro_costo or "").strip()
+        if cc and cc.upper() not in {c.upper() for c in centros_costo_bodega_espino()}:
+            return f"Ingreso manual → {cc}"
+        return "Ingreso bodega"
     for lc in lc_lineas:
         if lc.get("_used"):
             continue
@@ -298,54 +310,38 @@ def _kardex_row(
 
 def _build_kardex_rows(
     demo,
+    conn: sqlite3.Connection,
+    producto_id: int,
+    producto_nombre: str,
     movs: list[tuple],
     lc_lineas: list[dict],
-    stock_ui: float,
 ) -> list[dict]:
-    """Arma filas kardex; agrega ingreso implícito si stock + salidas > ingresos registrados."""
-    ing_mov = 0.0
-    sal_mov = 0.0
-    parsed: list[tuple[int, str, str, float, str, str]] = []
+    """Arma filas kardex solo desde movimientos reales (compras, ingresos manuales, salidas)."""
+    rows: list[dict] = []
+    saldo = 0.0
     for mid, tipo, cant, fecha, cc in movs:
         tipo_n = _normalize_tipo_mov(str(tipo))
         qty = float(cant or 0)
-        parsed.append((int(mid), tipo_n, str(fecha or ""), qty, str(cc or ""), str(tipo)))
-        if tipo_n == "Ingreso":
-            ing_mov += qty
-        else:
-            sal_mov += qty
-
-    implicit = max(stock_ui + sal_mov - ing_mov, 0.0)
-    rows: list[dict] = []
-    saldo = 0.0
-    if implicit > 1e-6:
-        saldo += implicit
-        fecha_ap = parsed[0][2] if parsed else "Apertura"
-        rows.append(
-            _kardex_row(
-                demo,
-                row_id=0,
-                fecha=fecha_ap,
-                tipo="Ingreso",
-                qty=implicit,
-                cuartel=ETIQUETA_BODEGA,
-                origen="Stock inicial / ingreso sin kardex",
-                saldo=saldo,
-            )
-        )
-
-    for mid, tipo_n, fecha, qty, cc, tipo_raw in parsed:
         delta = qty if tipo_n == "Ingreso" else -qty
         saldo += delta
         rows.append(
             _kardex_row(
                 demo,
-                row_id=mid,
-                fecha=fecha,
+                row_id=int(mid),
+                fecha=str(fecha or ""),
                 tipo=tipo_n,
                 qty=qty,
                 cuartel=(cc or "").strip() or "—",
-                origen=_origen_movimiento(tipo_raw, qty, fecha, cc, lc_lineas),
+                origen=_origen_movimiento(
+                    conn,
+                    producto_id,
+                    producto_nombre,
+                    str(tipo),
+                    qty,
+                    str(fecha or ""),
+                    str(cc or ""),
+                    lc_lineas,
+                ),
                 saldo=saldo,
             )
         )
@@ -380,7 +376,7 @@ def gather_kardex_producto(demo, conn, producto_id: int) -> dict:
     ).fetchall()
 
     stock_ui = _stock_disponible_producto(conn, pid)
-    kardex_rows = _build_kardex_rows(demo, movs, lc_lineas, stock_ui)
+    kardex_rows = _build_kardex_rows(demo, conn, pid, nombre, movs, lc_lineas)
     lc_sin_par = [lc for lc in lc_lineas if not lc.get("_used")]
 
     ing_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Ingreso")

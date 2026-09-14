@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Registra ingresos kardex bodega por compras (sin movimiento previo).
+"""DEPRECATED — usar backfill_kardex_compras_espino.py (cantidades desde facturas.concepto).
 
-Compras agro actualiza inventario.stock pero no siempre crea movimiento Ingreso;
-sin kardex el stock queda desacoplado de LC/salidas.
+Este script estimaba ingresos como stock+salidas y generaba cantidades incorrectas
+(ej. Evolution 17,75 L en vez de 20 L de la compra).
 
-Uso: python3 scripts/patch_espino_compras_kardex.py /root/espino/erp_espino.db [--apply]
+Uso preferido:
+  python3 scripts/backfill_kardex_compras_espino.py /root/espino/erp_espino.db --apply --purge-synthetic
 """
 from __future__ import annotations
 
