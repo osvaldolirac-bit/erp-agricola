@@ -14,6 +14,7 @@ FILES = [
     ("demo_web/services/tenant_scope.py", "demo_web/services/tenant_scope.py"),
     ("demo_web/services/espino_scope.py", "demo_web/services/espino_scope.py"),
     ("demo_web/services/espino_costos.py", "demo_web/services/espino_costos.py"),
+    ("demo_web/services/dashboard.py", "demo_web/services/dashboard.py"),
     ("scripts/patch_espino_clasificar_cc.py", "scripts/patch_espino_clasificar_cc.py"),
     ("scripts/patch_costos_espino_cerezos.py", "scripts/patch_costos_espino_cerezos.py"),
     ("scripts/restore_facturas_espino.py", "scripts/restore_facturas_espino.py"),
@@ -39,6 +40,7 @@ def main() -> None:
             raise SystemExit(f"Falta: {local}")
         run([*scp_base, str(local), f"{HOST}:{REMOTE}/{remote_rel}"])
     run([*ssh_base, f"python3 {REMOTE}/scripts/patch_espino_clasificar_cc.py {REMOTE}/app_concepcion.py"])
+    run([*ssh_base, f"python3 {REMOTE}/scripts/patch_costos_espino_cerezos.py {REMOTE}/demo_web/services/native/costos.py"])
     run([*ssh_base, "systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web"])
     print("OK — Espino costos CC desplegado.")
 

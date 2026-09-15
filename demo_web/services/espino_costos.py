@@ -129,3 +129,34 @@ def preparar_matriz_costos_espino(demo: Any, conn, matriz: pd.DataFrame | None) 
     """Redistribuye CEREZOS → variedades conservando total gasto."""
     pesos = _pesos_prorrateo(conn, demo)
     return redistribuir_cerezos_en_matriz(matriz, pesos)
+
+
+def dataframe_gastos_dashboard_espino(demo: Any, conn, prorrateo_rrhh: dict) -> pd.DataFrame:
+    """Totales por variedad para dashboard Espino (misma lógica que módulo Costos)."""
+    cuarteles = cuarteles_matriz_espino(demo)
+    vista = cuarteles_vista_espino(demo)
+    nombre, fi, ff = demo._temporada_vigente_costos()
+    matriz = demo._armar_matriz_costos_vista_b(
+        conn,
+        None,
+        None,
+        cuarteles,
+        prorrateo_rrhh,
+        nombre,
+        fi_rrhh=fi,
+        ff_rrhh=ff,
+        neto_facturas_iva=True,
+    )
+    matriz = preparar_matriz_costos_espino(demo, conn, matriz)
+    tg = matriz[matriz["Rubro"] == "TOTAL GASTO"] if matriz is not None else pd.DataFrame()
+    if tg.empty:
+        dfr = pd.DataFrame({"Cuartel": vista, "Total": [0.0] * len(vista)})
+    else:
+        dfr = pd.DataFrame(
+            {
+                "Cuartel": vista,
+                "Total": [float(tg.iloc[0].get(c, 0) or 0) for c in vista],
+            }
+        )
+    fila_t = pd.DataFrame([{"Cuartel": "TOTAL GENERAL", "Total": dfr["Total"].sum()}])
+    return pd.concat([dfr, fila_t], ignore_index=True)
