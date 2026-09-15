@@ -100,6 +100,9 @@ def gather_dashboard(email: str, rol: str) -> dict:
                 conn, demo, dfr_base, cuarteles_oficiales(demo)
             )
         if not dfr_base.empty:
+            dfr_base = dfr_base[
+                dfr_base["Cuartel"].astype(str).str.upper().str.strip() != "TOTAL GENERAL"
+            ].copy()
             df_gastos = demo._build_dashboard_gastos_cc_df(conn, dfr_base)
             for _, row in df_gastos.iterrows():
                 avance_raw = row.get("Avance %")
