@@ -150,13 +150,10 @@ def dataframe_gastos_dashboard_espino(demo: Any, conn, prorrateo_rrhh: dict) -> 
     matriz = preparar_matriz_costos_espino(demo, conn, matriz)
     tg = matriz[matriz["Rubro"] == "TOTAL GASTO"] if matriz is not None else pd.DataFrame()
     if tg.empty:
-        dfr = pd.DataFrame({"Cuartel": vista, "Total": [0.0] * len(vista)})
-    else:
-        dfr = pd.DataFrame(
-            {
-                "Cuartel": vista,
-                "Total": [float(tg.iloc[0].get(c, 0) or 0) for c in vista],
-            }
-        )
-    fila_t = pd.DataFrame([{"Cuartel": "TOTAL GENERAL", "Total": dfr["Total"].sum()}])
-    return pd.concat([dfr, fila_t], ignore_index=True)
+        return pd.DataFrame({"Cuartel": vista, "Total": [0.0] * len(vista)})
+    return pd.DataFrame(
+        {
+            "Cuartel": vista,
+            "Total": [float(tg.iloc[0].get(c, 0) or 0) for c in vista],
+        }
+    )
