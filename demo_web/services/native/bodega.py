@@ -7,7 +7,7 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl, parse_decimal_input
 
 SECCIONES = [
     ("stock", "📊 STOCK ACTUAL"),
@@ -426,10 +426,10 @@ def _post_corregir_stock(demo, conn) -> dict:
         iid = int(request.form.get("producto_id") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Valores inválidos."}
-    nst = parse_decimal_cl(request.form.get("stock"), None)
-    npmp = parse_decimal_cl(request.form.get("precio_medio"), None)
+    nst = parse_decimal_input(request.form.get("stock"), None)
+    npmp = parse_decimal_input(request.form.get("precio_medio"), None)
     if nst is None or npmp is None:
-        return {"ok": False, "msg": "Valores inválidos."}
+        return {"ok": False, "msg": "Stock o PMP inválido. Use número entero o coma decimal (ej. 20 o 1,5)."}
     if nst < 0:
         return {"ok": False, "msg": "El stock no puede ser negativo."}
     nprod = (request.form.get("nombre") or "").strip()
@@ -462,15 +462,39 @@ def _post_corregir_stock(demo, conn) -> dict:
     return {"ok": True, "msg": "Producto corregido.", "extra": {"edit_id": iid}}
 
 
+def _post_eliminar_producto(demo, conn) -> dict:
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Requiere perfil admin."}
+    if not _check_master(demo, request.form.get("clave_maestra")):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+    try:
+        iid = int(request.form.get("producto_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Producto inválido."}
+    row = conn.execute("SELECT producto FROM inventario WHERE id=?", (iid,)).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Producto no encontrado."}
+    n_mov = conn.execute("SELECT COUNT(*) FROM movimientos WHERE producto_id=?", (iid,)).fetchone()[0]
+    if n_mov:
+        return {
+            "ok": False,
+            "msg": f"No se puede eliminar «{row[0]}»: tiene {n_mov} movimiento(s) en kardex. Deje stock en 0.",
+        }
+    conn.execute("DELETE FROM inventario WHERE id=?", (iid,))
+    conn.commit()
+    demo.registrar_accion("BODEGA", f"Eliminado inventario ID {iid} ({row[0]})")
+    return {"ok": True, "msg": f"Producto «{row[0]}» eliminado del inventario."}
+
+
 def _post_apertura(demo, conn) -> dict:
     np = (request.form.get("nombre") or "").strip()
     nf = request.form.get("familia") or ""
     nu = request.form.get("unidad_medida") or demo.DEFAULT_UNIDAD_INSUMO
     nia = (request.form.get("ingrediente_activo") or "").strip()
-    ns = parse_decimal_cl(request.form.get("stock"), None)
-    npr = parse_decimal_cl(request.form.get("precio_medio"), None)
+    ns = parse_decimal_input(request.form.get("stock"), None)
+    npr = parse_decimal_input(request.form.get("precio_medio"), None)
     if ns is None or npr is None:
-        return {"ok": False, "msg": "Stock o PMP inválido."}
+        return {"ok": False, "msg": "Stock o PMP inválido. Use número entero o coma decimal (ej. 20 o 1,5)."}
     if ns < 0:
         return {"ok": False, "msg": "El stock no puede ser negativo."}
     if not np:
@@ -701,6 +725,7 @@ def view(user_email: str, user_rol: str):
             handlers = {
                 "salida": _procesar_salida,
                 "corregir_stock": _post_corregir_stock,
+                "eliminar_producto": _post_eliminar_producto,
                 "apertura": _post_apertura,
                 "pppl_sync_ok": lambda d, c: _post_pppl_sync(d, c, incluir_baja=False),
                 "pppl_sync_all": lambda d, c: _post_pppl_sync(d, c, incluir_baja=True),

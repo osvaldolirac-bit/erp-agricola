@@ -20,24 +20,45 @@ def parse_date(val: str | None, default: date) -> date:
 
 
 def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | None:
-    """Parsea cantidad/monto con decimal chileno: solo coma decimal (1,5).
-
-    Miles opcionales con punto (1.250 o 1.250,5). Rechaza punto como decimal (1.5).
-    """
+    """Parsea cantidad/monto: formato chileno (1,5 / 1.250) o HTML number (20.0)."""
     import re
 
     s = (raw or "").strip().replace(" ", "").replace("$", "")
     if not s:
         return default
-    # Entero, decimal con coma, o miles chilenos (punto de miles + coma decimal).
-    # El punto nunca actúa como decimal (rechaza 1.5).
-    if not re.fullmatch(r"\d+(,\d+)?|\d{1,3}(\.\d{3})+(,\d+)?", s):
+    if re.fullmatch(r"\d+(,\d+)?|\d{1,3}(\.\d{3})+(,\d+)?", s):
+        s = s.replace(".", "").replace(",", ".")
+        try:
+            return float(s)
+        except ValueError:
+            return default
+    if "," not in s and s.count(".") == 1:
+        left, right = s.split(".", 1)
+        if left.isdigit() and right.isdigit():
+            if len(right) == 3:
+                try:
+                    return float(left + right)
+                except ValueError:
+                    return default
+            try:
+                return float(f"{left}.{right}")
+            except ValueError:
+                return default
+    return default
+
+
+def parse_decimal_input(raw: str | None, default: float | None = 0.0) -> float | None:
+    """Parsea decimal desde formularios: coma chilena o punto (inputs type=number)."""
+    s = (raw or "").strip()
+    if not s:
         return default
-    s = s.replace(".", "").replace(",", ".")
+    val = parse_decimal_cl(s, None)
+    if val is not None:
+        return val
     try:
-        return float(s)
+        return float(s.replace(" ", "").replace("$", "").replace(",", "."))
     except ValueError:
-        return default
+        return None
 
 
 def temporada_sel(demo, param: str = "temp", temporadas=None) -> tuple[str, date, date]:
