@@ -140,6 +140,8 @@ def _patch_factores_monto_bruto_facturas(erp) -> None:
         ).fetchall()
 
         out: dict[tuple[str, str], float] = {}
+        flags: dict[tuple[str, str], int] = {}
+        ya_neto: set[tuple[str, str]] = set()
         for row in rows:
             nro_p, prov, bruto, imp = row[0], row[1], row[2], row[3]
             doc_par = row[4] if len(row) > 4 else ""
@@ -148,6 +150,7 @@ def _patch_factores_monto_bruto_facturas(erp) -> None:
             imp_f = float(imp or 0)
             bruto_f = float(bruto or 0)
             key = (str(nro_p or ""), str(prov or ""))
+            flags[key] = imputar_bruto
 
             if imp_f <= 0.01 or bruto_f <= 0.01:
                 out[key] = 1.0
@@ -161,40 +164,14 @@ def _patch_factores_monto_bruto_facturas(erp) -> None:
             ratio = bruto_f / imp_f
             if not imputar_bruto or 1.17 <= ratio <= 1.21:
                 out[key] = 1.0
+                ya_neto.add(key)
             else:
                 out[key] = _factor_bruto_legacy(bruto_f, imp_f)
+        erp._imputar_bruto_flags = flags
+        erp._imputacion_ya_neta_keys = ya_neto
         return out
 
     def _factores_monto_bruto_facturas_with_flags(conn, fi=None, ff=None):
-        flags: dict[tuple[str, str], int] = {}
-        filtro = ""
-        params: list = []
-        if fi and ff:
-            filtro = " AND p.fecha_compra BETWEEN ? AND ? "
-            params = [str(fi), str(ff)]
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)").fetchall()}
-        has_flag = "imputar_bruto" in cols
-        flag_sql = ", MAX(COALESCE(par.imputar_bruto, 1)) AS imputar_bruto" if has_flag else ""
-        if has_flag:
-            for nro_p, prov, ib in conn.execute(
-                f"""
-                SELECT p.nro_documento, p.proveedor,
-                       MAX(COALESCE(par.imputar_bruto, 1)) AS imputar_bruto
-                FROM facturas p
-                INNER JOIN facturas par
-                  ON par.nro_documento = REPLACE(p.nro_documento, '_P', '')
-                 AND par.proveedor = p.proveedor
-                 AND par.nro_documento NOT LIKE '%_P'
-                WHERE p.nro_documento LIKE '%_P'
-                  AND p.nro_documento NOT LIKE '%_RRHH'
-                  AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
-                  {filtro}
-                GROUP BY p.nro_documento, p.proveedor
-                """,
-                params,
-            ):
-                flags[(str(nro_p or ""), str(prov or ""))] = int(ib or 1)
-        erp._imputar_bruto_flags = flags
         return _factores_monto_bruto_facturas(conn, fi, ff)
 
     erp._factores_monto_bruto_facturas = _factores_monto_bruto_facturas_with_flags
@@ -223,8 +200,11 @@ def _patch_monto_costos_matriz_imputar_neto(erp) -> None:
     def _monto_costos_factura_matriz(rubro, monto_bruto_escalado, neto_facturas_iva=True):
         m = float(monto_bruto_escalado or 0)
         key = getattr(erp, "_costos_cur_imputacion", None)
+        ya_neto = getattr(erp, "_imputacion_ya_neta_keys", set()) or set()
         flags = getattr(erp, "_imputar_bruto_flags", {}) or {}
         imputar_bruto = int(flags.get(key, 1)) if key else 1
+        if key and key in ya_neto:
+            return m
         if neto_facturas_iva and rubro in rubros_neto and imputar_bruto:
             return m / iva
         return m

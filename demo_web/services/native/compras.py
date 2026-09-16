@@ -127,6 +127,21 @@ def _ensure_imputar_bruto_col(conn) -> None:
           )
         """
     )
+    conn.execute(
+        """
+        UPDATE facturas
+        SET imputar_bruto = (
+            SELECT COALESCE(par.imputar_bruto, 1)
+            FROM facturas par
+            WHERE par.nro_documento = REPLACE(facturas.nro_documento, '_P', '')
+              AND par.proveedor = facturas.proveedor
+              AND par.nro_documento NOT LIKE '%_P'
+            LIMIT 1
+        )
+        WHERE nro_documento LIKE '%_P'
+          AND nro_documento NOT LIKE '%_RRHH'
+        """
+    )
     conn.commit()
 
 
