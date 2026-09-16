@@ -1,0 +1,1275 @@
+{% extends "base.html" %}
+{% block title %}GlobalGAP — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Certificación, trazabilidad y cumplimiento IFA (demo)</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  <div class="mb-3">
+    {% if is_consultor_tenant %}
+    <div class="alert alert-success small mb-2">
+      <strong>{{ consultor_label }}</strong>
+      {% if panel_url %} · <a href="{{ panel_url }}">← Volver al panel clientes</a>{% endif %}
+    </div>
+    {% else %}
+    <div class="small text-muted mb-1">Especie / cultivo activo</div>
+    <div class="btn-group flex-wrap">
+      {% for esp in especies %}
+      <a class="btn btn-sm {% if esp == especie_sel %}btn-success{% else %}btn-outline-success{% endif %}"
+         href="{{ url_for('modules.globalgap', especie=esp, sec=sec_activa) }}">
+        {% if esp == 'ESPECIE 1' %}🟢{% else %}🟣{% endif %} {{ esp }}
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not is_consultor_tenant %}
+  <div class="alert alert-success small mb-3">
+    Trabajando con <strong>{{ especie_sel }}</strong> · Cuarteles: {{ cuarteles_esp|join(', ') }}
+  </div>
+  {% elif cuarteles_esp %}
+  <div class="alert alert-light border small mb-3">
+    Huerto: <strong>{{ cuarteles_esp|join(', ') }}</strong>
+  </div>
+  {% endif %}
+
+  {% if sec_activa != 'gantt' %}
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Cumplimiento checklist</div><div class="kpi-value">{{ kpis.pct }}%</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Ítems cumpliendo</div><div class="kpi-value">{{ kpis.cumple }}/{{ kpis.total_chk }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card kpi-warn"><div class="kpi-label">NC abiertas</div><div class="kpi-value">{{ kpis.nc_abiertas }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Productos PPPL</div><div class="kpi-value">{{ kpis.pppl }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card kpi-warn"><div class="kpi-label">Alertas</div><div class="kpi-value">{{ kpis.cap_venc + kpis.agua_venc }}</div></div></div>
+  </div>
+
+  {% if alertas.nc %}
+  <div class="alert alert-danger">{{ kpis.nc_abiertas }} no conformidad(es) abierta(s) pendientes de cierre.</div>
+  {% endif %}
+  {% if alertas.cap %}
+  <div class="alert alert-warning">{{ kpis.cap_venc }} capacitación(es) vencida(s).</div>
+  {% endif %}
+  {% if alertas.agua %}
+  <div class="alert alert-warning">Revise análisis de agua de riego (más de 12 meses).</div>
+  {% endif %}
+  {% endif %}
+
+  {% if sec_activa != 'gantt' and pdf_resumen_url %}
+  <p class="mb-3"><a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_resumen_url }}" download data-pdf-label="PDF resumen certificación">PDF resumen certificación</a></p>
+  {% endif %}
+
+  <ul class="nav nav-pills flex-wrap demo-nav-seccion gap-1 mb-3">
+    {% for key, label in secciones %}
+    <li class="nav-item">
+      <a class="nav-link {% if sec_activa == key %}active{% endif %}"
+         href="{{ url_for('modules.globalgap', sec=key, especie=especie_sel) }}">{{ label }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+
+
+  {% if sec_activa == 'gantt' %}
+  <div class="gap-gantt-hero panel-card mb-3">
+    <div class="d-flex flex-wrap justify-content-between gap-3 align-items-start">
+      <div>
+        <div class="small text-muted text-uppercase mb-1">Tablero Gantt · fecha tope cosecha</div>
+        <h2 class="h5 mb-1">{{ gantt_proyecto }}</h2>
+        <div class="small">
+          Cosecha <strong>{{ especie_sel }}</strong>{% if gantt_cuartel %} · {{ gantt_cuartel }}{% endif %}:
+          <strong>{{ gantt_cosecha_label }}</strong>
+        </div>
+        <div class="small text-muted mt-1">{{ gantt_fase_label }} · Hoy {{ gantt_hoy_label }}</div>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ gantt_planif_url }}">Abrir planificación</a>
+        {% if pdf_gantt_tablero_url %}
+        <a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_gantt_tablero_url }}" download data-pdf-label="PDF tablero Gantt">PDF tablero Gantt</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row g-2 mt-3">
+      <div class="col-6 col-md-3">
+        <div class="kpi-card {% if gantt_dias_cosecha < 30 and gantt_dias_cosecha >= 0 %}kpi-warn{% elif gantt_dias_cosecha < 0 %}kpi-danger{% endif %}">
+          <div class="kpi-label">Días a cosecha</div>
+          <div class="kpi-value">
+            {% if gantt_dias_cosecha > 0 %}{{ gantt_dias_cosecha }}
+            {% elif gantt_dias_cosecha == 0 %}HOY
+            {% else %}{{ gantt_dias_cosecha|abs }} post{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-label">Índice preparación</div>
+          <div class="kpi-value">{{ gantt_indice }}%</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card {% if gantt_gap_ritmo > 10 %}kpi-warn{% endif %}">
+          <div class="kpi-label">Avance Gantt</div>
+          <div class="kpi-value">{{ gantt_kpis.avance_prom }}%</div>
+          <div class="small text-muted">Esperado {{ gantt_kpis.esperado_prom }}% · gap {{ gantt_gap_ritmo }}%</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card {% if gantt_kpis.alertas %}kpi-warn{% endif %}">
+          <div class="kpi-label">Alertas / desfase</div>
+          <div class="kpi-value">{{ gantt_kpis.alertas }} / {{ gantt_kpis.con_desfase }}</div>
+          <div class="small text-muted">{{ gantt_kpis.en_ritmo }}/{{ gantt_kpis.actividades }} en ritmo</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gap-timeline mt-3">
+      <div class="d-flex justify-content-between small text-muted mb-1">
+        <span>Inicio plan {{ gantt_timeline.start_label }}</span>
+        <span>Calendario a cosecha {{ gantt_calendario_pct }}%</span>
+        <span>Cierre {{ gantt_timeline.end_label }}</span>
+      </div>
+      <div class="gap-timeline-track">
+        <div class="gap-timeline-cosecha" style="left:{{ gantt_timeline.cosecha_left }}%;width:{{ gantt_timeline.cosecha_width }}%" title="Ventana cosecha"></div>
+        <div class="gap-timeline-today" style="left:{{ gantt_timeline.today_left }}%" title="Hoy"></div>
+      </div>
+      <div class="d-flex justify-content-between small mt-1">
+        <span class="text-muted">Línea vertical = hoy</span>
+        <span class="gap-cosecha-chip">Tope cosecha {{ gantt_cosecha_inicio }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-8">
+      <div class="panel-card h-100">
+        <h3 class="h6 panel-title">Avance por pestaña</h3>
+        <p class="small text-muted mb-2">Unifica el estado de cada área hacia la fecha tope de cosecha.</p>
+        <div class="row g-2">
+          {% for m in gantt_modulos %}
+          <div class="col-md-6">
+            <a class="gap-mod-card tone-{{ m.tone }}" href="{{ m.url }}">
+              <div class="d-flex justify-content-between align-items-baseline gap-2">
+                <strong>{{ m.label }}</strong>
+                <span class="gap-mod-pct">{{ m.pct }}%</span>
+              </div>
+              <div class="progress gap-mod-progress" role="progressbar" aria-valuenow="{{ m.pct }}" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar" style="width:{{ m.pct }}%"></div>
+              </div>
+              <div class="small text-muted">{{ m.detail }}</div>
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="panel-card mb-3">
+        <h3 class="h6 panel-title">Ritmo Gantt</h3>
+        <canvas id="gapGanttDonut" height="210"></canvas>
+        <div class="small text-muted text-center mt-2">Real {{ gantt_chart_donut.real }}% · Esperado {{ gantt_chart_donut.esperado }}%</div>
+      </div>
+      <div class="panel-card">
+        <h3 class="h6 panel-title">% por módulo</h3>
+        <canvas id="gapGanttBars" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-card mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <div>
+        <h3 class="h6 panel-title mb-0">Carta Gantt informativa</h3>
+        <div class="small text-muted">Barras ancladas a la ventana hasta cosecha · color por alerta de ritmo</div>
+      </div>
+      <div class="small">
+        <span class="gap-legend ok">En ritmo</span>
+        <span class="gap-legend warn">Medio</span>
+        <span class="gap-legend bad">Alto/Crítico</span>
+        <span class="gap-legend cos">Cosecha</span>
+      </div>
+    </div>
+    {% if gantt_bars %}
+    <div class="gap-gantt-chart">
+      {% for b in gantt_bars %}
+      <div class="gap-gantt-row">
+        <div class="gap-gantt-label">
+          <div class="fw-semibold">{{ b.actividad }}</div>
+          <div class="small text-muted">{{ b.origen }} · {{ b.responsable }} · {{ b.inicio_label }}→{{ b.fin_label }}</div>
+        </div>
+        <div class="gap-gantt-lane">
+          <div class="gap-gantt-cosecha-band" style="left:{{ gantt_timeline.cosecha_left }}%;width:{{ gantt_timeline.cosecha_width }}%"></div>
+          <div class="gap-gantt-today-line" style="left:{{ gantt_timeline.today_left }}%"></div>
+          <div class="gap-gantt-bar tone-{{ b.tone }}" style="left:{{ b.left }}%;width:{{ b.width }}%">
+            <span class="gap-gantt-fill" style="width:{{ b.real }}%"></span>
+            <span class="gap-gantt-bar-txt">{{ b.real }}%</span>
+          </div>
+        </div>
+        <div class="gap-gantt-meta small">
+          <div>Esp. {{ b.esperado }}%</div>
+          <div class="{% if b.desfase > 0 %}text-danger{% else %}text-success{% endif %}">Δ {{ b.desfase }}%</div>
+          <div>{{ b.alerta }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0">Sin actividades Gantt. Abra Planificación y use “Reconstruir Gantt certificación”.</div>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'pppl' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Lista PPPL GlobalGAP</h2>
+    {% if pppl_rows %}
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in pppl_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in pppl_rows %}<tr>{% for c in pppl_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if pdf_pppl_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_pppl_url }}" download data-pdf-label="PDF PPPL">PDF PPPL</a>{% endif %}
+    {% else %}
+    <div class="alert alert-info mb-0">Sin productos PPPL registrados.</div>
+    {% endif %}
+  </div>
+  {% if pppl_bod_rows %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Auditoría PPPL bodega</h2>
+    <p class="small text-muted">{{ pppl_bod_kpis.fitos }} fitosanitario(s) · {{ pppl_bod_kpis.autorizados }} autorizados · {{ pppl_bod_kpis.pendientes }} pendientes</p>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead><tr><th>Producto</th><th>Familia</th><th>Estado</th><th>PPPL</th><th>PHI</th><th>Ingrediente</th></tr></thead>
+        <tbody>
+          {% for r in pppl_bod_rows %}
+          <tr><td>{{ r.producto }}</td><td>{{ r.familia }}</td>
+            <td><span class="badge text-bg-{{ r.estado_css }}">{{ r.estado }}</span></td>
+            <td>{{ r.pppl }}</td><td>{{ r.phi }}</td><td>{{ r.ingrediente }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% if puede_gestionar_pppl %}
+  <div class="panel-card mb-3">
+    <h2 class="h6">Agregar producto PPPL</h2>
+    <form method="post" class="row g-2 mb-3">
+      <input type="hidden" name="action" value="pppl_add">
+      <input type="hidden" name="sec" value="pppl">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-4"><input type="text" name="producto" class="form-control form-control-sm" placeholder="Producto comercial" required></div>
+      <div class="col-md-4"><input type="text" name="ingrediente" class="form-control form-control-sm" placeholder="Ingrediente activo"></div>
+      <div class="col-md-2"><input type="number" name="dias_carencia" class="form-control form-control-sm" placeholder="PHI días" min="0" max="365" value="0"></div>
+      <div class="col-md-2">
+        <select name="mercado" class="form-select form-select-sm">{% for m in mercados_pppl %}<option value="{{ m }}">{{ m }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-4"><input type="text" name="notas" class="form-control form-control-sm" placeholder="Notas / Resolución SAG"></div>
+      <div class="col-md-3">
+        <select name="pppl_especie" class="form-select form-select-sm">{% for e in pppl_especies %}<option value="{{ e }}" {% if e == pppl_esp_default %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Agregar PPPL</button></div>
+    </form>
+    <div class="d-flex flex-wrap gap-2">
+      <form method="post" class="d-inline"><input type="hidden" name="action" value="pppl_sync_ok"><input type="hidden" name="sec" value="pppl"><input type="hidden" name="especie" value="{{ especie_sel }}"><button type="submit" class="btn btn-success btn-sm">Sincronizar bodega (alta/media)</button></form>
+      <form method="post" class="d-inline"><input type="hidden" name="action" value="pppl_sync_all"><input type="hidden" name="sec" value="pppl"><input type="hidden" name="especie" value="{{ especie_sel }}"><button type="submit" class="btn btn-warning btn-sm">Incluir ref. baja</button></form>
+    </div>
+  </div>
+  {% endif %}
+
+  {% elif sec_activa == 'documentos' %}
+  <div class="panel-card mb-3">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <form method="get" class="row g-2">
+          <input type="hidden" name="sec" value="documentos">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <div class="col-8">
+            <label class="form-label small">Filtrar por tipo</label>
+            <select name="tipo" class="form-select form-select-sm" onchange="this.form.submit()">
+              {% for t in doc_tipos %}
+              <option value="{{ t }}" {% if t == doc_tipo_sel %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="col-md-5">
+        <div class="small text-muted">
+          {{ doc_stats.total }} documentos · {{ doc_stats.con_archivo }} con archivo · {{ doc_stats.sin_archivo }} sin archivo
+        </div>
+      </div>
+      {% if doc_import_disponible %}
+      <div class="col-md-3 text-md-end">
+        <form method="post" class="d-inline">
+          <input type="hidden" name="action" value="doc_import_catalog">
+          <input type="hidden" name="sec" value="documentos">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <button type="submit" class="btn btn-outline-primary btn-sm">Cargar Listado Maestro {{ especie_sel }}</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% if doc_rows %}
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-striped demo-datatable w-100" style="font-size:12px">
+        <thead>
+          <tr>
+            <th>Código</th><th>Tipo</th><th>Título</th><th>Ver</th><th>Vigente</th>
+            <th>Autoevaluación</th><th>Archivo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in doc_rows %}
+          <tr>
+            <td class="text-nowrap">{{ r.codigo }}</td>
+            <td>{{ r.tipo }}</td>
+            <td>{{ r.titulo }}</td>
+            <td>{{ r.version }}</td>
+            <td class="text-nowrap">{{ r.vigente }}</td>
+            <td>{{ r.checklist }}</td>
+            <td>
+              {% if r.tiene_archivo %}
+              <a href="{{ r.url }}">{{ r.archivo or 'Descargar' }}</a>
+              {% else %}
+              <span class="text-muted">Sin archivo</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pdf_doc_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_doc_url }}" download data-pdf-label="PDF documentos">PDF documentos</a>{% endif %}
+    {% else %}<div class="alert alert-info mb-0">Sin documentos registrados. Use “Cargar Listado Maestro” o registre uno abajo.</div>{% endif %}
+  </div>
+  <div class="panel-card mb-3">
+    <h2 class="h6">Registrar / subir documento</h2>
+    <form method="post" enctype="multipart/form-data" class="row g-2">
+      <input type="hidden" name="action" value="doc_add">
+      <input type="hidden" name="sec" value="documentos">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-2"><input type="text" name="codigo" class="form-control form-control-sm" placeholder="Código (GGPR01)"></div>
+      <div class="col-md-3">
+        <select name="tipo" class="form-select form-select-sm">
+          {% for t in doc_tipos_form %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4"><input type="text" name="titulo" class="form-control form-control-sm" placeholder="Título" required></div>
+      <div class="col-md-1"><input type="text" name="version" class="form-control form-control-sm" value="00"></div>
+      <div class="col-md-2"><input type="date" name="fecha_vigencia" class="form-control form-control-sm" value="{{ hoy }}"></div>
+      <div class="col-md-3"><input type="text" name="responsable" class="form-control form-control-sm" placeholder="Responsable"></div>
+      <div class="col-md-4"><input type="text" name="checklist_codigos" class="form-control form-control-sm" placeholder="Ítems autoeval (AFB-01, CB-02)"></div>
+      <div class="col-md-3"><input type="file" name="archivo" class="form-control form-control-sm"></div>
+      <div class="col-md-2"><input type="text" name="notas" class="form-control form-control-sm" placeholder="Notas"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Registrar</button></div>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'autoeval' %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="sec" value="autoeval">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-4">
+        <label class="form-label">Capítulo</label>
+        <select name="capitulo" class="form-select">
+          {% for c in capitulos %}
+          <option value="{{ c }}" {% if c == filtro_capitulo %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Filtrar</button></div>
+      {% if pdf_checklist_url %}
+      <div class="col-md-3 d-flex align-items-end"><a class="btn btn-outline-success w-100 erp-pdf-btn" href="{{ pdf_checklist_url }}" download data-pdf-label="PDF autoevaluación">PDF autoevaluación</a></div>
+      {% endif %}
+    </form>
+    {% if checklist_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100" style="font-size:12px">
+        <thead>
+          <tr>
+            <th>Código</th><th>Capítulo</th><th>Descripción</th><th>Estado</th>
+            <th>Documentos asociados / Cumple</th><th>Avance</th><th>Revisión</th><th>Responsable</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in checklist_rows %}
+          <tr>
+            <td>{{ r.codigo }}</td>
+            <td>{{ r.capitulo }}</td>
+            <td>{{ r.descripcion }}</td>
+            <td><span class="badge text-bg-{{ r.estado_css }}">{{ r.estado }}</span></td>
+            <td style="min-width:280px">
+              {% if r.docs %}
+                {% for d in r.docs %}
+                <div class="d-flex align-items-start gap-2 mb-2">
+                  <div class="flex-grow-1">
+                    {% if d.url %}
+                    <a href="{{ d.url }}">{{ d.codigo or d.titulo }}</a>
+                    {% else %}
+                    <span>{{ d.codigo or d.titulo }}</span>
+                    {% endif %}
+                    {% if d.cumple %}
+                    <div class="text-success small">
+                      Cumple · {{ d.cumple_por }}{% if d.cumple_fecha %} · {{ d.cumple_fecha }}{% endif %}
+                    </div>
+                    {% endif %}
+                  </div>
+                  {% if d.cumple %}
+                  <label class="form-check mb-0 text-nowrap" title="No se puede desmarcar">
+                    <input class="form-check-input" type="checkbox" checked disabled>
+                    <span class="form-check-label small">Cumple</span>
+                  </label>
+                  {% else %}
+                  <form method="post" class="mb-0 text-nowrap">
+                    <input type="hidden" name="action" value="doc_cumple">
+                    <input type="hidden" name="sec" value="autoeval">
+                    <input type="hidden" name="especie" value="{{ especie_sel }}">
+                    <input type="hidden" name="capitulo" value="{{ filtro_capitulo }}">
+                    <input type="hidden" name="link_id" value="{{ d.link_id }}">
+                    <label class="form-check mb-0">
+                      <input class="form-check-input" type="checkbox" onchange="this.form.submit()" title="Marcar Cumple (no se puede desmarcar)">
+                      <span class="form-check-label small">Cumple</span>
+                    </label>
+                  </form>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="text-nowrap">
+              {% if r.docs_total %}
+              {{ r.docs_ok }}/{{ r.docs_total }}
+              {% else %}—{% endif %}
+            </td>
+            <td>{{ r.revision }}</td>
+            <td>{{ r.responsable }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="alert alert-info mb-0">Sin ítems de checklist.</div>{% endif %}
+  </div>
+  {% if checklist_opts %}
+  <div class="panel-card mb-3">
+    <h2 class="h6">Guardar evaluación</h2>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="eval_save">
+      <input type="hidden" name="sec" value="autoeval">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="capitulo" value="{{ filtro_capitulo }}">
+      <div class="col-md-4">
+        <select name="codigo" class="form-select form-select-sm" required>
+          {% for o in checklist_opts %}<option value="{{ o.codigo }}">{{ o.codigo }} — {{ o.descripcion[:60] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><select name="estado" class="form-select form-select-sm">{% for e in eval_estados %}<option value="{{ e }}">{{ e }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><input type="text" name="evidencia" class="form-control form-control-sm" placeholder="Evidencia / referencia"></div>
+      <div class="col-md-2"><input type="text" name="responsable" class="form-control form-control-sm" placeholder="Responsable"></div>
+      <div class="col-md-1 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Guardar</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  {% elif sec_activa == 'nc' %}
+  <div class="panel-card mb-3">
+    {% if nc_rows %}
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in nc_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in nc_rows %}<tr>{% for c in nc_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if pdf_nc_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_nc_url }}" download data-pdf-label="PDF no conformidades">PDF no conformidades</a>{% endif %}
+    {% else %}<div class="alert alert-info mb-0">Sin no conformidades registradas.</div>{% endif %}
+  </div>
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="panel-card">
+        <h2 class="h6">Abrir no conformidad</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="nc_open">
+          <input type="hidden" name="sec" value="nc">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <div class="col-12"><select name="capitulo" class="form-select form-select-sm">{% for c in nc_capitulos %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></div>
+          <div class="col-12"><textarea name="descripcion" class="form-control form-control-sm" rows="2" placeholder="Descripción hallazgo" required></textarea></div>
+          <div class="col-md-6"><input type="text" name="causa" class="form-control form-control-sm" placeholder="Causa raíz"></div>
+          <div class="col-md-6"><select name="cuartel" class="form-select form-select-sm"><option value="">Cuartel (opcional)</option>{% for c in nc_cuarteles %}{% if c %}<option value="{{ c }}">{{ c }}</option>{% endif %}{% endfor %}</select></div>
+          <div class="col-12"><textarea name="accion_correctiva" class="form-control form-control-sm" rows="2" placeholder="Acción correctiva"></textarea></div>
+          <div class="col-md-6"><input type="date" name="plazo" class="form-control form-control-sm" value="{{ plazo_def }}"></div>
+          <div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-warning btn-sm w-100">Abrir NC</button></div>
+        </form>
+      </div>
+    </div>
+    {% if nc_abiertas %}
+    <div class="col-lg-6">
+      <div class="panel-card">
+        <h2 class="h6">Cerrar NC</h2>
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="nc_close">
+          <input type="hidden" name="sec" value="nc">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <div class="col-12"><select name="codigo" class="form-select form-select-sm">{% for n in nc_abiertas %}<option value="{{ n.codigo }}">{{ n.codigo }} — {{ n.descripcion[:50] }}</option>{% endfor %}</select></div>
+          <div class="col-12"><button type="submit" class="btn btn-success btn-sm">Marcar NC cerrada</button></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif sec_activa == 'capacitaciones' %}
+  <div class="panel-card mb-3">
+    {% if cap_rows %}
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr><th>Trabajador</th><th>Tema</th><th>Horas</th><th>Instructor</th><th>Fecha</th><th>Vigencia</th><th>Evidencia</th></tr></thead>
+        <tbody>
+          {% for r in cap_rows %}
+          <tr class="{{ r.row_class }}">
+            <td>{{ r.trabajador }}</td><td>{{ r.tema }}</td><td>{{ r.horas }}</td><td>{{ r.instructor }}</td>
+            <td>{{ r.fecha }}</td><td>{{ r.vigencia }}</td><td>{{ r.evidencia }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pdf_cap_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_cap_url }}" download data-pdf-label="PDF capacitaciones">PDF capacitaciones</a>{% endif %}
+    {% else %}<div class="alert alert-info mb-0">Sin capacitaciones registradas.</div>{% endif %}
+  </div>
+  <div class="panel-card mb-3">
+    <h2 class="h6">Registrar capacitación</h2>
+    {% if cap_trabajadores %}
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="cap_add">
+      <input type="hidden" name="sec" value="capacitaciones">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-4"><select name="trabajador_id" class="form-select form-select-sm">{% for t in cap_trabajadores %}<option value="{{ t.id }}">{{ t.nombre }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><select name="tema" class="form-select form-select-sm">{% for t in cap_temas %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><input type="number" name="horas" class="form-control form-control-sm" value="2" min="0.5" max="40" step="0.5"></div>
+      <div class="col-md-3"><input type="text" name="instructor" class="form-control form-control-sm" placeholder="Instructor"></div>
+      <div class="col-md-3"><input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}"></div>
+      <div class="col-md-4"><input type="text" name="evidencia" class="form-control form-control-sm" placeholder="Evidencia"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Registrar</button></div>
+    </form>
+    {% else %}<div class="alert alert-warning mb-0">No hay trabajadores activos.</div>{% endif %}
+  </div>
+
+  {% elif sec_activa == 'planilla' %}
+  <div class="panel-card mb-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+      <div>
+        <h2 class="h6 panel-title mb-1">Planilla aplicaciones</h2>
+        <p class="small text-muted mb-0">Cuarteles activos: Cerezos Corte 1 y Ciruelos · {{ plan_stats.lineas }} línea(s) en consulta</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ lc_url }}">Ver en Libro de Campo</a>
+        {% if pdf_plan_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_plan_url }}" download data-pdf-label="PDF planilla aplicaciones">PDF planilla</a>{% endif %}
+      </div>
+    </div>
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-4">
+        <label class="form-label small">Filtrar consulta</label>
+        <select name="cuartel" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for c in plan_cuarteles %}
+          <option value="{{ c }}" {% if c == plan_cuartel_sel %}selected{% endif %}>
+            {% if c == 'TODOS' %}TODOS{% else %}{{ plan_sector_labels.get(c, c) }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+    {% if plan_import_disponible %}
+    <form method="post" class="mb-3">
+      <input type="hidden" name="action" value="planilla_import">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="cuartel" value="{{ plan_import_cuartel }}">
+      <button type="submit" class="btn btn-outline-primary btn-sm">
+        Cargar historial {{ plan_sector_labels.get(plan_import_cuartel, plan_import_cuartel) }}
+      </button>
+    </form>
+    {% endif %}
+    {% if plan_lineas %}
+    <div class="table-responsive mb-0">
+      <table class="table table-sm table-striped demo-datatable w-100" style="font-size:12px">
+        <thead>
+          <tr>
+            <th class="text-nowrap">FECHA</th>
+            <th class="text-nowrap">N° ORDEN</th>
+            <th class="text-nowrap">CUARTEL</th>
+            <th class="text-nowrap">PRODUCTO</th>
+            <th class="text-nowrap">N° APLICACIÓN</th>
+            <th class="text-nowrap">ING. ACTIVO</th>
+            <th class="text-nowrap">DOSIS/100</th>
+            <th class="text-nowrap">VOL AGUA</th>
+            <th class="text-nowrap">GASTO PROD</th>
+            <th class="text-nowrap">APLICADOR</th>
+            <th class="text-nowrap">MOTIVO</th>
+            <th class="text-nowrap">FECHA VIABLE</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in plan_lineas %}
+          <tr>
+            <td class="text-nowrap">{{ row.fecha }}</td>
+            <td class="text-nowrap">{{ row.n_orden }}</td>
+            <td class="text-nowrap">{{ row.cuartel }}</td>
+            <td class="text-nowrap">{{ row.producto }}</td>
+            <td class="text-nowrap">{{ row.n_app_txt }}</td>
+            <td class="text-nowrap">{{ row.ingrediente }}</td>
+            <td class="text-nowrap">{{ row.dosis }} {{ row.unidad_dosis }}</td>
+            <td class="text-nowrap">{{ row.vol_agua }}</td>
+            <td class="text-nowrap">{{ row.gasto_total }} {{ row.unidad_gasto }}</td>
+            <td class="text-nowrap">{{ row.aplicador }}</td>
+            <td class="text-nowrap">{{ row.motivo }}</td>
+            <td class="text-nowrap">{{ row.fecha_viable }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0">Sin aplicaciones registradas para este filtro.</div>
+    {% endif %}
+  </div>
+
+  {% if plan_admin %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title mb-1">Editar / eliminar aplicación</h2>
+    <p class="small text-muted mb-3">Solo administrador · requiere clave maestra para guardar o borrar.</p>
+    {% if not plan_mod_eventos %}
+    <div class="alert alert-info mb-0">No hay aplicaciones en este filtro para modificar.</div>
+    {% else %}
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="cuartel" value="{{ plan_cuartel_sel }}">
+      <div class="col-md-8">
+        <label class="form-label small">Aplicación</label>
+        <select name="n_app" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for e in plan_mod_eventos %}
+          <option value="{{ e.n_app }}" {% if e.n_app == plan_app_sel %}selected{% endif %}>{{ e.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Línea de producto</label>
+        <select name="linea_id" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for l in plan_mod_lineas %}
+          <option value="{{ l.id }}" {% if plan_edit and l.id == plan_edit.id %}selected{% endif %}>{{ l.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+
+    {% if plan_edit %}
+    <h3 class="h6">Editando App N° {{ '%05d'|format(plan_edit.n_app) }} — {{ plan_edit.producto }}</h3>
+    <form method="post" class="row g-2 mb-3">
+      <input type="hidden" name="action" value="planilla_edit">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="linea_id" value="{{ plan_edit.id }}">
+      <input type="hidden" name="n_app" value="{{ plan_edit.n_app }}">
+      <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ plan_edit.fecha }}" required></div>
+      <div class="col-md-2"><label class="form-label small">N° orden</label><input type="text" name="n_orden" class="form-control form-control-sm" value="{{ plan_edit.n_orden }}"></div>
+      <div class="col-md-3"><label class="form-label small">Cuartel</label>
+        <select name="cuartel" class="form-select form-select-sm" required>
+          {% for c in plan_cuarteles_activos %}
+          <option value="{{ c }}" {% if c == plan_edit.cuartel %}selected{% endif %}>{{ plan_sector_labels.get(c, c) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label small">Especie</label><input type="text" name="especie_cultivo" class="form-control form-control-sm" value="{{ plan_edit.especie }}"></div>
+      <div class="col-md-3"><label class="form-label small">Variedad</label><input type="text" name="variedad" class="form-control form-control-sm" value="{{ plan_edit.variedad }}"></div>
+      <div class="col-md-3"><label class="form-label small">Producto</label><input type="text" name="producto" class="form-control form-control-sm" value="{{ plan_edit.producto }}" required></div>
+      <div class="col-md-3"><label class="form-label small">Ingrediente</label><input type="text" name="ingrediente" class="form-control form-control-sm" value="{{ plan_edit.ingrediente }}"></div>
+      <div class="col-md-2"><label class="form-label small">N° aplicación</label><input type="text" name="n_app_txt" class="form-control form-control-sm" value="{{ plan_edit.n_app_txt }}"></div>
+      <div class="col-md-4"><label class="form-label small">Motivo / objetivo</label><input type="text" name="motivo" class="form-control form-control-sm" value="{{ plan_edit.motivo }}"></div>
+      <div class="col-md-2"><label class="form-label small">Dosis /100</label><input type="number" name="dosis" class="form-control form-control-sm" step="any" value="{{ plan_edit.dosis }}"></div>
+      <div class="col-md-2"><label class="form-label small">Unidad dosis</label>
+        <select name="unidad_dosis" class="form-select form-select-sm">
+          {% for u in plan_unidades %}<option value="{{ u }}" {% if u == plan_edit.unidad_dosis %}selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label small">Vol. agua</label><input type="number" name="vol_agua" class="form-control form-control-sm" step="any" value="{{ plan_edit.vol_agua }}"></div>
+      <div class="col-md-2"><label class="form-label small">Gasto prod.</label><input type="number" name="gasto_total" class="form-control form-control-sm" step="any" value="{{ plan_edit.gasto_total }}"></div>
+      <div class="col-md-2"><label class="form-label small">U. gasto</label><input type="text" name="unidad_gasto" class="form-control form-control-sm" value="{{ plan_edit.unidad_gasto }}"></div>
+      <div class="col-md-2"><label class="form-label small">Tractor</label><input type="text" name="tractor" class="form-control form-control-sm" value="{{ plan_edit.tractor }}"></div>
+      <div class="col-md-3"><label class="form-label small">Máquina</label><input type="text" name="maquina" class="form-control form-control-sm" value="{{ plan_edit.maquina }}"></div>
+      <div class="col-md-3"><label class="form-label small">Aplicador</label><input type="text" name="aplicador" class="form-control form-control-sm" value="{{ plan_edit.aplicador }}"></div>
+      <div class="col-md-2"><label class="form-label small">Car. etiqueta</label><input type="number" name="car_etiqueta" class="form-control form-control-sm" step="1" value="{{ plan_edit.car_etiqueta }}"></div>
+      <div class="col-md-2"><label class="form-label small">Car. agenda</label><input type="number" name="car_agenda" class="form-control form-control-sm" step="1" value="{{ plan_edit.car_agenda }}"></div>
+      <div class="col-md-2"><label class="form-label small">Car. mayor</label><input type="number" name="car_mayor" class="form-control form-control-sm" step="1" value="{{ plan_edit.car_mayor }}"></div>
+      <div class="col-md-2"><label class="form-label small">Fecha viable</label><input type="date" name="fecha_viable" class="form-control form-control-sm" value="{{ plan_edit.fecha_viable }}"></div>
+      <div class="col-md-2"><label class="form-label small">T° máx</label><input type="number" name="t_max" class="form-control form-control-sm" step="any" value="{{ plan_edit.t_max }}"></div>
+      <div class="col-md-2"><label class="form-label small">T° mín</label><input type="number" name="t_min" class="form-control form-control-sm" step="any" value="{{ plan_edit.t_min }}"></div>
+      <div class="col-md-2"><label class="form-label small">HR %</label><input type="number" name="hr_pct" class="form-control form-control-sm" step="any" value="{{ plan_edit.hr_pct }}"></div>
+      <div class="col-md-2"><label class="form-label small">Viento</label><input type="number" name="viento_kmh" class="form-control form-control-sm" step="any" value="{{ plan_edit.viento_kmh }}"></div>
+      <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm w-100">Actualizar línea</button></div>
+    </form>
+
+    <form method="post" class="row g-2 mb-2" onsubmit="return confirm('¿Eliminar esta línea de producto?');">
+      <input type="hidden" name="action" value="planilla_delete">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="cuartel" value="{{ plan_cuartel_sel }}">
+      <input type="hidden" name="linea_id" value="{{ plan_edit.id }}">
+      <input type="hidden" name="n_app" value="{{ plan_edit.n_app }}">
+      <div class="col-md-4"><label class="form-label small">Clave para eliminar línea</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar línea</button></div>
+    </form>
+
+    <hr>
+    <form method="post" class="row g-2" onsubmit="return confirm('¿Eliminar la aplicación completa N° {{ '%05d'|format(plan_edit.n_app) }} (todos sus productos)?');">
+      <input type="hidden" name="action" value="planilla_delete_evento">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="cuartel" value="{{ plan_cuartel_sel }}">
+      <input type="hidden" name="n_app" value="{{ plan_edit.n_app }}">
+      <div class="col-md-4"><label class="form-label small">Clave para eliminar aplicación completa</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-4 d-flex align-items-end"><button type="submit" class="btn btn-danger btn-sm">Eliminar App N° {{ '%05d'|format(plan_edit.n_app) }}</button></div>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title mb-1">Matriz de ingreso de aplicaciones</h2>
+    <p class="small text-muted mb-3">Orden GlobalGAP · se guarda en Libro de Campo (misma pestaña).</p>
+    <form method="post" id="gapOrdenForm">
+      <input type="hidden" name="action" value="planilla_orden">
+      <input type="hidden" name="sec" value="planilla">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <input type="hidden" name="n_rows" value="{{ plan_ingreso_filas|length }}">
+
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">
+          <label class="form-label small">Para</label>
+          <input type="text" name="para" class="form-control form-control-sm" value="{{ plan_para_def }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Fecha</label>
+          <input type="date" name="fecha" id="gapFechaApp" class="form-control form-control-sm" value="{{ hoy }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Sector</label>
+          <select name="sector" id="gapSector" class="form-select form-select-sm" required>
+            {% for c in plan_cuarteles_activos %}
+            <option value="{{ c }}" {% if c == plan_cuartel_ingreso %}selected{% endif %}>{{ plan_sector_labels.get(c, c) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Variedad</label>
+          <input type="text" name="variedad" class="form-control form-control-sm" placeholder="Ej. Santina / D’Agen">
+        </div>
+      </div>
+
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:140px">Producto (s)</th>
+              <th style="min-width:130px">Ingrediente activo</th>
+              <th style="min-width:110px">Dosis</th>
+              <th colspan="3" class="text-center">Carencia</th>
+              <th style="min-width:140px">Objetivo</th>
+            </tr>
+            <tr>
+              <th></th><th></th><th></th>
+              <th class="text-center">Etiqueta</th>
+              <th class="text-center">Agenda pesticida</th>
+              <th class="text-center">Otro</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in plan_ingreso_filas %}
+            <tr>
+              <td><input type="text" name="r{{ f.idx }}_producto" class="form-control form-control-sm" placeholder="{% if f.idx == 0 %}Ej. Nordox{% endif %}"></td>
+              <td><input type="text" name="r{{ f.idx }}_ingrediente" class="form-control form-control-sm" placeholder="{% if f.idx == 0 %}Ej. Cobre{% endif %}"></td>
+              <td><input type="text" name="r{{ f.idx }}_dosis" class="form-control form-control-sm" placeholder="0,2 lt/100 lt"></td>
+              <td><input type="number" name="r{{ f.idx }}_car_etiqueta" class="form-control form-control-sm" min="0" step="1" value="0"></td>
+              <td><input type="number" name="r{{ f.idx }}_car_agenda" class="form-control form-control-sm" min="0" step="1" value="0"></td>
+              <td><input type="number" name="r{{ f.idx }}_car_otro" class="form-control form-control-sm" min="0" step="1" value="0"></td>
+              <td><input type="text" name="r{{ f.idx }}_objetivo" class="form-control form-control-sm" placeholder="Control enfermedades"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small fw-semibold mb-2">Maquinaria</div>
+            {% for key, label in plan_maq_opts %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="maq_{{ key }}" value="1" id="maq_{{ key }}" {% if key in ('tractor','nebulizadora') %}checked{% endif %}>
+              <label class="form-check-label small" for="maq_{{ key }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small fw-semibold mb-2">Método</div>
+            {% for key, label in plan_met_opts %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="met_{{ key }}" value="1" id="met_{{ key }}" {% if key == 'pulverizacion' %}checked{% endif %}>
+              <label class="form-check-label small" for="met_{{ key }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small fw-semibold mb-2">Equipo protección personal</div>
+            {% for key, label in plan_epp_opts %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="epp_{{ key }}" value="1" id="epp_{{ key }}" checked>
+              <label class="form-check-label small" for="epp_{{ key }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small fw-semibold mb-2">Observaciones</div>
+            <textarea name="observaciones" class="form-control form-control-sm" rows="5" placeholder="Lea la etiqueta del producto&#10;Use su Equipo de Protección Personal"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-2 mb-3">
+        <div class="col-md-2">
+          <label class="form-label small">Mojamiento (lt/há)</label>
+          <input type="number" name="mojamiento_l_ha" class="form-control form-control-sm" min="0" step="any" placeholder="1000">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">T° reingreso (hrs)</label>
+          <input type="number" name="reingreso_hrs" class="form-control form-control-sm" min="0" step="any" value="24">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Emite</label>
+          <input type="text" name="emite" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label small">Nombre y firma</label>
+          <input type="text" name="conf_firma" class="form-control form-control-sm" placeholder="Nombre quien emite / firma">
+        </div>
+      </div>
+
+      <div class="border rounded p-2 mb-3">
+        <div class="row g-2">
+          <div class="col-12 d-flex flex-wrap align-items-center gap-2">
+            <div class="small fw-semibold mb-0">Confirmación aplicación · Condiciones atmosféricas · Lavado maquinaria</div>
+            <span id="gapClimaHint" class="small text-muted">Consultando clima…</span>
+          </div>
+          <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="conf_fecha" id="gapFechaConf" class="form-control form-control-sm" value="{{ hoy }}"></div>
+          <div class="col-md-2"><label class="form-label small">Hr inicio</label><input type="time" name="conf_hr_inicio" class="form-control form-control-sm"></div>
+          <div class="col-md-2"><label class="form-label small">Hr término</label><input type="time" name="conf_hr_termino" class="form-control form-control-sm"></div>
+          <div class="col-md-1"><label class="form-label small">T° máx</label><input type="number" name="t_max" id="gapTMax" class="form-control form-control-sm" step="any" placeholder="°C"></div>
+          <div class="col-md-1"><label class="form-label small">T° mín</label><input type="number" name="t_min" id="gapTMin" class="form-control form-control-sm" step="any" placeholder="°C"></div>
+          <div class="col-md-1"><label class="form-label small">HR %</label><input type="number" name="hr_pct" id="gapHrPct" class="form-control form-control-sm" step="any"></div>
+          <div class="col-md-1"><label class="form-label small">Viento km/h</label><input type="number" name="viento_kmh" id="gapViento" class="form-control form-control-sm" step="any"></div>
+          <div class="col-md-1"><label class="form-label small">Volumen</label><input type="number" name="lavado_volumen" class="form-control form-control-sm" min="0" step="any" placeholder="lt"></div>
+          <div class="col-md-2"><label class="form-label small">Maquinaria lavado</label><input type="text" name="lavado_maquinaria" class="form-control form-control-sm" placeholder="Ej. Lévera"></div>
+          <div class="col-md-3"><label class="form-label small">Responsable</label><input type="text" name="lavado_responsable" class="form-control form-control-sm" placeholder="Aplicador / responsable" required></div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-sm">Guardar orden de aplicación</button>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'cosecha' %}
+  <div class="panel-card mb-3">
+    {% if cos_rows %}
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in cos_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in cos_rows %}<tr>{% for c in cos_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if pdf_cos_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_cos_url }}" download data-pdf-label="PDF cosecha / lotes">PDF cosecha / lotes</a>{% endif %}
+    {% else %}<div class="alert alert-info mb-0">Sin lotes de cosecha registrados.</div>{% endif %}
+  </div>
+  <div class="panel-card mb-3">
+    <h2 class="h6">Registrar lote de cosecha</h2>
+    <form method="get" class="row g-2 mb-2">
+      <input type="hidden" name="sec" value="cosecha">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-4"><label class="form-label small">Cuartel (para apps)</label>
+        <select name="cuartel" class="form-select form-select-sm" onchange="this.form.submit()">{% for c in cos_cuarteles %}<option value="{{ c }}" {% if c == cos_cuartel_sel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+      </div>
+    </form>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="cosecha_add">
+      <input type="hidden" name="sec" value="cosecha">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-3"><input type="text" name="n_lote" class="form-control form-control-sm" value="{{ cos_lote_def }}" required></div>
+      <div class="col-md-3"><select name="cuartel" class="form-select form-select-sm">{% for c in cos_cuarteles %}<option value="{{ c }}" {% if c == cos_cuartel_sel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><input type="text" name="variedad" class="form-control form-control-sm" placeholder="Variedad"></div>
+      <div class="col-md-3"><input type="date" name="fecha_cosecha" class="form-control form-control-sm" value="{{ hoy }}"></div>
+      <div class="col-md-3"><input type="number" name="kg" class="form-control form-control-sm" placeholder="Kg / bins" min="0" step="0.1"></div>
+      <div class="col-md-3"><input type="text" name="cuadrilla" class="form-control form-control-sm" placeholder="Cuadrilla"></div>
+      <div class="col-md-3"><input type="text" name="destino" class="form-control form-control-sm" placeholder="Destino"></div>
+      <div class="col-md-6"><label class="form-label small">Última aplicación fitosanitaria</label>
+        <select name="ultima_app" class="form-select form-select-sm">
+          <option value="—">—</option>
+          {% for a in cos_apps %}<option value="{{ a.n_app }}">{{ a.label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Registrar lote</button></div>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'agua' %}
+  <div class="panel-card mb-3">
+    {% if agua_rows %}
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in agua_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in agua_rows %}<tr>{% for c in agua_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if pdf_agua_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_agua_url }}" download data-pdf-label="PDF análisis de agua">PDF análisis de agua</a>{% endif %}
+    {% else %}<div class="alert alert-info mb-0">Sin análisis de agua registrados.</div>{% endif %}
+  </div>
+  <div class="panel-card mb-3">
+    <h2 class="h6">Registrar análisis de agua</h2>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="agua_add">
+      <input type="hidden" name="sec" value="agua">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-4"><input type="text" name="punto" class="form-control form-control-sm" placeholder="Punto muestreo" required></div>
+      <div class="col-md-3"><input type="text" name="laboratorio" class="form-control form-control-sm" placeholder="Laboratorio"></div>
+      <div class="col-md-3"><input type="date" name="fecha_muestra" class="form-control form-control-sm" value="{{ hoy }}"></div>
+      <div class="col-md-2"><input type="text" name="e_coli" class="form-control form-control-sm" placeholder="E. coli"></div>
+      <div class="col-md-2"><input type="text" name="coliformes" class="form-control form-control-sm" placeholder="Coliformes"></div>
+      <div class="col-md-2"><input type="number" name="ph" class="form-control form-control-sm" value="7" min="0" max="14" step="0.1"></div>
+      <div class="col-md-2"><input type="number" name="ce" class="form-control form-control-sm" value="0.5" min="0" step="0.1"></div>
+      <div class="col-md-2"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="conforme" value="1" id="aguaConf" checked><label class="form-check-label small" for="aguaConf">Conforme</label></div></div>
+      <div class="col-md-3"><input type="text" name="accion" class="form-control form-control-sm" placeholder="Acción si no conforme"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Registrar</button></div>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'calibracion' %}
+  <div class="panel-card mb-3">
+    {% if cal_rows %}
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for c in cal_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in cal_rows %}<tr>{% for c in cal_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if pdf_cal_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_cal_url }}" download data-pdf-label="PDF calibración">PDF calibración</a>{% endif %}
+    {% else %}<div class="alert alert-info mb-0">Sin calibraciones registradas.</div>{% endif %}
+  </div>
+  <div class="panel-card mb-3">
+    <h2 class="h6">Registrar calibración</h2>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="cal_add">
+      <input type="hidden" name="sec" value="calibracion">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-3"><input type="text" name="equipo" class="form-control form-control-sm" placeholder="Equipo / Nebulizador ID" required></div>
+      <div class="col-md-2"><input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}"></div>
+      <div class="col-md-2"><input type="number" name="presion" class="form-control form-control-sm" placeholder="Presión bar" value="15" step="0.1"></div>
+      <div class="col-md-2"><input type="number" name="l_ha" class="form-control form-control-sm" placeholder="L/ha" value="800"></div>
+      <div class="col-md-2"><input type="number" name="desviacion" class="form-control form-control-sm" placeholder="% desv" value="5"></div>
+      <div class="col-md-3"><input type="text" name="tecnico" class="form-control form-control-sm" placeholder="Técnico"></div>
+      <div class="col-md-3"><input type="date" name="proxima_fecha" class="form-control form-control-sm" value="{{ cal_prox_def }}"></div>
+      <div class="col-md-4"><input type="text" name="notas" class="form-control form-control-sm" placeholder="Notas"></div>
+      <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm w-100">Registrar</button></div>
+    </form>
+    <p class="small text-muted mb-0 mt-2">También puede registrar en <strong>Maquinaria → Calibración Nebulizador</strong>.</p>
+  </div>
+
+  {% elif sec_activa == 'planificacion' %}
+  <div class="panel-card mb-3">
+    <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
+      <div>
+        <h2 class="h6 mb-1">{{ planif_proyecto }}</h2>
+        <div class="small text-muted">
+          Cosecha {{ especie_sel }}{% if planif_cuartel %} · {{ planif_cuartel }}{% endif %}:
+          <strong>{{ planif_cosecha_label }}</strong>
+        </div>
+        <div class="small mt-1">
+          Gantt alineada a Documentos + Autoevaluación (avance SYNC automático) y hitos de cosecha.
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ planif_docs_url }}">Documentos</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ planif_autoeval_url }}">Autoevaluación</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ planif_planilla_url }}">Planilla</a>
+        <form method="post" class="d-inline">
+          <input type="hidden" name="action" value="gantt_rebuild">
+          <input type="hidden" name="sec" value="planificacion">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <button type="submit" class="btn btn-outline-primary btn-sm">Reconstruir Gantt certificación</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% if gantt_kpis %}
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Actividades</div><div class="kpi-value">{{ gantt_kpis.actividades }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">En ritmo</div><div class="kpi-value">{{ gantt_kpis.en_ritmo }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card kpi-warn"><div class="kpi-label">Con desfase</div><div class="kpi-value">{{ gantt_kpis.con_desfase }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card kpi-warn"><div class="kpi-label">Alertas</div><div class="kpi-value">{{ gantt_kpis.alertas }}</div></div></div>
+    <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Avance prom.</div><div class="kpi-value">{{ gantt_kpis.avance_prom }}%</div></div></div>
+  </div>
+  {% endif %}
+  <div class="panel-card mb-3">
+    {% if gantt_rows %}
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-striped demo-datatable w-100" style="font-size:12px">
+        <thead>
+          <tr>
+            <th>Proyecto</th><th>Actividad</th><th>Origen</th><th>Inicio</th><th>Fin</th>
+            <th>% real</th><th>% esperado</th><th>Desfase</th><th>Alerta</th><th>Responsable</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in gantt_rows %}
+          <tr class="{{ r.row_class }}">
+            <td>{{ r.PROYECTO }}</td>
+            <td>{{ r.ACTIVIDAD }}</td>
+            <td>{{ r.origen }}</td>
+            <td class="text-nowrap">{{ r.INICIO }}</td>
+            <td class="text-nowrap">{{ r.FIN }}</td>
+            <td>{{ r['% REAL'] }}</td>
+            <td>{{ r['% ESPERADO'] }}</td>
+            <td>{{ r.DESFASE }}</td>
+            <td>{{ r.ALERTA }}</td>
+            <td>{{ r.RESPONSABLE }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pdf_gantt_url %}<a class="btn btn-outline-success btn-sm erp-pdf-btn" href="{{ pdf_gantt_url }}" download data-pdf-label="PDF carta Gantt">PDF carta Gantt</a>{% endif %}
+    {% else %}<div class="alert alert-info mb-0">Sin actividades Gantt para esta especie. Use “Reconstruir Gantt certificación”.</div>{% endif %}
+  </div>
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="panel-card">
+        <h2 class="h6">Nueva actividad Gantt</h2>
+        {% if gantt_proyectos %}
+        <form method="post" class="row g-2">
+          <input type="hidden" name="action" value="gantt_actividad">
+          <input type="hidden" name="sec" value="planificacion">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <div class="col-12"><select name="proyecto_id" class="form-select form-select-sm">{% for p in gantt_proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+          <div class="col-12"><input type="text" name="actividad" class="form-control form-control-sm" placeholder="Actividad" required></div>
+          <div class="col-md-6"><input type="date" name="fecha_inicio" class="form-control form-control-sm" value="{{ hoy }}"></div>
+          <div class="col-md-6"><input type="date" name="fecha_fin" class="form-control form-control-sm" value="{{ gantt_fin_def }}"></div>
+          <div class="col-md-4"><input type="number" name="avance" class="form-control form-control-sm" value="0" min="0" max="100" step="5"></div>
+          <div class="col-md-4"><select name="prioridad" class="form-select form-select-sm">{% for p in gantt_prioridades %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
+          <div class="col-md-4"><input type="text" name="responsable" class="form-control form-control-sm" placeholder="Responsable"></div>
+          <div class="col-12"><input type="text" name="notas" class="form-control form-control-sm" placeholder="Notas"></div>
+          <div class="col-12"><button type="submit" class="btn btn-primary btn-sm">Registrar actividad</button></div>
+        </form>
+        {% else %}<div class="alert alert-info mb-0">Cree un proyecto Gantt en Administración o seed demo.</div>{% endif %}
+      </div>
+    </div>
+    {% if gantt_actividades %}
+    <div class="col-lg-6">
+      <div class="panel-card">
+        <h2 class="h6">Actualizar avance</h2>
+        <form method="post" class="row g-2" id="ganttAvanceForm">
+          <input type="hidden" name="action" value="gantt_avance">
+          <input type="hidden" name="sec" value="planificacion">
+          <input type="hidden" name="especie" value="{{ especie_sel }}">
+          <div class="col-12">
+            <label class="form-label small mb-1">Actividad</label>
+            <select name="tarea_id" id="ganttTareaSel" class="form-select form-select-sm">
+              {% for a in gantt_actividades %}
+              <option value="{{ a.id }}" data-avance="{{ a.avance }}" data-estado="{{ a.estado }}">{{ a.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1">% avance (0–100)</label>
+            <input type="number" name="avance" id="ganttAvanceInput" class="form-control form-control-sm" value="0" min="0" max="100" step="5" title="Porcentaje de avance de la actividad">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1">Estado</label>
+            <select name="estado" id="ganttEstadoSel" class="form-select form-select-sm">
+              {% for e in gantt_estados %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-12"><span class="small text-muted">Completada guarda 100%. Si la fecha fin ya pasó y el avance es &lt; 100%, la alerta sigue en Vencida.</span></div>
+          <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar avance</button></div>
+        </form>
+        <script>
+        (function () {
+          var sel = document.getElementById('ganttTareaSel');
+          var av = document.getElementById('ganttAvanceInput');
+          var est = document.getElementById('ganttEstadoSel');
+          if (!sel || !av || !est) return;
+          function syncFromTask() {
+            var opt = sel.options[sel.selectedIndex];
+            if (!opt) return;
+            var a = opt.getAttribute('data-avance');
+            var e = opt.getAttribute('data-estado') || 'Pendiente';
+            if (a !== null && a !== '') av.value = Math.round(Number(a) || 0);
+            if (e) est.value = e;
+          }
+          function syncCompletada() {
+            if (est.value === 'Completada') av.value = 100;
+            else if (Number(av.value) >= 100) est.value = 'Completada';
+          }
+          sel.addEventListener('change', syncFromTask);
+          est.addEventListener('change', syncCompletada);
+          av.addEventListener('change', syncCompletada);
+          syncFromTask();
+        })();
+        </script>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+{{ super() }}
+{% if sec_activa == 'gantt' %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const donut = {{ gantt_chart_donut|tojson }};
+  const mods = {{ gantt_chart_modulos|tojson }};
+  const c1 = document.getElementById('gapGanttDonut');
+  if (c1 && window.Chart) {
+    new Chart(c1, {
+      type: 'doughnut',
+      data: {
+        labels: ['Avance real', 'Pendiente'],
+        datasets: [{
+          data: [donut.real, donut.resto],
+          backgroundColor: ['#163A5F', '#D7E0EA'],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        cutout: '68%',
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12 } },
+          tooltip: { callbacks: { label: (ctx) => ctx.label + ': ' + ctx.parsed + '%' } }
+        }
+      }
+    });
+  }
+  const c2 = document.getElementById('gapGanttBars');
+  if (c2 && window.Chart) {
+    new Chart(c2, {
+      type: 'bar',
+      data: {
+        labels: mods.labels,
+        datasets: [{
+          label: '% avance',
+          data: mods.values,
+          backgroundColor: '#0F8FA8',
+          borderRadius: 6,
+          maxBarThickness: 22
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        scales: {
+          x: { beginAtZero: true, max: 100, ticks: { callback: (v) => v + '%' } },
+          y: { ticks: { font: { size: 11 } } }
+        },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+})();
+</script>
+{% endif %}
+{% if sec_activa == 'planilla' %}
+<script>
+(function () {
+  var form = document.getElementById('gapOrdenForm');
+  if (!form) return;
+  var fechaApp = document.getElementById('gapFechaApp');
+  var fechaConf = document.getElementById('gapFechaConf');
+  var sector = document.getElementById('gapSector');
+  var tMax = document.getElementById('gapTMax');
+  var tMin = document.getElementById('gapTMin');
+  var hr = document.getElementById('gapHrPct');
+  var viento = document.getElementById('gapViento');
+  var hint = document.getElementById('gapClimaHint');
+  var busy = false;
+
+  function setNum(input, val) {
+    if (!input || val == null || val === '') return;
+    input.value = val;
+  }
+
+  function fechaClima() {
+    return (fechaConf && fechaConf.value) || (fechaApp && fechaApp.value) || '';
+  }
+
+  async function cargarClima(force) {
+    var f = fechaClima();
+    if (!f || busy) return;
+    busy = true;
+    if (hint) hint.textContent = 'Consultando clima…';
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('sec', 'planilla');
+      u.searchParams.set('clima', '1');
+      u.searchParams.set('fecha', f);
+      if (sector && sector.value) u.searchParams.set('sector', sector.value);
+      ['cuartel', 'especie', 'n_app', 'linea_id'].forEach(function (k) { u.searchParams.delete(k); });
+      var resp = await fetch(u.pathname + u.search, { credentials: 'same-origin' });
+      var data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error((data && data.msg) || 'Sin datos');
+      if (force || !(tMax && tMax.value)) setNum(tMax, data.t_max);
+      if (force || !(tMin && tMin.value)) setNum(tMin, data.t_min);
+      if (force || !(hr && hr.value)) setNum(hr, data.hr_pct);
+      if (force || !(viento && viento.value)) setNum(viento, data.viento_kmh);
+      if (hint) hint.textContent = 'Clima ' + f + ' · Open-Meteo (editable)';
+    } catch (err) {
+      if (hint) hint.textContent = 'Clima no disponible — ingrese T° / HR / viento manualmente';
+    } finally {
+      busy = false;
+    }
+  }
+
+  function onFechaSectorChange() {
+    cargarClima(true);
+  }
+
+  [fechaApp, fechaConf, sector].forEach(function (el) {
+    if (el) el.addEventListener('change', onFechaSectorChange);
+  });
+  if (fechaApp && fechaConf) {
+    fechaApp.addEventListener('change', function () {
+      if (fechaConf && !fechaConf.dataset.userEdited) fechaConf.value = fechaApp.value;
+    });
+    fechaConf.addEventListener('input', function () { fechaConf.dataset.userEdited = '1'; });
+  }
+  cargarClima(false);
+})();
+</script>
+{% endif %}
+{% endblock %}

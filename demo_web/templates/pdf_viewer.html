@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}PDF — {{ filename|default('documento') }}{% endblock %}
+{% block content %}
+<div class="erp-pdf-viewer-shell">
+  <div class="erp-pdf-viewer-bar">
+    <a class="btn btn-sm btn-outline-secondary erp-pdf-back-btn" href="{{ back_url }}">← Volver al ERP</a>
+    <span class="erp-pdf-viewer-title text-truncate" title="{{ filename }}">{{ filename }}</span>
+    <button type="button" class="btn btn-sm btn-success erp-pdf-share-btn"
+            data-pdf-url="{{ pdf_share_url }}"
+            data-pdf-filename="{{ filename }}"
+            aria-label="Compartir PDF">
+      <span class="erp-pdf-share-icon" aria-hidden="true">↗</span>
+      <span class="d-none d-sm-inline">Compartir</span>
+    </button>
+  </div>
+  <iframe class="erp-pdf-viewer-frame erp-pdf-viewer-iframe" src="{{ pdf_embed_url }}" title="{{ filename }}"></iframe>
+  <object class="erp-pdf-viewer-frame erp-pdf-viewer-object" data="{{ pdf_embed_url }}" type="application/pdf" title="{{ filename }}">
+    <p class="p-3">Su navegador no puede mostrar el PDF embebido.
+      <a href="{{ pdf_embed_url }}" class="btn btn-sm btn-primary">Abrir PDF completo</a>
+    </p>
+  </object>
+  <p class="erp-pdf-viewer-hint d-md-none">
+    El PDF incluye <strong>todos los registros</strong> del filtro, no solo la página visible de la tabla.
+    Use el botón <strong>← Volver al ERP</strong>, el gesto <strong>atrás</strong> del iPhone o <strong>Compartir</strong> para guardar el archivo completo.
+  </p>
+</div>
+{% endblock %}

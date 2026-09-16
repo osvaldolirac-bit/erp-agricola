@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
+{% block title %}Maquinaria — {{ erp_title|default('ERP') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 maq-module">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-0">{{ title }}</h1>
+      <p class="text-muted mb-0">Bitácora, faenas diarias y mantención de equipos</p>
+    </div>
+    <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
+  </div>
+
+  {{ nav_modulo('modules.maquinaria', secciones, sec_activa) }}
+
+  {% if sec_activa == 'faenas' %}
+  <p class="small text-muted">Registre la asignación y genere el <strong>ticket</strong> (pantallazo) para el operador.</p>
+  <ul class="nav nav-pills mb-3 gap-1">
+    <li class="nav-item">
+      <a class="nav-link {% if faena_sub == 'registrar' %}active{% endif %}"
+         href="{{ url_for('modules.maquinaria', sec='faenas', sub='registrar') }}">Registrar</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if faena_sub == 'ticket' %}active{% endif %}"
+         href="{{ url_for('modules.maquinaria', sec='faenas', sub='ticket') }}">Ticket operador</a>
+    </li>
+  </ul>
+
+  {% if faena_sub == 'registrar' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Nueva asignación</h2>
+    {% if not equipos_opts %}
+    <div class="alert alert-warning">No hay maquinaria registrada. Cárguela en Administración → Maestra maquinaria.</div>
+    {% endif %}
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="faena">
+      <input type="hidden" name="sec" value="faenas">
+      <div class="col-md-3">
+        <label class="form-label">Fecha faena</label>
+        <input type="date" name="fecha" class="form-control" value="{{ form_fecha }}" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Cuartel / faena</label>
+        <select name="cuartel" class="form-select" required>
+          {% for cc in cuarteles %}
+          <option value="{{ cc }}">{{ cc }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Operador / responsable</label>
+        <input type="text" name="operador" class="form-control" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Labor / detalle faena</label>
+        <input type="text" name="detalle" class="form-control" placeholder="Ej. Raleo, riego…" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Equipo principal</label>
+        <select name="equipo" class="form-select" required>
+          <option value="">— Seleccione —</option>
+          {% for cod, etiq in equipos_opts %}
+          <option value="{{ cod }}">{{ etiq }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Tractor (opcional)</label>
+        <select name="tractor" class="form-select">
+          <option value="">— Sin tractor —</option>
+          {% for cod, etiq in tractores_opts %}
+          <option value="{{ cod }}">{{ etiq }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Notas (opcional)</label>
+        <textarea name="notas" class="form-control" rows="2"></textarea>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary" {% if not equipos_opts %}disabled{% endif %}>Guardar asignación</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">Asignaciones del período</h2>
+    <form method="get" class="row g-2 mb-3">
+      <input type="hidden" name="sec" value="faenas">
+      <input type="hidden" name="sub" value="registrar">
+      <div class="col-md-3">
+        <label class="form-label">Desde</label>
+        <input type="date" name="faena_desde" class="form-control" value="{{ faena_desde }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="faena_hasta" class="form-control" value="{{ faena_hasta }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        {{ pdf_btn(pdf_faenas_url, '📥 PDF LISTADO FAENAS', 'btn-outline-success w-100') }}
+      </div>
+    </form>
+    {% if faena_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead><tr>{% for k in faena_rows[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in faena_rows %}
+          <tr>{% for v in row.values() %}<td>{{ v }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0">Sin asignaciones en el período seleccionado.</div>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="faenas">
+      <input type="hidden" name="sub" value="ticket">
+      <div class="col-md-4">
+        <label class="form-label">Día del ticket</label>
+        <input type="date" name="ticket_dia" class="form-control" value="{{ ticket_dia }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Asignación</label>
+        <select name="ticket_id" class="form-select">
+          {% for t in ticket_opts %}
+          <option value="{{ t.id }}" {% if ticket_sel|string == t.id|string %}selected{% endif %}>{{ t.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Ver ticket</button>
+      </div>
+    </form>
+  </div>
+  {% if ticket_html %}
+  {{ ticket_html|safe }}
+  {% elif not ticket_opts %}
+  <div class="alert alert-info">Sin asignaciones ese día. Registre una en <strong>Registrar</strong>.</div>
+  {% endif %}
+  {% endif %}
+
+  {% elif sec_activa == 'mantencion' %}
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Registro en bitácora</h2>
+    {% if not maquinaria_opts %}
+    <div class="alert alert-warning">No hay maquinaria registrada en la maestra.</div>
+    {% endif %}
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="mantencion">
+      <input type="hidden" name="sec" value="mantencion">
+      <div class="col-md-6">
+        <label class="form-label">Maquinaria</label>
+        <select name="maquinaria" class="form-select" required>
+          <option value="">— Seleccione —</option>
+          {% for cod, etiq in maquinaria_opts %}
+          <option value="{{ cod }}">{{ etiq }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Tipo de evento</label>
+        <select name="tipo_evento" class="form-select">
+          {% for t in tipos_evento %}
+          <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha" class="form-control" value="{{ form_fecha }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Encargado / proveedor</label>
+        <input type="text" name="encargado" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Responsable interno</label>
+        <input type="text" name="responsable" class="form-control" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Estado del caso</label>
+        <select name="etiqueta" class="form-select">
+          {% for e in etiquetas_maq %}
+          <option value="{{ e }}">{{ e }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Descripción reparación</label>
+        <textarea name="detalle" class="form-control" rows="3" required></textarea>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary" {% if not maquinaria_opts %}disabled{% endif %}>Guardar en bitácora</button>
+      </div>
+    </form>
+  </div>
+
+  {% elif sec_activa == 'historial' %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-4">
+        <label class="form-label">Maquinaria</label>
+        <select name="maquina" class="form-select">
+          {% for cod, lbl in filtro_maquinas %}
+          <option value="{{ cod }}" {% if cod == filtro_maquina %}selected{% endif %}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        {{ pdf_btn(pdf_historial_url, '📥 PDF BITÁCORA', 'btn-outline-success w-100') }}
+      </div>
+    </form>
+  </div>
+
+  {% if edit_evento %}
+  <div class="panel-card mb-3 border border-primary">
+    <h2 class="h6 panel-title">Seguimiento del caso {{ edit_evento.cod_unico }}</h2>
+    <p class="small text-muted mb-2">
+      {{ edit_evento.maquinaria }} · estado actual: <strong>{{ edit_evento.etiqueta }}</strong>
+    </p>
+    <p class="small mb-3"><strong>Descripción inicial:</strong> {{ edit_evento.descripcion }}</p>
+
+    {% if edit_evento.observaciones %}
+    <div class="mb-3">
+      <div class="small fw-semibold mb-1">Observaciones por etapa</div>
+      <ul class="list-group list-group-flush border rounded">
+        {% for o in edit_evento.observaciones %}
+        <li class="list-group-item px-3 py-2">
+          <div class="d-flex justify-content-between gap-2">
+            <strong>{{ o.estado }}</strong>
+            <span class="text-muted small">{{ o.fecha }}{% if o.usuario %} · {{ o.usuario }}{% endif %}</span>
+          </div>
+          <div class="small">{{ o.observacion }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="editar_evento">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="cod_registro" value="{{ edit_evento.cod_unico }}">
+      <input type="hidden" name="maquina" value="{{ filtro_maquina }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-4">
+        <label class="form-label">Estado del caso</label>
+        <select name="estado" class="form-select" required>
+          {% for e in estados_caso %}
+          <option value="{{ e }}" {% if e == edit_evento.etiqueta %}selected{% endif %}>{{ e }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Flujo: Abierto → En Observación → En Reparación → Cerrado conforme / Cerrado desconforme</div>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">Observación de esta etapa</label>
+        <textarea name="observacion" class="form-control" rows="3" required
+                  placeholder="Qué se hizo / encontró / decidió en este estado…"></textarea>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Guardar seguimiento</button>
+      </div>
+      <div class="col-auto">
+        <a class="btn btn-outline-secondary" href="{{ url_for('modules.maquinaria', sec='historial', maquina=filtro_maquina, desde=filtro_desde, hasta=filtro_hasta) }}">Cerrar</a>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if historial_rows %}
+  <div class="panel-card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped demo-datatable w-100">
+        <thead>
+          <tr>
+            <th>N° único</th><th>Fecha</th><th>Maquinaria</th><th>Tipo</th>
+            <th>Descripción</th><th>Última obs.</th><th>Encargado</th><th>Responsable</th><th>Estado</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in historial_rows %}
+          <tr class="{{ r.row_class }}">
+            <td>{{ r.cod_unico }}</td><td>{{ r.fecha }}</td><td>{{ r.maquinaria }}</td>
+            <td>{{ r.tipo_evento }}</td>
+            <td>{{ r.descripcion }}</td>
+            <td class="small">{% if r.info_post %}{{ r.info_post }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>{{ r.encargado }}</td>
+            <td>{{ r.responsable }}</td><td>{{ r.etiqueta }}</td>
+                        <td class="actions-cell text-end">
+              <a class="btn-act edit"
+                 href="{{ url_for('modules.maquinaria', sec='historial', maquina=filtro_maquina, desde=filtro_desde, hasta=filtro_hasta, edit=r.cod_unico) }}"
+                 title="Editar / agregar info"><i class="bi bi-pencil-square"></i></a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Sin registros en el período seleccionado.</div>
+  {% endif %}
+
+  {% if casos_abiertos %}
+  <div class="panel-card">
+    <h2 class="h6 panel-title">Casos abiertos — actualizar estado</h2>
+    <p class="small text-muted">Equipos cuyo último evento aún no está cerrado (conforme o desconforme). También puede usar el lápiz de cada fila para el seguimiento completo.</p>
+    <form method="post" class="row g-3">
+      <input type="hidden" name="action" value="cerrar_caso">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-5">
+        <label class="form-label">Caso</label>
+        <select name="cod_registro" class="form-select" required>
+          {% for c in casos_abiertos %}
+          <option value="{{ c.cod_registro }}">{{ c.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Nuevo estado</label>
+        <select name="estado" class="form-select">
+          {% for e in estados_caso %}
+          <option value="{{ e }}" {% if e == 'Cerrado conforme' %}selected{% endif %}>{{ e }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Observación</label>
+        <input type="text" name="observacion" class="form-control" placeholder="Obligatoria si no cierra">
+      </div>
+      <div class="col-12 col-md-3">
+        <button type="submit" class="btn btn-success w-100">Actualizar caso</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
