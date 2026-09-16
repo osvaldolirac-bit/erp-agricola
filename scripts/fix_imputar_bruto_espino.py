@@ -96,7 +96,7 @@ def plan_reparo(conn: sqlite3.Connection, proveedor: str | None) -> list[str]:
     return lines
 
 
-def aplicar(conn: sqlite3.Connection, proveedor: str | None) -> int:
+def aplicar(conn: sqlite3.Connection, proveedor: str | None, *, remap_legacy: bool = False) -> int:
     n = 0
     cc_destino = VARIEDADES_ESPINO[0].upper()
     for row in buscar_facturas(conn, proveedor):
@@ -116,15 +116,16 @@ def aplicar(conn: sqlite3.Connection, proveedor: str | None) -> int:
             """,
             (infer, doc + "_P", prov),
         )
-        for cc in LEGACY_CC:
-            conn.execute(
-                """
-                UPDATE facturas SET centro_costo=?
-                WHERE nro_documento=? AND proveedor=?
-                  AND UPPER(TRIM(centro_costo))=?
-                """,
-                (cc_destino, doc + "_P", prov, cc),
-            )
+        if remap_legacy:
+            for cc in LEGACY_CC:
+                conn.execute(
+                    """
+                    UPDATE facturas SET centro_costo=?
+                    WHERE nro_documento=? AND proveedor=?
+                      AND UPPER(TRIM(centro_costo))=?
+                    """,
+                    (cc_destino, doc + "_P", prov, cc),
+                )
         n += 1
     return n
 
@@ -135,6 +136,7 @@ def main() -> None:
         raise SystemExit(1)
     db = Path(sys.argv[1])
     do_apply = "--apply" in sys.argv
+    remap_legacy = "--remap-legacy-cc" in sys.argv
     proveedor = None
     if "--proveedor" in sys.argv:
         i = sys.argv.index("--proveedor")
@@ -149,9 +151,10 @@ def main() -> None:
         for line in plan_reparo(conn, proveedor):
             print(line)
         if do_apply:
-            n = aplicar(conn, proveedor)
+            n = aplicar(conn, proveedor, remap_legacy=remap_legacy)
             conn.commit()
-            print(f"\n=== Aplicado: {n} factura(s) ===")
+            extra = " (+ remap CC legacy)" if remap_legacy else ""
+            print(f"\n=== Aplicado: {n} factura(s){extra} ===")
         else:
             print("\n=== Dry-run (use --apply) ===")
     finally:
