@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} — GlobalGAP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="mb-3">
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb mb-1 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('globalgap_portal.clientes_list') }}">Clientes</a></li>
+        <li class="breadcrumb-item active">{% if cliente %}Editar{% else %}Nuevo{% endif %}</li>
+      </ol>
+    </nav>
+    <h1 class="h3 mb-0">{{ page_title }}</h1>
+  </div>
+
+  <div class="panel-card col-lg-6">
+    <form method="post" class="row g-3">
+      <div class="col-12">
+        <label class="form-label">Nombre cliente</label>
+        <input type="text" name="nombre" class="form-control" required maxlength="120"
+               value="{{ cliente.nombre if cliente else '' }}">
+      </div>
+      <div class="col-12">
+        <label class="form-label">Notas</label>
+        <input type="text" name="notas" class="form-control" maxlength="200"
+               value="{{ cliente.notas if cliente else '' }}">
+      </div>
+      {% if cliente %}
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="activo" id="activo" {% if cliente.activo %}checked{% endif %}>
+          <label class="form-check-label" for="activo">Cliente activo</label>
+        </div>
+      </div>
+      {% endif %}
+      <div class="col-12 d-flex gap-2">
+        <button type="submit" class="btn btn-success">Guardar</button>
+        <a href="{{ url_for('globalgap_portal.clientes_list') }}" class="btn btn-outline-secondary">Cancelar</a>
+        {% if cliente %}
+        <a href="{{ url_for('globalgap_portal.clientes_detalle', etiqueta_id=cliente.id) }}" class="btn btn-outline-primary ms-auto">Ver ficha</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
