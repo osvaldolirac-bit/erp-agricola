@@ -63,6 +63,73 @@ def _es_documento_interno(nro_documento: str | None) -> bool:
     return doc.startswith("INT-") or doc.startswith("INT/")
 
 
+def _es_factura_real_gasto_operacional(nro_documento: str, tipo: str | None) -> bool:
+    """Solo facturas reales de gasto operacional (no INT-, no sueldos _RRHH)."""
+    doc = (nro_documento or "").strip().upper()
+    if not doc or doc.endswith("_P") or doc.endswith("_RRHH"):
+        return False
+    if _es_documento_interno(doc):
+        return False
+    t = (tipo or "").strip()
+    return t in ("Gasto Operacional", "Gasto Vario")
+
+
+def _ensure_imputar_bruto_col(conn) -> None:
+    """Marca si la imputación CC debe respetarse como neto (iva_bruto desmarcado)."""
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)").fetchall()}
+    if "imputar_bruto" not in cols:
+        if conn_en_solo_lectura(conn):
+            return
+        conn.execute("ALTER TABLE facturas ADD COLUMN imputar_bruto INTEGER DEFAULT 1")
+        conn.commit()
+    if conn_en_solo_lectura(conn):
+        return
+    conn.execute(
+        """
+        UPDATE facturas
+        SET imputar_bruto = 1
+        WHERE COALESCE(imputar_bruto, 1) = 0
+          AND (
+            nro_documento LIKE '%_RRHH'
+            OR UPPER(TRIM(nro_documento)) LIKE 'INT-%'
+            OR UPPER(TRIM(nro_documento)) LIKE 'INT/%'
+            OR COALESCE(tipo, '') NOT IN ('Gasto Operacional', 'Gasto Vario')
+          )
+        """
+    )
+    conn.execute(
+        """
+        UPDATE facturas
+        SET imputar_bruto = 0
+        WHERE nro_documento NOT LIKE '%_P'
+          AND nro_documento NOT LIKE '%_RRHH'
+          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
+          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          AND COALESCE(tipo, '') IN ('Gasto Operacional', 'Gasto Vario')
+          AND monto_total > 0
+          AND id IN (
+            SELECT par.id
+            FROM facturas par
+            INNER JOIN facturas p
+              ON p.nro_documento = par.nro_documento || '_P'
+             AND p.proveedor = par.proveedor
+            WHERE par.nro_documento NOT LIKE '%_P'
+              AND par.nro_documento NOT LIKE '%_RRHH'
+              AND UPPER(TRIM(par.nro_documento)) NOT LIKE 'INT-%'
+              AND UPPER(TRIM(par.nro_documento)) NOT LIKE 'INT/%'
+              AND COALESCE(par.tipo, '') IN ('Gasto Operacional', 'Gasto Vario')
+            GROUP BY par.id, par.monto_total
+            HAVING ABS(SUM(COALESCE(p.monto_imputado, 0)) * 1.19 - par.monto_total)
+                   < MAX(0.02, par.monto_total * 0.005)
+               AND SUM(COALESCE(p.monto_imputado, 0)) > 0.01
+          )
+        """
+    )
+    conn.commit()
+
+
 def _ensure_folio_interno_col(conn) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -560,18 +627,47 @@ def _post_save_gastos(demo, conn) -> dict:
     if not selcc:
         return {"ok": False, "msg": "Seleccione al menos un centro de costo."}
 
+    _ensure_imputar_bruto_col(conn)
     ng = _folio_interno(conn, fe) if sin_doc else nro
     imp = mt if iva_bruto else mt / 1.19
+    flag_bruto = 1 if iva_bruto else 0
     conn.execute(
         """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-           tipo, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?)""",
-        (ng, prov, fe, fv, mt, "Gasto Operacional", concepto, razon, tipo_gasto),
+           monto_neto, tipo, concepto, razon_social, tipo_gasto, imputar_bruto)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            ng,
+            prov,
+            fe,
+            fv,
+            mt,
+            imp,
+            "Gasto Operacional",
+            concepto,
+            razon,
+            tipo_gasto,
+            flag_bruto,
+        ),
     )
     for c in selcc:
         conn.execute(
             """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-               tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (ng + "_P", prov, fe, fv, 0, "Gasto Operacional", c.upper(), imp / len(selcc), concepto, razon, tipo_gasto),
+               tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto, imputar_bruto)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                ng + "_P",
+                prov,
+                fe,
+                fv,
+                0,
+                "Gasto Operacional",
+                c.upper(),
+                imp / len(selcc),
+                concepto,
+                razon,
+                tipo_gasto,
+                flag_bruto,
+            ),
         )
     conn.commit()
     demo.registrar_accion("GASTO", ng)
@@ -836,6 +932,7 @@ def gather_compras(user_email: str, user_rol: str) -> dict:
     conn = demo.conectar_db()
     try:
         demo._migrar_tipo_gasto_operacional(conn)
+        _ensure_imputar_bruto_col(conn)
         ctx: dict = {"secciones": SECCIONES, "sec_activa": sec}
         if sec == "historial":
             ctx.update(_historial(demo, conn))
@@ -860,6 +957,7 @@ def view(user_email: str, user_rol: str):
         conn = demo.conectar_db()
         try:
             demo._migrar_tipo_gasto_operacional(conn)
+            _ensure_imputar_bruto_col(conn)
             result: dict | None = None
             if action == "add_car":
                 result = _post_add_car(demo)
