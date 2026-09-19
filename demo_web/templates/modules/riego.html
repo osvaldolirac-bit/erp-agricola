@@ -441,26 +441,45 @@
   {% endif %}
   <div class="panel-card">
     <h2 class="h6">Historial de riego</h2>
+    <p class="small text-muted mb-2">
+      Columnas N/P/K: kg nutriente del evento (riqueza del producto) y kg/ha según superficie del CC en
+      <strong>prorrateo</strong> (Administración o Consola master).
+    </p>
     {% if historial_rows %}
     <div class="table-responsive">
-      <table class="table table-sm table-hover demo-datatable w-100">
+      <table class="table table-sm table-hover demo-datatable w-100 riego-historial-npk-table">
         <thead>
           <tr>
-            <th>#</th><th>N°</th><th>Fecha</th><th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
-            <th>Fertilización</th><th>Regador</th><th>Origen</th><th>Registrado</th>
+            <th>#</th><th>N°</th><th>Fecha</th><th>Huerto</th><th class="text-end">ha</th>
+            <th>Modo</th><th>Horas</th><th>m³</th>
+            <th>Fertilización</th>
+            <th class="text-end riego-npk-th-n">N (kg)</th>
+            <th class="text-end riego-npk-th-n">N kg/ha</th>
+            <th class="text-end riego-npk-th-p">P₂O₅ (kg)</th>
+            <th class="text-end riego-npk-th-p">P kg/ha</th>
+            <th class="text-end riego-npk-th-k">K₂O (kg)</th>
+            <th class="text-end riego-npk-th-k">K kg/ha</th>
+            <th>Regador</th><th>Origen</th><th>Registrado</th>
           </tr>
         </thead>
         <tbody>
           {% for r in historial_rows %}
-          <tr>
+          <tr class="{% if r.sin_ha %}table-warning{% endif %}">
             <td>{{ r.num }}</td>
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha }}</td>
             <td>{{ r.huerto }}</td>
+            <td class="text-end small">{{ r.ha_fmt|default('—') }}</td>
             <td class="small">{{ r.modo_txt|default('Tecnificado') }}</td>
             <td>{{ r.horas }}</td>
             <td>{{ r.m3 }}</td>
             <td class="small">{{ r.fert_txt }}</td>
+            <td class="text-end riego-npk-val-n">{{ r.n_kg_fmt|default('—') }}</td>
+            <td class="text-end riego-npk-val-n">{{ r.n_ha_fmt|default('—') }}</td>
+            <td class="text-end riego-npk-val-p">{{ r.p_kg_fmt|default('—') }}</td>
+            <td class="text-end riego-npk-val-p">{{ r.p_ha_fmt|default('—') }}</td>
+            <td class="text-end riego-npk-val-k">{{ r.k_kg_fmt|default('—') }}</td>
+            <td class="text-end riego-npk-val-k">{{ r.k_ha_fmt|default('—') }}</td>
             <td>{{ r.regador }}</td>
             <td>{{ r.origen }}</td>
             <td class="small text-muted">{{ r.creado_en[:16] if r.creado_en else '—' }}</td>

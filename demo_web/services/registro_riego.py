@@ -509,6 +509,97 @@ def _fmt_kg_ha(val: float | None, f_cant) -> str:
     return f_cant(val)
 
 
+def _fmt_kg_npk(val: float, f_cant, *, tiene: bool) -> str:
+    if not tiene or val <= 0:
+        return "—"
+    return f_cant(val)
+
+
+def _sumar_npk_fertilizante_rows(
+    conn: sqlite3.Connection,
+    rows: list[tuple],
+) -> tuple[float, float, float]:
+    """Suma kg N, P₂O₅ y K₂O desde filas (producto, producto_id, cantidad, unidad, n_pct, p_pct, k_pct, npk_rec)."""
+    n = p = k = 0.0
+    for producto, producto_id, cantidad, unidad, n_pct, p_pct, k_pct, npk_rec in rows:
+        prod = str(producto or "").strip()
+        pid = int(producto_id or 0)
+        kg_fert = _cantidad_kg_fertilizante(float(cantidad or 0), unidad)
+        if kg_fert <= 0:
+            continue
+        if int(npk_rec or 0) and n_pct is not None and p_pct is not None and k_pct is not None:
+            pct_n, pct_p, pct_k = float(n_pct), float(p_pct), float(k_pct)
+        else:
+            pct_n, pct_p, pct_k, _ = npk_para_producto(conn, pid, prod)
+        n += _kg_nutriente_aplicado(kg_fert, "kg", pct_n)
+        p += _kg_nutriente_aplicado(kg_fert, "kg", pct_p)
+        k += _kg_nutriente_aplicado(kg_fert, "kg", pct_k)
+    return n, p, k
+
+
+def _npk_evento_fmt(
+    conn: sqlite3.Connection,
+    huerto: str,
+    fert_rows: list[tuple],
+    f_cant,
+) -> dict[str, Any]:
+    """Nutrientes totales y kg/ha de un evento (superficie desde prorrateo_cc)."""
+    n_kg, p_kg, k_kg = _sumar_npk_fertilizante_rows(conn, fert_rows)
+    tiene_fert = n_kg > 0 or p_kg > 0 or k_kg > 0
+    ha = _cargar_superficie_ha(conn, huerto)
+    n_ha = (n_kg / ha) if ha > 0 and tiene_fert else None
+    p_ha = (p_kg / ha) if ha > 0 and tiene_fert else None
+    k_ha = (k_kg / ha) if ha > 0 and tiene_fert else None
+    return {
+        "tiene_fert": tiene_fert,
+        "ha": ha,
+        "ha_fmt": f_cant(ha) if ha > 0 else "—",
+        "sin_ha": tiene_fert and ha <= 0,
+        "n_kg_fmt": _fmt_kg_npk(n_kg, f_cant, tiene=tiene_fert),
+        "p_kg_fmt": _fmt_kg_npk(p_kg, f_cant, tiene=tiene_fert),
+        "k_kg_fmt": _fmt_kg_npk(k_kg, f_cant, tiene=tiene_fert),
+        "n_ha_fmt": _fmt_kg_ha(n_ha, f_cant) if tiene_fert else "—",
+        "p_ha_fmt": _fmt_kg_ha(p_ha, f_cant) if tiene_fert else "—",
+        "k_ha_fmt": _fmt_kg_ha(k_ha, f_cant) if tiene_fert else "—",
+    }
+
+
+def _npk_evento_desde_codigo(
+    conn: sqlite3.Connection,
+    codigo: str,
+    huerto: str,
+    f_cant,
+) -> dict[str, Any]:
+    rows = conn.execute(
+        """SELECT producto, producto_id, cantidad, unidad,
+                  n_pct, p_pct, k_pct, COALESCE(npk_reconocido, 0)
+           FROM riego_fertilizantes
+           WHERE codigo=? AND COALESCE(cantidad, 0) > 0""",
+        (codigo,),
+    ).fetchall()
+    return _npk_evento_fmt(conn, huerto, rows, f_cant)
+
+
+def _fertilizantes_por_codigos(
+    conn: sqlite3.Connection, codigos: list[str]
+) -> dict[str, list[tuple]]:
+    codigos = [c for c in codigos if c]
+    if not codigos:
+        return {}
+    placeholders = ",".join("?" * len(codigos))
+    rows = conn.execute(
+        f"""SELECT codigo, producto, producto_id, cantidad, unidad,
+                   n_pct, p_pct, k_pct, COALESCE(npk_reconocido, 0)
+            FROM riego_fertilizantes
+            WHERE codigo IN ({placeholders}) AND COALESCE(cantidad, 0) > 0""",
+        codigos,
+    ).fetchall()
+    out: dict[str, list[tuple]] = {}
+    for codigo, *rest in rows:
+        out.setdefault(str(codigo), []).append(tuple(rest))
+    return out
+
+
 def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
     """N, P₂O₅ y K₂O acumulados por CC expresados en kg/ha (superficie prorrateo_cc)."""
     migrar_tabla(conn)
@@ -1609,6 +1700,7 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
 def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
     demo = get_demo_module()
     migrar_tabla(conn)
+    f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
     rows = conn.execute(
         """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
                   regador, origen, bitacora_codigo, creado_por, creado_en,
@@ -1616,6 +1708,8 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
            FROM riego ORDER BY fecha DESC, id DESC LIMIT ?""",
         (limite,),
     ).fetchall()
+    codigos = [str(r[0] or "").strip() for r in rows if str(r[0] or "").strip()]
+    fert_por_codigo = _fertilizantes_por_codigos(conn, codigos)
     out = []
     for i, row in enumerate(rows, start=1):
         (
@@ -1634,6 +1728,12 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
             modo_riego,
             surcos,
         ) = row
+        cod = str(codigo or "").strip()
+        npk = (
+            _npk_evento_fmt(conn, str(huerto or ""), fert_por_codigo.get(cod, []), f_cant)
+            if cod
+            else {}
+        )
         out.append(
             {
                 "num": i,
@@ -1649,6 +1749,7 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
                 "bitacora_codigo": bit_cod or "",
                 "creado_por": creado_por or "",
                 "creado_en": creado_en or "",
+                **npk,
             }
         )
     return out
