@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Maestra de precios{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Maestra de precios</h1>
+    <p>
+      Catálogo del tenant (insumos, mano de obra, equipos…). El APU de cada obra toma estos precios
+      para armar el PU de la partida. Suba su Excel/CSV para no tipar uno a uno.
+    </p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('constructora_precios_plantilla') }}">Descargar plantilla</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('constructora_precios_export') }}">Exportar CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('constructora_precio_form') }}"><i class="bi bi-plus-lg"></i> Nuevo</a>
+  </div>
+</div>
+
+<div class="panel mb-3">
+  <form method="post" action="{{ url_for('constructora_precios_importar') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+    <div class="col-md-6">
+      <label class="form-label fw-bold mb-0">Importar maestra (CSV o Excel)</label>
+      <div class="small text-muted mb-1">
+        Columnas: <code>codigo;nombre;unidad;tipo;precio</code> · tipo = insumo | mano_obra | otro.
+        Si el código existe, actualiza precio/nombre; si no, crea.
+      </div>
+      <input class="form-control" type="file" name="archivo" accept=".csv,.txt,.xlsx,.xlsm" required>
+    </div>
+    <div class="col-md-3">
+      <button class="btn btn-primary w-100" type="submit">Subir e importar</button>
+    </div>
+    <div class="col-md-3">
+      <a class="btn btn-outline-secondary w-100" href="{{ url_for('constructora_obras') }}">Ir a Obras</a>
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <form class="row g-2 align-items-end mb-3" method="get">
+    <div class="col-md-5">
+      <label class="form-label small fw-bold">Buscar</label>
+      <input class="form-control form-control-sm" name="q" value="{{ q or '' }}" placeholder="Código o nombre">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-bold">Tipo</label>
+      <select class="form-select form-select-sm" name="tipo">
+        <option value="">Todos</option>
+        <option value="insumo" {% if tipo_filtro=='insumo' %}selected{% endif %}>Insumo</option>
+        <option value="mano_obra" {% if tipo_filtro=='mano_obra' %}selected{% endif %}>Mano de obra</option>
+        <option value="otro" {% if tipo_filtro=='otro' %}selected{% endif %}>Otro</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-sm btn-outline-secondary w-100" type="submit">Filtrar</button>
+    </div>
+    <div class="col-md-2 small text-muted text-end">{{ rows|length }} ítems</div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle table-sm">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Tipo</th>
+          <th>Unidad</th>
+          <th class="text-end">Precio</th>
+          <th class="text-end">PMP bodega</th>
+          <th>Activo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><strong>{{ r.codigo or '—' }}</strong></td>
+          <td>{{ r.nombre }}</td>
+          <td>
+            {% if r.tipo_recurso == 'mano_obra' %}
+            <span class="badge text-bg-secondary">Mano de obra</span>
+            {% elif r.tipo_recurso == 'otro' %}
+            <span class="badge text-bg-light text-dark border">Otro</span>
+            {% else %}
+            <span class="badge text-bg-primary">Insumo</span>
+            {% endif %}
+          </td>
+          <td>{{ r.unidad }}</td>
+          <td class="text-end fw-bold">{{ clp(r.precio) }}</td>
+          <td class="text-end text-muted">{% if (r.pmp or 0) > 0 %}{{ clp(r.pmp) }}{% else %}—{% endif %}</td>
+          <td>{{ 'Sí' if r.activo else 'No' }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('constructora_precio_form', pid=r.id) }}">Editar</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-muted">
+            Sin precios. Descargue la plantilla, complete su catálogo e importe el archivo.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

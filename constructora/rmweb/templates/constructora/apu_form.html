@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if edit and edit.id else 'Armar' }} APU · PU{% endblock %}
+{% block head %}
+<style>
+  .apu-guide {
+    border: 1px solid #e4ddd0; border-radius: 12px; background: #f7f1ea;
+    padding: .85rem 1rem; margin: 0 0 1rem; font-size: .92rem; color: #3d3830;
+  }
+  .apu-guide ol { margin: .35rem 0 0; padding-left: 1.2rem; }
+  .apu-guide li { margin: .2rem 0; }
+  .apu-pu-box {
+    border: 2px solid #c45c26; border-radius: 12px; padding: 1rem 1.1rem;
+    background: #fff; text-align: center;
+  }
+  .apu-pu-box .lbl { font-size: .75rem; font-weight: 800; letter-spacing: .08em;
+    text-transform: uppercase; color: #7a7468; }
+  .apu-pu-box .val { font-size: 1.75rem; font-weight: 800; color: #c45c26;
+    letter-spacing: -.02em; margin-top: .15rem; }
+  .apu-comp-head { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;
+    justify-content:space-between; margin: 0 0 .65rem; }
+  #apuItems thead th { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+    color: #6b5b4e; background: #f7f1ea; border-bottom: 2px solid #c45c26; }
+  .apu-row-empty .js-desc::placeholder { color: #a39888; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if edit and edit.id %}APU {{ edit.codigo }}{% else %}Armar precio unitario (APU){% endif %}</h1>
+    <p>
+      Obra <strong>{{ obra.nombre }}</strong>
+      {% if partida %} · Partida <strong>{{ partida.codigo }}</strong> — {{ partida.detalle }}{% endif %}.
+      {% if congelado %}<span class="badge text-bg-secondary">Solo lectura (presupuesto aprobado)</span>{% endif %}
+    </p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('constructora_obra_detalle', obra_id=obra_id, sec='cotizacion') }}">Volver al presupuesto</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('constructora_obra_detalle', obra_id=obra_id, sec='apu') }}">Lista APU</a>
+  </div>
+</div>
+
+{% if not partida_id and not (edit and edit.id) %}
+<div class="alert alert-warning">
+  Falta elegir la <strong>partida del presupuesto</strong> a valorizar.
+  Vaya a <a href="{{ url_for('constructora_obra_detalle', obra_id=obra_id, sec='cotizacion') }}">Presupuesto</a>
+  o a <a href="{{ url_for('constructora_obra_detalle', obra_id=obra_id, sec='apu') }}">APU</a>
+  y pulse <em>Armar precio unitario</em> en la partida.
+</div>
+{% endif %}
+
+{% if congelado %}
+<div class="alert alert-warning">
+  Este APU está <strong>congelado</strong> porque el presupuesto está aprobado.
+  Para editar insumos y el PU, pulse <em>Reabrir a borrador</em>.
+  <form method="post" action="{{ url_for('constructora_obra_reabrir', obra_id=obra_id) }}" class="d-inline ms-2"
+        onsubmit="return confirm('¿Reabrir el presupuesto a borrador para editar APU?');">
+    <button class="btn btn-sm btn-outline-dark" type="submit">Reabrir a borrador</button>
+  </form>
+</div>
+{% else %}
+<div class="apu-guide">
+  <strong>Cómo armar el precio unitario</strong>
+  <ol>
+    <li>En la tabla <strong>Composición del PU</strong> complete cada fila: descripción, tipo, cantidad y precio unitario.</li>
+    <li>Use <strong>+ Agregar fila</strong> si necesita más líneas (materiales, mano de obra, equipos, subcontratos).</li>
+    <li>Opcional: elija un producto del catálogo/bodega para sugerir unidad y PMP (solo referencia).</li>
+    <li>Las <strong>leyes sociales %</strong> se aplican sobre mano de obra; las <strong>pérdidas %</strong> sobre insumos.</li>
+    <li>Pulse <strong>Guardar APU</strong>: el <strong>PU neto</strong> queda en la columna PRECIO del presupuesto.</li>
+  </ol>
+</div>
+{% endif %}
+
+{% if not precios %}
+<div class="alert alert-light border small">
+  No hay catálogo de bodega cargado. No importa: tipá descripción y precio a mano en cada fila.
+</div>
+{% endif %}
+
+<div class="panel">
+  <form method="post" id="apuForm" {% if congelado %}onsubmit="return false;"{% endif %}
+        action="{{ url_for('constructora_apu_form', obra_id=obra_id, apu_id=edit.id, partida=partida_id) if edit and edit.id else url_for('constructora_apu_form', obra_id=obra_id, partida=partida_id) }}">
+    {% if partida_id %}<input type="hidden" name="partida_id" value="{{ partida_id }}">{% endif %}
+    <fieldset {% if congelado %}disabled{% endif %}>
+    <div class="row g-3 mb-3">
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Código APU</label>
+        <input class="form-control" name="codigo" value="{{ edit.codigo if edit and edit.codigo else codigo_def }}" required>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label fw-bold">Nombre (partida)</label>
+        <input class="form-control" name="nombre" value="{{ edit.nombre if edit else (partida.detalle if partida else '') }}" required>
+      </div>
+      <div class="col-md-1">
+        <label class="form-label fw-bold">Und</label>
+        <input class="form-control" name="unidad" value="{{ edit.unidad if edit else (partida.unidad if partida else 'gl') }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Leyes sociales %</label>
+        <input class="form-control" type="number" step="0.1" min="0" name="leyes_pct" id="leyes_pct"
+               value="{{ edit.leyes_pct if edit else 30 }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Pérdidas %</label>
+        <input class="form-control" type="number" step="0.1" min="0" name="perdidas_pct" id="perdidas_pct"
+               value="{{ edit.perdidas_pct if edit else 5 }}">
+      </div>
+      <div class="col-12">
+        <label class="form-label fw-bold">Notas</label>
+        <input class="form-control" name="notas" value="{{ edit.notas if edit and edit.notas else '' }}" placeholder="Opcional">
+      </div>
+      <input type="hidden" name="activo" value="1">
+    </div>
+
+    <div class="apu-comp-head">
+      <div>
+        <h2 class="h6 mb-0">Composición del PU — aquí se ingresan los datos</h2>
+        <p class="small text-muted mb-0">
+          Escriba en las filas de abajo (descripción + cantidad + precio). Cant × P.unit = total de la línea.
+        </p>
+      </div>
+      {% if not congelado %}
+      <button class="btn btn-sm btn-primary" type="button" id="btnAddRow">+ Agregar fila</button>
+      {% endif %}
+    </div>
+
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle" id="apuItems">
+        <thead>
+          <tr>
+            <th style="width:32%">Descripción</th>
+            <th style="width:110px">Tipo</th>
+            <th style="width:70px">Und</th>
+            <th style="width:90px">Cantidad</th>
+            <th style="width:120px">P. unitario $</th>
+            <th style="width:100px">PMP ref.</th>
+            <th style="width:110px" class="text-end">Total línea</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in range(slots) %}
+          {% set it = items[i] if i < items|length else None %}
+          <tr class="apu-row {% if not it %}apu-row-empty{% endif %}">
+            <td>
+              <input class="form-control form-control-sm js-desc mb-1" name="item_desc"
+                     placeholder="Ej. Cemento, cuadrilla, moldaje…"
+                     value="{{ it.descripcion if it and it.descripcion is defined else '' }}">
+              {% if precios %}
+              <select class="form-select form-select-sm js-prod" name="item_producto_id">
+                <option value="">Catálogo bodega (opcional)</option>
+                {% for p in precios %}
+                <option value="{{ p.id }}"
+                        data-tipo="{{ p.tipo_recurso }}"
+                        data-unidad="{{ p.unidad }}"
+                        data-pmp="{{ p.pmp or p.precio or 0 }}"
+                        data-nombre="{{ p.nombre }}"
+                        {% if it and it.producto_id == p.id %}selected{% endif %}>
+                  {{ p.codigo or '' }} · {{ p.nombre }}
+                </option>
+                {% endfor %}
+              </select>
+              {% else %}
+              <input type="hidden" name="item_producto_id" value="" class="js-prod">
+              {% endif %}
+            </td>
+            <td>
+              <select class="form-select form-select-sm js-tipo" name="item_tipo">
+                {% for t, lab in [('insumo','Insumo'), ('mano_obra','Mano de obra'), ('otro','Otro')] %}
+                <option value="{{ t }}" {% if it and it.tipo==t %}selected{% endif %}>{{ lab }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input class="form-control form-control-sm js-und" name="item_und" value="{{ it.unidad if it and it.unidad is defined else 'un' }}"></td>
+            <td><input class="form-control form-control-sm js-cant" type="number" step="0.01" min="0" name="item_cant" value="{{ it.cantidad if it else '' }}" placeholder="0"></td>
+            <td><input class="form-control form-control-sm js-pu" type="number" step="1" min="0" name="item_pu" value="{{ it.precio_unitario if it and it.precio_unitario is defined else '' }}" placeholder="0"></td>
+            <td class="small text-muted js-pmp">—</td>
+            <td class="text-end fw-bold js-line text-muted">$0</td>
+            <td>{% if not congelado %}<button type="button" class="btn btn-sm btn-link text-danger js-del" title="Limpiar fila">×</button>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="row g-3 align-items-stretch">
+      <div class="col-md-5">
+        <div class="cot-totals-box">
+          <div class="cot-tot-row"><span>Insumos</span><strong id="bInsumos">$0</strong></div>
+          <div class="cot-tot-row"><span>Mano de obra</span><strong id="bMo">$0</strong></div>
+          <div class="cot-tot-row"><span>Otro</span><strong id="bOtro">$0</strong></div>
+          <div class="cot-tot-row"><span>Leyes sociales</span><strong id="bLeyes">$0</strong></div>
+          <div class="cot-tot-row"><span>Pérdidas</span><strong id="bPerd">$0</strong></div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="apu-pu-box h-100 d-flex flex-column justify-content-center">
+          <div class="lbl">Precio unitario neto</div>
+          <div class="val" id="bPu">$0</div>
+          <div class="small text-muted mt-1">Se graba en la partida del presupuesto</div>
+        </div>
+      </div>
+      <div class="col-md-4 d-flex align-items-end justify-content-end gap-2 flex-wrap">
+        {% if not congelado %}
+        <button class="btn btn-primary fw-bold btn-lg" type="submit">Guardar APU</button>
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="{{ url_for('constructora_obra_detalle', obra_id=obra_id, sec='cotizacion') }}">Volver al presupuesto</a>
+      </div>
+    </div>
+    </fieldset>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  function clp(n){
+    const v=Math.round(Number(n)||0);
+    return '$'+v.toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  }
+  function fillMeta(row){
+    const sel=row.querySelector('.js-prod');
+    if(!sel || sel.tagName !== 'SELECT') return;
+    const opt=sel.selectedOptions[0];
+    const pmpEl=row.querySelector('.js-pmp');
+    const desc=row.querySelector('.js-desc');
+    const tipo=row.querySelector('.js-tipo');
+    const und=row.querySelector('.js-und');
+    const pu=row.querySelector('.js-pu');
+    if(!opt||!opt.value){
+      if(pmpEl) pmpEl.textContent='—';
+      return;
+    }
+    const pmp=Number(opt.getAttribute('data-pmp')||0);
+    if(pmpEl) pmpEl.textContent=clp(pmp);
+    if(desc && !desc.value) desc.value=opt.getAttribute('data-nombre')||'';
+    if(tipo) tipo.value=opt.getAttribute('data-tipo')||'insumo';
+    if(und && (!und.value || und.value==='un')) und.value=opt.getAttribute('data-unidad')||'un';
+    if(pu && Number(pu.value||0)<=0 && pmp>0) pu.value=pmp;
+  }
+  function recalc(){
+    let insumos=0, mo=0, otro=0;
+    document.querySelectorAll('#apuItems .apu-row').forEach(function(row){
+      fillMeta(row);
+      const cant=Number(row.querySelector('.js-cant').value||0);
+      const pu=Number(row.querySelector('.js-pu').value||0);
+      const tipo=(row.querySelector('.js-tipo').value||'insumo');
+      const line=(cant>0 && pu>0)? cant*pu : 0;
+      const lineEl=row.querySelector('.js-line');
+      if(lineEl){
+        lineEl.textContent=clp(line);
+        lineEl.classList.toggle('text-muted', line<=0);
+      }
+      if(line<=0) return;
+      if(tipo==='mano_obra') mo+=line;
+      else if(tipo==='otro') otro+=line;
+      else insumos+=line;
+    });
+    const leyesPct=Number(document.getElementById('leyes_pct').value||0);
+    const perdPct=Number(document.getElementById('perdidas_pct').value||0);
+    const leyes=mo*leyesPct/100;
+    const perd=insumos*perdPct/100;
+    const pu=insumos+mo+otro+leyes+perd;
+    document.getElementById('bInsumos').textContent=clp(insumos);
+    document.getElementById('bMo').textContent=clp(mo);
+    document.getElementById('bOtro').textContent=clp(otro);
+    document.getElementById('bLeyes').textContent=clp(leyes);
+    document.getElementById('bPerd').textContent=clp(perd);
+    document.getElementById('bPu').textContent=clp(pu);
+  }
+  function clearRow(row){
+    row.querySelectorAll('input').forEach(function(inp){
+      if(inp.type==='hidden') { inp.value=''; return; }
+      if(inp.name==='item_und') inp.value='un';
+      else inp.value='';
+    });
+    const sel=row.querySelector('select.js-prod');
+    if(sel) sel.selectedIndex=0;
+    const tipo=row.querySelector('.js-tipo');
+    if(tipo) tipo.value='insumo';
+    recalc();
+  }
+  function addRow(){
+    const tbody=document.querySelector('#apuItems tbody');
+    const proto=tbody.querySelector('.apu-row');
+    if(!proto) return;
+    const row=proto.cloneNode(true);
+    clearRow(row);
+    tbody.appendChild(row);
+    bindRow(row);
+    row.querySelector('.js-desc').focus();
+  }
+  function bindRow(row){
+    const del=row.querySelector('.js-del');
+    if(del) del.onclick=function(){ clearRow(row); };
+  }
+  document.querySelectorAll('#apuItems .apu-row').forEach(bindRow);
+  const addBtn=document.getElementById('btnAddRow');
+  if(addBtn) addBtn.addEventListener('click', addRow);
+  const form=document.getElementById('apuForm');
+  if(form){
+    form.addEventListener('input', recalc);
+    form.addEventListener('change', recalc);
+    recalc();
+  }
+})();
+</script>
+{% endblock %}
