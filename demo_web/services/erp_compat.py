@@ -80,14 +80,23 @@ def patch_erp_module(erp, app_name: str) -> None:
 
         erp.contar_roles_admin_demo = contar_roles_admin_demo
 
-    _patch_matriz_costos_cc_canon(erp)
+    _patch_matriz_costos_espino(erp)
+    _patch_resumen_costos_flujo_espino(erp)
 
 
-def _patch_matriz_costos_cc_canon(erp) -> None:
-    """Mapeo case-insensitive CC en matriz + prorrateo legacy bodega Espino."""
+def _es_espino_erp(erp) -> bool:
+    from demo_web.services.espino_costos import es_espino_demo
+
+    return es_espino_demo(erp)
+
+
+def _patch_matriz_costos_espino(erp) -> None:
+    """Espino: toda matriz costos pasa por espino_costos; LC: cc_canon si falta."""
     orig = getattr(erp, "_armar_matriz_costos_vista_b", None)
-    if not callable(orig) or getattr(orig, "_cc_canon_wrapped", False):
+    if not callable(orig) or getattr(orig, "_espino_central_wrapped", False):
         return
+
+    erp._armar_matriz_costos_vista_b_raw = orig
 
     import inspect
 
@@ -100,36 +109,48 @@ def _patch_matriz_costos_cc_canon(erp) -> None:
     def _armar_matriz_costos_vista_b(
         conn, fi, ff, cuarteles, prorrateo_rrhh, temporada, fi_rrhh=None, ff_rrhh=None, **kwargs,
     ):
-        if not needs_cc_canon:
-            matriz = orig(
-                conn, fi, ff, cuarteles, prorrateo_rrhh, temporada,
-                fi_rrhh=fi_rrhh, ff_rrhh=ff_rrhh, **kwargs,
+        if _es_espino_erp(erp):
+            from demo_web.services.espino_costos import armar_matriz_costos_espino
+
+            neto = kwargs.get("neto_facturas_iva", kwargs.get("neto_facturas_espino", True))
+            return armar_matriz_costos_espino(
+                erp, conn, prorrateo_rrhh, temporada,
+                fi, ff, fi_rrhh=fi_rrhh, ff_rrhh=ff_rrhh, neto_facturas_iva=bool(neto),
             )
-        else:
-            matriz = _armar_matriz_con_cc_canon(
+        if needs_cc_canon:
+            return _armar_matriz_con_cc_canon(
                 erp, orig, conn, fi, ff, cuarteles, prorrateo_rrhh, temporada,
                 fi_rrhh=fi_rrhh, ff_rrhh=ff_rrhh, **kwargs,
             )
-        try:
-            from demo_web.services.tenant_scope import is_espino_tenant
-            from demo_web.services.costos_espino_matriz import inyectar_prorrateo_legacy_cc
+        return orig(
+            conn, fi, ff, cuarteles, prorrateo_rrhh, temporada,
+            fi_rrhh=fi_rrhh, ff_rrhh=ff_rrhh, **kwargs,
+        )
 
-            if is_espino_tenant():
-                matriz = inyectar_prorrateo_legacy_cc(
-                    conn, erp, matriz, list(cuarteles or []), fi, ff,
-                )
-        except Exception:
-            pass
-        return matriz
-
-    _armar_matriz_costos_vista_b._cc_canon_wrapped = True
+    _armar_matriz_costos_vista_b._espino_central_wrapped = True
     erp._armar_matriz_costos_vista_b = _armar_matriz_costos_vista_b
+
+
+def _patch_resumen_costos_flujo_espino(erp) -> None:
+    orig = getattr(erp, "_resumen_costos_para_flujo", None)
+    if not callable(orig) or getattr(orig, "_espino_flujo_wrapped", False):
+        return
+
+    def _resumen_costos_para_flujo(conn, temporada, fi, ff):
+        if _es_espino_erp(erp):
+            from demo_web.services.espino_costos import resumen_costos_para_flujo_espino
+
+            return resumen_costos_para_flujo_espino(erp, conn, temporada, fi, ff)
+        return orig(conn, temporada, fi, ff)
+
+    _resumen_costos_para_flujo._espino_flujo_wrapped = True
+    erp._resumen_costos_para_flujo = _resumen_costos_para_flujo
 
 
 def _armar_matriz_con_cc_canon(
     erp, orig, conn, fi, ff, cuarteles, prorrateo_rrhh, temporada, fi_rrhh=None, ff_rrhh=None, **kwargs,
 ):
-    """Fallback cuando app_concepcion no tiene cc_canon en add()."""
+    """Fallback cuando app_concepcion no tiene cc_canon en add() (solo LC)."""
     cols_cc = list(cuarteles)
     cols = cols_cc + ["TOTAL"]
     rubros = list(getattr(erp, "RUBROS_MATRIZ_COSTOS", []) or [])

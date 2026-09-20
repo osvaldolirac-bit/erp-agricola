@@ -3,7 +3,9 @@ from __future__ import annotations
 import pandas as pd
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.espino_costos import dataframe_gastos_dashboard_espino
 from demo_web.services.native._helpers import prorrateo_rrhh
+from demo_web.services.tenant_scope import is_espino_tenant
 
 
 def _conn():
@@ -130,9 +132,13 @@ def costos_resumen(email: str, rol: str) -> tuple[list[dict], list[str]]:
     demo, conn = _conn()
     bind_user_session(email, rol)
     try:
-        dfr, _ = demo._armar_dataframe_costos_dashboard(
-            conn, demo.CUARTELES_OFICIALES, prorrateo_rrhh(demo, conn)
-        )
+        prorr = prorrateo_rrhh(demo, conn)
+        if is_espino_tenant():
+            dfr = dataframe_gastos_dashboard_espino(demo, conn, prorr)
+        else:
+            dfr, _ = demo._armar_dataframe_costos_dashboard(
+                conn, demo.CUARTELES_OFICIALES, prorr
+            )
         if dfr.empty:
             return [], []
         show = dfr.copy()
