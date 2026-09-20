@@ -5,8 +5,22 @@ from dateutil.relativedelta import relativedelta
 import pandas as pd
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
-from demo_web.services.erp_loader import get_erp_app
+from demo_web.services.erp_loader import current_tenant, get_erp_app
 from demo_web.services.native._helpers import avance_ppto_badge_tone, prorrateo_rrhh
+from demo_web.services.tenant_scope import cuarteles_oficiales
+
+
+def _dashboard_title() -> str:
+    t = current_tenant() or {}
+    slug = str(t.get("slug") or "").strip().lower()
+    if slug == "espino":
+        return "ERP EL ESPINO"
+    nombre_erp = (t.get("nombre_erp") or "").strip()
+    if nombre_erp:
+        return nombre_erp.upper()
+    if get_erp_app() == "concepcion":
+        return "ERP AGRÍCOLA LA CONCEPCIÓN"
+    return "ERP DEMO AGRÍCOLA"
 
 
 def _demo():
@@ -71,7 +85,7 @@ def gather_dashboard(email: str, rol: str) -> dict:
         gastos_cc = []
         pagos_mes = []
         dfr_base, _ = demo._armar_dataframe_costos_dashboard(
-            conn, demo.CUARTELES_OFICIALES, prorrateo_rrhh(demo, conn)
+            conn, cuarteles_oficiales(demo), prorrateo_rrhh(demo, conn)
         )
         if not dfr_base.empty:
             df_gastos = demo._build_dashboard_gastos_cc_df(conn, dfr_base)
@@ -123,11 +137,7 @@ def gather_dashboard(email: str, rol: str) -> dict:
                 }
             )
 
-        dash_title = (
-            "ERP AGRÍCOLA LA CONCEPCIÓN"
-            if get_erp_app() == "concepcion"
-            else "ERP DEMO AGRÍCOLA"
-        )
+        dash_title = _dashboard_title()
 
         return {
             "alerta_rrhh": alerta_rrhh,

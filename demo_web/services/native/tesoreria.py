@@ -7,7 +7,7 @@ from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.tenant_scope import razon_social_default
 
 SECCIONES = [
     ("pendientes", "🔴 PENDIENTES"),
@@ -203,7 +203,7 @@ def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
             {
                 "nro_documento": r["nro_documento"],
                 "proveedor": r["proveedor"],
-                "razon_social": r.get("razon_social") or "La Concepción",
+                "razon_social": r.get("razon_social") or razon_social_default(),
                 "fecha_vencimiento": venc.strftime("%d-%m-%Y"),
                 "dias_vencido": "" if pd.isna(r.get("dias_vencido")) else int(r["dias_vencido"]),
                 "monto_total": demo.f_peso(r["monto_total"]),
@@ -331,7 +331,7 @@ def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, 
     n_docs = len(documentos)
     linea_banco = f"<p><b>🏦 Banco:</b> {html_esc(banco)}</p>" if banco else ""
     pagador = razones_sociales_desde_docs(documentos, razon_social) or ""
-    marca_erp = (getattr(demo, "NOMBRE_ERP", None) or "Agrícola La Concepción").strip()
+    marca_erp = (getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola").strip()
     linea_razon = (
         f"<p><b>🏛️ Razón social que paga:</b> {html_esc(pagador)}</p>"
         if pagador else ""
