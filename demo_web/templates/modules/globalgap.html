@@ -1006,6 +1006,7 @@
         <div class="small text-muted">
           Cosecha {{ especie_sel }}{% if planif_cuartel %} · {{ planif_cuartel }}{% endif %}:
           <strong>{{ planif_cosecha_label }}</strong>
+          {% if planif_cosecha_custom %}<span class="text-success">(personalizada)</span>{% else %}<span class="text-muted">(valor por defecto)</span>{% endif %}
         </div>
         <div class="small mt-1">
           Gantt alineada a Documentos + Autoevaluación (avance SYNC automático) y hitos de cosecha.
@@ -1024,6 +1025,28 @@
       </div>
     </div>
   </div>
+  {% if planif_admin %}
+  <div class="panel-card mb-3 border-success">
+    <h2 class="h6 panel-title">Cosecha planificada (Gantt)</h2>
+    <p class="small text-muted mb-2">Ajuste la ventana de cosecha para <strong>{{ especie_sel }}</strong>. Al guardar se reconstruye la Gantt de certificación con las nuevas fechas.</p>
+    <form method="post" class="row g-2 align-items-end">
+      <input type="hidden" name="action" value="cosecha_planif_save">
+      <input type="hidden" name="sec" value="planificacion">
+      <input type="hidden" name="especie" value="{{ especie_sel }}">
+      <div class="col-md-3">
+        <label class="form-label small mb-0">Inicio cosecha</label>
+        <input type="date" name="cosecha_inicio" class="form-control form-control-sm" value="{{ planif_cosecha_inicio }}" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small mb-0">Fin ventana cosecha</label>
+        <input type="date" name="cosecha_fin" class="form-control form-control-sm" value="{{ planif_cosecha_fin }}" required>
+      </div>
+      <div class="col-md-4">
+        <button type="submit" class="btn btn-success btn-sm">Guardar y reconstruir Gantt</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
   {% if gantt_kpis %}
   <div class="row g-2 mb-3">
     <div class="col-6 col-md"><div class="kpi-card"><div class="kpi-label">Actividades</div><div class="kpi-value">{{ gantt_kpis.actividades }}</div></div></div>
