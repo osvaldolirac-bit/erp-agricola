@@ -7,7 +7,7 @@
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <div>
       <h1 class="h3 mb-0">{{ title }}</h1>
-      <p class="text-muted mb-0">Maestras y configuración operativa del ERP{% if erp_app == 'concepcion' %} — La Concepción{% endif %}</p>
+      <p class="text-muted mb-0">Maestras y configuración operativa del ERP{% if erp_login_subtitle %} — {{ erp_login_subtitle }}{% endif %}</p>
     </div>
     <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
   </div>
