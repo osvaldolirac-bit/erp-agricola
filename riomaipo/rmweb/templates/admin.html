@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Administración{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Administración</h1>
+    <p>{% if es_demo %}Empresa y parámetros. La clave de acceso es la proporcionada al iniciar la prueba.{% else %}Empresa, parámetros y cambio de clave personal.{% endif %}</p>
+  </div>
+</div>
+
+<ul class="nav nav-tabs admin-tabs mb-3" role="tablist">
+  <li class="nav-item">
+    <a class="nav-link {% if tab=='empresa' %}active{% endif %}" href="{{ url_for('admin', tab='empresa') }}">Mi empresa</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if tab=='parametros' %}active{% endif %}" href="{{ url_for('admin', tab='parametros') }}">Parámetros</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('centros_costo') }}">Centros de costo</a>
+  </li>
+</ul>
+
+{% if tab == 'empresa' %}
+<div class="panel mb-3">
+  <h5 class="fw-bold mb-3">Mi empresa</h5>
+  <form method="post" action="{{ url_for('admin_empresa') }}" class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label fw-bold">RUT</label>
+      <input class="form-control" name="rut" value="{{ empresa.rut if empresa else '' }}">
+    </div>
+    <div class="col-md-8">
+      <label class="form-label fw-bold">Razón social</label>
+      <input class="form-control" name="razon_social" value="{{ empresa.razon_social if empresa else '' }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold">Teléfono</label>
+      <input class="form-control" name="telefono" value="{{ empresa.telefono if empresa else '' }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold">Email</label>
+      <input class="form-control" name="email" value="{{ empresa.email if empresa else '' }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold">País</label>
+      <input class="form-control" name="pais" value="{{ empresa.pais if empresa else 'Chile' }}">
+    </div>
+    <div class="col-md-8">
+      <label class="form-label fw-bold">Dirección</label>
+      <input class="form-control" name="direccion" value="{{ empresa.direccion if empresa else '' }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold">Región</label>
+      <input class="form-control" name="region" value="{{ empresa.region if empresa else '' }}">
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary" type="submit">Guardar empresa</button>
+    </div>
+  </form>
+</div>
+
+{% if puede_cambiar_clave %}
+<div class="panel mb-3">
+  <h5 class="fw-bold mb-3">Mi clave</h5>
+  <form method="post" action="{{ url_for('admin_clave') }}" class="row g-3" style="max-width:560px">
+    <div class="col-md-12">
+      <label class="form-label fw-bold">Clave actual</label>
+      <input class="form-control" type="password" name="clave_actual" required autocomplete="current-password">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label fw-bold">Nueva clave</label>
+      <input class="form-control" type="password" name="clave_nueva" required autocomplete="new-password">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label fw-bold">Repetir nueva clave</label>
+      <input class="form-control" type="password" name="clave_nueva2" required autocomplete="new-password">
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary" type="submit">Cambiar mi clave</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endif %}
+
+{% if tab == 'parametros' %}
+<div class="panel">
+  <h5 class="fw-bold mb-3">Parámetros</h5>
+  <div class="table-responsive mb-3">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr><th>Clave</th><th>Nombre</th><th>Valor</th><th>Unidad</th></tr>
+      </thead>
+      <tbody>
+        {% for p in params %}
+        <tr>
+          <td>{{ p.clave }}</td>
+          <td>{{ p.nombre }}</td>
+          <td>{{ p.valor }}</td>
+          <td>{{ p.unidad or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">Sin parámetros.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if params %}
+  <form method="post" action="{{ url_for('admin_parametro') }}" class="row g-3" style="max-width:640px">
+    <div class="col-md-6">
+      <label class="form-label fw-bold">Parámetro</label>
+      <select class="form-select" name="clave" required>
+        {% for p in params %}
+        <option value="{{ p.clave }}">{{ p.nombre }} ({{ p.clave }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold">Nuevo valor</label>
+      <input class="form-control" name="valor" required>
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+      <button class="btn btn-primary w-100" type="submit">Actualizar</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

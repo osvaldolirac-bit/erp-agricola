@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Centro de costo{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Centro de costo</h1>
+    <p>Catálogo editable para imputar compras. Los <strong>rubros</strong> son fijos (clasificación de gasto).</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('compras_list') }}">Ir a Compras</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="panel mb-3">
+      <h2 class="h6 mb-3">Centros de costo</h2>
+      <form method="post" class="row g-2 align-items-end mb-3">
+        <input type="hidden" name="action" value="crear">
+        <div class="col-md-8">
+          <label class="form-label fw-bold">Nuevo centro</label>
+          <input class="form-control" name="nombre" placeholder="Ej: Marketing digital" required maxlength="80">
+        </div>
+        <div class="col-md-4">
+          <button class="btn btn-primary w-100" type="submit">Agregar</button>
+        </div>
+      </form>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr><th>Nombre</th><th>Estado</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for cc in centros %}
+            <tr>
+              <td colspan="3" class="p-2">
+                <form method="post" class="row g-2 align-items-center">
+                  <input type="hidden" name="action" value="actualizar">
+                  <input type="hidden" name="cc_id" value="{{ cc.id }}">
+                  <div class="col-md-6">
+                    <input class="form-control form-control-sm" name="nombre" value="{{ cc.nombre }}" required maxlength="80">
+                  </div>
+                  <div class="col-md-3">
+                    <select class="form-select form-select-sm" name="activo">
+                      <option value="1" {% if cc.activo %}selected{% endif %}>Activo</option>
+                      <option value="0" {% if not cc.activo %}selected{% endif %}>Inactivo</option>
+                    </select>
+                  </div>
+                  <div class="col-md-3">
+                    <button class="btn btn-sm btn-outline-primary w-100" type="submit">Guardar</button>
+                  </div>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="text-muted">Sin centros. Cree el primero arriba.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="panel">
+      <h2 class="h6 mb-2">Rubros de gasto</h2>
+      <p class="small text-muted mb-3">Lista fija usada al emitir compras (no editable).</p>
+      <ol class="mb-0 ps-3">
+        {% for r in rubros %}
+        <li class="mb-1">{{ r.nombre }}{% if not r.activo %} <span class="text-muted">(inactivo)</span>{% endif %}</li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}
