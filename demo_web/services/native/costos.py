@@ -160,6 +160,12 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
 
     conn = demo.conectar_db()
     try:
+        try:
+            from demo_web.services.native.compras import _ensure_imputar_bruto_col
+
+            _ensure_imputar_bruto_col(conn)
+        except Exception:
+            pass
         prorr = prorrateo_rrhh(demo, conn)
         fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente) if es_vigente else (fi, ff)
         if es_vigente:
