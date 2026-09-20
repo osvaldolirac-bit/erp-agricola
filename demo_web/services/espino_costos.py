@@ -1,6 +1,7 @@
-"""Costos El Espino — redistribuir gasto legacy CEREZOS → variedades por prorrateo."""
+"""Costos El Espino — única fuente de verdad para matriz, dashboard, flujo y PDF."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
@@ -10,19 +11,177 @@ from demo_web.services.espino_scope import LEGADO_SECTOR_LC_ESPINO, cuarteles_es
 RUBROS_CIERRE = frozenset({"TOTAL GASTO", "PRESUPUESTO", "SALDO"})
 
 
+def es_espino_demo(demo: Any) -> bool:
+    """Detecta tenant Espino con o sin contexto Flask (erp.TENANT_SLUG)."""
+    slug = str(getattr(demo, "TENANT_SLUG", "") or "").strip().lower()
+    if slug == "espino":
+        return True
+    try:
+        from demo_web.services.tenant_scope import is_espino_tenant
+
+        return is_espino_tenant()
+    except Exception:
+        return False
+
+
 def cuarteles_vista_espino(demo: Any) -> list[str]:
-    """CC visibles en Costos / Compras (solo variedades)."""
+    """CC visibles en Costos / Dashboard / Flujo (solo variedades)."""
     _ = demo
     return list(cuarteles_espino())
 
 
 def cuarteles_matriz_espino(demo: Any) -> list[str]:
-    """CC para armar matriz: variedades + bucket legacy CEREZOS (ingesta histórica)."""
+    """CC para ingesta matriz: variedades + bucket legacy CEREZOS."""
     out = cuarteles_vista_espino(demo)
     legacy = LEGADO_SECTOR_LC_ESPINO
     if legacy not in out:
         out.append(legacy)
     return out
+
+
+@dataclass
+class ResultadoMatrizEspino:
+    matriz: pd.DataFrame | None
+    det_fi: Any
+    det_ff: Any
+    cuarteles_vista: list[str]
+
+
+def _matriz_raw(demo: Any):
+    return getattr(demo, "_armar_matriz_costos_vista_b_raw", demo._armar_matriz_costos_vista_b)
+
+
+def armar_matriz_costos_espino(
+    demo: Any,
+    conn,
+    prorrateo_rrhh: dict,
+    temporada: str,
+    fi=None,
+    ff=None,
+    *,
+    fi_rrhh=None,
+    ff_rrhh=None,
+    neto_facturas_iva: bool = True,
+) -> pd.DataFrame | None:
+    """ÚNICA entrada matriz Costos Espino (bucket CEREZOS + redistribución por ha)."""
+    raw = _matriz_raw(demo)
+    cuarteles = cuarteles_matriz_espino(demo)
+    matriz = raw(
+        conn,
+        fi,
+        ff,
+        cuarteles,
+        prorrateo_rrhh,
+        temporada,
+        fi_rrhh=fi_rrhh,
+        ff_rrhh=ff_rrhh,
+        neto_facturas_iva=neto_facturas_iva,
+    )
+    return preparar_matriz_costos_espino(demo, conn, matriz)
+
+
+def armar_matriz_costos_espino_temporada(
+    demo: Any,
+    conn,
+    prorrateo_rrhh: dict,
+    temporada: str,
+    fi,
+    ff,
+    es_vigente: bool,
+) -> ResultadoMatrizEspino:
+    """Matriz Espino con rango operativo de temporada (módulo Costos)."""
+    if es_vigente:
+        fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, True)
+        matriz = armar_matriz_costos_espino(
+            demo, conn, prorrateo_rrhh, temporada,
+            fi_cons, ff_cons, fi_rrhh=fi, ff_rrhh=ff,
+        )
+        return ResultadoMatrizEspino(matriz, fi_cons, ff_cons, cuarteles_vista_espino(demo))
+    matriz = armar_matriz_costos_espino(
+        demo, conn, prorrateo_rrhh, temporada,
+        fi, ff, fi_rrhh=fi, ff_rrhh=ff,
+    )
+    return ResultadoMatrizEspino(matriz, fi, ff, cuarteles_vista_espino(demo))
+
+
+def total_gasto_matriz_espino(matriz: pd.DataFrame | None, demo: Any) -> float:
+    if matriz is None or matriz.empty:
+        return 0.0
+    fn = getattr(demo, "_total_gasto_general_matriz", None)
+    if callable(fn):
+        return float(fn(matriz) or 0)
+    tg = matriz[matriz["Rubro"] == "TOTAL GASTO"]
+    if tg.empty or "TOTAL" not in tg.columns:
+        return 0.0
+    return float(tg.iloc[0]["TOTAL"] or 0)
+
+
+def totales_por_variedad_dataframe(matriz: pd.DataFrame | None, demo: Any) -> pd.DataFrame:
+    """DataFrame Cuartel/Total para Dashboard y tablas auxiliares."""
+    vista = cuarteles_vista_espino(demo)
+    if matriz is None or matriz.empty:
+        return pd.DataFrame({"Cuartel": vista, "Total": [0.0] * len(vista)})
+    tg = matriz[matriz["Rubro"] == "TOTAL GASTO"]
+    if tg.empty:
+        return pd.DataFrame({"Cuartel": vista, "Total": [0.0] * len(vista)})
+    return pd.DataFrame(
+        {
+            "Cuartel": vista,
+            "Total": [float(tg.iloc[0].get(c, 0) or 0) for c in vista],
+        }
+    )
+
+
+def dataframe_gastos_dashboard_espino(demo: Any, conn, prorrateo_rrhh: dict) -> pd.DataFrame:
+    """Totales por variedad — misma matriz que módulo Costos (histórico completo)."""
+    nombre, fi, ff = demo._temporada_vigente_costos()
+    matriz = armar_matriz_costos_espino(
+        demo, conn, prorrateo_rrhh, nombre,
+        None, None, fi_rrhh=fi, ff_rrhh=ff,
+    )
+    return totales_por_variedad_dataframe(matriz, demo)
+
+
+def resumen_costos_para_flujo_espino(demo: Any, conn, temporada: str, fi, ff) -> dict:
+    """Resumen costos para Flujo financiero Espino."""
+    from erp_flujo_financiero import resumen_desde_matriz_costos
+
+    from demo_web.services.native._helpers import hoy_demo, prorrateo_rrhh
+
+    prorr = prorrateo_rrhh(demo, conn)
+    hoy = hoy_demo(demo)
+    es_vigente = fi <= hoy <= ff
+    resultado = armar_matriz_costos_espino_temporada(
+        demo, conn, prorr, temporada, fi, ff, es_vigente,
+    )
+    return resumen_desde_matriz_costos(resultado.matriz, resultado.cuarteles_vista)
+
+
+def verificar_parity_dashboard_costos(
+    demo: Any,
+    conn,
+    prorrateo_rrhh: dict,
+    *,
+    tolerancia: float = 1.0,
+) -> tuple[bool, str]:
+    """Comprueba que Dashboard y matriz temporada Espino coinciden en total."""
+    dfr = dataframe_gastos_dashboard_espino(demo, conn, prorrateo_rrhh)
+    total_dash = float(dfr["Total"].sum())
+    nombre, fi, ff = demo._temporada_vigente_costos()
+    hoy = demo.hora_chile()
+    if hasattr(hoy, "date"):
+        hoy = hoy.date()
+    fi_d = fi.date() if hasattr(fi, "date") else fi
+    ff_d = ff.date() if hasattr(ff, "date") else ff
+    es_vigente = fi_d <= hoy <= ff_d
+    resultado = armar_matriz_costos_espino_temporada(
+        demo, conn, prorrateo_rrhh, nombre, fi, ff, es_vigente,
+    )
+    total_costos = total_gasto_matriz_espino(resultado.matriz, demo)
+    diff = abs(total_dash - total_costos)
+    ok = diff <= tolerancia
+    msg = f"Dashboard={total_dash:,.0f} Costos={total_costos:,.0f} diff={diff:,.2f}"
+    return ok, msg
 
 
 def _pesos_prorrateo(conn, demo: Any) -> dict[str, float]:
@@ -129,31 +288,3 @@ def preparar_matriz_costos_espino(demo: Any, conn, matriz: pd.DataFrame | None) 
     """Redistribuye CEREZOS → variedades conservando total gasto."""
     pesos = _pesos_prorrateo(conn, demo)
     return redistribuir_cerezos_en_matriz(matriz, pesos)
-
-
-def dataframe_gastos_dashboard_espino(demo: Any, conn, prorrateo_rrhh: dict) -> pd.DataFrame:
-    """Totales por variedad para dashboard Espino (misma lógica que módulo Costos)."""
-    cuarteles = cuarteles_matriz_espino(demo)
-    vista = cuarteles_vista_espino(demo)
-    nombre, fi, ff = demo._temporada_vigente_costos()
-    matriz = demo._armar_matriz_costos_vista_b(
-        conn,
-        None,
-        None,
-        cuarteles,
-        prorrateo_rrhh,
-        nombre,
-        fi_rrhh=fi,
-        ff_rrhh=ff,
-        neto_facturas_iva=True,
-    )
-    matriz = preparar_matriz_costos_espino(demo, conn, matriz)
-    tg = matriz[matriz["Rubro"] == "TOTAL GASTO"] if matriz is not None else pd.DataFrame()
-    if tg.empty:
-        return pd.DataFrame({"Cuartel": vista, "Total": [0.0] * len(vista)})
-    return pd.DataFrame(
-        {
-            "Cuartel": vista,
-            "Total": [float(tg.iloc[0].get(c, 0) or 0) for c in vista],
-        }
-    )

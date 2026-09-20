@@ -5,9 +5,8 @@ from flask import render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.espino_costos import (
-    cuarteles_matriz_espino,
+    armar_matriz_costos_espino_temporada,
     cuarteles_vista_espino,
-    preparar_matriz_costos_espino,
 )
 from demo_web.services.lc_excluir_espino import (
     ajustar_matriz_costos_excluir_espino_lc,
@@ -165,7 +164,6 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     es_vigente = fi <= hoy <= ff
 
     if is_espino_tenant():
-        cuarteles_full = cuarteles_matriz_espino(demo)
         cuarteles = cuarteles_vista_espino(demo)
     else:
         cuarteles_full = cuarteles_oficiales(demo)
@@ -179,24 +177,25 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     try:
         prorr = prorrateo_rrhh(demo, conn)
         fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente) if es_vigente else (fi, ff)
-        kwargs_matriz = {"fi_rrhh": fi, "ff_rrhh": ff}
         if is_espino_tenant():
-            kwargs_matriz["neto_facturas_iva"] = True
-        if es_vigente:
-            matriz = demo._armar_matriz_costos_vista_b(
-                conn, fi_cons, ff_cons, cuarteles_full, prorr, nombre,
-                **kwargs_matriz,
+            resultado = armar_matriz_costos_espino_temporada(
+                demo, conn, prorr, nombre, fi, ff, es_vigente,
             )
-            det_fi, det_ff = fi_cons, ff_cons
+            matriz = resultado.matriz
+            det_fi, det_ff = resultado.det_fi, resultado.det_ff
         else:
-            matriz = demo._armar_matriz_costos_vista_b(
-                conn, fi, ff, cuarteles_full, prorr, nombre,
-                **kwargs_matriz,
-            )
-            det_fi, det_ff = fi, ff
-        if is_espino_tenant():
-            matriz = preparar_matriz_costos_espino(demo, conn, matriz)
-        else:
+            cuarteles_full = cuarteles_oficiales(demo)
+            if es_vigente:
+                matriz = demo._armar_matriz_costos_vista_b(
+                    conn, fi_cons, ff_cons, cuarteles_full, prorr, nombre,
+                    fi_rrhh=fi, ff_rrhh=ff,
+                )
+                det_fi, det_ff = fi_cons, ff_cons
+            else:
+                matriz = demo._armar_matriz_costos_vista_b(
+                    conn, fi, ff, cuarteles_full, prorr, nombre,
+                )
+                det_fi, det_ff = fi, ff
             matriz = ajustar_matriz_costos_excluir_espino_lc(
                 conn, demo, matriz, cuarteles_full, det_fi, det_ff,
             )
