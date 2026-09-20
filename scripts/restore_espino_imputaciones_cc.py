@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Reparte imputaciones _P legacy CEREZOS → variedades El Espino (prorrateo ha)."""
+"""DEPRECATED — no usar en producción.
+
+La redistribución correcta es en runtime vía demo_web/services/espino_costos.py
+(bucket CEREZOS en matriz → prorrateo a variedades). Modificar filas _P en BD
+duplica/confunde datos GE-* y no alinea Costos con Dashboard.
+
+Script conservado solo como referencia histórica.
+"""
 from __future__ import annotations
 
 import argparse
