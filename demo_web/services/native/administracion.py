@@ -11,6 +11,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
+from demo_web.services.tenant_scope import centros_costo, cuarteles_oficiales, is_espino_tenant
 
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
 SECCION_DEFS = [
@@ -243,6 +244,10 @@ def _gather_maquinaria(conn) -> dict:
     )
 
     migrar_maestra_maquinaria(conn)
+    if is_espino_tenant():
+        from erp_maquinaria import sincronizar_maestra_maquinaria_desde_lc
+
+        sincronizar_maestra_maquinaria_desde_lc(conn)
     maqs = listar_maquinaria(conn)
     rows = []
     for m in maqs:
@@ -347,7 +352,7 @@ def _gather_encargados(conn) -> dict:
 def _gather_ppto(demo, conn) -> dict:
     temp_nombre, fi, ff = temporada_sel(demo, "temp")
     cuarteles = []
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in cuarteles_oficiales(demo):
         ppto = demo._obtener_ppto_temporada(conn, temp_nombre, cc)
         kg = demo._obtener_kg_estimado_temporada(conn, temp_nombre, cc)
         cuarteles.append(
@@ -386,7 +391,7 @@ def _gather_flujo(demo, conn) -> dict:
 
     filas = []
     flujo_cuarteles = []
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in cuarteles_oficiales(demo):
         row = {"cuartel": cc.title()}
         total_cc = 0.0
         meses_edit = []
@@ -412,7 +417,7 @@ def _gather_flujo(demo, conn) -> dict:
     for anio, mes in meses:
         lbl = _mes_label(anio, mes)
         totales_mes[lbl] = demo.f_peso(
-            sum(ing.get((cc, anio, mes), 0.0) for cc in demo.CUARTELES_OFICIALES)
+            sum(ing.get((cc, anio, mes), 0.0) for cc in cuarteles_oficiales(demo))
         )
 
     meses_txt = ", ".join(_mes_label(a, m) for a, m in meses)
@@ -544,20 +549,20 @@ def gather_admin(user_email: str, user_rol: str) -> dict:
 
 
 def _post_crear_usuario(demo, conn, user_email: str) -> dict:
+    from erp_correo_html import generar_clave_invitacion
+
     nu = (request.form.get("email") or "").strip().lower()
-    np = (request.form.get("password") or "").strip()
     nr = request.form.get("rol") or "operador"
     mail_teso = request.form.get("mail_teso") == "1"
     mail_pet = request.form.get("mail_petroleo") == "1"
 
-    if not nu or not np:
-        return {"ok": False, "msg": "Ingrese email y contraseña."}
+    if not nu:
+        return {"ok": False, "msg": "Ingrese email."}
     if nr == "super_admin" and not demo.es_super_admin():
         return {"ok": False, "msg": "Solo el super administrador puede crear ese perfil."}
     if nr not in demo.perfiles_asignables_demo():
         return {"ok": False, "msg": "Perfil no válido."}
-    if len(np) < 4:
-        return {"ok": False, "msg": "La contraseña debe tener al menos 4 caracteres."}
+    np = generar_clave_invitacion()
 
     try:
         cols = user_db.usuario_cols(conn)
@@ -581,7 +586,14 @@ def _post_crear_usuario(demo, conn, user_email: str) -> dict:
             )
             conn.commit()
             demo.registrar_accion("USUARIO NUEVO", f"{nu} ({nr})")
-            return {"ok": True, "msg": f"Usuario {nu} creado."}
+            msg = f"Usuario {nu} creado."
+            if hasattr(demo, "enviar_correo_invitacion_concepcion"):
+                mail_ok = demo.enviar_correo_invitacion_concepcion(nu, np, nr, user_email)
+                if mail_ok:
+                    msg += " Invitación enviada por correo (clave automática, solo al colaborador)."
+                else:
+                    msg += " No se pudo enviar el correo de invitación (revise SMTP)."
+            return {"ok": True, "msg": msg}
         fecha_fin = demo.fecha_fin_prueba_demo()
         conn.execute(
             """INSERT INTO usuarios (email, password, rol, fecha_expira, invitado_por,
@@ -717,7 +729,7 @@ def _post_guardar_metas(demo, conn) -> dict:
     temp = request.form.get("temporada") or ""
     if not temp:
         return {"ok": False, "msg": "Temporada no válida."}
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in cuarteles_oficiales(demo):
         ppto_raw = request.form.get(f"ppto_{cc}") or "0"
         kg_raw = request.form.get(f"kg_{cc}") or "0"
         try:
@@ -727,7 +739,7 @@ def _post_guardar_metas(demo, conn) -> dict:
             return {"ok": False, "msg": f"Valores inválidos para {cc}."}
         demo._guardar_ppto_temporada(conn, temp, cc, ppto)
         demo._guardar_kg_estimado_temporada(conn, temp, cc, kg)
-    demo.registrar_accion("METAS COSTOS", f"{temp}: {len(demo.CUARTELES_OFICIALES)} cuarteles")
+    demo.registrar_accion("METAS COSTOS", f"{temp}: {len(cuarteles_oficiales(demo))} cuarteles")
     return {"ok": True, "msg": f"Metas guardadas para temporada {temp}."}
 
 
@@ -1066,7 +1078,7 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
         return {"ok": False, "msg": "Saldo caja inicial inválido."}
     ing_cc = {}
     notas_cc = {}
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in cuarteles_oficiales(demo):
         for anio, mes in meses:
             key = f"ing_{cc}_{anio}_{mes}"
             nota_key = f"nota_{cc}_{anio}_{mes}"
@@ -1171,7 +1183,7 @@ def _post_reseed(demo, conn) -> dict:
         demo.hora_chile().strftime("%m"),
         demo.hora_chile().year,
         demo.PRORRATEO_RRHH,
-        demo.CENTROS_COSTO,
+        centros_costo(demo),
         demo.CUARTELES_PRORRATEO,
         demo.TEMPORADAS_COSTOS,
         demo.RAZONES_SOCIALES_COMPRAS[0],

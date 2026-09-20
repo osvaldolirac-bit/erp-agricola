@@ -6,6 +6,16 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
+from demo_web.services.costos_compras_coherencia import (
+    sql_historial_compras_parent,
+    total_imputado_bruto_historial,
+    total_imputado_neto_historial,
+    total_pendiente_imputar_historial,
+    total_registrado_compras_historial,
+    resumen_comparativo_compras_costos,
+)
+from demo_web.services.tenant_scope import centros_costo, razones_sociales_compras, razon_social_compras_default
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -18,6 +28,9 @@ MODOS_INGRESO = [
     ("agro", "Insumos bodega"),
     ("pet", "Petróleo"),
 ]
+
+# Imputaciones Costos (migración gastos_espino); no son compras ni llevan correlativo.
+DOC_IMPUTACION_COSTOS_PREFIX = "GE-"
 
 SQL_ETIQUETA_TIPO = """
     CASE
@@ -55,12 +68,44 @@ def _folio_interno(conn, fecha) -> str:
     return f"{prefijo}{int(n) + 1:02d}"
 
 
+def _razon_social_post(demo) -> str:
+    razones = razones_sociales_compras(demo)
+    if len(razones) == 1:
+        return razones[0]
+    raw = (request.form.get("razon_social") or "").strip()
+    if raw in razones:
+        return raw
+    return razon_social_compras_default(demo)
+
+
 def _es_documento_interno(nro_documento: str | None) -> bool:
     """True si el N° doc es interno (sin factura real), p.ej. INT-20260810-01."""
     doc = (nro_documento or "").strip().upper()
     if not doc:
         return True
     return doc.startswith("INT-") or doc.startswith("INT/")
+
+
+def _es_doc_imputacion_costos(nro_documento: str | None) -> bool:
+    """Filas GE-*: imputación histórica Costos, fuera de Compras/correlativo."""
+    doc = (nro_documento or "").strip().upper()
+    return doc.startswith(DOC_IMPUTACION_COSTOS_PREFIX)
+
+
+def _sql_historial_compras(col_prefix: str = "") -> str:
+    """Historial: todo lo registrado en Compras (incl. INT-). Excluye _P e imputaciones GE-*."""
+    return sql_historial_compras_parent(col_prefix)
+
+
+def _sql_solo_compras_reales(col_prefix: str = "") -> str:
+    """Excluye _P, INT- e imputaciones GE-* (misma lógica que correlativo LC)."""
+    p = f"{col_prefix}." if col_prefix else ""
+    return f"""
+          AND {p}nro_documento NOT LIKE '%_P'
+          AND UPPER(TRIM({p}nro_documento)) NOT LIKE 'INT-%'
+          AND UPPER(TRIM({p}nro_documento)) NOT LIKE 'INT/%'
+          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'GE-*'
+    """
 
 
 def _ensure_folio_interno_col(conn) -> None:
@@ -82,6 +127,7 @@ def _ensure_folio_interno_col(conn) -> None:
               AND (
                 UPPER(TRIM(nro_documento)) LIKE 'INT-%'
                 OR UPPER(TRIM(nro_documento)) LIKE 'INT/%'
+                OR UPPER(TRIM(nro_documento)) GLOB 'GE-*'
               )
             """
         )
@@ -89,15 +135,13 @@ def _ensure_folio_interno_col(conn) -> None:
 
 
 def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str:
-    """Siguiente correlativo por razón social (solo facturas reales, no INT-)."""
-    sql = """
+    """Siguiente correlativo por razón social (solo facturas reales, no INT-/GE-*)."""
+    sql = f"""
         SELECT MAX(CAST(folio_interno AS INTEGER))
         FROM facturas
         WHERE TRIM(COALESCE(folio_interno, '')) != ''
           AND folio_interno GLOB '[0-9]*'
-          AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_solo_compras_reales()}
     """
     params: list = []
     if razon_social:
@@ -110,14 +154,12 @@ def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str
 def _correlativo_duplicado(conn, folio: str, razon_social: str, exclude_id: int = 0):
     """True si el correlativo ya existe en la misma razón social (puede repetirse entre razones)."""
     return conn.execute(
-        """
+        f"""
         SELECT id FROM facturas
         WHERE TRIM(COALESCE(folio_interno,''))=?
           AND TRIM(COALESCE(razon_social,''))=?
           AND id!=?
-          AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_solo_compras_reales()}
         """,
         (folio, (razon_social or "").strip(), exclude_id),
     ).fetchone()
@@ -132,6 +174,51 @@ def _proveedores_options(conn) -> list[dict]:
     ]
 
 
+def _total_imputado_cc_historial(demo, conn, fi, ff) -> float:
+    """Suma imputaciones _P de documentos visibles en historial (misma lógica que Costos)."""
+    return total_imputado_neto_historial(demo, conn, fi, ff)
+
+
+def _total_imputado_cc_bruto_historial(demo, conn, fi, ff) -> float:
+    """Imputaciones _P en bruto (misma escala que monto_total del historial)."""
+    return total_imputado_bruto_historial(demo, conn, fi, ff)
+
+
+def _total_pendiente_imputar_historial(conn, fi, ff) -> float:
+    return total_pendiente_imputar_historial(conn, fi, ff)
+
+
+def _resumen_imputacion_historial(
+    demo, conn, compras_total_filtrado: float, fi, ff,
+) -> dict | None:
+    """Compras bruto vs imputación (fechas del filtro; registrado = todo el período, no solo tabla filtrada)."""
+    registrado = total_registrado_compras_historial(conn, fi, ff)
+    if registrado <= 0 and compras_total_filtrado <= 0:
+        return None
+    try:
+        imputado_neto = _total_imputado_cc_historial(demo, conn, fi, ff)
+        imputado_bruto = _total_imputado_cc_bruto_historial(demo, conn, fi, ff)
+        pendiente = _total_pendiente_imputar_historial(conn, fi, ff)
+        hay_filtro_extra = abs(compras_total_filtrado - registrado) > 0.5
+        return {
+            "registrado_fmt": demo.f_peso(registrado),
+            "registrado_filtrado_fmt": demo.f_peso(compras_total_filtrado) if hay_filtro_extra else None,
+            "imputado_neto_fmt": demo.f_peso(imputado_neto),
+            "imputado_bruto_fmt": demo.f_peso(imputado_bruto),
+            "pendiente_fmt": demo.f_peso(pendiente),
+            "coherente": registrado + 0.5 >= imputado_neto,
+            "coherente_bruto": registrado + 0.5 >= imputado_bruto,
+            "notas": [
+                "Registrado = suma bruta de facturas del período (fechas arriba), sin filtros de búsqueda/tipo.",
+                "Acumulado de la tabla = solo filas visibles si aplicó búsqueda o tipo de gasto.",
+                "Imputado a CC: criterio Costos (neto en Agroquímicos, Repuestos y Energía eléctrica).",
+                "Comparar registrado ≥ imputado bruto + pendiente. No comparar con Gasto neto de Costos.",
+            ],
+        }
+    except Exception:
+        return None
+
+
 def _historial(demo, conn) -> dict:
     _ensure_folio_interno_col(conn)
     hoy = hoy_demo(demo)
@@ -143,6 +230,11 @@ def _historial(demo, conn) -> dict:
     fi = parse_date(request.args.get("desde"), fi_def)
     ff = parse_date(request.args.get("hasta"), max(hoy, fmax_db))
     q = (request.args.get("q") or "").strip()
+    tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
+    tipos_gasto_filtro = ["Todas"] + tipos_gasto
+    tg_filtro = (request.args.get("tipo_gasto") or "").strip()
+    if tg_filtro not in tipos_gasto_filtro:
+        tg_filtro = "Todas"
 
     sql = f"""
         SELECT id, nro_documento, COALESCE(folio_interno, '') AS folio_interno, proveedor,
@@ -151,18 +243,23 @@ def _historial(demo, conn) -> dict:
                COALESCE(NULLIF(TRIM(tipo_gasto), ''), ?) AS tipo_gasto_cc,
                concepto, monto_total
         FROM facturas
-        WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P'
+        WHERE monto_total > 0
+          {_sql_historial_compras()}
           AND fecha_compra BETWEEN ? AND ?
+          {sql_and_excluir_razon_social_espino()}
     """
     params: list = [demo.TIPO_GASTO_SIN_CLASIFICAR, str(fi), str(ff)]
     if q:
         sql += (
             " AND (nro_documento LIKE ? OR COALESCE(folio_interno,'') LIKE ? OR proveedor LIKE ? "
-            "OR concepto LIKE ? OR IFNULL(razon_social,'') LIKE ?)"
+            "OR concepto LIKE ? OR IFNULL(razon_social,'') LIKE ? OR TRIM(COALESCE(tipo_gasto,'')) LIKE ?)"
         )
         like = f"%{q}%"
-        params.extend([like, like, like, like, like])
-    sql += " ORDER BY id DESC"
+        params.extend([like, like, like, like, like, like])
+    if tg_filtro != "Todas":
+        sql += " AND TRIM(COALESCE(tipo_gasto, '')) = ? "
+        params.append(tg_filtro)
+    sql += " ORDER BY fecha_compra DESC, monto_total DESC, id DESC"
     df = pd.read_sql_query(sql, conn, params=params)
 
     siguientes_por_razon: dict[str, str] = {}
@@ -260,8 +357,7 @@ def _historial(demo, conn) -> dict:
         factura_edit = dict(factura_edit)
         factura_edit["tipo_gasto_sel"] = tg
 
-    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
-    tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
+    razones = razones_sociales_compras(demo)
     proveedores = _proveedores_options(conn) if es_admin else []
 
     puede_folio = not bool(demo.es_solo_lectura())
@@ -274,9 +370,24 @@ def _historial(demo, conn) -> dict:
     else:
         siguiente_corr = ""
 
+    compras_total = sum(r["monto_raw"] for r in rows)
+    resumen_imputacion = _resumen_imputacion_historial(demo, conn, compras_total, fi, ff)
+    comparativo_costos = None
+    if getattr(demo, "RUBROS_COSTOS_NETO_IVA", None):
+        try:
+            comparativo_costos = resumen_comparativo_compras_costos(demo, conn)
+        except Exception:
+            comparativo_costos = None
+
     return {
         "historial_rows": rows,
+        "historial_total": compras_total,
+        "historial_total_fmt": demo.f_peso(compras_total) if rows else "—",
+        "resumen_imputacion": resumen_imputacion,
+        "comparativo_costos": comparativo_costos,
         "filtro_q": q,
+        "filtro_tipo_gasto": tg_filtro,
+        "tipos_gasto_filtro": tipos_gasto_filtro,
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "siguiente_correlativo": siguiente_corr,
@@ -287,6 +398,7 @@ def _historial(demo, conn) -> dict:
         "factura_edit": factura_edit,
         "factura_opts": factura_opts,
         "razones_sociales": razones,
+        "razon_social_fija": razones[0] if len(razones) == 1 else "",
         "tipos_gasto_historial": tipos_gasto,
         "proveedores_hist": proveedores,
     }
@@ -324,6 +436,7 @@ def _gather_ingreso(demo, conn) -> dict:
     ]
     car_total = sum(i["t"] for i in car)
     proveedores = _proveedores_options(conn)
+    razones = razones_sociales_compras(demo)
     return {
         "modo_ingreso": modo,
         "modos_ingreso": MODOS_INGRESO,
@@ -332,9 +445,10 @@ def _gather_ingreso(demo, conn) -> dict:
         "productos": productos,
         "familias": demo.listar_familias_producto(conn),
         "unidades": demo.UNIDADES_MEDIDA_INSUMO,
-        "razones_sociales": demo.RAZONES_SOCIALES_COMPRAS,
+        "razones_sociales": razones,
+        "razon_social_fija": razones[0] if len(razones) == 1 else "",
         "tipos_gasto": demo.TIPOS_GASTO_ALTA,
-        "centros_costo": demo.CENTROS_COSTO,
+        "centros_costo": centros_costo(demo),
         "car_rows": car_rows,
         "car_total_bruto": demo.f_peso(car_total * 1.19) if car else "",
         "car_count": len(car),
@@ -507,7 +621,7 @@ def _post_save_agro(demo, conn) -> dict:
     desglose = [f"{i['c']} {i.get('um', demo.DEFAULT_UNIDAD_INSUMO)} x {i['n']}" for i in car]
     concepto = "[" + ", ".join(desglose) + "]"
     total_bruto = sum(i["t"] for i in car) * 1.19
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = _razon_social_post(demo)
     tipo_gasto = (request.form.get("tipo_gasto") or "Agroquímicos").strip() or "Agroquímicos"
     conn.execute(
         """INSERT INTO facturas
@@ -541,7 +655,7 @@ def _post_save_gastos(demo, conn) -> dict:
     fv = request.form.get("fecha_vence") or str(hoy_demo(demo))
     sin_doc = request.form.get("sin_doc") == "1"
     nro = (request.form.get("nro_doc") or "").strip()
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = _razon_social_post(demo)
     concepto = (request.form.get("concepto") or "").strip()
     tipo_gasto = request.form.get("tipo_gasto") or demo.TIPOS_GASTO_ALTA[0]
     iva_bruto = request.form.get("iva_bruto") == "1"
@@ -549,7 +663,7 @@ def _post_save_gastos(demo, conn) -> dict:
         mt = float(request.form.get("monto") or 0)
     except ValueError:
         return {"ok": False, "msg": "Monto inválido."}
-    selcc = [c for c in demo.CENTROS_COSTO if request.form.get(f"cc_{c}") == "1"]
+    selcc = [c for c in centros_costo(demo) if request.form.get(f"cc_{c}") == "1"]
 
     if not prov:
         return {"ok": False, "msg": "El proveedor es obligatorio."}
@@ -584,7 +698,7 @@ def _post_save_petroleo(demo, conn) -> dict:
     fv = request.form.get("fecha_vence") or str(hoy_demo(demo))
     sin_doc = request.form.get("sin_doc") == "1"
     nro = (request.form.get("nro_doc") or "").strip()
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = _razon_social_post(demo)
     concepto = (request.form.get("concepto") or "").strip()
     try:
         litros = float(request.form.get("litros") or 0)
@@ -735,7 +849,7 @@ def _post_corregir_factura(demo, conn) -> dict:
     monto_old = float(fila[5] or 0)
     doc_new = (request.form.get("nro_documento") or "").strip()
     prov_new = (request.form.get("proveedor") or "").strip()
-    nrazon = (request.form.get("razon_social") or "").strip()
+    nrazon = _razon_social_post(demo)
     nconcepto = (request.form.get("concepto") or "").strip()
     nfe = (request.form.get("fecha_compra") or "").strip()
     nfv = (request.form.get("fecha_vencimiento") or nfe).strip()
@@ -749,7 +863,7 @@ def _post_corregir_factura(demo, conn) -> dict:
     if nmonto <= 0:
         return {"ok": False, "msg": "El monto bruto debe ser superior a $0."}
 
-    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+    razones = razones_sociales_compras(demo)
     if nrazon not in razones and razones:
         nrazon = razones[0]
     tg_guardar = demo.tipo_gasto_canonico_contratista(ntipo_gasto)
