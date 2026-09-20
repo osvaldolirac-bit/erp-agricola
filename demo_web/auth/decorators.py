@@ -15,10 +15,6 @@ def _registrar_acceso_sesion(demo, email: str, modulo: str = "") -> None:
     from demo_web.services.erp_loader import get_erp_app
     from flask import session
 
-    # Ingreso desde Super Consola: no contaminar la bitácora del tenant.
-    if session.get("from_master_console"):
-        return
-
     try:
         from demo_web.services.mantenimiento import bitacora_erp_activa
 
@@ -37,7 +33,12 @@ def _registrar_acceso_sesion(demo, email: str, modulo: str = "") -> None:
     try:
         conn = demo.conectar_db()
         f_h = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
-        detalle = "Sesión Detectada (Flask LC)" if app_tag == "lc" else "Sesión Detectada (Flask demo)"
+        if session.get("from_master_console"):
+            detalle = "Sesión Detectada (Super Consola → Flask LC)"
+        elif app_tag == "lc":
+            detalle = "Sesión Detectada (Flask LC)"
+        else:
+            detalle = "Sesión Detectada (Flask demo)"
         conn.execute(
             "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
             (email, "ACCESO", detalle, f_h),
@@ -123,7 +124,7 @@ def module_required(module_key: str):
             from demo_web.tenants import get_tenant
 
             tenant_slug = (getattr(g, "tenant_slug", None) or session.get("tenant_slug") or "").strip().lower()
-            if module_key == "Espino" and tenant_slug == "demo":
+            if module_key == "Espino" and tenant_slug in {"demo", "espino"}:
                 abort(404)
             demo = g.demo
             bind_user_session(g.user["email"], g.user["rol"])
@@ -195,6 +196,11 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     demo = get_demo_module()
     bind_user_session(user_email, rol)
     opts = demo.construir_menu_usuario(user_email, rol)
+    tenant_slug = (session.get("tenant_slug") or "").strip().lower()
+    if tenant_slug == "espino":
+        opts = {k: v for k, v in opts.items() if v != "Espino"}
+    modulos_menu = set(opts.values())
+    badge_by_key: dict[str, int] = {}
     conn = demo.conectar_db()
     try:
         try:
@@ -203,12 +209,9 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
             opts = aplicar_badge_menu_soporte(opts, conn, demo.es_admin)
         except Exception:
             pass
-        try:
-            from erp_maquinaria import aplicar_badge_menu_maquinaria
+        from demo_web.services.sidebar_badges import conteos_sidebar
 
-            opts = aplicar_badge_menu_maquinaria(opts, conn)
-        except Exception:
-            pass
+        badge_by_key = conteos_sidebar(conn, modulos_menu)
     finally:
         conn.close()
 
@@ -254,12 +257,13 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     for label, key in opts.items():
         endpoint = slug_map.get(key)
         if endpoint:
-            items.append(
-                {
-                    "label": label,
-                    "key": key,
-                    "endpoint": endpoint,
-                    "icon": icon_map.get(key, "bi-circle"),
-                }
-            )
+            item = {
+                "label": label,
+                "key": key,
+                "endpoint": endpoint,
+                "icon": icon_map.get(key, "bi-circle"),
+            }
+            if key in badge_by_key:
+                item["badge_count"] = badge_by_key[key]
+            items.append(item)
     return items
