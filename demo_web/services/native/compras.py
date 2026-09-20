@@ -88,6 +88,82 @@ def _ensure_folio_interno_col(conn) -> None:
         conn.commit()
 
 
+def _es_doc_interno(nro_documento: str) -> bool:
+    doc = (nro_documento or "").strip().upper()
+    if not doc:
+        return True
+    return doc.startswith("INT-") or doc.startswith("INT/")
+
+
+def _es_factura_real_gasto_operacional(nro_documento: str, tipo: str | None) -> bool:
+    """Solo facturas reales de gasto operacional (no INT-, no sueldos _RRHH)."""
+    doc = (nro_documento or "").strip().upper()
+    if not doc or doc.endswith("_P") or doc.endswith("_RRHH"):
+        return False
+    if _es_doc_interno(doc):
+        return False
+    t = (tipo or "").strip()
+    return t in ("Gasto Operacional", "Gasto Vario")
+
+
+def _ensure_imputar_bruto_col(conn) -> None:
+    """Marca si la imputación CC debe respetarse como neto (iva_bruto desmarcado)."""
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)").fetchall()}
+    if "imputar_bruto" not in cols:
+        if conn_en_solo_lectura(conn):
+            return
+        conn.execute("ALTER TABLE facturas ADD COLUMN imputar_bruto INTEGER DEFAULT 1")
+        conn.commit()
+    if conn_en_solo_lectura(conn):
+        return
+    # Revertir marcas erróneas (sueldos, INT-, otros tipos)
+    conn.execute(
+        """
+        UPDATE facturas
+        SET imputar_bruto = 1
+        WHERE COALESCE(imputar_bruto, 1) = 0
+          AND (
+            nro_documento LIKE '%_RRHH'
+            OR UPPER(TRIM(nro_documento)) LIKE 'INT-%'
+            OR UPPER(TRIM(nro_documento)) LIKE 'INT/%'
+            OR COALESCE(tipo, '') NOT IN ('Gasto Operacional', 'Gasto Vario')
+          )
+        """
+    )
+    # Solo facturas reales de gasto operacional donde _P ya suma neto (~bruto/1.19)
+    conn.execute(
+        """
+        UPDATE facturas
+        SET imputar_bruto = 0
+        WHERE nro_documento NOT LIKE '%_P'
+          AND nro_documento NOT LIKE '%_RRHH'
+          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
+          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          AND COALESCE(tipo, '') IN ('Gasto Operacional', 'Gasto Vario')
+          AND monto_total > 0
+          AND id IN (
+            SELECT par.id
+            FROM facturas par
+            INNER JOIN facturas p
+              ON p.nro_documento = par.nro_documento || '_P'
+             AND p.proveedor = par.proveedor
+            WHERE par.nro_documento NOT LIKE '%_P'
+              AND par.nro_documento NOT LIKE '%_RRHH'
+              AND UPPER(TRIM(par.nro_documento)) NOT LIKE 'INT-%'
+              AND UPPER(TRIM(par.nro_documento)) NOT LIKE 'INT/%'
+              AND COALESCE(par.tipo, '') IN ('Gasto Operacional', 'Gasto Vario')
+            GROUP BY par.id, par.monto_total
+            HAVING ABS(SUM(COALESCE(p.monto_imputado, 0)) * 1.19 - par.monto_total)
+                   < MAX(0.02, par.monto_total * 0.005)
+               AND SUM(COALESCE(p.monto_imputado, 0)) > 0.01
+          )
+        """
+    )
+    conn.commit()
+
+
 def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str:
     """Siguiente correlativo por razón social (solo facturas reales, no INT-)."""
     sql = """
@@ -294,6 +370,8 @@ def _historial(demo, conn) -> dict:
 
 def _gather_ingreso(demo, conn) -> dict:
     modo = request.args.get("modo", "gastos")
+    if modo == "insumos":
+        modo = "agro"
     if modo not in {k for k, _ in MODOS_INGRESO}:
         modo = "gastos"
 
@@ -485,6 +563,7 @@ def _post_add_car(demo) -> dict:
                 "t": cant * neto,
                 "nuevo": True,
                 "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
+                "ingrediente_activo": (request.form.get("ingrediente_activo") or "").strip(),
             }
         )
     _set_car(car)
@@ -517,11 +596,25 @@ def _post_save_agro(demo, conn) -> dict:
     )
     for i in car:
         if i.get("nuevo") or i.get("id") is None:
+            nia = (i.get("ingrediente_activo") or "").strip()
+            nf = i.get("familia", "OTROS")
             cur_ins = conn.execute(
-                "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
-                (i["n"], i.get("familia", "OTROS"), i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
+                "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida, ingrediente_activo) VALUES (?,?,?,?,?,?)",
+                (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO), nia),
             )
-            poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
+            new_id = cur_ins.lastrowid
+            if not nia:
+                poblar_ingredientes_inventario(conn, new_id)
+            elif getattr(demo, "requiere_autorizacion_pppl", lambda _f: False)(nf):
+                gap = conn.execute(
+                    "SELECT id FROM gap_pppl WHERE UPPER(TRIM(producto))=?",
+                    (i["n"].upper(),),
+                ).fetchone()
+                if gap:
+                    conn.execute(
+                        "UPDATE gap_pppl SET ingrediente_activo=?, vigente=1 WHERE id=?",
+                        (nia, gap[0]),
+                    )
         else:
             cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i["id"],)).fetchone()
             npmp = ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"]) if (cur[0] + i["c"]) > 0 else i["p"]
@@ -564,8 +657,21 @@ def _post_save_gastos(demo, conn) -> dict:
     imp = mt if iva_bruto else mt / 1.19
     conn.execute(
         """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-           tipo, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?)""",
-        (ng, prov, fe, fv, mt, "Gasto Operacional", concepto, razon, tipo_gasto),
+           monto_neto, tipo, concepto, razon_social, tipo_gasto, imputar_bruto)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            ng,
+            prov,
+            fe,
+            fv,
+            mt,
+            imp,
+            "Gasto Operacional",
+            concepto,
+            razon,
+            tipo_gasto,
+            1 if iva_bruto else 0,
+        ),
     )
     for c in selcc:
         conn.execute(
@@ -836,6 +942,7 @@ def gather_compras(user_email: str, user_rol: str) -> dict:
     conn = demo.conectar_db()
     try:
         demo._migrar_tipo_gasto_operacional(conn)
+        _ensure_imputar_bruto_col(conn)
         ctx: dict = {"secciones": SECCIONES, "sec_activa": sec}
         if sec == "historial":
             ctx.update(_historial(demo, conn))
@@ -854,12 +961,15 @@ def view(user_email: str, user_rol: str):
 
     sec = request.args.get("sec", "historial")
     modo = request.args.get("modo") or request.form.get("modo", "gastos")
+    if modo == "insumos":
+        modo = "agro"
 
     if request.method == "POST":
         action = request.form.get("action", "")
         conn = demo.conectar_db()
         try:
             demo._migrar_tipo_gasto_operacional(conn)
+            _ensure_imputar_bruto_col(conn)
             result: dict | None = None
             if action == "add_car":
                 result = _post_add_car(demo)
