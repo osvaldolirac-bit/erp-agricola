@@ -9,6 +9,13 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import centros_costo, cuarteles_oficiales
+
+
+def _cc_ctx(demo) -> dict:
+    """Centros de costo RRHH; cc_unico cuando el tenant solo tiene uno (Espino)."""
+    ccs = list(centros_costo(demo))
+    return {"centros_costo": ccs, "cc_unico": ccs[0] if len(ccs) == 1 else None}
 
 SECCIONES = [
     ("personal", "📋 PERSONAL"),
@@ -175,7 +182,7 @@ def _contratistas_maestro(demo, conn) -> dict:
         "contratistas_rows": rows,
         "n_contratistas": len(rows),
         "contratista_edit": edit_item,
-        "centros_costo": demo.CENTROS_COSTO,
+        **_cc_ctx(demo),
     }
 
 
@@ -194,7 +201,7 @@ def _contratistas_servicio(demo, conn) -> dict:
         "servicio_contratistas": contratistas,
         "servicio_sel_id": sel,
         "servicio_sel": sel_item,
-        "centros_costo": demo.CENTROS_COSTO,
+        **_cc_ctx(demo),
         "razones_sociales": demo.RAZONES_SOCIALES_COMPRAS,
         "hoy": hoy_demo(demo).isoformat(),
         "sin_contratistas": not contratistas,
@@ -204,7 +211,7 @@ def _contratistas_servicio(demo, conn) -> dict:
 def _contratistas_por_cc(demo, conn) -> dict:
     from erp_contratistas import fechas_consulta_contratistas_cc, listar_contratistas, query_imputaciones_contratistas_cc
 
-    cuarteles = demo.CUARTELES_OFICIALES
+    cuarteles = cuarteles_oficiales(demo)
     cc = request.args.get("cc") or (cuarteles[0] if cuarteles else "")
     if cc not in cuarteles:
         cc = cuarteles[0] if cuarteles else ""
@@ -271,7 +278,7 @@ def _contratistas_cuenta(demo, conn) -> dict:
         ct_sel = list(ct_map.keys())[0]
 
     cc_raw = request.args.get("cc_filtro", "")
-    cc_u = cc_raw.upper() if cc_raw and cc_raw in demo.CUARTELES_OFICIALES else None
+    cc_u = cc_raw.upper() if cc_raw and cc_raw in cuarteles_oficiales(demo) else None
 
     hoy = hoy_demo(demo)
     if cc_u:
@@ -319,7 +326,7 @@ def _contratistas_cuenta(demo, conn) -> dict:
         "cta_vacia": False,
         "contratistas_cta": ct_map,
         "contratista_cta_sel": ct_sel,
-        "cc_filtro_opts": demo.CUARTELES_OFICIALES,
+        "cc_filtro_opts": cuarteles_oficiales(demo),
         "cc_filtro_sel": cc_raw,
         "cta_rows": rows,
         "cta_razon": razon,
@@ -760,6 +767,9 @@ def _post_crear_contratista(demo, conn) -> dict:
     if not ok_rut:
         return {"ok": False, "msg": msg_rut}
     cc = request.form.get("cc_habitual") or ""
+    ccs = centros_costo(demo)
+    if len(ccs) == 1 and (not cc or cc == "—"):
+        cc = ccs[0]
     cc_h = None if not cc or cc == "—" else cc
     conn.execute(
         """INSERT INTO contratistas
@@ -799,6 +809,9 @@ def _post_editar_contratista(demo, conn) -> dict:
     if not ok_rut:
         return {"ok": False, "msg": msg_rut}
     cc = request.form.get("cc_habitual") or ""
+    ccs = centros_costo(demo)
+    if len(ccs) == 1 and (not cc or cc == "—"):
+        cc = ccs[0]
     cc_h = None if not cc or cc == "—" else cc
     conn.execute(
         """UPDATE contratistas SET rut=?, razon_social=?, rubro=?, contacto=?, cc_habitual=?, estado=?, notas=?,
@@ -836,7 +849,10 @@ def _post_registrar_servicio(demo, conn) -> dict:
         monto = float(request.form.get("monto") or 0)
     except ValueError:
         return {"ok": False, "msg": "Monto inválido."}
-    selcc = [c for c in demo.CENTROS_COSTO if request.form.get(f"cc_{c}") == "1"]
+    ccs = list(centros_costo(demo))
+    selcc = [c for c in ccs if request.form.get(f"cc_{c}") == "1"]
+    if not selcc and len(ccs) == 1:
+        selcc = ccs
 
     row = conn.execute("SELECT razon_social FROM contratistas WHERE id=?", (cid,)).fetchone()
     if not row:
