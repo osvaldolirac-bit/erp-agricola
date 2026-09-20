@@ -12,6 +12,7 @@ from flask import (
     Flask,
     flash,
     g,
+    make_response,
     redirect,
     render_template,
     request,
@@ -35,8 +36,41 @@ app = Flask(
     static_url_path="/static",
 )
 app.secret_key = os.getenv("SECRET_KEY", "riomaipo-web-change-me")
+app.config["SESSION_COOKIE_NAME"] = os.getenv(
+    "ERP_COMERCIAL_SESSION_COOKIE", "erp_comercial_session"
+)
+app.config["SESSION_COOKIE_PATH"] = os.getenv("ERP_COMERCIAL_COOKIE_PATH", "/comercial")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("ERP_COMERCIAL_COOKIE_SECURE", "1") in {
+    "1",
+    "true",
+    "yes",
+}
 
 _TENANT_DB_INIT: set[str] = set()
+
+
+def _expire_legacy_session_cookies(response):
+    """Invalida cookies viejas de comercial (nombre genérico + actual)."""
+    names = {
+        "session",
+        "erp_comercial_session",
+        app.config.get("SESSION_COOKIE_NAME") or "erp_comercial_session",
+    }
+    for name in names:
+        if not name:
+            continue
+        response.delete_cookie(name, path="/")
+        response.delete_cookie(name, path="/comercial")
+    return response
+
+
+def _clear_comercial_session(response=None):
+    session.clear()
+    if response is None:
+        response = make_response()
+    return _expire_legacy_session_cookies(response)
 
 # Prefijo público detrás de nginx (/comercial)
 try:
@@ -254,7 +288,7 @@ def _comercial_session_idle():
         session.clear()
         if endpoint in {"session_status", "session_continue"} or (request.path or "").startswith("/api/"):
             return {"ok": False, "error": "session_expired"}, 401
-        return redirect(url_for("login"))
+        return redirect(url_for("login", out=1))
     if endpoint == "session_continue":
         session["last_activity"] = now
     elif endpoint not in SESSION_PASSIVE_ENDPOINTS:
@@ -356,10 +390,12 @@ def _find_login_matches(usuario: str, clave: str) -> list[dict]:
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if session.get("auth_ok") and session.get("tenant_slug"):
+    if request.args.get("out") == "1":
+        pass
+    elif session.get("auth_ok") and session.get("tenant_slug"):
         return redirect(url_for("dashboard"))
     # Bio / entrada DEMO: sin acceso precargado → formulario de prueba (OTP), no el ERP.
-    if request.method == "GET" and not request.args.get("acceso"):
+    if request.method == "GET" and not request.args.get("acceso") and request.args.get("out") != "1":
         tenant_q = (request.args.get("tenant") or "").strip().lower()
         demo_q = (request.args.get("demo") or "").strip().lower()
         if tenant_q == "comercial-demo" or demo_q in {"1", "true", "si", "sí", "demo"}:
@@ -371,6 +407,7 @@ def login():
             return redirect(url_for("elegir_empresa"))
 
     error = None
+    info = "Sesión cerrada. Ingrese de nuevo." if request.args.get("out") == "1" else None
     default_user = (
         request.form.get("usuario") or request.args.get("acceso") or ""
     ).strip()
@@ -415,7 +452,8 @@ def login():
                 )
             except Exception:
                 pass
-            return _safe_next_redirect(request.args.get("next"))
+            resp = _safe_next_redirect(request.args.get("next"))
+            return _expire_legacy_session_cookies(resp)
         else:
             session["pending_login"] = {
                 "email": matches[0]["user"]["usuario"],
@@ -432,11 +470,17 @@ def login():
             }
             return redirect(url_for("elegir_empresa"))
 
-    return render_template(
-        "login.html",
-        error=error,
-        default_user=default_user,
+    resp = make_response(
+        render_template(
+            "login.html",
+            error=error,
+            info=info,
+            default_user=default_user,
+        )
     )
+    if request.args.get("out") == "1":
+        return _clear_comercial_session(resp)
+    return resp
 
 
 @app.route("/login/empresa", methods=["GET", "POST"])
@@ -559,10 +603,10 @@ def favicon():
     return resp
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
-    session.clear()
-    return redirect(url_for("login"))
+    resp = redirect(url_for("login", out=1), code=303)
+    return _clear_comercial_session(resp)
 
 
 # ---------------------------------------------------------------------------

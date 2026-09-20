@@ -272,14 +272,15 @@
           </div>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Bruto ($)</label>
+          <label class="form-label">Total documento ($)</label>
           <input type="number" name="monto" class="form-control form-control-sm" min="0" step="any" required>
         </div>
         <div class="col-md-4 d-flex align-items-end">
           <div class="form-check mb-2">
             <input class="form-check-input" type="checkbox" name="iva_bruto" value="1" id="ivaBruto" checked>
-            <label class="form-check-label small" for="ivaBruto">Monto es bruto (con IVA)</label>
+            <label class="form-check-label small" for="ivaBruto">Imputar bruto al CC (con IVA)</label>
           </div>
+          <div class="form-text small ms-1 mb-2">Desmarcado: el CC recibe neto (÷ 1,19)</div>
         </div>
         <div class="col-md-4 d-flex align-items-end">
           <button type="submit" class="btn btn-primary btn-sm">Guardar gasto operacional</button>
