@@ -18,11 +18,11 @@ FILES = [
     "demo_web/services/erp_loader.py",
     "demo_web/services/erp_compat.py",
     "demo_web/services/espino_scope.py",
+    "demo_web/services/espino_costos.py",
     "demo_web/services/tenant_scope.py",
     "demo_web/services/lc_excluir_espino.py",
-    "demo_web/services/costos_espino_matriz.py",
+    "demo_web/services/dashboard.py",
     "demo_web/services/native/costos.py",
-    "scripts/restore_espino_imputaciones_cc.py",
     "scripts/patch_costos_cc_canon.py",
 ]
 
@@ -56,8 +56,7 @@ def main() -> int:
 
     app = f"{REMOTE_WEB}/app_concepcion.py"
     _ssh(f"python3 {REMOTE_WEB}/scripts/patch_costos_cc_canon.py {app} || true")
-    _ssh(f"python3 {REMOTE_WEB}/scripts/restore_espino_imputaciones_cc.py --db {REMOTE_DB}")
-    _ssh("systemctl restart erp-agricola-web || systemctl restart gunicorn || true")
+    _ssh("systemctl restart erp-agricola-web 2>/dev/null || systemctl restart gunicorn 2>/dev/null || true")
     print("Deploy completado.")
     return 0
 
