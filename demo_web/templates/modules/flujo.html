@@ -18,34 +18,34 @@
   <div class="alert alert-info">Sin meses proyectables en esta temporada desde la fecha actual.</div>
   {% else %}
   <div class="row g-3 mb-3">
-    <div class="col-6 col-lg">
+    <div class="col-6 col-md-4 col-lg">
       <div class="flujo-metric flujo-metric-ing">
         <div class="flujo-metric-label">Ingresos proyectados</div>
         <div class="flujo-metric-value">{{ kpis.ingresos }}</div>
       </div>
     </div>
-    <div class="col-6 col-lg">
+    <div class="col-6 col-md-4 col-lg">
       <div class="flujo-metric flujo-metric-eg">
-        <div class="flujo-metric-label">Gastado imputado (Costos)</div>
+        <div class="flujo-metric-label">Presup. consumido</div>
         <div class="flujo-metric-value">{{ kpis.gastado }}</div>
       </div>
     </div>
-    <div class="col-6 col-lg">
+    <div class="col-6 col-md-4 col-lg">
       <div class="flujo-metric flujo-metric-eg">
         <div class="flujo-metric-label">Cuentas por pagar</div>
         <div class="flujo-metric-value">{{ kpis.cxp }}</div>
       </div>
     </div>
-    <div class="col-6 col-lg">
+    <div class="col-6 col-md-4 col-lg">
       <div class="flujo-metric flujo-metric-eg">
-        <div class="flujo-metric-label">Egresos caja proy.</div>
+        <div class="flujo-metric-label">Por gastar</div>
         <div class="flujo-metric-value">{{ kpis.egresos_proy }}</div>
       </div>
     </div>
-    <div class="col-6 col-lg">
+    <div class="col-6 col-md-4 col-lg">
       <div class="flujo-metric flujo-metric-res">
-        <div class="flujo-metric-label">EERR acumulado</div>
-        <div class="flujo-metric-value {% if kpis.eerr and '-' in kpis.eerr %}text-danger{% endif %}">{{ kpis.eerr }}</div>
+        <div class="flujo-metric-label">Resultado</div>
+        <div class="flujo-metric-value {% if kpis.margen and '-' in kpis.margen %}text-danger{% endif %}">{{ kpis.margen }}</div>
       </div>
     </div>
   </div>

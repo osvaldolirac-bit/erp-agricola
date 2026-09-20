@@ -9,6 +9,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import centros_costo
 
 SECCIONES = [
     ("salida", "🚜 SALIDA MANUAL"),
@@ -134,7 +135,7 @@ def _procesar_salida(demo, conn) -> dict:
     fs = parse_date(request.form.get("fecha"), hoy_demo(demo))
     vehiculo = (request.form.get("vehiculo") or "").strip()
     responsable = (request.form.get("responsable") or "").strip()
-    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in demo.CENTROS_COSTO]
+    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in centros_costo(demo)]
 
     if not vehiculo:
         return {"ok": False, "msg": "Seleccione el equipo o vehículo desde la maestra de maquinaria."}
@@ -263,7 +264,9 @@ def _planilla(demo, conn) -> dict:
     pdf_url = None
     if request.method == "POST" and request.form.get("action") == "planilla_pdf":
         blob = generar_pdf_planilla_maestra_petroleo(
-            f_plan, l_plan, logo_path=None, empresa="ERP DEMO AGRICOLA",
+            f_plan, l_plan,
+            logo_path=demo.ruta_logo_pdf(),
+            empresa=getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola",
         )
         if blob:
             token = store_pdf(blob, "planilla_maestra_petroleo.pdf")
@@ -347,7 +350,7 @@ def gather_petroleo(user_email: str, user_rol: str) -> dict:
             "widget_html": widget_html,
             "pmp_neto": demo.f_puntos(pmp),
             "impuesto_litro": demo.IMPUESTO_ESPECIFICO_LITRO,
-            "cuarteles": demo.CENTROS_COSTO,
+            "cuarteles": centros_costo(demo),
             "maquinaria_opts": _opciones_maquinaria(conn),
         }
         ctx.update(_bitacora_campo_ctx(demo, conn))
