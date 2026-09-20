@@ -47,7 +47,13 @@ class Config:
             return override
         static_root = Path(__file__).resolve().parent / "static"
         mtimes: list[int] = []
-        for rel in ("css/erp.css", "css/planes.css", "js/demo.js"):
+        for rel in (
+            "css/erp.css",
+            "css/salida-link.css",
+            "css/globalgap.css",
+            "css/planes.css",
+            "js/demo.js",
+        ):
             path = static_root / rel
             if path.is_file():
                 mtimes.append(int(path.stat().st_mtime))
