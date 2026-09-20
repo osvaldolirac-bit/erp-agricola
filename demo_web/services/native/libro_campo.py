@@ -797,9 +797,91 @@ def gather_libro_campo(user_email: str, user_rol: str) -> dict:
         conn.close()
 
 
+def _redirect_espino_lc(**extra) -> redirect_module:
+    return redirect_module("libro-campo", **extra)
+
+
+def _view_espino_libro_campo(user_email: str, user_rol: str):
+    """Libro de Campo El Espino en /m/libro-campo (sin redirigir al módulo Espino)."""
+    from demo_web.services.native import espino_libro_campo
+    from demo_web.services.native._helpers import temporada_sel
+
+    demo = get_demo_module()
+    bind_user_session(user_email, user_rol)
+    temporadas = getattr(demo, "TEMPORADAS_ESPINO", None) or getattr(demo, "TEMPORADAS_COSTOS", None) or {}
+    nombre, fi, ff = temporada_sel(demo, temporadas=temporadas)
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        temp = request.form.get("temp") or nombre
+        conn = demo.conectar_db()
+        try:
+            if action == "lc_pop_producto":
+                espino_libro_campo.post_pop_producto(demo)
+                flash("Último producto removido del evento.", "info")
+                return _redirect_espino_lc(op="ingreso", temp=temp)
+            lc_handlers = {
+                "lc_agregar_producto": espino_libro_campo.post_agregar_producto,
+                "lc_guardar_evento": espino_libro_campo.post_guardar_evento,
+            }
+            lc_fn = lc_handlers.get(action)
+            if lc_fn:
+                result = lc_fn(demo, conn)
+                flash(result["msg"], "success" if result["ok"] else "danger")
+                extra = {"temp": temp}
+                extra.update(result.get("extra") or {})
+                if action == "lc_agregar_producto" and request.form.get("producto"):
+                    extra["prod"] = request.form.get("producto")
+                for k in ("cuartel", "fecha", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
+                    if request.form.get(k):
+                        extra[k] = request.form.get(k)
+                if request.form.get("op_cert") == "1":
+                    extra["op_cert"] = "1"
+                if "op" not in extra:
+                    extra["op"] = request.form.get("op") or "ingreso"
+                return _redirect_espino_lc(**extra)
+        finally:
+            conn.close()
+
+    op_map = {"ingreso": "ingreso", "historial": "historial", "desfase": "desfase"}
+    sec_lc = (request.args.get("sec") or request.form.get("sec") or "").strip()
+    lc_op = (request.args.get("op") or request.form.get("op") or op_map.get(sec_lc, "historial")).strip()
+    conn = demo.conectar_db()
+    try:
+        ctx = {
+            "espino_lc": True,
+            "lc_standalone": True,
+            "temporadas": temporadas,
+            "temp_sel": nombre,
+            "fi": fi.strftime("%d-%m-%Y"),
+            "ff": ff.strftime("%d-%m-%Y"),
+            "fi_iso": fi.isoformat(),
+            "ff_iso": ff.isoformat(),
+        }
+        ctx.update(espino_libro_campo.gather_libro_campo(demo, conn, op_override=lc_op))
+    finally:
+        conn.close()
+
+    return render_template(
+        "modules/libro_campo.html",
+        page_title="Libro de Campo",
+        active_key="Libro de Campo",
+        title="📒 Libro de Campo — El Espino",
+        secciones=[],
+        sec_activa="",
+        **ctx,
+    )
+
+
 def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
+
+    from demo_web.services.erp_loader import current_tenant
+
+    tenant = current_tenant()
+    if tenant and tenant.get("slug") == "espino":
+        return _view_espino_libro_campo(user_email, user_rol)
 
     if request.method == "GET" and request.args.get("clima") == "1":
         from demo_web.services.weather import fetch_daily_weather

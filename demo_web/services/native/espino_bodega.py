@@ -1,22 +1,22 @@
-"""Bodega sector El Espino — stock por CC (EL ESPINO), sin alterar inventario global ni La Concepción."""
+"""Bodega sector El Espino — stock por CC del huerto, sin alterar inventario global ni La Concepción."""
 from __future__ import annotations
 
 import pandas as pd
 from flask import request, url_for
 
+from demo_web.services.espino_scope import (
+    BODEGA_CC_ESPINO,
+    CC_MOVIMIENTOS_BODEGA_ESPINO,
+    centros_costo_bodega_espino,
+)
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.native._helpers import hoy_demo
 
-CC_ESPINO = "EL ESPINO"
+# CC en nuevos movimientos; etiqueta UI = BODEGA_CC_ESPINO.
+CC_ESPINO = CC_MOVIMIENTOS_BODEGA_ESPINO
+ETIQUETA_BODEGA = BODEGA_CC_ESPINO
 
 PDF_STOCK_FILENAME = "STOCK_BODEGA_EL_ESPINO.pdf"
-
-# Catálogo fijo bodega El Espino.
-PRODUCTOS_BODEGA_ESPINO = (
-    "PIRIPROXIFEN",
-    "ACEITE BIOIL SPRAY",
-    "COBRE NORDOX",
-)
 
 BODEGA_SECCIONES = [
     ("bodega", "📦 BODEGA"),
@@ -33,45 +33,77 @@ def bodega_secciones() -> list[tuple[str, str]]:
 
 
 def _es_producto_bodega_espino(nombre: str) -> bool:
-    n = (nombre or "").upper().strip()
-    if n in {p.upper() for p in PRODUCTOS_BODEGA_ESPINO}:
-        return True
-    if "PIRIPROXIFEN" in n:
-        return True
-    if "BIOIL" in n and "SPRAY" in n:
-        return True
-    if n.startswith("COBRE") or " COBRE" in f" {n}":
-        return True
-    return False
+    """Todo el inventario del tenant Espino pertenece a su bodega."""
+    _ = nombre
+    return True
 
 
 def _stock_cc_map(conn) -> dict[int, float]:
-    """Stock imputado solo a EL ESPINO (ingresos − salidas). No usa inventario.stock global."""
+    """Stock kardex bodega El Espino (todos los CC históricos del huerto)."""
+    ccs = sorted(centros_costo_bodega_espino())
+    placeholders = ",".join("?" * len(ccs))
     rows = conn.execute(
-        """SELECT producto_id,
-                  SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END) AS stock_cc
-           FROM movimientos
-           WHERE centro_costo = ?
-           GROUP BY producto_id""",
-        (CC_ESPINO,),
+        f"""SELECT producto_id,
+                   SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END) AS stock_cc
+            FROM movimientos
+            WHERE UPPER(centro_costo) IN ({placeholders})
+            GROUP BY producto_id""",
+        ccs,
     ).fetchall()
     return {int(r[0]): float(r[1] or 0) for r in rows}
 
 
-def _stock_cc(conn, producto_id: int) -> float:
+def _stock_disponible(stock_mov: float, inventario_stock: float) -> float:
+    """Kardex CC; si no hay ingresos registrados, usa inventario.stock."""
+    if stock_mov > 1e-9:
+        return stock_mov
+    return max(float(inventario_stock or 0), 0.0)
+
+
+def _stock_cc(conn, producto_id: int, *, inventario_stock: float = 0.0) -> float:
+    ccs = sorted(centros_costo_bodega_espino())
+    placeholders = ",".join("?" * len(ccs))
     row = conn.execute(
-        """SELECT SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END)
-           FROM movimientos WHERE centro_costo = ? AND producto_id = ?""",
-        (CC_ESPINO, producto_id),
+        f"""SELECT SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END)
+            FROM movimientos
+            WHERE UPPER(centro_costo) IN ({placeholders}) AND producto_id = ?""",
+        (*ccs, producto_id),
     ).fetchone()
-    return float(row[0] or 0) if row and row[0] is not None else 0.0
+    stock_mov = float(row[0] or 0) if row and row[0] is not None else 0.0
+    return _stock_disponible(stock_mov, inventario_stock)
+
+
+def productos_bodega_con_stock(demo, conn) -> list[dict]:
+    """Productos inventario Espino con stock disponible (LC ingreso, salidas manuales)."""
+    stock_map = _stock_cc_map(conn)
+    dfi = pd.read_sql_query(
+        "SELECT id, producto, COALESCE(stock, 0) AS stock_inv, "
+        "COALESCE(unidad_medida, ?) AS um FROM inventario ORDER BY producto",
+        conn,
+        params=(demo.DEFAULT_UNIDAD_INSUMO,),
+    )
+    out = []
+    for _, r in dfi.iterrows():
+        pid = int(r["id"])
+        stock = _stock_disponible(stock_map.get(pid, 0.0), float(r["stock_inv"] or 0))
+        if stock <= 0:
+            continue
+        out.append(
+            {
+                "id": pid,
+                "producto": r["producto"],
+                "stock_fmt": demo.f_cantidad(stock),
+                "um": r["um"],
+            }
+        )
+    return out
 
 
 def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> list[dict]:
     rows = []
     for _, r in dfs_view.iterrows():
         pid = int(r["id"])
-        stock_cc = stock_map.get(pid, 0.0)
+        stock_cc = _stock_disponible(stock_map.get(pid, 0.0), float(r.get("stock_inv") or 0))
         rows.append(
             {
                 "producto": r["producto"],
@@ -88,13 +120,16 @@ def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> li
 def gather_bodega_stock(demo, conn) -> dict:
     stock_map = _stock_cc_map(conn)
     dfs = pd.read_sql_query(
-        """SELECT id, producto, familia, COALESCE(unidad_medida, 'kg') AS unidad_medida,
+        """SELECT id, producto, familia, COALESCE(stock, 0) AS stock_inv,
+                  COALESCE(unidad_medida, 'kg') AS unidad_medida,
                   precio_medio, COALESCE(ingrediente_activo,'') AS ingrediente_activo
            FROM inventario ORDER BY producto COLLATE NOCASE""",
         conn,
     )
-    dfs = dfs[dfs["producto"].astype(str).apply(_es_producto_bodega_espino)]
-    dfs["stock_cc"] = dfs["id"].map(lambda i: stock_map.get(int(i), 0.0))
+    dfs["stock_cc"] = dfs.apply(
+        lambda r: _stock_disponible(stock_map.get(int(r["id"]), 0.0), float(r["stock_inv"] or 0)),
+        axis=1,
+    )
     q = (request.args.get("q") or "").strip()
     dfs_view = dfs.copy()
     if q:
@@ -116,7 +151,7 @@ def gather_bodega_stock(demo, conn) -> dict:
         estilo = getattr(demo, "_pdf_estilo_stock_pppl", None)
         blob = demo.generar_pdf_blob(
             dfs_op,
-            f"STOCK BODEGA {CC_ESPINO} — CON STOCK (SIN PRECIOS)",
+            f"STOCK BODEGA {ETIQUETA_BODEGA} — CON STOCK (SIN PRECIOS)",
             incluir_precios=False,
             estilo_celda_fn=estilo,
         )
@@ -136,34 +171,23 @@ def gather_bodega_stock(demo, conn) -> dict:
 
 
 def _productos_con_stock(demo, conn) -> list[dict]:
-    stock_map = _stock_cc_map(conn)
-    dfi = pd.read_sql_query(
-        "SELECT id, producto, COALESCE(unidad_medida, 'kg') AS unidad_medida FROM inventario ORDER BY producto",
-        conn,
-    )
-    out = []
-    for _, r in dfi.iterrows():
-        if not _es_producto_bodega_espino(str(r["producto"])):
-            continue
-        pid = int(r["id"])
-        stock = stock_map.get(pid, 0.0)
-        if stock <= 0:
-            continue
-        out.append(
-            {
-                "id": pid,
-                "producto": r["producto"],
-                "unidad_medida": r["unidad_medida"],
-                "stock_fmt": demo.f_cantidad(stock),
-            }
-        )
-    return out
+    rows = productos_bodega_con_stock(demo, conn)
+    return [
+        {
+            "id": r["id"],
+            "producto": r["producto"],
+            "unidad_medida": r["um"],
+            "stock_fmt": r["stock_fmt"],
+        }
+        for r in rows
+    ]
 
 
 def _productos_todos(demo, conn) -> list[dict]:
     stock_map = _stock_cc_map(conn)
     dfi = pd.read_sql_query(
-        "SELECT id, producto, COALESCE(unidad_medida, 'kg') AS unidad_medida FROM inventario ORDER BY producto",
+        "SELECT id, producto, COALESCE(stock, 0) AS stock_inv, "
+        "COALESCE(unidad_medida, 'kg') AS unidad_medida FROM inventario ORDER BY producto",
         conn,
     )
     return [
@@ -171,10 +195,11 @@ def _productos_todos(demo, conn) -> list[dict]:
             "id": int(r["id"]),
             "producto": r["producto"],
             "unidad_medida": r["unidad_medida"],
-            "stock_fmt": demo.f_cantidad(stock_map.get(int(r["id"]), 0.0)),
+            "stock_fmt": demo.f_cantidad(
+                _stock_disponible(stock_map.get(int(r["id"]), 0.0), float(r["stock_inv"] or 0))
+            ),
         }
         for _, r in dfi.iterrows()
-        if _es_producto_bodega_espino(str(r["producto"]))
     ]
 
 
@@ -195,7 +220,7 @@ def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
         "familias_prod": demo.listar_familias_producto(conn),
         "unidades_medida": demo.UNIDADES_MEDIDA_INSUMO,
         "um_default": demo.DEFAULT_UNIDAD_INSUMO,
-        "cc_espino": CC_ESPINO,
+        "cc_espino": ETIQUETA_BODEGA,
     }
     ctx.update(gather_bodega_stock(demo, conn))
     return ctx
@@ -235,9 +260,8 @@ def validar_salida_bodega(
     if not row:
         return False, "Producto no encontrado.", None, None, None
     iid, prod_nombre, _pmp, um_sel = int(row[0]), row[1], float(row[2] or 0), row[3]
-    if not _es_producto_bodega_espino(prod_nombre):
-        return False, f"{prod_nombre} no pertenece a la bodega El Espino.", None, None, None
-    stock = _stock_cc(conn, iid)
+    inv_st = conn.execute("SELECT COALESCE(stock, 0) FROM inventario WHERE id=?", (iid,)).fetchone()
+    stock = _stock_cc(conn, iid, inventario_stock=float(inv_st[0] if inv_st else 0))
     if cantidad > stock + 1e-9:
         return False, (
             f"Stock insuficiente de {prod_nombre} "
@@ -317,8 +341,6 @@ def post_ingreso_existente(demo, conn) -> dict:
     if not row:
         return {"ok": False, "msg": "Producto no encontrado."}
     prod_nombre, pmp, um_sel = row[0], float(row[1] or 0), row[2]
-    if not _es_producto_bodega_espino(prod_nombre):
-        return {"ok": False, "msg": f"{prod_nombre} no pertenece a la bodega El Espino."}
     fecha = str(hoy_demo(demo))
     conn.execute(
         """INSERT INTO movimientos
