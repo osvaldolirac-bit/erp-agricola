@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="format-detection" content="email=no, telephone=no">
+  <title>ERP Master · Agrícola y Comercial</title>
+  <meta name="description" content="ERP Master: Agrícola y Comercial. Módulos claros, packs y cupos de usuarios. Integración Mercado Libre + Mercado Pago. Prueba gratis. Hecho en Chile.">
+  <link rel="icon" type="image/png" href="/assets/favicon-32x32.png">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/site.css?v=oferta17">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">
+      <img src="/assets/logo_erpmaster.png" alt="ERP Master">
+    </a>
+    <nav class="top-nav" aria-label="Principal">
+      <a href="#productos">Productos</a>
+      <a href="#modulos">Módulos</a>
+      <a href="#planes-agricola">Agrícola</a>
+      <a href="#planes-comercial">Comercial</a>
+      <a href="#usuarios">Usuarios</a>
+      <a class="btn-ghost" href="/agricola/probar" target="_blank" rel="noopener noreferrer">Demo Agrícola</a>
+      <a class="btn-solid" href="/comercial/probar" target="_blank" rel="noopener noreferrer">Probar Comercial</a>
+      <a class="btn-ghost top-wa" href="https://api.whatsapp.com/send/?phone=56928893056&text=Hola%2C%20quiero%20informaci%C3%B3n%20de%20ERP%20Master&type=phone_number&app_absent=0" target="_blank" rel="noopener" title="WhatsApp">
+        <svg class="wa-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        WhatsApp
+      </a>
+      <span class="top-mail" aria-label="Correo">erpmaster67@gmail.com</span>
+    </nav>
+    <div class="zona-clientes">
+      <button type="button" class="zona-clientes-toggle" aria-expanded="false" aria-controls="zona-clientes-menu" id="zona-clientes-btn">
+        ZONA CLIENTES
+      </button>
+      <div class="zona-clientes-menu" id="zona-clientes-menu" hidden>
+        <a class="zona-link-agri" href="/agricola/login" target="_blank" rel="noopener noreferrer">Ingresar Agrícola</a>
+        <a class="zona-link-com" href="/comercial/login" target="_blank" rel="noopener noreferrer">Ingresar Comercial</a>
+        <a class="zona-link-cst" href="/constructora/login" target="_blank" rel="noopener noreferrer">Ingresar Constructora</a>
+      </div>
+    </div>
+    <button class="nav-toggle" type="button" aria-label="Abrir menú" aria-expanded="false">☰</button>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-veil"></div>
+      <div class="hero-inner">
+        <img class="hero-logo" src="/assets/logo_erpmaster.png" alt="ERP Master">
+        <h1>Hecho en Chile,<br>desde los dolores del día a día</h1>
+        <p class="hero-lead">Dos ERP distintos: Agrícola para el campo, Comercial para vender y comprar.</p>
+        <div class="hero-cta">
+          <a class="btn-solid btn-lg" href="/comercial/probar" target="_blank" rel="noopener noreferrer">Probar Comercial</a>
+          <a class="btn-ghost btn-lg" href="/agricola/probar" target="_blank" rel="noopener noreferrer">Demo Agrícola</a>
+        </div>
+        <aside class="hero-medida" role="note">
+          <p class="hero-medida-kicker">ERP a la medida</p>
+          <p class="hero-medida-text">Software a medida según tus necesidades. Cuéntanos en qué rubro estás.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="productos" class="section section-productos">
+      <div class="wrap">
+        <p class="kicker">Productos</p>
+        <h2>Elige el ERP según tu operación</h2>
+        <p class="lead">No son el mismo sistema con otro color. Cada uno tiene sus módulos, packs y precios.</p>
+
+        <div class="flyer-grid">
+          <article class="flyer-card flyer-agricola" id="erp-agricola">
+            <p class="product-tag">Campo · packing · costos</p>
+            <h3>ERP Agrícola</h3>
+            <p class="flyer-pitch">Para saber cuánto cuesta producir: labores, patio, petróleo, RRHH y centros de costo.</p>
+            <ul class="flyer-points">
+              <li><strong>Campo:</strong> Libro de campo, GlobalGAP, maquinaria</li>
+              <li><strong>Patio:</strong> Compras, bodega, petróleo, tesorería</li>
+              <li><strong>Oficina:</strong> RRHH, costos, flujo, compras y pagos</li>
+            </ul>
+            <p class="flyer-packs"><strong>Packs:</strong> Campo · Patio · Oficina · Agrícola (completo)</p>
+            <div class="product-cta">
+              <a class="btn-solid" href="/agricola/probar" target="_blank" rel="noopener noreferrer">Probar gratis</a>
+              <a class="btn-ghost" href="#planes-agricola">Ver precios</a>
+            </div>
+          </article>
+
+          <article class="flyer-card flyer-comercial" id="erp-comercial">
+            <p class="product-tag">Cotizar · cobrar · comprar</p>
+            <h3>ERP Comercial</h3>
+            <p class="flyer-pitch">Para vender y comprar sin planillas: del cliente a la cobranza, y de la OC al pago.</p>
+            <ul class="flyer-points">
+              <li><strong>Ventas:</strong> Clientes, cotizaciones PDF, CxC</li>
+              <li><strong>Compras:</strong> OC, compras, centro de costos, tesorería, bodega</li>
+              <li><strong>Plan Total:</strong> todo lo anterior en un solo plan</li>
+            </ul>
+            <p class="flyer-packs"><strong>Packs:</strong> Ventas · Compras · Plan Total · Add-on ML + MP</p>
+            <div class="product-cta">
+              <a class="btn-solid" href="/comercial/probar" target="_blank" rel="noopener noreferrer">Probar 30 días</a>
+              <a class="btn-ghost" href="#planes-comercial">Ver precios</a>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="modulos" class="section section-modulos">
+      <div class="wrap">
+        <p class="kicker">Módulos</p>
+        <h2>Qué incluye cada ERP</h2>
+        <p class="lead">Misma lógica de packs, módulos distintos. Así se ve la diferencia de un vistazo.</p>
+
+        <div class="mod-compare">
+          <div class="mod-col mod-col-agri">
+            <h3>Agrícola</h3>
+            <p class="mod-col-lead">Operación de campo y costos de producción</p>
+            <ul class="mod-chips" aria-label="Módulos Agrícola">
+              <li>Libro de campo</li>
+              <li>Campo B</li>
+              <li>GlobalGAP</li>
+              <li>Maquinaria</li>
+              <li>Petróleo</li>
+              <li>Compras</li>
+              <li>Bodega</li>
+              <li>Tesorería</li>
+              <li>RRHH</li>
+              <li class="mod-chip-eje">Costos (eje)</li>
+              <li>Flujo de caja</li>
+              <li class="mod-chip-inc">Dashboard · Admin · Soporte</li>
+            </ul>
+          </div>
+          <div class="mod-col mod-col-com">
+            <h3>Comercial</h3>
+            <p class="mod-col-lead">Ciclo de ventas y compras de la empresa</p>
+            <ul class="mod-chips" aria-label="Módulos Comercial">
+              <li>Clientes</li>
+              <li>Cotizaciones</li>
+              <li>Cuentas por cobrar</li>
+              <li>Órdenes de compra</li>
+              <li>Compras</li>
+              <li>Centro de costos</li>
+              <li>Tesorería</li>
+              <li>Bodega</li>
+              <li class="mod-chip-addon">Mercado Libre + MP</li>
+              <li class="mod-chip-inc">Dashboard · Admin · Soporte</li>
+            </ul>
+          </div>
+        </div>
+        <p class="mod-foot">En cada demo, la pantalla <strong>Planes</strong> muestra el detalle módulo por módulo (igual que aquí, con precios).</p>
+      </div>
+    </section>
+
+    <section id="planes" class="section section-planes">
+      <div class="wrap">
+        <p class="kicker">Planes</p>
+        <h2>Precios por ERP</h2>
+        <p class="lead">IVA incluido. Sin letra chica. Date de baja cuando quieras.</p>
+
+        <div class="planes-block planes-agricola" id="planes-agricola">
+          <div class="planes-head-row">
+            <h3 class="planes-sub">ERP Agrícola</h3>
+            <a class="planes-demo-link" href="/agricola/probar" target="_blank" rel="noopener noreferrer">Ver en la demo →</a>
+          </div>
+          <p class="planes-intro">Packs = caminos del campo. Completo = todos los módulos agrícolas.</p>
+          <div class="plan-grid plan-grid-4">
+            <article class="plan">
+              <h4>Pack Campo</h4>
+              <p class="price">$55.900<span>/mes</span></p>
+              <ul class="plan-mods">
+                <li>Libro de campo · Campo B</li>
+                <li>GlobalGAP · Maquinaria</li>
+              </ul>
+              <p class="plan-seats plan-seats-agri">1 Admin + 1 asiento</p>
+              <p class="plan-seats-extra">Usuario adicional $3.900/mes</p>
+            </article>
+            <article class="plan">
+              <h4>Pack Patio</h4>
+              <p class="price">$53.900<span>/mes</span></p>
+              <ul class="plan-mods">
+                <li>Compras · Bodega · Petróleo</li>
+                <li>Tesorería</li>
+              </ul>
+              <p class="plan-seats plan-seats-agri">1 Admin + 1 asiento</p>
+              <p class="plan-seats-extra">Usuario adicional $3.900/mes</p>
+            </article>
+            <article class="plan">
+              <h4>Pack Oficina</h4>
+              <p class="price">$84.900<span>/mes</span></p>
+              <ul class="plan-mods">
+                <li>RRHH · Costos · Flujo</li>
+                <li>Compras · Tesorería</li>
+              </ul>
+              <p class="plan-seats plan-seats-agri">1 Admin + 1 asiento</p>
+              <p class="plan-seats-extra">Usuario adicional $3.900/mes</p>
+            </article>
+            <article class="plan plan-featured">
+              <h4>Pack Agrícola</h4>
+              <p class="price">$119.990<span>/mes</span></p>
+              <ul class="plan-mods">
+                <li>Campo + Patio + Oficina</li>
+                <li>Mapa completo del ERP</li>
+              </ul>
+              <p class="plan-seats plan-seats-agri">1 Admin + 3 asientos</p>
+              <p class="plan-seats-extra">Usuario adicional $1.990/mes</p>
+            </article>
+          </div>
+        </div>
+
+        <div class="planes-block planes-comercial" id="planes-comercial">
+          <div class="planes-head-row">
+            <h3 class="planes-sub">ERP Comercial</h3>
+            <a class="planes-demo-link" href="/comercial/probar" target="_blank" rel="noopener noreferrer">Ver en la demo →</a>
+          </div>
+          <p class="planes-intro">Packs de ventas o compras. <strong>Plan Total</strong> = todos los módulos comerciales.</p>
+          <div class="plan-grid plan-grid-3">
+            <article class="plan">
+              <h4>Pack Ventas</h4>
+              <p class="price">$42.900<span>/mes</span></p>
+              <ul class="plan-mods">
+                <li>Clientes · Cotizaciones · CxC</li>
+              </ul>
+              <p class="plan-seats">1 Admin + 1 asiento</p>
+              <p class="plan-seats-extra">Usuario adicional $4.990/mes</p>
+            </article>
+            <article class="plan">
+              <h4>Pack Compras</h4>
+              <p class="price">$52.800<span>/mes</span></p>
+              <ul class="plan-mods">
+                <li>OC · Compras · Centro de costos</li>
+                <li>Tesorería · Bodega</li>
+              </ul>
+              <p class="plan-seats">1 Admin + 1 asiento</p>
+              <p class="plan-seats-extra">Usuario adicional $4.990/mes</p>
+            </article>
+            <article class="plan plan-featured">
+              <h4>PLAN TOTAL</h4>
+              <p class="price">$82.800<span>/mes</span></p>
+              <ul class="plan-mods">
+                <li>Ventas + Compras completos</li>
+                <li>Todos los módulos del ERP</li>
+              </ul>
+              <p class="plan-seats">1 Admin + 3 asientos</p>
+              <p class="plan-seats-extra">Usuario adicional $1.990/mes</p>
+            </article>
+          </div>
+
+          <div class="plan-addon plan-addon-featured">
+            <div>
+              <h4>Add-on · Mercado Libre + Mercado Pago</h4>
+              <p>Stock y órdenes ML → Bodega. Links MP → abonos en CxC. Se suma al plan que elijas.</p>
+            </div>
+            <p class="price">$29.900<span>/mes</span></p>
+            <p class="plan-addon-setup">Setup 1ª cuenta $49.900 · <a href="#integraciones">Ver detalle</a></p>
+          </div>
+        </div>
+
+        <p class="planes-foot">También puedes contratar <strong>por módulo</strong> en cada demo. Dashboard, Admin y Soporte van incluidos.</p>
+        <p class="trust-line">Sin letra chica. Sin contratos. Date de baja cuando quieras.</p>
+      </div>
+    </section>
+
+    <section id="usuarios" class="section section-usuarios">
+      <div class="wrap">
+        <p class="kicker">Usuarios</p>
+        <h2>Cupos claros en ambos ERP</h2>
+        <p class="lead">Cada plan incluye un Administrador. Los asientos pueden ser Operador o Lector; el Admin configura el acceso y módulos.</p>
+
+        <div class="seats-erp-block seats-erp-agri">
+          <h3>ERP Agrícola</h3>
+          <div class="seats-grid">
+            <article class="seats-card seats-card-agri-std">
+              <h4>Por módulo · Campo · Patio · Oficina</h4>
+              <p class="seats-main">1 Administrador + <strong>1 asiento</strong></p>
+              <p class="seats-extra">Usuario adicional: <strong>$3.900/mes</strong></p>
+            </article>
+            <article class="seats-card seats-card-agri-full">
+              <h4>Pack Agrícola</h4>
+              <p class="seats-main">1 Administrador + <strong>3 asientos</strong></p>
+              <p class="seats-extra">Usuario adicional: <strong>$1.990/mes</strong></p>
+            </article>
+          </div>
+        </div>
+
+        <div class="seats-erp-block seats-erp-com">
+          <h3>ERP Comercial</h3>
+          <div class="seats-grid">
+            <article class="seats-card seats-card-std">
+              <h4>Por módulo · Pack Ventas · Pack Compras</h4>
+              <p class="seats-main">1 Administrador + <strong>1 asiento</strong></p>
+              <p class="seats-extra">Usuario adicional: <strong>$4.990/mes</strong></p>
+            </article>
+            <article class="seats-card seats-card-total">
+              <h4>PLAN TOTAL</h4>
+              <p class="seats-main">1 Administrador + <strong>3 asientos</strong></p>
+              <p class="seats-extra">Usuario adicional: <strong>$1.990/mes</strong></p>
+            </article>
+          </div>
+        </div>
+        <p class="seats-note">Mismo criterio en las demos (pantalla Planes). El add-on Mercado Libre no suma asientos.</p>
+      </div>
+    </section>
+
+    <section id="integraciones" class="section section-integraciones">
+      <div class="wrap">
+        <p class="kicker">Comercial · Add-on</p>
+        <h2>Mercado Libre + Mercado Pago</h2>
+        <p class="lead">Solo en ERP Comercial. Vendes en ML, cobras con MP, y el movimiento queda en Bodega y CxC.</p>
+
+        <div class="integ-grid">
+          <article class="integ-card integ-ml">
+            <p class="integ-badge">Mercado Libre</p>
+            <h3>Ventas y stock</h3>
+            <ul>
+              <li>Publicaciones / stock ↔ Bodega</li>
+              <li>Órdenes ML → venta o cotización</li>
+              <li>Pedido → CxC + registro</li>
+            </ul>
+          </article>
+          <article class="integ-card integ-mp">
+            <p class="integ-badge">Mercado Pago</p>
+            <h3>Cobros</h3>
+            <ul>
+              <li>Links de pago desde CxC</li>
+              <li>Pagos aprobados → abonos</li>
+              <li>Misma cuenta, sincronizada</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="integ-price">
+          <div>
+            <p class="integ-price-tag">Add-on premium · no va dentro de los packs</p>
+            <p class="price">$29.900<span>/mes</span></p>
+            <p class="integ-setup">Setup 1ª cuenta $49.900</p>
+          </div>
+          <div class="integ-cta">
+            <a class="btn-solid btn-lg" href="/comercial/probar" target="_blank" rel="noopener noreferrer">Probar Comercial</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-cta">
+      <div class="wrap cta-box">
+        <h2>Prueba el ERP que te corresponde</h2>
+        <p>En cada demo, Planes muestra módulos y precios con el mismo criterio de esta página.</p>
+        <div class="hero-cta">
+          <a class="btn-solid btn-lg" href="/comercial/probar" target="_blank" rel="noopener noreferrer">Probar Comercial</a>
+          <a class="btn-ghost btn-lg" href="/agricola/probar" target="_blank" rel="noopener noreferrer">Demo Agrícola</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-inner">
+      <div>
+        <strong>ERP Master</strong>
+        <span>Integración &amp; control inteligente · Hecho en Chile</span>
+      </div>
+      <div class="foot-links">
+        <a href="/agricola/probar" target="_blank" rel="noopener noreferrer">Agrícola</a>
+        <a href="/comercial/probar" target="_blank" rel="noopener noreferrer">Comercial</a>
+        <a href="/privacidad">Privacidad</a>
+        <a href="#modulos">Módulos</a>
+        <a class="foot-wa" href="https://api.whatsapp.com/send/?phone=56928893056&text=Hola%2C%20quiero%20informaci%C3%B3n%20de%20ERP%20Master&type=phone_number&app_absent=0" target="_blank" rel="noopener" title="WhatsApp">
+          <svg class="wa-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          WhatsApp
+        </a>
+        <span class="foot-mail" aria-label="Correo">erpmaster67@gmail.com</span>
+      </div>
+    </div>
+  </footer>
+
+  <div class="contact-float" aria-label="Contacto">
+    <a class="contact-float-btn contact-wa" href="https://api.whatsapp.com/send/?phone=56928893056&text=Hola%2C%20quiero%20informaci%C3%B3n%20de%20ERP%20Master&type=phone_number&app_absent=0" target="_blank" rel="noopener" aria-label="WhatsApp" title="WhatsApp">
+      <svg class="wa-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+    </a>
+    <div class="contact-float-btn contact-mail" title="Correo" role="text">
+      <span class="contact-mail-addr">erpmaster67@gmail.com</span>
+    </div>
+  </div>
+
+  <script src="/assets/site.js?v=zona1"></script>
+</body>
+</html>
