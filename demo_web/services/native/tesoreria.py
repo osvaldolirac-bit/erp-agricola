@@ -7,7 +7,10 @@ from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.lc_excluir_espino import filtrar_df_facturas_espino_lc, sql_and_excluir_razon_social_espino
+from demo_web.services.tesoreria_cxp import saldo_cxp_neto, sql_imputado_costos_subquery, sql_solo_cxp_tesoreria
 from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.tenant_scope import razon_social_default
 
 SECCIONES = [
     ("pendientes", "🔴 PENDIENTES"),
@@ -114,7 +117,9 @@ def _pdf_url(demo, blob, archivo: str) -> str | None:
 
 
 def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
-    dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
+    dfp = filtrar_df_facturas_espino_lc(
+        demo._cargar_facturas_pendientes_saldo(conn)
+    ).sort_values("fecha_vencimiento")
     if dfp.empty:
         return None
     dfp_show = dfp.rename(columns={
@@ -149,10 +154,12 @@ def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
 
 def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
     dfpr = pd.read_sql_query(
-        """SELECT nro_documento, fecha_vencimiento, monto_total,
+        f"""SELECT nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           WHERE proveedor=? AND estado='Pendiente' AND monto_total > 0
+           {sql_solo_cxp_tesoreria()}
+           {sql_and_excluir_razon_social_espino()}
            ORDER BY fecha_vencimiento ASC""",
         conn,
         params=(proveedor,),
@@ -182,7 +189,9 @@ def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
 
 
 def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | None:
-    dfh = demo._query_historial_abonos_tesoreria(conn, fi, ff, bsq, met)
+    dfh = filtrar_df_facturas_espino_lc(
+        demo._query_historial_abonos_tesoreria(conn, fi, ff, bsq, met)
+    )
     if dfh.empty:
         return None
     fn = getattr(demo, "generar_pdf_tesoreria_pagos", None)
@@ -190,8 +199,24 @@ def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | 
     return _pdf_url(demo, blob, "pagos_tesoreria.pdf")
 
 
+def _reparar_tesoreria_lc(conn, demo) -> None:
+    from demo_web.services.tesoreria_reparar_lc import reparar_tesoreria_lc_pendientes
+
+    reparar_tesoreria_lc_pendientes(
+        conn,
+        hora_chile_fn=demo.hora_chile,
+        ensure_abonos_fn=lambda c: (
+            getattr(demo, "_ensure_banco_pago_cols", lambda _x: None)(c),
+            getattr(demo, "_migrar_facturas_abonos", lambda _x: None)(c),
+        ),
+    )
+
+
 def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
-    dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
+    _reparar_tesoreria_lc(conn, demo)
+    dfp = filtrar_df_facturas_espino_lc(
+        demo._cargar_facturas_pendientes_saldo(conn)
+    ).sort_values("fecha_vencimiento")
     if dfp.empty:
         return [], demo.f_peso(0), 0
     total = demo.f_peso(dfp["saldo"].sum())
@@ -203,7 +228,7 @@ def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
             {
                 "nro_documento": r["nro_documento"],
                 "proveedor": r["proveedor"],
-                "razon_social": r.get("razon_social") or "La Concepción",
+                "razon_social": r.get("razon_social") or razon_social_default(),
                 "fecha_vencimiento": venc.strftime("%d-%m-%Y"),
                 "dias_vencido": "" if pd.isna(r.get("dias_vencido")) else int(r["dias_vencido"]),
                 "monto_total": demo.f_peso(r["monto_total"]),
@@ -216,9 +241,12 @@ def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
 
 
 def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict], str | None, str]:
+    excl = sql_and_excluir_razon_social_espino()
     prvs = pd.read_sql_query(
-        """SELECT DISTINCT proveedor FROM facturas
-           WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+        f"""SELECT DISTINCT proveedor FROM facturas
+           WHERE estado='Pendiente' AND monto_total > 0
+           {sql_solo_cxp_tesoreria()}
+           {excl}
            ORDER BY proveedor""",
         conn,
     )
@@ -226,18 +254,22 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
     if not proveedores:
         return [], [], None, ""
     psel = proveedor if proveedor in proveedores else proveedores[0]
+    imp_sql = sql_imputado_costos_subquery("f")
     dfpr = pd.read_sql_query(
-        """SELECT id, nro_documento, fecha_vencimiento, monto_total,
-                  COALESCE(monto_pagado, 0) AS monto_pagado,
-                  COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
-           FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
-           ORDER BY fecha_vencimiento ASC""",
+        f"""SELECT f.id, f.nro_documento, f.fecha_vencimiento, f.monto_total,
+                  COALESCE(f.monto_pagado, 0) AS monto_pagado,
+                  COALESCE(NULLIF(TRIM(f.razon_social), ''), '') AS razon_social,
+                  {imp_sql} AS imputado_costos
+           FROM facturas f
+           WHERE f.proveedor=? AND f.estado='Pendiente' AND f.monto_total > 0
+           {sql_solo_cxp_tesoreria('f')}
+           {excl}
+           ORDER BY f.fecha_vencimiento ASC""",
         conn,
         params=(psel,),
     )
     dfpr["saldo"] = dfpr.apply(
-        lambda r: demo._saldo_pendiente_factura(r["monto_total"], r["monto_pagado"]),  # noqa: SLF001
+        lambda r: saldo_cxp_neto(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
         axis=1,
     )
     dfpr = dfpr[dfpr["saldo"] > 0.01].copy()
@@ -267,7 +299,9 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
 
 
 def _historial_grupos(demo, conn, fi: date, ff: date, bsq: str, met: str) -> tuple[list[dict], dict]:
-    dfh = demo._query_historial_abonos_tesoreria(conn, fi, ff, bsq, met)
+    dfh = filtrar_df_facturas_espino_lc(
+        demo._query_historial_abonos_tesoreria(conn, fi, ff, bsq, met)
+    )
     if dfh.empty:
         return [], {"pagos": 0, "docs": 0, "total": demo.f_peso(0)}
     df_p = dfh.copy()
@@ -331,7 +365,7 @@ def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, 
     n_docs = len(documentos)
     linea_banco = f"<p><b>🏦 Banco:</b> {html_esc(banco)}</p>" if banco else ""
     pagador = razones_sociales_desde_docs(documentos, razon_social) or ""
-    marca_erp = (getattr(demo, "NOMBRE_ERP", None) or "Agrícola La Concepción").strip()
+    marca_erp = (getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola").strip()
     linea_razon = (
         f"<p><b>🏛️ Razón social que paga:</b> {html_esc(pagador)}</p>"
         if pagador else ""
@@ -364,20 +398,24 @@ def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, 
 
 
 def _docs_pendientes_proveedor(demo, conn, proveedor: str) -> pd.DataFrame:
+    imp_sql = sql_imputado_costos_subquery("f")
     dfpr = pd.read_sql_query(
-        """SELECT id, nro_documento, fecha_vencimiento, monto_total,
-                  COALESCE(monto_pagado, 0) AS monto_pagado,
-                  COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
-           FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
-           ORDER BY fecha_vencimiento ASC""",
+        f"""SELECT f.id, f.nro_documento, f.fecha_vencimiento, f.monto_total,
+                  COALESCE(f.monto_pagado, 0) AS monto_pagado,
+                  COALESCE(NULLIF(TRIM(f.razon_social), ''), '') AS razon_social,
+                  {imp_sql} AS imputado_costos
+           FROM facturas f
+           WHERE f.proveedor=? AND f.estado='Pendiente' AND f.monto_total > 0
+           {sql_solo_cxp_tesoreria('f')}
+           {sql_and_excluir_razon_social_espino('razon_social', 'f')}
+           ORDER BY f.fecha_vencimiento ASC""",
         conn,
         params=(proveedor,),
     )
     if dfpr.empty:
         return dfpr
     dfpr["saldo"] = dfpr.apply(
-        lambda r: demo._saldo_pendiente_factura(r["monto_total"], r["monto_pagado"]),  # noqa: SLF001
+        lambda r: saldo_cxp_neto(r["monto_total"], r["monto_pagado"], r["imputado_costos"]),
         axis=1,
     )
     return dfpr[dfpr["saldo"] > 0.01].copy()
@@ -578,6 +616,7 @@ def gather_tesoreria(user_email: str, user_rol: str) -> dict:
 
     conn = demo.conectar_db()
     try:
+        _reparar_tesoreria_lc(conn, demo)
         ctx: dict = {
             "secciones": SECCIONES,
             "sec_activa": sec,
