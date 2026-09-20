@@ -338,6 +338,11 @@ def view(user_email: str, user_rol: str):
                 extra.update(result.get("extra") or {})
                 if action == "lc_agregar_producto" and request.form.get("producto"):
                     extra["prod"] = request.form.get("producto")
+                for k in ("cuartel", "fecha", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
+                    if request.form.get(k):
+                        extra[k] = request.form.get(k)
+                if request.form.get("op_cert") == "1":
+                    extra["op_cert"] = "1"
                 if "op" not in extra:
                     extra["op"] = request.form.get("op") or "ingreso"
                 return _redirect_espino(**extra)
