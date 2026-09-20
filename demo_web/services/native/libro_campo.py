@@ -10,6 +10,22 @@ from flask import flash, jsonify, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import centros_costo, is_espino_tenant, libro_campo_especies
+
+# Especies de cultivo (≠ GAP_ESPECIES / ámbitos GlobalGAP).
+_LIBRO_CAMPO_ESPECIES_DEFAULT = ("Cerezos", "Ciruelos", "Nogales")
+
+
+def _especies_libro_campo(demo) -> list[str]:
+    """Lista de especies para ingreso LC; respeta tenant (Espino → solo Cerezos)."""
+    out = libro_campo_especies(demo)
+    if out:
+        return out
+    custom = getattr(demo, "LIBRO_CAMPO_ESPECIES", None)
+    if custom:
+        return list(custom)
+    return list(_LIBRO_CAMPO_ESPECIES_DEFAULT)
+
 
 SECCIONES_BASE = [
     ("historial", "📜 HISTORIAL AUDITABLE"),
@@ -196,14 +212,30 @@ def _pop_alertas() -> dict:
     return out
 
 
-def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tuple[str, str]]:
-    from erp_maquinaria import etiqueta_maquinaria, listar_maquinaria
+def _opciones_maquinaria(
+    conn,
+    tipos,
+    permitir_vacio: bool = False,
+    valor_actual=None,
+) -> list[tuple[str, str]]:
+    from erp_maquinaria import _lista_select_maquinaria, etiqueta_maquinaria
 
-    items = listar_maquinaria(conn, solo_activos=True, tipos=tipos)
+    items = _lista_select_maquinaria(
+        conn, tipos=tipos, valor_actual=valor_actual, solo_activos=True
+    )
     opts = [(m["codigo"], etiqueta_maquinaria(m["codigo"], m["nombre"])) for m in items]
     if permitir_vacio:
         return [("", "— Sin tractor —")] + opts
     return opts
+
+
+def _ensure_maquinaria_tenant(conn) -> None:
+    if not is_espino_tenant():
+        return
+    from erp_maquinaria import migrar_maestra_maquinaria, sincronizar_maestra_maquinaria_desde_lc
+
+    migrar_maestra_maquinaria(conn)
+    sincronizar_maestra_maquinaria_desde_lc(conn)
 
 
 def _productos_stock(demo, conn) -> list[dict]:
@@ -255,10 +287,11 @@ def _leer_evento_meta(demo) -> dict:
     base = _evento_meta_defaults(demo)
     meta = session.get(META_KEY) or {}
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
-    if not out.get("cuartel") and getattr(demo, "CENTROS_COSTO", None):
-        out["cuartel"] = demo.CENTROS_COSTO[0]
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    if not out.get("cuartel") and centros_costo(demo):
+        out["cuartel"] = centros_costo(demo)[0]
+    especies = _especies_libro_campo(demo)
+    if not out.get("especie") and especies:
+        out["especie"] = especies[0]
     return out
 
 # Histórico importado (planillas antiguas) vive en n_aplicacion >= 10000
@@ -329,8 +362,8 @@ def _ingreso(demo, conn) -> dict:
         "form_op_cert": bool(meta.get("op_cert")),
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
-        "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "cuarteles": centros_costo(demo),
+        "especies": _especies_libro_campo(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -338,8 +371,15 @@ def _ingreso(demo, conn) -> dict:
         "phi_def": phi_def,
         "pppl_ok": demo.producto_pppl_aprobado(conn, prod_sel) if prod_sel else False,
         "unidades_dosis": UNIDADES_DOSIS,
-        "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
-        "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
+        "maquinaria_opts": _opciones_maquinaria(
+            conn, TIPOS_MAQUINARIA_APLICACION, valor_actual=meta.get("maquinaria")
+        ),
+        "tractor_opts": _opciones_maquinaria(
+            conn,
+            TIPOS_MAQUINARIA_TRACTOR,
+            permitir_vacio=True,
+            valor_actual=meta.get("tractor"),
+        ),
         "lc_car": car_rows,
         "lc_car_raw": car,
     }
@@ -393,7 +433,7 @@ def _historial(demo, conn) -> dict:
             "filtro_cuartel": cuartel,
             "filtro_q": q_prod,
             "filtro_n_app": q_app,
-            "cuarteles": ["TODOS"] + demo.CENTROS_COSTO,
+            "cuarteles": ["TODOS"] + centros_costo(demo),
             "pdf_historial_url": pdf_url,
             "pdf_historial_filename": pdf_filename,
         }
@@ -474,32 +514,63 @@ def _historial(demo, conn) -> dict:
         "filtro_cuartel": cuartel,
         "filtro_q": q_prod,
         "filtro_n_app": q_app,
-        "cuarteles": ["TODOS"] + demo.CENTROS_COSTO,
+        "cuarteles": ["TODOS"] + centros_costo(demo),
         "pdf_historial_url": pdf_url,
         "pdf_historial_filename": pdf_filename,
     }
 
 
+def _safe_n_aplicacion(val) -> int | None:
+    """Convierte n_aplicacion de SQLite/pandas a int; ignora históricos no numéricos."""
+    try:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return None
+        s = str(val).strip()
+        if not s:
+            return None
+        return int(float(s))
+    except (TypeError, ValueError):
+        return None
+
+
+def _modificar_sector_sql() -> tuple[str, list]:
+    """Filtro opcional por sector (tenant Espino)."""
+    if not is_espino_tenant():
+        return "", []
+    from demo_web.services.native.espino_bodega import CC_ESPINO, ETIQUETA_BODEGA
+
+    sectores = {CC_ESPINO.upper(), ETIQUETA_BODEGA.upper()}
+    placeholders = ",".join("?" for _ in sectores)
+    return f" WHERE UPPER(TRIM(sector)) IN ({placeholders})", sorted(sectores)
+
+
 def _modificar(demo, conn) -> dict:
     from erp_maquinaria import TIPOS_MAQUINARIA_APLICACION, TIPOS_MAQUINARIA_TRACTOR
 
+    where_sec, sec_params = _modificar_sector_sql()
     df_mod = pd.read_sql_query(
-        """SELECT n_aplicacion, fecha, sector,
+        f"""SELECT n_aplicacion, fecha, sector,
                   GROUP_CONCAT(producto, ' + ') AS productos,
                   COUNT(*) AS n_prod
            FROM libro_campo
+           {where_sec}
            GROUP BY n_aplicacion, fecha, sector
-           ORDER BY n_aplicacion DESC""",
+           ORDER BY CAST(n_aplicacion AS INTEGER) DESC""",
         conn,
+        params=sec_params or None,
     )
     eventos = []
     for _, r in df_mod.iterrows():
+        n_app = _safe_n_aplicacion(r["n_aplicacion"])
+        if n_app is None:
+            continue
+        n_prod = int(r["n_prod"]) if r["n_prod"] is not None else 0
         eventos.append(
             {
-                "n_app": int(r["n_aplicacion"]),
+                "n_app": n_app,
                 "label": (
-                    f"{int(r['n_aplicacion']):05d} | {r['fecha']} | {r['sector']} | "
-                    f"{r['productos']} ({int(r['n_prod'])} prod.)"
+                    f"{n_app:05d} | {r['fecha']} | {r['sector']} | "
+                    f"{r['productos']} ({n_prod} prod.)"
                 ),
             }
         )
@@ -509,9 +580,9 @@ def _modificar(demo, conn) -> dict:
     lineas: list = []
     if eventos:
         app_sel = request.args.get("n_app")
-        if app_sel and str(app_sel).isdigit():
-            edit_app = int(app_sel)
-        else:
+        edit_app = _safe_n_aplicacion(app_sel) if app_sel else None
+        n_apps = {e["n_app"] for e in eventos}
+        if edit_app not in n_apps:
             edit_app = eventos[0]["n_app"]
 
         df_lineas = pd.read_sql_query(
@@ -520,49 +591,70 @@ def _modificar(demo, conn) -> dict:
             params=(edit_app,),
         )
         lineas = []
+        ids_validos: set[int] = set()
         for _, r in df_lineas.iterrows():
-            lineas.append({"id": int(r["id"]), "producto": r["producto"], "label": f"ID {int(r['id'])} | {r['producto']}"})
+            lid = int(r["id"])
+            ids_validos.add(lid)
+            lineas.append({"id": lid, "producto": r["producto"], "label": f"ID {lid} | {r['producto']}"})
 
         linea_sel = request.args.get("linea_id")
+        lid = None
         if linea_sel and str(linea_sel).isdigit():
-            lid = int(linea_sel)
-        elif lineas:
+            cand = int(linea_sel)
+            if cand in ids_validos:
+                lid = cand
+        if lid is None and lineas:
             lid = lineas[0]["id"]
-        else:
-            lid = None
 
         if lid is not None:
-            row = df_lineas[df_lineas["id"] == lid].iloc[0]
-            u_d = str(row.get("unidad_dosis") or "")
-            edit_linea = {
-                "id": int(row["id"]),
-                "n_app": edit_app,
-                "fecha": str(row["fecha"])[:10],
-                "sector": row["sector"],
-                "especie": row["especie"],
-                "producto": row["producto"],
-                "lote": row.get("lote_producto") or "",
-                "ingrediente": row.get("ingrediente") or "",
-                "dosis": float(row.get("dosis") or 0),
-                "unidad_dosis": u_d if u_d in UNIDADES_DOSIS else UNIDADES_DOSIS[0],
-                "vol_total": float(row.get("vol_total") or 0),
-                "gasto_total": float(row.get("gasto_total") or 0),
-                "fecha_viable": str(row.get("fecha_viable") or row["fecha"])[:10],
-                "aplicadores": row.get("aplicadores") or "",
-                "maquina": row.get("maquina") or "",
-                "tractor": row.get("tractor") or "",
-            }
+            matches = df_lineas[df_lineas["id"] == lid]
+            if not matches.empty:
+                row = matches.iloc[0]
+                u_d = str(row.get("unidad_dosis") or "")
+                edit_linea = {
+                    "id": int(row["id"]),
+                    "n_app": edit_app,
+                    "fecha": str(row["fecha"])[:10],
+                    "sector": row["sector"],
+                    "especie": row["especie"],
+                    "producto": row["producto"],
+                    "lote": row.get("lote_producto") or "",
+                    "ingrediente": row.get("ingrediente") or "",
+                    "dosis": float(row.get("dosis") or 0),
+                    "unidad_dosis": u_d if u_d in UNIDADES_DOSIS else UNIDADES_DOSIS[0],
+                    "vol_total": float(row.get("vol_total") or 0),
+                    "gasto_total": float(row.get("gasto_total") or 0),
+                    "fecha_viable": str(row.get("fecha_viable") or row["fecha"])[:10],
+                    "aplicadores": row.get("aplicadores") or "",
+                    "maquina": row.get("maquina") or "",
+                    "tractor": row.get("tractor") or "",
+                }
+
+    cuarteles = list(centros_costo(demo))
+    if edit_linea:
+        sec = str(edit_linea.get("sector") or "").strip()
+        if sec and sec not in cuarteles:
+            cuarteles.insert(0, sec)
 
     return {
         "mod_eventos": eventos,
         "mod_lineas": lineas,
         "mod_edit": edit_linea,
         "mod_app_sel": edit_app,
-        "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "cuarteles": cuarteles,
+        "especies": _especies_libro_campo(demo),
         "unidades_dosis": UNIDADES_DOSIS,
-        "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
-        "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
+        "maquinaria_opts": _opciones_maquinaria(
+            conn,
+            TIPOS_MAQUINARIA_APLICACION,
+            valor_actual=(edit_linea or {}).get("maquina"),
+        ),
+        "tractor_opts": _opciones_maquinaria(
+            conn,
+            TIPOS_MAQUINARIA_TRACTOR,
+            permitir_vacio=True,
+            valor_actual=(edit_linea or {}).get("tractor"),
+        ),
     }
 
 
@@ -642,8 +734,8 @@ def _post_guardar_evento(demo, conn) -> dict:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
-    huerto = request.form.get("cuartel") or demo.CENTROS_COSTO[0]
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    huerto = request.form.get("cuartel") or centros_costo(demo)[0]
+    especie = request.form.get("especie") or _especies_libro_campo(demo)[0]
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
@@ -776,6 +868,7 @@ def gather_libro_campo(user_email: str, user_rol: str) -> dict:
 
     conn = demo.conectar_db()
     try:
+        _ensure_maquinaria_tenant(conn)
         ctx: dict = {
             "secciones": secciones,
             "sec_activa": sec,
