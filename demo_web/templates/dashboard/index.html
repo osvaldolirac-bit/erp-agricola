@@ -11,7 +11,7 @@
   <div class="dash-enc-simple mb-3">
     <hr class="dash-hr">
     <h1 class="dash-main-title">{{ dash_title|default('Dashboard') }}</h1>
-    <p class="dash-subtitle">Resumen operativo{% if erp_app == 'concepcion' %} — Soc. Agrícola La Concepción{% endif %}</p>
+    <p class="dash-subtitle">Resumen operativo{% if erp_login_subtitle %} — {{ erp_login_subtitle }}{% endif %}</p>
     <span class="modulo-badge">DASHBOARD</span>
   </div>
 
@@ -70,9 +70,10 @@
     </div>
   </div>
 
-  {% if master_logo_url %}
-  <div class="dashboard-master-logo" aria-hidden="true">
-    <img src="{{ master_logo_url }}" alt="ERP Master">
+  {% set show_master = show_master_brand or (tenant and tenant.slug in ['concepcion', 'espino']) %}
+  {% if show_master %}
+  <div class="dashboard-master-logo" id="erpmaster-sello-root" aria-hidden="true">
+    <img src="{% if master_brand_src %}{{ master_brand_src }}{% else %}{{ master_logo_url or url_for('static', filename='img/logo_erpmaster.png') }}?v={{ static_version }}{% endif %}" alt="ERP Master">
   </div>
   {% endif %}
 </div>

@@ -437,8 +437,9 @@ def create_app(config_class=Config) -> Flask:
         from demo_web.auth.decorators import build_menu
         from demo_web.services.branding import (
             find_logo_path,
-            find_master_logo_path,
             find_tenant_logo_path,
+            master_logo_data_uri,
+            tenant_shows_master_brand,
         )
         from flask import request, url_for
 
@@ -446,10 +447,12 @@ def create_app(config_class=Config) -> Flask:
         menu = []
         nav_ops: list = []
         nav_sistema: list = []
+        tenant_switch_options: list = []
         home_url = url_for("auth.login")
         tenant = get_tenant(session.get("tenant_slug"))
         if session.get("email") and tenant:
             from demo_web.auth.login_next import default_landing_url
+            from demo_web.auth.tenant_access import other_tenant_switch_options
 
             home_url = default_landing_url()
             user = {
@@ -458,6 +461,15 @@ def create_app(config_class=Config) -> Flask:
                 "tenant_slug": tenant["slug"],
                 "tenant_nombre": tenant["nombre"],
             }
+            accessible = session.get("accessible_tenants") or []
+            if len(accessible) < 2:
+                from demo_web.auth.tenant_access import list_accessible_tenants
+
+                refreshed = list_accessible_tenants(session["email"])
+                if refreshed:
+                    accessible = refreshed
+                    session["accessible_tenants"] = refreshed
+            tenant_switch_options = other_tenant_switch_options(accessible, tenant["slug"])
             menu = build_menu(user["email"], user["rol"])
             for it in menu:
                 if it.get("key") in _SISTEMA_KEYS:
@@ -466,8 +478,12 @@ def create_app(config_class=Config) -> Flask:
                     nav_ops.append(it)
         prefix = (app.config.get("APPLICATION_ROOT") or "/agricola").rstrip("/")
         master_logo_url = None
+        master_brand_src = None
+        show_master_brand = False
+        body_tenant_class = ""
         # Login/selector: marca del rubro. Dentro del ERP: nombre del tenant.
         if session.get("email") and tenant:
+            body_tenant_class = f"tenant-{tenant.get('slug', '').strip().lower()}"
             title = tenant["nombre"]
             brand = tenant["nombre"]
             subtitle = tenant.get("descripcion") or ""
@@ -478,7 +494,15 @@ def create_app(config_class=Config) -> Flask:
                 logo_url = url_for("tenant_logo_asset")
             else:
                 logo_url = None
-            if tenant["slug"] == "concepcion" and find_master_logo_path():
+            slug_key = (tenant.get("slug") or "").strip().lower()
+            show_master_brand = tenant_shows_master_brand(slug_key, tenant)
+            if show_master_brand:
+                master_brand_src = master_logo_data_uri()
+                master_logo_url = url_for("master_logo_asset")
+            elif slug_key in ("concepcion", "espino"):
+                # Fallback duro: LC/Espino siempre llevan sello aunque falle tenant_rules
+                show_master_brand = True
+                master_brand_src = master_logo_data_uri()
                 master_logo_url = url_for("master_logo_asset")
         else:
             title = app.config.get("ERP_TITLE", RUBRO_TITLE)
@@ -504,8 +528,12 @@ def create_app(config_class=Config) -> Flask:
             "erp_login_subtitle": subtitle,
             "erp_app": erp_app,
             "tenant": tenant,
+            "tenant_switch_options": tenant_switch_options,
             "logo_url": logo_url,
             "master_logo_url": master_logo_url,
+            "master_brand_src": master_brand_src,
+            "show_master_brand": show_master_brand,
+            "body_tenant_class": body_tenant_class,
             "static_version": config_class.static_version(),
             "session_idle_limit": int(app.config.get("SESSION_IDLE_SECONDS") or 1200),
             "session_idle_warn": int(app.config.get("SESSION_IDLE_WARN_SECONDS") or 120),
