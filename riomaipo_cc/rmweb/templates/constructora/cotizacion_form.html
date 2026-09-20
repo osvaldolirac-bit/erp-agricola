@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if edit else 'Nueva' }} cotización obra{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if edit %}Cotización obra {{ edit.folio }}{% else %}Cotización de obra{% endif %}</h1>
+    <p>Partidas con APU: detalle, cantidad, unidad · PU desde APU · total neto.</p>
+  </div>
+  <div class="d-flex gap-2">
+    {% if edit %}
+    <a class="btn btn-info text-white" href="{{ url_for('cotizaciones_pdf', cot_id=edit.id) }}"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="{{ url_for('constructora_home') }}">Constructora</a>
+  </div>
+</div>
+
+<div class="panel">
+  <form method="post" id="cotObraForm">
+    <div class="row g-3 mb-3">
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Fecha</label>
+        <input class="form-control" type="date" name="fecha" required
+               value="{{ edit.fecha if edit and edit.fecha else hoy }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Versión</label>
+        <input class="form-control" name="version" value="{{ edit.version if edit and edit.version else '1' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Cliente</label>
+        <select class="form-select" name="cliente_id" id="cliente_id" required>
+          {% for c in clientes %}
+          <option value="{{ c.id }}" data-nombre="{{ c.razon_social }}"
+            {% if edit and edit.cliente_id==c.id %}selected{% elif not edit and loop.first %}selected{% endif %}>
+            {{ c.razon_social }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Obra (CC)</label>
+        <select class="form-select" name="centro_costo_id" id="obra_id" required>
+          <option value="">— seleccione obra —</option>
+          {% for o in obras %}
+          <option value="{{ o.id }}" data-nombre="{{ o.nombre }}"
+            {% if obra_prefill and obra_prefill==o.id %}selected{% elif edit and edit.centro_costo_id==o.id %}selected{% endif %}>
+            {{ o.nombre }}
+          </option>
+          {% endfor %}
+        </select>
+        {% if not obras %}
+        <div class="form-text text-danger">Cree una obra en Constructora → Obras.</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Título</label>
+        <input class="form-control" name="titulo" id="titulo" value="{{ titulo_default }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Proyecto / obra (texto)</label>
+        <input class="form-control" name="proyecto" id="proyecto"
+               value="{{ edit.proyecto if edit else '' }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Validez (días)</label>
+        <input class="form-control" type="number" name="validez" value="{{ edit.validez_dias if edit else validez_def }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">Estado</label>
+        <select class="form-select" name="estado">
+          {% for e, label in estados_cot %}
+          <option value="{{ e }}" {% if edit and edit.estado==e %}selected{% elif not edit and e=='borrador' %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold">Asunto</label>
+        <input class="form-control" name="asunto" value="{{ edit.asunto if edit else '' }}">
+      </div>
+    </div>
+
+    <h6 class="fw-bold mb-2">Partidas</h6>
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle" id="itemsTable">
+        <thead>
+          <tr>
+            <th style="width:28%">APU</th>
+            <th>Detalle partida</th>
+            <th style="width:70px">Und</th>
+            <th style="width:90px">Cant</th>
+            <th style="width:120px">PU (APU)</th>
+            <th style="width:120px" class="text-end">Total neto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in range(slots) %}
+          {% set it = items[i] if i < items|length else None %}
+          <tr class="item-row">
+            <td>
+              <select class="form-select form-select-sm js-apu" name="apu_id">
+                <option value="">— APU —</option>
+                {% for a in apus %}
+                <option value="{{ a.id }}"
+                        data-nombre="{{ a.nombre }}"
+                        data-unidad="{{ a.unidad }}"
+                        data-pu="{{ a.pu_neto or 0 }}"
+                        {% if it and it.apu_id==a.id %}selected{% endif %}>
+                  {{ a.codigo }} · {{ a.nombre }} ({{ clp(a.pu_neto) }})
+                </option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input class="form-control form-control-sm js-desc" name="desc" value="{{ it.descripcion if it else '' }}"></td>
+            <td><input class="form-control form-control-sm js-und" name="und" value="{{ it.unidad if it else 'un' }}" readonly></td>
+            <td><input class="form-control form-control-sm js-cant" type="number" step="0.01" name="cant" value="{{ it.cantidad if it else 0 }}"></td>
+            <td><input class="form-control form-control-sm js-valor" type="number" step="1" name="valor" value="{{ it.precio_unitario if it else 0 }}" readonly></td>
+            <td class="text-end fw-bold js-line-total text-muted">$0</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cot-totals">
+      <div class="cot-totals-note">
+        <label class="form-label fw-bold">Notas internas</label>
+        <textarea class="form-control" name="notas" rows="4">{{ edit.notas if edit and edit.notas else '' }}</textarea>
+        <p class="small text-muted mt-2 mb-0">Al aprobar, el presupuesto de la obra se actualiza con el subtotal de partidas (APU × cantidad).</p>
+      </div>
+      <div class="cot-totals-box">
+        <div class="cot-tot-row"><span>Subtotal partidas</span><strong id="totSubtotal">$0</strong></div>
+        <div class="cot-tot-row cot-tot-edit">
+          <label for="gg_pct">Gastos generales</label>
+          <div class="cot-tot-pct">
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0" name="gg_pct" id="gg_pct"
+                   value="{{ edit.gg_pct if edit and edit.gg_pct is not none else gg_def }}">
+            <span>%</span>
+          </div>
+          <strong id="totGg">$0</strong>
+        </div>
+        <div class="cot-tot-row cot-tot-edit">
+          <label for="utilidad_pct">Utilidad</label>
+          <div class="cot-tot-pct">
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0" name="utilidad_pct" id="utilidad_pct"
+                   value="{{ edit.utilidad_pct if edit and edit.utilidad_pct is not none else util_def }}">
+            <span>%</span>
+          </div>
+          <strong id="totUtil">$0</strong>
+        </div>
+        <div class="cot-tot-row cot-tot-neto"><span>Valor neto</span><strong id="totNeto">$0</strong></div>
+        <div class="cot-tot-row cot-tot-edit">
+          <label for="iva_pct">IVA</label>
+          <div class="cot-tot-pct">
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0" name="iva_pct" id="iva_pct" value="{{ iva_def }}">
+            <span>%</span>
+          </div>
+          <strong id="totIva">$0</strong>
+        </div>
+        <div class="cot-tot-row cot-tot-final"><span>Total</span><strong id="totTotal">$0</strong></div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-3">
+      <button class="btn btn-primary fw-bold" type="submit">Guardar cotización obra</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('cotizaciones_list') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  function clp(n){
+    const v=Math.round(Number(n)||0);
+    return '$'+v.toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  }
+  const obra=document.getElementById('obra_id');
+  const proyecto=document.getElementById('proyecto');
+  if(obra && proyecto){
+    obra.addEventListener('change', function(){
+      const opt=obra.options[obra.selectedIndex];
+      if(opt && opt.value && !(proyecto.value||'').trim()){
+        proyecto.value=opt.getAttribute('data-nombre')||'';
+      }
+    });
+  }
+  document.querySelectorAll('#itemsTable .js-apu').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      const row=sel.closest('.item-row');
+      const opt=sel.selectedOptions[0];
+      if(!opt||!opt.value) return;
+      const desc=row.querySelector('.js-desc');
+      if(!(desc.value||'').trim()) desc.value=opt.getAttribute('data-nombre')||'';
+      row.querySelector('.js-und').value=opt.getAttribute('data-unidad')||'un';
+      row.querySelector('.js-valor').value=opt.getAttribute('data-pu')||0;
+      recalc();
+    });
+  });
+  function recalc(){
+    let subtotal=0;
+    document.querySelectorAll('#itemsTable .item-row').forEach(function(row){
+      const cant=Number(row.querySelector('.js-cant').value||0);
+      const valor=Number(row.querySelector('.js-valor').value||0);
+      const desc=(row.querySelector('.js-desc').value||'').trim();
+      const apu=(row.querySelector('.js-apu').value||'');
+      const line=(desc && apu && cant>0)? (cant*valor) : 0;
+      subtotal+=line;
+      const cell=row.querySelector('.js-line-total');
+      cell.textContent=clp(line);
+      cell.classList.toggle('text-muted', line<=0);
+    });
+    const ggPct=Number(document.getElementById('gg_pct').value||0);
+    const utilPct=Number(document.getElementById('utilidad_pct').value||0);
+    const ivaPct=Number(document.getElementById('iva_pct').value||0);
+    const gg=Math.round(subtotal*ggPct/100);
+    const util=Math.round(subtotal*utilPct/100);
+    const neto=Math.round(subtotal+gg+util);
+    const iva=Math.round(neto*ivaPct/100);
+    document.getElementById('totSubtotal').textContent=clp(subtotal);
+    document.getElementById('totGg').textContent=clp(gg);
+    document.getElementById('totUtil').textContent=clp(util);
+    document.getElementById('totNeto').textContent=clp(neto);
+    document.getElementById('totIva').textContent=clp(iva);
+    document.getElementById('totTotal').textContent=clp(neto+iva);
+  }
+  document.getElementById('cotObraForm').addEventListener('input', recalc);
+  recalc();
+})();
+</script>
+{% endblock %}
