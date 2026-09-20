@@ -435,6 +435,24 @@ def next_code(c: sqlite3.Connection, table: str, field: str, prefix: str) -> str
     return f"{prefix}-{n:04d}"
 
 
+def next_cotizacion_folio(c: sqlite3.Connection) -> str:
+    """Correlativo COT-NNNN en secuencia operativa (<1000).
+
+    Ignora folios legado COT-1000+ (migración Streamlit) para no saltar a 1019
+    cuando la secuencia real va COT-0020, COT-0021, …
+    """
+    row = c.execute(
+        """
+        SELECT MAX(CAST(substr(folio, 5) AS INTEGER)) AS m
+        FROM cotizaciones
+        WHERE folio LIKE 'COT-%'
+          AND CAST(substr(folio, 5) AS INTEGER) < 1000
+        """
+    ).fetchone()
+    n = int(row["m"] or 0) + 1
+    return f"COT-{n:04d}"
+
+
 def list_accesos(db_path: str | Path | None = None) -> list[str]:
     c = conn(db_path)
     rows = c.execute(
