@@ -9,6 +9,7 @@ from flask import request, session, url_for
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.native.libro_campo import _ensure_maquinaria_tenant, _especies_libro_campo
 
 CC_ESPINO = espino_bodega.CC_ESPINO
 CAR_KEY = "espino_lc_car"
@@ -64,10 +65,17 @@ def _pop_alertas() -> dict:
     return out
 
 
-def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tuple[str, str]]:
-    from erp_maquinaria import etiqueta_maquinaria, listar_maquinaria
+def _opciones_maquinaria(
+    conn,
+    tipos,
+    permitir_vacio: bool = False,
+    valor_actual=None,
+) -> list[tuple[str, str]]:
+    from erp_maquinaria import _lista_select_maquinaria, etiqueta_maquinaria
 
-    items = listar_maquinaria(conn, solo_activos=True, tipos=tipos)
+    items = _lista_select_maquinaria(
+        conn, tipos=tipos, valor_actual=valor_actual, solo_activos=True
+    )
     opts = [(m["codigo"], etiqueta_maquinaria(m["codigo"], m["nombre"])) for m in items]
     if permitir_vacio:
         return [("", "— Sin tractor —")] + opts
@@ -130,8 +138,8 @@ def _leer_evento_meta(demo) -> dict:
     base = _evento_meta_defaults(demo)
     meta = session.get(META_KEY) or {}
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    if not out.get("especie") and _especies_libro_campo(demo):
+        out["especie"] = _especies_libro_campo(demo)[0]
     return out
 
 
@@ -194,7 +202,7 @@ def _ingreso(demo, conn) -> dict:
         "form_op_cert": bool(meta.get("op_cert")),
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_libro_campo(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -202,8 +210,15 @@ def _ingreso(demo, conn) -> dict:
         "phi_def": phi_def,
         "pppl_ok": demo.producto_pppl_aprobado(conn, prod_sel) if prod_sel else False,
         "unidades_dosis": UNIDADES_DOSIS,
-        "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
-        "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
+        "maquinaria_opts": _opciones_maquinaria(
+            conn, TIPOS_MAQUINARIA_APLICACION, valor_actual=meta.get("maquinaria")
+        ),
+        "tractor_opts": _opciones_maquinaria(
+            conn,
+            TIPOS_MAQUINARIA_TRACTOR,
+            permitir_vacio=True,
+            valor_actual=meta.get("tractor"),
+        ),
         "lc_car": car_rows,
     }
 
@@ -418,7 +433,8 @@ def post_guardar_evento(demo, conn) -> dict:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    especies = _especies_libro_campo(demo)
+    especie = request.form.get("especie") or (especies[0] if especies else "Cerezos")
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
@@ -487,6 +503,7 @@ def post_pop_producto(demo) -> None:
 
 
 def gather_libro_campo(demo, conn, op_override: str | None = None) -> dict:
+    _ensure_maquinaria_tenant(conn)
     op = op_override or _libro_op_activa()
     ctx = {
         "libro_ops": LIBRO_OPS,
