@@ -13,6 +13,7 @@ from demo_web.services.native._helpers import (
     flujo_th_class,
     temporada_sel,
 )
+from demo_web.services.tenant_scope import cuarteles_oficiales
 
 
 def gather_flujo(user_email: str, user_rol: str) -> dict:
@@ -35,7 +36,7 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
 
         resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
         df_flujo, df_cc, df_eg_cc, meta = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+            conn, nombre, fi, ff, hoy, cuarteles_oficiales(demo), resumen_costos,
         )
 
         flujo_rows = []
@@ -203,7 +204,7 @@ def export_flujo_excel(user_email: str, user_rol: str):
 
         resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
         df_flujo, _, _, _ = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+            conn, nombre, fi, ff, hoy, cuarteles_oficiales(demo), resumen_costos,
         )
     finally:
         conn.close()
