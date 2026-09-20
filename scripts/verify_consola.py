@@ -10,11 +10,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+import http.cookiejar as cookiejar
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
-BASE = os.environ.get("BASE_URL", "http://127.0.0.1:8507").rstrip("/")
+BASE = os.environ.get("BASE_URL", "https://erpmaster.cl/consola").rstrip("/")
 PREFIX = os.environ.get("CONSOLA_PREFIX", "/consola")
 LOCAL_PORT = os.environ.get("PORT", "8507")
 
@@ -41,12 +43,20 @@ def _url(path: str) -> str:
         if path.startswith(PREFIX):
             return f"{BASE}{path[len(PREFIX):] or '/'}"
         return f"{BASE}{path}"
-    return f"http://127.0.0.1:{LOCAL_PORT}{path}"
+    ext = path if path.startswith(PREFIX) else f"{PREFIX}{path}"
+    return f"http://127.0.0.1:{LOCAL_PORT}{ext}"
+
+
+def _consola_headers(extra: dict | None = None) -> dict:
+    hdrs = dict(extra or {})
+    if not BASE.startswith("http") and PREFIX:
+        hdrs.setdefault("X-Forwarded-Prefix", PREFIX)
+    return hdrs
 
 
 def http(method: str, path: str, data: dict | None = None, headers: dict | None = None):
     body = None
-    hdrs = dict(headers or {})
+    hdrs = _consola_headers(headers)
     if data is not None:
         body = urllib.parse.urlencode(data).encode("utf-8")
         hdrs.setdefault("Content-Type", "application/x-www-form-urlencoded")
@@ -100,14 +110,29 @@ def check_login_ui() -> None:
     if code != 200:
         raise CheckFailed(f"login GET status {code}")
     html = body.decode("utf-8", errors="replace")
-    if "dropdown-toggle" not in html or "Acceso" not in html:
-        raise CheckFailed("login missing Acceso dropdown")
+    if "login-page" not in html:
+        raise CheckFailed("login missing login-page layout")
+    if "login-watermark" not in html:
+        raise CheckFailed("login missing watermark")
+    if "Acceso" not in html:
+        raise CheckFailed("login missing Acceso button")
     if "Recordar usuario" not in html:
         raise CheckFailed("login missing Recordar usuario")
-    if "bootstrap.Dropdown(btn).show()" in html:
-        raise CheckFailed("login auto-opens dropdown (must stay closed on load)")
-    if "login-center" in html and 'class="login-panel' in html:
-        raise CheckFailed("login uses always-visible center panel (deprecated)")
+    if "fake_user" in html or "fake_pass" in html:
+        raise CheckFailed("login still has autofill honeypot fields")
+
+    css_path = os.path.join(
+        os.environ.get("ERP_MASTER_ROOT", "/root/erp_master"),
+        "erp_master",
+        "static",
+        "master.css",
+    )
+    try:
+        css = Path(css_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise CheckFailed(f"cannot read master.css: {exc}") from exc
+    if ".login-page" not in css or "bg_login_master.png" not in css:
+        raise CheckFailed("master.css missing login-page styles (page would look broken)")
     print("OK  login UI")
 
 
@@ -134,6 +159,44 @@ def check_logout_clears() -> None:
     print("OK  logout clears session cookie")
 
 
+def check_super_consola_route() -> None:
+    email = os.environ.get("ERP_MASTER_SEED_EMAIL", "osvaldolirac@gmail.com")
+    password = os.environ.get("ERP_MASTER_SEED_PASSWORD", "Erpmaster2026")
+    cj = cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    login_body = urllib.parse.urlencode({"email": email, "password": password}).encode()
+    login_req = urllib.request.Request(
+        _url("/login"),
+        data=login_body,
+        headers=_consola_headers({"Content-Type": "application/x-www-form-urlencoded"}),
+        method="POST",
+    )
+    opener.open(login_req)
+    for path in ("/cliente/concepcion",):
+        req = urllib.request.Request(_url(path), headers=_consola_headers())
+        try:
+            resp = opener.open(req)
+            body = resp.read(12000)
+            final = resp.geturl()
+        except urllib.error.HTTPError as exc:
+            raise CheckFailed(f"{path} status {exc.code}") from exc
+        if final.rstrip("/").endswith("/login"):
+            raise CheckFailed(f"{path} redirected to login (session/route broken)")
+        if b"Super Consola" not in body and b"Usuarios" not in body and b"app-shell" not in body:
+            raise CheckFailed(f"{path} missing expected super consola content")
+    legacy_req = urllib.request.Request(_url("/concepcion"), headers=_consola_headers())
+    try:
+        legacy_resp = opener.open(legacy_req)
+        legacy_final = legacy_resp.geturl()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (301, 302, 303, 307, 308):
+            raise CheckFailed(f"legacy /consola/<tenant> status {exc.code}") from exc
+        legacy_final = exc.headers.get("Location", "")
+    if "/cliente/concepcion" not in legacy_final:
+        raise CheckFailed(f"legacy redirect expected /cliente/concepcion, got {legacy_final!r}")
+    print("OK  super consola route")
+
+
 def main() -> int:
     checks = [
         check_health,
@@ -141,6 +204,7 @@ def main() -> int:
         check_login_ui,
         check_login_flow,
         check_logout_clears,
+        check_super_consola_route,
     ]
     failed = 0
     for fn in checks:

@@ -11,6 +11,7 @@ def _env(name: str, default: str = "") -> str:
 class Config:
     SECRET_KEY = _env("ERP_MASTER_SECRET_KEY") or secrets.token_hex(32)
     SESSION_COOKIE_NAME = _env("ERP_MASTER_SESSION_COOKIE", "erp_master_session_v2")
+    SESSION_COOKIE_PATH = _env("ERP_MASTER_SESSION_COOKIE_PATH", "/consola")
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = _env("ERP_MASTER_COOKIE_SECURE", "1") in {"1", "true", "yes"}
