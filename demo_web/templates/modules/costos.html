@@ -189,25 +189,33 @@
     </div>
     {% else %}
     <div class="row g-3 mb-3">
-      <div class="col-6 col-md-3">
+      <div class="col-6 {% if av.mostrar_gasto_bruto %}col-lg{% else %}col-md-3{% endif %}">
         <div class="costos-avance-kpi">
           <div class="lbl">Presupuesto total</div>
           <div class="val">{{ av.ppto_fmt }}</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 {% if av.mostrar_gasto_bruto %}col-lg{% else %}col-md-3{% endif %}">
         <div class="costos-avance-kpi">
-          <div class="lbl">Gastado</div>
+          <div class="lbl">{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}</div>
           <div class="val">{{ av.gasto_fmt }}</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
+      {% if av.mostrar_gasto_bruto %}
+      <div class="col-6 col-lg">
+        <div class="costos-avance-kpi">
+          <div class="lbl">Gasto bruto</div>
+          <div class="val">{{ av.gasto_bruto_fmt }}</div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="col-6 {% if av.mostrar_gasto_bruto %}col-lg{% else %}col-md-3{% endif %}">
         <div class="costos-avance-kpi">
           <div class="lbl">Disponible</div>
           <div class="val">{{ av.disponible_fmt }}</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 {% if av.mostrar_gasto_bruto %}col-lg{% else %}col-md-3{% endif %}">
         <div class="costos-avance-kpi">
           <div class="lbl">Avance global</div>
           <div class="val costos-kpi-value {{ av.avance_tone }}">{{ av.pct_fmt }}</div>
@@ -224,14 +232,14 @@
           </div>
         </div>
         <div class="d-flex justify-content-center gap-3 mt-2 small text-muted">
-          <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#c62828;margin-right:4px"></span>Gastado</span>
+          <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#c62828;margin-right:4px"></span>{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}</span>
           <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#2e7d32;margin-right:4px"></span>Disponible</span>
         </div>
       </div>
       <div class="col-md-8">
         {% if av.filas %}
         <div class="costos-cc-head" aria-hidden="true">
-          <span>Centro</span><span>Ppto</span><span>Gastado</span><span>Disponible</span><span>Avance</span><span>%</span>
+          <span>Centro</span><span>Ppto</span><span>{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}</span><span>Disponible</span><span>Avance</span><span>%</span>
         </div>
         <div class="costos-cc-list">
           {% for f in av.filas %}
@@ -240,7 +248,7 @@
              title="Ver detalle de {{ f.nombre }}">
             <span class="cc-nombre">{{ f.nombre }}</span>
             <span class="cc-metrica cc-ppto"><small>Ppto</small>{{ f.ppto_fmt }}</span>
-            <span class="cc-metrica cc-gasto"><small>Gastado</small>{{ f.gasto_fmt }}</span>
+            <span class="cc-metrica cc-gasto"><small>{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}</small>{{ f.gasto_fmt }}</span>
             <span class="cc-metrica cc-disp"><small>Disponible</small>{{ f.disponible_fmt }}</span>
             <span class="cc-avance-cell">
               {% if f.ppto %}
@@ -298,11 +306,11 @@
     var gastado = Number({{ av.gasto }}) || 0;
     var disponible = Number({{ av.disponible }}) || 0;
     if (gastado <= 0 && disponible <= 0) return;
-    var labels = ['Gastado', 'Disponible'];
+    var labels = ['{% if av.mostrar_gasto_bruto %}Gasto neto{% else %}Gastado{% endif %}', 'Disponible'];
     var values = [gastado, disponible];
     var colors = ['#c62828', '#2e7d32'];
     if (disponible <= 0 && gastado > 0) {
-      labels = ['Gastado (sobre ppto)'];
+      labels = ['{% if av.mostrar_gasto_bruto %}Gasto neto (sobre ppto){% else %}Gastado (sobre ppto){% endif %}'];
       values = [gastado];
       colors = ['#c62828'];
     }
