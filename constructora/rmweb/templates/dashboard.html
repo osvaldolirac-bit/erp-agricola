@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Inicio{% endblock %}
+{% block head %}
+<style>
+  body.home-constructora .breadcrumb-bar { display: none; }
+  body.home-constructora .main {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  .cst-home {
+    position: relative;
+    flex: 1;
+    min-height: calc(100vh - 0px);
+    overflow: hidden;
+    color: #f4f1ea;
+    background: #1a1814;
+  }
+  .cst-home-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(105deg, rgba(18, 16, 12, 0.88) 0%, rgba(18, 16, 12, 0.55) 42%, rgba(18, 16, 12, 0.25) 70%, rgba(18, 16, 12, 0.45) 100%),
+      url("{{ url_for('static', filename='bg_home_constructora.png') }}") center center / cover no-repeat;
+    transform: scale(1.04);
+    animation: cstKen 22s ease-in-out infinite alternate;
+  }
+  @keyframes cstKen {
+    from { transform: scale(1.04) translate3d(0, 0, 0); }
+    to { transform: scale(1.1) translate3d(-1.5%, -1%, 0); }
+  }
+  .cst-home-inner {
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: clamp(1.5rem, 4vw, 3.5rem);
+    max-width: 720px;
+  }
+  .cst-brand {
+    margin: 0 0 .65rem;
+    font-family: Manrope, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: clamp(2.4rem, 6vw, 3.75rem);
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    color: #fff;
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+    animation: cstFadeUp .7s ease both;
+  }
+  .cst-headline {
+    margin: 0 0 .7rem;
+    font-family: Manrope, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.15rem, 2.4vw, 1.45rem);
+    letter-spacing: -0.02em;
+    color: #f0e6d4;
+    animation: cstFadeUp .7s ease .12s both;
+  }
+  .cst-lead {
+    margin: 0 0 1.4rem;
+    max-width: 34rem;
+    font-size: 1.02rem;
+    line-height: 1.45;
+    color: rgba(244, 241, 234, 0.88);
+    animation: cstFadeUp .7s ease .22s both;
+  }
+  .cst-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    animation: cstFadeUp .7s ease .32s both;
+  }
+  .cst-cta .btn {
+    border-radius: 10px;
+    font-weight: 700;
+    padding: .7rem 1.15rem;
+  }
+  .cst-cta .btn-primary {
+    background: #c45c26;
+    border-color: #c45c26;
+  }
+  .cst-cta .btn-primary:hover {
+    background: #a84c1e;
+    border-color: #a84c1e;
+  }
+  .cst-cta .btn-outline-light {
+    border-width: 1.5px;
+  }
+  @keyframes cstFadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (max-width: 720px) {
+    .cst-home-inner {
+      justify-content: flex-end;
+      padding: 1.25rem 1.1rem 1.75rem;
+      background: linear-gradient(to top, rgba(12, 11, 9, 0.92) 0%, rgba(12, 11, 9, 0.35) 55%, transparent 100%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cst-home-bg { animation: none; }
+    .cst-brand, .cst-headline, .cst-lead, .cst-cta { animation: none; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<script>document.body.classList.add('home-constructora');</script>
+<section class="cst-home" aria-label="Inicio Constructora">
+  <div class="cst-home-bg" role="img" aria-label="Edificio en construcción"></div>
+  <div class="cst-home-inner">
+    <h1 class="cst-brand">Constructora</h1>
+    <p class="cst-headline">Obras, bodega y APU en un solo lugar.</p>
+    <p class="cst-lead">Gestiona cada obra como centro de costo, valoriza partidas con APU (PMP de bodega) y controla materiales.</p>
+    <div class="cst-cta">
+      <a class="btn btn-primary" href="{{ url_for('constructora_obras') }}"><i class="bi bi-building me-1"></i> Ir a Obras</a>
+      <a class="btn btn-outline-light" href="{{ url_for('bodega_list') }}">Bodega</a>
+      <a class="btn btn-outline-light" href="{{ url_for('constructora_apu_list') }}">APU</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
