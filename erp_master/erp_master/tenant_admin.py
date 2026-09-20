@@ -71,9 +71,14 @@ MENU_GLOBALGAP = [
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+def _is_lc_family(kind: str) -> bool:
+    """La Concepción y El Espino comparten roles/módulos LC; prorrateo CC es distinto."""
+    return kind in ("lc", "espino")
+
+
 def hash_password(password: str, kind: str) -> str:
     raw = str(password or "")
-    if kind == "lc":
+    if _is_lc_family(kind):
         raw = raw.strip()
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -81,19 +86,19 @@ def hash_password(password: str, kind: str) -> str:
 def menu_for(kind: str) -> list[tuple[str, str]]:
     if kind == "globalgap":
         return list(MENU_GLOBALGAP)
-    return list(MENU_LC if kind == "lc" else MENU_DEMO)
+    return list(MENU_LC if _is_lc_family(kind) else MENU_DEMO)
 
 
 def roles_for(kind: str) -> tuple[str, ...]:
     if kind == "globalgap":
         return ROLES_GLOBALGAP
-    return ROLES_LC if kind == "lc" else ROLES_DEMO
+    return ROLES_LC if _is_lc_family(kind) else ROLES_DEMO
 
 
 def protected_role(kind: str) -> str:
     if kind == "globalgap":
         return "admin"
-    return "admin" if kind == "lc" else "super_admin"
+    return "admin" if _is_lc_family(kind) else "super_admin"
 
 
 @contextmanager
@@ -475,7 +480,7 @@ def set_mail_flags(
                 "UPDATE usuarios SET mail_riego_bitacora = ? WHERE id = ?",
                 (1 if mail_riego else 0, user_id),
             )
-        if kind == "lc":
+        if _is_lc_family(kind):
             if mail_petroleo is not None:
                 conn.execute(
                     "UPDATE usuarios SET mail_petroleo_bitacora = ? WHERE id = ?",
@@ -528,11 +533,54 @@ def save_user_modules(
     return True, "Módulos guardados."
 
 
-def get_respaldo_config(db_path: str) -> dict[str, str]:
+def _import_erp_respaldo():
+    """Carga /root/erp_respaldo.py (no la copia de demo-web en PYTHONPATH)."""
+    import importlib.util
+
+    path = "/root/erp_respaldo.py"
+    mod = sys.modules.get("erp_respaldo_root")
+    if mod is not None and getattr(mod, "__file__", None) == path:
+        return mod
+    spec = importlib.util.spec_from_file_location("erp_respaldo_root", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"No se pudo cargar {path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["erp_respaldo_root"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+RESPALDO_CODIGO_OWNER_POR_RUBRO = {
+    "agricola": "concepcion",
+    "comercial": "riomaipo",
+}
+RESPALDO_CODIGO_OWNER_LABEL = {
+    "concepcion": "La Concepción",
+    "riomaipo": "Río Maipo",
+}
+
+
+def rubro_codigo_owner_slug(producto: str) -> str:
+    return RESPALDO_CODIGO_OWNER_POR_RUBRO.get((producto or "").strip().lower(), "")
+
+
+def es_owner_codigo_rubro(slug: str, producto: str) -> bool:
+    owner = rubro_codigo_owner_slug(producto)
+    return bool(owner) and (slug or "").strip().lower() == owner
+
+
+def label_owner_codigo_rubro(producto: str) -> str:
+    owner = rubro_codigo_owner_slug(producto)
+    return RESPALDO_CODIGO_OWNER_LABEL.get(owner, owner or "—")
+
+
+def get_respaldo_config(db_path: str, producto: str = "") -> dict[str, str]:
+    """Datos = por tenant. Codigo activo/freq/ultimo = por rubro (producto)."""
     with tenant_conn(db_path) as conn:
-        return {
+        cfg = {
             "email": _meta_get(conn, "respaldo_email"),
             "activo": _meta_get(conn, "respaldo_activo", "0"),
+            "activo_datos": _meta_get(conn, "respaldo_activo", "0"),
             "frecuencia": _meta_get(conn, "respaldo_frecuencia", "diario"),
             "codigo_frecuencia": _meta_get(
                 conn, "respaldo_codigo_frecuencia", "semanal"
@@ -541,7 +589,26 @@ def get_respaldo_config(db_path: str) -> dict[str, str]:
             "ultimo_error": _meta_get(conn, "respaldo_ultimo_error"),
             "codigo_ultimo_envio": _meta_get(conn, "respaldo_codigo_ultimo_envio"),
             "codigo_ultimo_error": _meta_get(conn, "respaldo_codigo_ultimo_error"),
+            "activo_codigo": "0",
         }
+    rubro = (producto or "").strip().lower()
+    if rubro in ("agricola", "comercial"):
+        try:
+            _ensure_demo_web_path()
+            erp_r = _import_erp_respaldo()
+            meta = erp_r.load_codigo_rubro_meta(rubro)
+            cfg["activo_codigo"] = "1" if meta.get("activo") else "0"
+            if meta.get("frecuencia"):
+                cfg["codigo_frecuencia"] = str(meta.get("frecuencia"))
+            if meta.get("ultimo_envio"):
+                cfg["codigo_ultimo_envio"] = str(meta.get("ultimo_envio"))
+            if meta.get("ultimo_error"):
+                cfg["codigo_ultimo_error"] = str(meta.get("ultimo_error"))
+            if not (cfg.get("email") or "").strip() and meta.get("email"):
+                cfg["email"] = str(meta.get("email"))
+        except Exception:
+            pass
+    return cfg
 
 
 def save_respaldo_config(
@@ -550,21 +617,59 @@ def save_respaldo_config(
     activo: bool,
     freq_datos: str,
     freq_codigo: str,
+    *,
+    activo_datos: bool | None = None,
+    activo_codigo: bool | None = None,
+    producto: str = "",
+    guardar_codigo: bool = False,
+    slug: str = "",
 ) -> tuple[bool, str]:
+    """Guarda datos (tenant). Codigo del rubro solo si guardar_codigo y es owner."""
     email_n = (email or "").strip()
     if freq_datos not in FRECUENCIAS:
         freq_datos = "diario"
     if freq_codigo not in FRECUENCIAS:
         freq_codigo = "semanal"
-    if activo:
+    if activo_datos is None:
+        activo_datos = bool(activo)
+    if activo_codigo is None:
+        activo_codigo = bool(activo)
+
+    rubro = (producto or "").strip().lower()
+    if guardar_codigo:
+        if not es_owner_codigo_rubro(slug, rubro):
+            return False, (
+                "El respaldo de código se configura solo en "
+                f"{label_owner_codigo_rubro(rubro)}."
+            )
+    else:
+        activo_codigo = False
+
+    needs_email = bool(activo_datos) or (bool(guardar_codigo) and bool(activo_codigo))
+    if needs_email:
         parts = [p.strip() for p in email_n.replace(";", ",").split(",") if p.strip()]
         if not parts or not all(_EMAIL_RE.match(p) for p in parts):
             return False, "Correo destino inválido para activar el respaldo."
     with tenant_conn(db_path) as conn:
         _meta_set(conn, "respaldo_email", email_n)
-        _meta_set(conn, "respaldo_activo", "1" if activo else "0")
+        _meta_set(conn, "respaldo_activo", "1" if activo_datos else "0")
         _meta_set(conn, "respaldo_frecuencia", freq_datos)
         _meta_set(conn, "respaldo_codigo_frecuencia", freq_codigo)
+
+    if guardar_codigo and rubro in ("agricola", "comercial"):
+        try:
+            _ensure_demo_web_path()
+            erp_r = _import_erp_respaldo()
+            erp_r.save_codigo_rubro_meta(
+                rubro,
+                {
+                    "activo": bool(activo_codigo),
+                    "frecuencia": freq_codigo,
+                    "email": email_n,
+                },
+            )
+        except Exception as exc:
+            return False, f"Datos guardados, pero falló código del rubro: {exc}"
     return True, "Configuración de respaldo guardada."
 
 
@@ -707,6 +812,24 @@ _PRORRATEO_DEFAULTS: dict[str, dict[str, Any]] = {
         },
         "directos": ["EL ESPINO", "OTROS"],
     },
+    "espino": {
+        "cuarteles": [
+            "ROYAL DOWN",
+            "SWEET ARYANA",
+            "SANTINA",
+        ],
+        "default_pct": {
+            "SWEET ARYANA": 14.29,
+            "ROYAL DOWN": 21.43,
+            "SANTINA": 64.28,
+        },
+        "default_ha": {
+            "SWEET ARYANA": 1.0,
+            "ROYAL DOWN": 1.5,
+            "SANTINA": 4.5,
+        },
+        "directos": ["EL ESPINO"],
+    },
 }
 
 
@@ -822,3 +945,163 @@ def save_prorrateo_cc(
                 )
     detalle = ", ".join(f"{k}={v:.2f}%" for k, v in vals.items())
     return True, f"Prorrateo CC guardado ({detalle})."
+
+
+def get_mail_alertas(secrets_path: str) -> dict[str, str]:
+    """Receptor y flags de alertas (gmail_smtp + toggles acceso/pago)."""
+    path = (secrets_path or "").strip()
+    out = {
+        "correo_receptor": "",
+        "correo_emisor": "",
+        "secrets_path": path,
+        "ok": "0",
+        "alerta_acceso": "1",
+        "alerta_pago": "0",
+    }
+    if not path or not os.path.isfile(path):
+        return out
+    try:
+        _ensure_demo_web_path()
+        from erp_respaldo import _cargar_toml  # noqa: WPS433
+
+        conf = (_cargar_toml(path) or {}).get("gmail_smtp") or {}
+        out["correo_receptor"] = str(conf.get("correo_receptor") or "").strip()
+        out["correo_emisor"] = str(conf.get("correo_emisor") or "").strip()
+        if "alerta_acceso" in conf:
+            out["alerta_acceso"] = (
+                "1"
+                if str(conf.get("alerta_acceso")).strip() in {"1", "true", "True", "yes", "on"}
+                else "0"
+            )
+        if "alerta_pago" in conf:
+            out["alerta_pago"] = (
+                "1"
+                if str(conf.get("alerta_pago")).strip() in {"1", "true", "True", "yes", "on"}
+                else "0"
+            )
+        out["ok"] = "1"
+    except Exception:
+        pass
+    return out
+
+
+def save_mail_alertas(
+    secrets_path: str,
+    correo_receptor: str,
+    *,
+    alerta_acceso: bool | None = None,
+    alerta_pago: bool | None = None,
+) -> tuple[bool, str]:
+    """Actualiza receptor y, opcionalmente, flags de alerta acceso/pago en secrets."""
+    path = (secrets_path or "").strip()
+    email_n = (correo_receptor or "").strip()
+    parts = [p.strip() for p in email_n.replace(";", ",").split(",") if p.strip()]
+    if not parts or not all(_EMAIL_RE.match(p) for p in parts):
+        return False, "Correo receptor de alertas inválido."
+    if not path or not os.path.isfile(path):
+        return False, f"No se encontró secrets del tenant: {path or '—'}"
+    try:
+        texto = open(path, encoding="utf-8").read()
+    except OSError as exc:
+        return False, f"No se pudo leer secrets: {exc}"
+
+    valor = parts[0] if len(parts) == 1 else ", ".join(parts)
+
+    def _upsert(texto_in: str, clave: str, valor_line: str) -> str:
+        if re.search(rf"(?m)^\s*{re.escape(clave)}\s*=", texto_in):
+            return re.sub(
+                rf"(?m)^\s*{re.escape(clave)}\s*=\s*.*$",
+                valor_line,
+                texto_in,
+                count=1,
+            )
+        m_sec = re.search(r"(?mi)^(\s*\[gmail_smtp\]\s*\n)", texto_in)
+        if m_sec:
+            return texto_in[: m_sec.end()] + valor_line + "\n" + texto_in[m_sec.end() :]
+        return texto_in.rstrip() + "\n\n[gmail_smtp]\n" + valor_line + "\n"
+
+    texto2 = _upsert(texto, "correo_receptor", f'correo_receptor = "{valor}"')
+    if alerta_acceso is not None:
+        flag = "1" if alerta_acceso else "0"
+        texto2 = _upsert(texto2, "alerta_acceso", f'alerta_acceso = "{flag}"')
+    if alerta_pago is not None:
+        flag = "1" if alerta_pago else "0"
+        texto2 = _upsert(texto2, "alerta_pago", f'alerta_pago = "{flag}"')
+
+    bak = path + ".bak-master"
+    try:
+        if not os.path.exists(bak):
+            with open(bak, "w", encoding="utf-8") as f:
+                f.write(texto)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(texto2)
+    except OSError as exc:
+        return False, f"No se pudo guardar secrets: {exc}"
+    extras = []
+    if alerta_acceso is not None:
+        extras.append("acceso=" + ("ON" if alerta_acceso else "OFF"))
+    if alerta_pago is not None:
+        extras.append("pago=" + ("ON" if alerta_pago else "OFF"))
+    detalle = valor + ((" · " + ", ".join(extras)) if extras else "")
+    return True, f"Mail de alertas actualizado: {detalle}"
+
+
+def enviar_respaldo_ahora(
+    tenant: dict[str, Any],
+    *,
+    tipo: str = "datos",
+    usuario: str = "MASTER",
+) -> tuple[bool, str]:
+    """Ejecuta envío inmediato de respaldo datos (tenant) o código (rubro)."""
+    _ensure_demo_web_path()
+    try:
+        erp_r = _import_erp_respaldo()
+        ejecutar_respaldo = erp_r.ejecutar_respaldo
+        ejecutar_respaldo_codigo_rubro = erp_r.ejecutar_respaldo_codigo_rubro
+        load_codigo_rubro_meta = erp_r.load_codigo_rubro_meta
+    except Exception as exc:
+        return False, f"Módulo respaldo no disponible: {exc}"
+
+    db = tenant.get("db") or ""
+    secrets = tenant.get("secrets") or ""
+    nombre = tenant.get("nombre_erp") or tenant.get("nombre") or "ERP"
+    producto = (tenant.get("producto") or "").strip().lower()
+    if not db or not os.path.isfile(db):
+        return False, "Base de datos del tenant no encontrada."
+    try:
+        if tipo == "codigo":
+            rubro = producto if producto in ("agricola", "comercial") else ""
+            if not rubro:
+                return False, "Este cliente no tiene rubro para respaldo de código."
+            email = ""
+            with tenant_conn(db) as conn:
+                email = _meta_get(conn, "respaldo_email")
+            if not email:
+                email = load_codigo_rubro_meta(rubro).get("email") or ""
+            res = ejecutar_respaldo_codigo_rubro(
+                rubro,
+                forzar=True,
+                usuario=usuario or "MASTER",
+                email_override=email or None,
+            )
+            if res.get("ok"):
+                return True, f"Respaldo de código ({rubro}) enviado."
+            return False, (
+                f"No se pudo enviar respaldo de código: "
+                f"{res.get('motivo') or ''} {res.get('error') or ''}"
+            ).strip()
+        with tenant_conn(db) as conn:
+            ok = ejecutar_respaldo(
+                conn,
+                nombre,
+                os.path.abspath(db),
+                secrets,
+                forzar=True,
+                usuario=usuario or "MASTER",
+            )
+            return (
+                bool(ok),
+                "Respaldo de datos enviado." if ok else "No se pudo enviar respaldo de datos.",
+            )
+    except Exception as exc:
+        return False, f"Error al enviar respaldo: {exc}"

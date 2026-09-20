@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/nav_modulo.html" import nav_modulo, nav_temporada %}
 {% from "partials/pdf_button.html" import pdf_btn %}
 {% block title %}Libro de Campo — {{ erp_title|default('ERP') }}{% endblock %}
 {% block content %}
@@ -12,6 +12,10 @@
     <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
   </div>
 
+  {% if espino_lc %}
+  {{ nav_temporada('modules.libro_campo', temporadas, temp_sel, {'op': lc_op_activa}) }}
+  {% include "partials/espino_libro_campo.html" %}
+  {% else %}
   {{ nav_modulo('modules.libro_campo', secciones, sec_activa) }}
 
   {% if alerta_bodega %}
@@ -346,11 +350,47 @@
   <div class="alert alert-danger">Programa no configurado.</div>
   {% endif %}
   {% endif %}
+  {% endif %}
 </div>
 {% endblock %}
 {% block scripts %}
 {{ super() }}
-{% if sec_activa == 'ingreso' %}
+{% if espino_lc and lc_op_activa == 'ingreso' %}
+<script>
+window.lcSyncCabecera = function (targetForm) {
+  if (!targetForm) return true;
+  var root = document.getElementById('lcCabeceraFields');
+  if (!root) return true;
+  root.querySelectorAll('.lc-cab').forEach(function (el) {
+    var name = el.getAttribute('name');
+    if (!name) return;
+    targetForm.querySelectorAll('[data-lc-sync="1"][name="' + name + '"]').forEach(function (n) { n.remove(); });
+    if (el.type === 'checkbox') {
+      if (el.checked) {
+        var h = document.createElement('input');
+        h.type = 'hidden'; h.name = name; h.value = el.value || '1';
+        h.setAttribute('data-lc-sync', '1');
+        targetForm.appendChild(h);
+      }
+      return;
+    }
+    if (el.tagName === 'SELECT' || (el.value || '').trim()) {
+      var hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = name;
+      hidden.value = el.value || '';
+      hidden.setAttribute('data-lc-sync', '1');
+      targetForm.appendChild(hidden);
+    }
+  });
+  return true;
+};
+window.lcCambiarProducto = function (form) {
+  if (window.lcSyncCabecera) window.lcSyncCabecera(form);
+  form.submit();
+};
+</script>
+{% elif sec_activa == 'ingreso' %}
 <script>
 window.lcSyncCabecera = function (targetForm) {
   if (!targetForm) return true;

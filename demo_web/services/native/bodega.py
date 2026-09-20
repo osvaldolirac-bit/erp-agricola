@@ -8,6 +8,7 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
+from demo_web.services.tenant_scope import centros_costo
 
 SECCIONES = [
     ("stock", "📊 STOCK ACTUAL"),
@@ -176,7 +177,8 @@ def _procesar_salida(demo, conn) -> dict:
     if ct is None:
         return {"ok": False, "msg": "Cantidad inválida. Use coma decimal (ej. 1,5)."}
 
-    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in demo.CENTROS_COSTO]
+    ccs_validos = {c.upper(): c for c in centros_costo(demo)}
+    ccs = [ccs_validos[c.upper()] for c in request.form.getlist("cuarteles") if c.upper() in ccs_validos]
     row = conn.execute(
         "SELECT producto, precio_medio, COALESCE(unidad_medida, ?), COALESCE(stock, 0) "
         "FROM inventario WHERE id=?",
@@ -302,11 +304,20 @@ def _pppl(demo, conn) -> dict:
     }
 
 
+def _resolve_cuartel_filtro(ccq: str | None, ccs: list[str]) -> str:
+    raw = (ccq or "").strip()
+    if not ccs:
+        return raw
+    for c in ccs:
+        if c.upper() == raw.upper():
+            return c
+    return ccs[0]
+
+
 def _consulta_cuartel(demo, conn) -> dict:
     hoy = hoy_demo(demo)
-    ccq = request.args.get("cuartel", demo.CENTROS_COSTO[0])
-    if ccq not in demo.CENTROS_COSTO:
-        ccq = demo.CENTROS_COSTO[0]
+    ccs = centros_costo(demo)
+    ccq = _resolve_cuartel_filtro(request.args.get("cuartel"), ccs)
     fi = parse_date(request.args.get("desde"), hoy - timedelta(days=90))
     ff = parse_date(request.args.get("hasta"), hoy)
 
@@ -315,11 +326,11 @@ def _consulta_cuartel(demo, conn) -> dict:
         f"""SELECT m.id AS ID, m.producto_id AS PRODUCTO_ID, m.fecha AS FECHA, i.producto AS PRODUCTO,
                    m.cantidad AS CANTIDAD, {sql_um} AS UM, m.valor_imputado AS VALOR_IMPUTADO
             FROM movimientos m JOIN inventario i ON m.producto_id = i.id
-            WHERE m.centro_costo = ? AND m.tipo = 'Salida'
+            WHERE UPPER(m.centro_costo) = UPPER(?) AND m.tipo = 'Salida'
               AND m.fecha BETWEEN ? AND ?
             ORDER BY m.fecha ASC, m.id ASC""",
         conn,
-        params=(ccq.upper(), str(fi), str(ff)),
+        params=(ccq, str(fi), str(ff)),
     )
 
     rows = []
@@ -380,7 +391,7 @@ def _consulta_cuartel(demo, conn) -> dict:
         "mov_opts": mov_opts,
         "mov_edit": mov_edit,
         "filtro_cuartel": ccq,
-        "cuarteles": demo.CENTROS_COSTO,
+        "cuarteles": ccs,
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "pdf_consulta_url": pdf_url,
@@ -675,7 +686,7 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
             ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
         elif sec == "salida":
             ctx["productos_salida"] = _productos_salida(demo, conn)
-            ctx["cuarteles"] = demo.CENTROS_COSTO
+            ctx["cuarteles"] = centros_costo(demo)
         elif sec == "pppl":
             ctx.update(_pppl(demo, conn))
         elif sec == "apertura":

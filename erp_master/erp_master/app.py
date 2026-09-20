@@ -299,6 +299,15 @@ def create_app(config_object: type = Config) -> Flask:
             msg_type=msg_type,
         )
 
+    @app.route("/cliente/<slug>")
+    @login_required
+    def cliente_legacy(slug: str):
+        """Compat: selector antiguo usaba /cliente/<slug> (sin sidebar si no redirige)."""
+        if not _get_admin_tenant(app, slug) or not _can_manage_tenant(slug):
+            return redirect(url_for("home"))
+        sec = (request.args.get("sec") or "usuarios").strip()
+        return redirect(url_for("super_consola", slug=slug, sec=sec))
+
     @app.route("/consola/<slug>", methods=["GET", "POST"])
     @login_required
     def super_consola(slug: str):

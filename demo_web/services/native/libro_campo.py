@@ -19,6 +19,20 @@ SECCIONES_BASE = [
     ("prog_ciruelos", "🟣 PROGRAMA CIRUELOS"),
 ]
 
+
+def _especies_libro_campo(demo) -> list[str]:
+    """Especies agrícolas LC (Cerezos, Ciruelos, Nogales) — no confundir con GAP_ESPECIES / razón social."""
+    try:
+        from demo_web.services.tenant_scope import libro_campo_especies
+
+        return list(libro_campo_especies(demo))
+    except ImportError:
+        pass
+    especies = getattr(demo, "LIBRO_CAMPO_ESPECIES", None)
+    if especies:
+        return list(especies)
+    return list(getattr(demo, "GAP_ESPECIES", []) or [])
+
 FITOSANITARIO_PROGRAMAS = {
     "cerezos": {
         "titulo": "Programa Fitosanitario Cerezas",
@@ -257,8 +271,9 @@ def _leer_evento_meta(demo) -> dict:
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
     if not out.get("cuartel") and getattr(demo, "CENTROS_COSTO", None):
         out["cuartel"] = demo.CENTROS_COSTO[0]
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    especies = _especies_libro_campo(demo)
+    if not out.get("especie") and especies:
+        out["especie"] = especies[0]
     return out
 
 # Histórico importado (planillas antiguas) vive en n_aplicacion >= 10000
@@ -330,7 +345,7 @@ def _ingreso(demo, conn) -> dict:
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
         "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_libro_campo(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -559,7 +574,7 @@ def _modificar(demo, conn) -> dict:
         "mod_edit": edit_linea,
         "mod_app_sel": edit_app,
         "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_libro_campo(demo),
         "unidades_dosis": UNIDADES_DOSIS,
         "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
@@ -643,7 +658,8 @@ def _post_guardar_evento(demo, conn) -> dict:
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
     huerto = request.form.get("cuartel") or demo.CENTROS_COSTO[0]
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    especies = _especies_libro_campo(demo)
+    especie = request.form.get("especie") or (especies[0] if especies else "")
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
@@ -797,9 +813,91 @@ def gather_libro_campo(user_email: str, user_rol: str) -> dict:
         conn.close()
 
 
+def _redirect_espino_lc(**extra) -> redirect_module:
+    return redirect_module("libro-campo", **extra)
+
+
+def _view_espino_libro_campo(user_email: str, user_rol: str):
+    """Libro de Campo El Espino en /m/libro-campo (sin redirigir al módulo Espino)."""
+    from demo_web.services.native import espino_libro_campo
+    from demo_web.services.native._helpers import temporada_sel
+
+    demo = get_demo_module()
+    bind_user_session(user_email, user_rol)
+    temporadas = getattr(demo, "TEMPORADAS_ESPINO", None) or getattr(demo, "TEMPORADAS_COSTOS", None) or {}
+    nombre, fi, ff = temporada_sel(demo, temporadas=temporadas)
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        temp = request.form.get("temp") or nombre
+        conn = demo.conectar_db()
+        try:
+            if action == "lc_pop_producto":
+                espino_libro_campo.post_pop_producto(demo)
+                flash("Último producto removido del evento.", "info")
+                return _redirect_espino_lc(op="ingreso", temp=temp)
+            lc_handlers = {
+                "lc_agregar_producto": espino_libro_campo.post_agregar_producto,
+                "lc_guardar_evento": espino_libro_campo.post_guardar_evento,
+            }
+            lc_fn = lc_handlers.get(action)
+            if lc_fn:
+                result = lc_fn(demo, conn)
+                flash(result["msg"], "success" if result["ok"] else "danger")
+                extra = {"temp": temp}
+                extra.update(result.get("extra") or {})
+                if action == "lc_agregar_producto" and request.form.get("producto"):
+                    extra["prod"] = request.form.get("producto")
+                for k in ("cuartel", "fecha", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
+                    if request.form.get(k):
+                        extra[k] = request.form.get(k)
+                if request.form.get("op_cert") == "1":
+                    extra["op_cert"] = "1"
+                if "op" not in extra:
+                    extra["op"] = request.form.get("op") or "ingreso"
+                return _redirect_espino_lc(**extra)
+        finally:
+            conn.close()
+
+    op_map = {"ingreso": "ingreso", "historial": "historial", "desfase": "desfase"}
+    sec_lc = (request.args.get("sec") or request.form.get("sec") or "").strip()
+    lc_op = (request.args.get("op") or request.form.get("op") or op_map.get(sec_lc, "historial")).strip()
+    conn = demo.conectar_db()
+    try:
+        ctx = {
+            "espino_lc": True,
+            "lc_standalone": True,
+            "temporadas": temporadas,
+            "temp_sel": nombre,
+            "fi": fi.strftime("%d-%m-%Y"),
+            "ff": ff.strftime("%d-%m-%Y"),
+            "fi_iso": fi.isoformat(),
+            "ff_iso": ff.isoformat(),
+        }
+        ctx.update(espino_libro_campo.gather_libro_campo(demo, conn, op_override=lc_op))
+    finally:
+        conn.close()
+
+    return render_template(
+        "modules/libro_campo.html",
+        page_title="Libro de Campo",
+        active_key="Libro de Campo",
+        title="📒 Libro de Campo — El Espino",
+        secciones=[],
+        sec_activa="",
+        **ctx,
+    )
+
+
 def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
+
+    from demo_web.services.erp_loader import current_tenant
+
+    tenant = current_tenant()
+    if tenant and tenant.get("slug") == "espino":
+        return _view_espino_libro_campo(user_email, user_rol)
 
     if request.method == "GET" and request.args.get("clima") == "1":
         from demo_web.services.weather import fetch_daily_weather
