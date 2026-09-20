@@ -7,7 +7,7 @@
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <div>
       <h1 class="h3 mb-0">{{ title }}</h1>
-      <p class="text-muted mb-0">Maestras y configuración operativa del ERP{% if erp_app == 'concepcion' %} — La Concepción{% endif %}</p>
+      <p class="text-muted mb-0">Maestras y configuración operativa del ERP{% if erp_login_subtitle %} — {{ erp_login_subtitle }}{% endif %}</p>
     </div>
     <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
   </div>
@@ -374,6 +374,7 @@
       <div class="col-md-4">
         <label class="form-label small">Saldo caja inicial ($)</label>
         <input type="number" name="caja_inicial" class="form-control form-control-sm" value="{{ caja_inicial|int }}" min="0" step="100000">
+        <div class="form-text">Efectivo al inicio de temporada. En Flujo financiero va en columna aparte (no se suma a ingresos por cuartel).</div>
       </div>
     </div>
     {% for cc in flujo_cuarteles %}
