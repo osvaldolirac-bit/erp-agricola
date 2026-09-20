@@ -54,26 +54,74 @@ _DOC_LINK_EXTRA_COLS = [
 _ESPECIE_DOC_SLUG = {
     "Cerezos": "cerezos",
     "Ciruelos": "ciruelos",
+    "Nogales": "espino",
+    "LA CONCEPCION": "cerezos",
+    "CARLOS LIRA": "ciruelos",
+    "EL ESPINO": "espino",
     "ESPECIE 1": "cerezos",
     "ESPECIE 2": "ciruelos",
+}
+
+# Etiquetas GlobalGAP La Concepción (predio / titular).
+_LC_GAP_ESPECIE_LEGACY = {
+    "LA CONCEPCION": "Cerezos",
+    "CARLOS LIRA": "Ciruelos",
+    "EL ESPINO": "Nogales",
+}
+_LC_CUARTEL_ESPECIE = {
+    "CEREZOS CORTE 1": "LA CONCEPCION",
+    "CEREZOS CORTE 2": "LA CONCEPCION",
+    "CIRUELOS": "CARLOS LIRA",
+    "NOGALES APARICION": "EL ESPINO",
+    "NOGALES CRUZ DEL SUR": "EL ESPINO",
+}
+
+# Carpetas de registros en disco vs catálogo clonado (La Concepción → predio).
+_DOC_REGISTROS_FOLDER = {
+    "LA CONCEPCION": "Registros La Concepcion",
+    "CARLOS LIRA": "Registros Carlos Lira",
+    "EL ESPINO": "Registros El Espino",
+    "Cerezos": "Registros La Concepcion",
+    "Ciruelos": "Registros Carlos Lira",
+    "Nogales": "Registros El Espino",
+}
+_DOC_REGISTROS_FOLDER_ALIASES = {
+    "Registros La Concepcion": (
+        "Registros La Concepcion",
+        "Registros La Concepción",
+    ),
+    "Registros Carlos Lira": ("Registros Carlos Lira",),
+    "Registros El Espino": ("Registros El Espino",),
 }
 
 # Ancla de cosecha para Gantt GlobalGAP (Planificación).
 _PLANIF_COSECHA = {
     "Cerezos": date(2026, 11, 1),
     "Ciruelos": date(2027, 1, 15),
+    "Nogales": date(2027, 3, 1),
+    "LA CONCEPCION": date(2026, 11, 1),
+    "CARLOS LIRA": date(2027, 1, 15),
+    "EL ESPINO": date(2027, 3, 1),
     "ESPECIE 1": date(2026, 11, 1),
     "ESPECIE 2": date(2027, 1, 15),
 }
 _PLANIF_COSECHA_FIN = {
     "Cerezos": date(2026, 11, 22),
     "Ciruelos": date(2027, 2, 7),
+    "Nogales": date(2027, 3, 22),
+    "LA CONCEPCION": date(2026, 11, 22),
+    "CARLOS LIRA": date(2027, 2, 7),
+    "EL ESPINO": date(2027, 3, 22),
     "ESPECIE 1": date(2026, 11, 22),
     "ESPECIE 2": date(2027, 2, 7),
 }
 _PLANIF_CUARTEL = {
     "Cerezos": "CEREZOS CORTE 1",
     "Ciruelos": "CIRUELOS",
+    "Nogales": "NOGALES APARICION",
+    "LA CONCEPCION": "CEREZOS CORTE 1",
+    "CARLOS LIRA": "CIRUELOS",
+    "EL ESPINO": "NOGALES APARICION",
     "ESPECIE 1": "CEREZOS CORTE 1",
     "ESPECIE 2": "CIRUELOS",
 }
@@ -159,8 +207,36 @@ _CHECKLIST_CSS = {
 }
 
 
+def _especie_gap_key(especie: str) -> str:
+    e = (especie or "").strip()
+    return _LC_GAP_ESPECIE_LEGACY.get(e, e)
+
+
+def _especie_doc_aliases(especie: str) -> tuple[str, ...]:
+    """Predio activo + etiquetas legacy equivalentes (p. ej. LA CONCEPCION / Cerezos)."""
+    e = (especie or "").strip() or "ESPECIE 1"
+    aliases: list[str] = [e]
+    legacy = _LC_GAP_ESPECIE_LEGACY.get(e)
+    if legacy and legacy not in aliases:
+        aliases.append(legacy)
+    for new, old in _LC_GAP_ESPECIE_LEGACY.items():
+        if old == e and new not in aliases:
+            aliases.append(new)
+    return tuple(aliases)
+
+
+def _gap_pdf_pref(especie: str) -> str:
+    key = _especie_gap_key(especie)
+    if key in ("ESPECIE 1", "Cerezos"):
+        return "esp1"
+    if key == "Nogales":
+        return "esp3"
+    return "especie2"
+
+
 def _especie_sel(demo) -> str:
-    esp = request.form.get("especie") or request.args.get("especie", "ESPECIE 1")
+    default = demo.GAP_ESPECIES[0] if getattr(demo, "GAP_ESPECIES", None) else "ESPECIE 1"
+    esp = request.form.get("especie") or request.args.get("especie", default)
     if esp not in demo.GAP_ESPECIES:
         esp = demo.GAP_ESPECIES[0]
     return esp
@@ -234,7 +310,7 @@ def _section_pppl(demo, conn, especie: str) -> dict:
         params=(demo.GAP_ESPECIE_GENERAL, especie),
     )
     cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df,
@@ -348,7 +424,9 @@ def _catalog_path(especie: str) -> Path | None:
                 return p
     slug = _ESPECIE_DOC_SLUG.get((especie or "").strip(), "cerezos")
     for p in (
+        _docs_static_root() / slug / f"catalogo_{slug}.json",
         _docs_static_root() / f"catalogo_{slug}.json",
+        Path(f"/root/demo-web/demo_web/static/globalgap/docs/{slug}/catalogo_{slug}.json"),
         Path(f"/root/demo-web/demo_web/static/globalgap/docs/catalogo_{slug}.json"),
     ):
         if p.is_file():
@@ -398,17 +476,73 @@ def _load_doc_checklist_map(especie: str) -> dict[str, list[str]]:
     return out
 
 
+def _normalize_doc_relpath(especie: str, relpath: str) -> str:
+    """Ajusta carpeta Registros * al predio activo (p. ej. clon espino)."""
+    rel = (relpath or "").replace("\\", "/").lstrip("/")
+    if not rel:
+        return rel
+    target = _DOC_REGISTROS_FOLDER.get((especie or "").strip())
+    if not target:
+        return rel
+    parts = rel.split("/", 1)
+    if len(parts) == 2 and parts[0].startswith("Registros "):
+        return f"{target}/{parts[1]}"
+    return rel
+
+
+def _doc_relpath_candidates(especie: str, relpath: str) -> list[str]:
+    rel = (relpath or "").replace("\\", "/").lstrip("/")
+    if not rel:
+        return []
+    out: list[str] = []
+    for cand in (
+        _normalize_doc_relpath(especie, rel),
+        rel,
+    ):
+        if cand and cand not in out:
+            out.append(cand)
+    parts = rel.split("/", 1)
+    if len(parts) == 2:
+        head, tail = parts
+        for aliases in _DOC_REGISTROS_FOLDER_ALIASES.values():
+            if head in aliases:
+                for alias in aliases:
+                    variant = f"{alias}/{tail}"
+                    if variant not in out:
+                        out.append(variant)
+                target = _DOC_REGISTROS_FOLDER.get((especie or "").strip())
+                if target:
+                    variant = f"{target}/{tail}"
+                    if variant not in out:
+                        out.append(variant)
+                break
+    return out
+
+
 def _safe_doc_file(especie: str, relpath: str) -> Path | None:
     rel = (relpath or "").replace("\\", "/").lstrip("/")
     if not rel or ".." in rel.split("/"):
         return None
     root = _docs_especie_dir(especie).resolve()
-    full = (root / rel).resolve()
-    try:
-        full.relative_to(root)
-    except ValueError:
-        return None
-    return full if full.is_file() else None
+    for candidate in _doc_relpath_candidates(especie, rel):
+        full = (root / candidate).resolve()
+        try:
+            full.relative_to(root)
+        except ValueError:
+            continue
+        if full.is_file():
+            return full
+    # Último recurso: buscar por nombre de archivo dentro del predio.
+    name = Path(rel).name
+    if name:
+        for hit in root.rglob(name):
+            try:
+                hit.resolve().relative_to(root)
+            except ValueError:
+                continue
+            if hit.is_file():
+                return hit
+    return None
 
 
 def _doc_download_url(doc_id: int, especie: str) -> str:
@@ -515,13 +649,15 @@ def _sync_checklist_cumple_from_docs(conn, demo, especie: str, checklist_codigo:
 def _section_documentos(demo, conn, especie: str) -> dict:
     _ensure_gap_documentos_schema(conn)
     filtro_tipo = (request.args.get("tipo") or "TODOS").strip()
-    q = """SELECT id, COALESCE(codigo,'') AS codigo, tipo, titulo, version, fecha_vigencia,
+    esp_aliases = _especie_doc_aliases(especie)
+    esp_ph = ",".join("?" for _ in esp_aliases)
+    q = f"""SELECT id, COALESCE(codigo,'') AS codigo, tipo, titulo, version, fecha_vigencia,
                   responsable, notas, COALESCE(archivo_relpath,'') AS archivo_relpath,
                   COALESCE(nombre_archivo,'') AS nombre_archivo, COALESCE(origen,'') AS origen,
                   COALESCE(formato,'Digital') AS formato
            FROM gap_documentos
-           WHERE COALESCE(especie,'ESPECIE 1')=?"""
-    params: list = [especie]
+           WHERE COALESCE(especie,'ESPECIE 1') IN ({esp_ph})"""
+    params: list = list(esp_aliases)
     if filtro_tipo and filtro_tipo != "TODOS":
         q += " AND tipo=?"
         params.append(filtro_tipo)
@@ -568,7 +704,7 @@ def _section_documentos(demo, conn, especie: str) -> dict:
     pdf_df = df[["tipo", "codigo", "titulo", "version", "fecha_vigencia", "responsable"]].copy() if not df.empty else df
     if not pdf_df.empty:
         pdf_df.columns = ["TIPO", "CÓDIGO", "TÍTULO", "VER", "VIGENTE", "RESPONSABLE"]
-    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo, pdf_df, f"GLOBALGAP — {especie.upper()} — Documentos", f"globalgap_{pref}_documentos.pdf",
     )
@@ -637,7 +773,7 @@ def _section_autoeval(demo, conn, especie: str) -> dict:
             }
         )
 
-    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df[["CODIGO", "CAPÍTULO", "DESCRIPCIÓN", "ESTADO", "REVISIÓN", "RESPONSABLE"]] if not df.empty else df,
@@ -669,7 +805,7 @@ def _section_nc(demo, conn, especie: str) -> dict:
         params=(especie, *cuarteles),
     )
     cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df,
@@ -723,7 +859,7 @@ def _section_capacitaciones(demo, conn, especie: str) -> dict:
                 "row_class": "table-warning" if vencida else "",
             }
         )
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df,
@@ -756,7 +892,7 @@ def _section_cosecha(demo, conn, especie: str) -> dict:
         params=(especie.upper(),),
     )
     cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo, df, f"GLOBALGAP — {especie.upper()} — Cosecha y lotes", f"globalgap_{pref}_cosecha.pdf",
     )
@@ -808,7 +944,7 @@ def _section_agua(demo, conn, especie: str) -> dict:
     if not show.empty and "CONFORME" in show.columns:
         show["CONFORME"] = show["CONFORME"].apply(lambda v: "Sí" if v in (1, "1", True) else "No")
     cols, rows = df_to_records(show, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         show,
@@ -827,7 +963,7 @@ def _section_calibracion(demo, conn, especie: str) -> dict:
         conn,
     )
     cols, rows = df_to_records(df, set(), demo)
-    pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf = _pdf_url(
         demo,
         df,
@@ -844,27 +980,78 @@ def _section_calibracion(demo, conn, especie: str) -> dict:
     }
 
 
-def _cosecha_ancla(especie: str) -> date:
-    return _PLANIF_COSECHA.get((especie or "").strip(), date(2026, 11, 1))
+def _ensure_gap_cosecha_planif(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS gap_cosecha_planif (
+            especie TEXT PRIMARY KEY,
+            fecha_inicio TEXT NOT NULL,
+            fecha_fin TEXT NOT NULL,
+            actualizado_en TEXT DEFAULT ''
+        )"""
+    )
 
 
-def _cosecha_fin(especie: str) -> date:
-    return _PLANIF_COSECHA_FIN.get((especie or "").strip(), date(2026, 11, 22))
+def _especie_planif_key(especie: str) -> str:
+    return (especie or "").strip()
+
+
+def _especie_soporta_planif(especie: str) -> bool:
+    key = _especie_planif_key(especie)
+    return key in _PLANIF_COSECHA or key in (
+        "Cerezos",
+        "Ciruelos",
+        "Nogales",
+        "ESPECIE 1",
+        "ESPECIE 2",
+    )
+
+
+def _cosecha_planif_db(conn: sqlite3.Connection, especie: str) -> tuple[date, date] | None:
+    _ensure_gap_cosecha_planif(conn)
+    row = conn.execute(
+        "SELECT fecha_inicio, fecha_fin FROM gap_cosecha_planif WHERE especie=?",
+        (_especie_planif_key(especie),),
+    ).fetchone()
+    if not row:
+        return None
+    ini = _parse_iso_date(row[0])
+    fin = _parse_iso_date(row[1])
+    if ini and fin:
+        return ini, fin
+    return None
+
+
+def _cosecha_ancla(especie: str, conn: sqlite3.Connection | None = None) -> date:
+    key = _especie_planif_key(especie)
+    if conn is not None:
+        cfg = _cosecha_planif_db(conn, key)
+        if cfg:
+            return cfg[0]
+    return _PLANIF_COSECHA.get(key, date(2026, 11, 1))
+
+
+def _cosecha_fin(especie: str, conn: sqlite3.Connection | None = None) -> date:
+    key = _especie_planif_key(especie)
+    if conn is not None:
+        cfg = _cosecha_planif_db(conn, key)
+        if cfg:
+            return cfg[1]
+    return _PLANIF_COSECHA_FIN.get(key, date(2026, 11, 22))
 
 
 def _d(base: date, days: int) -> str:
     return (base + timedelta(days=days)).isoformat()
 
 
-def _planif_proyecto_nombre(especie: str) -> str:
-    h = _cosecha_ancla(especie)
+def _planif_proyecto_nombre(especie: str, conn: sqlite3.Connection | None = None) -> str:
+    h = _cosecha_ancla(especie, conn)
     return f"{_PLANIF_PROYECTO_PREF} — {especie} (cosecha {h.strftime('%b %Y')})"
 
 
-def _planif_tasks_certificacion(especie: str) -> list[dict]:
+def _planif_tasks_certificacion(especie: str, conn: sqlite3.Connection | None = None) -> list[dict]:
     """Gantt de certificación alineada a documentos + autoevaluación, anclada a cosecha."""
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
     cierre = h_fin + timedelta(days=14)
     cuartel = _PLANIF_CUARTEL.get(especie, "")
     return [
@@ -1076,12 +1263,12 @@ def _sync_gantt_avances(conn, especie: str) -> int:
 
 def _ensure_planificacion_certificacion(conn, demo, especie: str, force: bool = False) -> dict:
     """Crea/actualiza el proyecto Gantt de certificación para la especie (anclado a cosecha)."""
-    if especie not in _PLANIF_COSECHA and especie not in ("Cerezos", "Ciruelos", "ESPECIE 1", "ESPECIE 2"):
+    if not _especie_soporta_planif(especie):
         return {"ok": False, "msg": "Especie sin ancla de cosecha.", "proyecto_id": None}
 
-    nombre = _planif_proyecto_nombre(especie)
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
+    nombre = _planif_proyecto_nombre(especie, conn)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
     inicio = h - timedelta(days=120)
     cuartel = _PLANIF_CUARTEL.get(especie, "")
     desc = (
@@ -1175,7 +1362,7 @@ def _ensure_planificacion_certificacion(conn, demo, especie: str, force: bool = 
     ).fetchone()[0]
     if force or int(existing or 0) == 0:
         conn.execute("DELETE FROM gantt_tareas WHERE proyecto_id=?", (proyecto_id,))
-        for t in _planif_tasks_certificacion(especie):
+        for t in _planif_tasks_certificacion(especie, conn):
             pct = _avance_sync_from_notas(conn, especie, t["notas"]) or 0.0
             estado = "Completada" if pct >= 100 else ("En curso" if pct > 0 else "Pendiente")
             conn.execute(
@@ -1265,10 +1452,10 @@ def _parse_iso_date(val) -> date | None:
         return None
 
 
-def _timeline_span(especie: str) -> tuple[date, date, date]:
+def _timeline_span(especie: str, conn: sqlite3.Connection | None = None) -> tuple[date, date, date]:
     """Inicio planificación → fin cosecha(+cierre)."""
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
     start = h - timedelta(days=120)
     end = h_fin + timedelta(days=14)
     return start, end, h
@@ -1779,9 +1966,9 @@ def _section_gantt(demo, conn, especie: str) -> dict:
     _sync_gantt_avances(conn, especie)
 
     hoy = hoy_demo(demo)
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
-    t0, t1, _ = _timeline_span(especie)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
+    t0, t1, _ = _timeline_span(especie, conn)
     dias_a_cosecha = (h - hoy).days
     dias_a_fin = (h_fin - hoy).days
     if hoy < h:
@@ -1903,7 +2090,7 @@ def _section_gantt(demo, conn, especie: str) -> dict:
         "gantt_cosecha_fin": h_fin.isoformat(),
         "gantt_cosecha_label": f"{h.strftime('%d-%m-%Y')} → {h_fin.strftime('%d-%m-%Y')}",
         "gantt_cuartel": _PLANIF_CUARTEL.get(especie, ""),
-        "gantt_proyecto": _planif_proyecto_nombre(especie),
+        "gantt_proyecto": _planif_proyecto_nombre(especie, conn),
         "gantt_dias_cosecha": dias_a_cosecha,
         "gantt_dias_fin": dias_a_fin,
         "gantt_fase": fase,
@@ -1932,7 +2119,7 @@ def _section_gantt(demo, conn, especie: str) -> dict:
     try:
         blob = _pdf_tablero_gantt_bytes(demo, payload, especie)
         if blob:
-            pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+            pref = _gap_pdf_pref(especie)
             pdf_tablero_url = url_for(
                 "modules.pdf_download",
                 token=store_pdf(blob, f"globalgap_{pref}_tablero_gantt.pdf"),
@@ -1951,14 +2138,17 @@ def _section_planificacion(demo, conn, especie: str) -> dict:
     df = demo.cargar_tareas_gantt(conn, especie=especie)
     form_ctx = _gantt_form_ctx(demo, conn, especie, df)
 
-    h = _cosecha_ancla(especie)
-    h_fin = _cosecha_fin(especie)
+    h = _cosecha_ancla(especie, conn)
+    h_fin = _cosecha_fin(especie, conn)
+    custom = _cosecha_planif_db(conn, especie) is not None
     cosecha_ctx = {
         "planif_cosecha_inicio": h.isoformat(),
         "planif_cosecha_fin": h_fin.isoformat(),
         "planif_cosecha_label": f"{h.strftime('%d-%m-%Y')} → {h_fin.strftime('%d-%m-%Y')}",
+        "planif_cosecha_custom": custom,
+        "planif_admin": bool(demo.es_admin()),
         "planif_cuartel": _PLANIF_CUARTEL.get(especie, ""),
-        "planif_proyecto": _planif_proyecto_nombre(especie),
+        "planif_proyecto": _planif_proyecto_nombre(especie, conn),
         "planif_docs_url": url_for("modules.globalgap", sec="documentos", especie=especie),
         "planif_autoeval_url": url_for("modules.globalgap", sec="autoeval", especie=especie),
         "planif_planilla_url": url_for(
@@ -2008,7 +2198,7 @@ def _section_planificacion(demo, conn, especie: str) -> dict:
             }
         )
 
-    pref = "esp1" if especie in ("ESPECIE 1", "Cerezos") else "especie2"
+    pref = _gap_pdf_pref(especie)
     pdf_show = show.drop(columns=["NOTAS"], errors="ignore")
     pdf = _pdf_url(
         demo,
@@ -2130,6 +2320,31 @@ def _post_doc_add(demo, conn, especie: str) -> dict:
     return {"ok": True, "msg": msg}
 
 
+def _find_gap_documento_catalog_row(
+    conn, aliases: tuple[str, ...], codigo: str, titulo: str
+):
+    for alias in aliases:
+        if codigo:
+            row = conn.execute(
+                """SELECT id FROM gap_documentos
+                   WHERE COALESCE(especie,'')=? AND COALESCE(codigo,'')=?
+                   LIMIT 1""",
+                (alias, codigo),
+            ).fetchone()
+            if row:
+                return row
+        if titulo:
+            row = conn.execute(
+                """SELECT id FROM gap_documentos
+                   WHERE COALESCE(especie,'')=? AND UPPER(TRIM(titulo))=UPPER(TRIM(?))
+                   LIMIT 1""",
+                (alias, titulo),
+            ).fetchone()
+            if row:
+                return row
+    return None
+
+
 def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
     _ensure_gap_documentos_schema(conn)
     path = _catalog_path(especie)
@@ -2142,6 +2357,7 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
     if not isinstance(catalog, list):
         return {"ok": False, "msg": "Catálogo inválido."}
 
+    esp_aliases = _especie_doc_aliases(especie)
     inserted = 0
     updated = 0
     linked_total = 0
@@ -2158,33 +2374,19 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
         origen = str(item.get("origen") or "Propio").strip()
         formato = str(item.get("formato") or "Digital").strip()
         rel = str(item.get("archivo_relpath") or "").replace("\\", "/").lstrip("/")
+        rel = _normalize_doc_relpath(especie, rel)
         nombre = str(item.get("nombre_archivo") or "").strip()
         if rel and not nombre:
             nombre = Path(rel).name
         mime = mimetypes.guess_type(nombre)[0] or "" if nombre else ""
-        esp = str(item.get("especie") or especie).strip() or especie
 
-        existing = None
-        if codigo:
-            existing = conn.execute(
-                """SELECT id FROM gap_documentos
-                   WHERE COALESCE(especie,'')=? AND COALESCE(codigo,'')=?
-                   LIMIT 1""",
-                (esp, codigo),
-            ).fetchone()
-        if not existing and titulo:
-            existing = conn.execute(
-                """SELECT id FROM gap_documentos
-                   WHERE COALESCE(especie,'')=? AND UPPER(TRIM(titulo))=UPPER(TRIM(?))
-                   LIMIT 1""",
-                (esp, titulo),
-            ).fetchone()
+        existing = _find_gap_documento_catalog_row(conn, esp_aliases, codigo, titulo)
 
         if existing:
             doc_id = int(existing[0])
             conn.execute(
                 """UPDATE gap_documentos SET
-                       tipo=?, titulo=?, version=?,
+                       especie=?, tipo=?, titulo=?, version=?,
                        fecha_vigencia=COALESCE(?, fecha_vigencia),
                        origen=?, formato=?,
                        archivo_relpath=CASE WHEN ?!='' THEN ? ELSE archivo_relpath END,
@@ -2193,6 +2395,7 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
                        codigo=CASE WHEN ?!='' THEN ? ELSE codigo END
                    WHERE id=?""",
                 (
+                    especie,
                     tipo,
                     titulo or codigo,
                     version,
@@ -2225,7 +2428,7 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
                     "",
                     "Importado desde Listado Maestro / Drive",
                     str(hoy_demo(demo)),
-                    esp,
+                    especie,
                     codigo,
                     rel,
                     nombre,
@@ -2236,7 +2439,19 @@ def _post_doc_import_catalog(demo, conn, especie: str) -> dict:
             )
             doc_id = int(cur.lastrowid)
             inserted += 1
-        linked_total += _link_doc_checklist(conn, doc_id, codigo, esp)
+        linked_total += _link_doc_checklist(conn, doc_id, codigo, especie)
+
+    for alias in esp_aliases:
+        if alias == especie:
+            continue
+        conn.execute(
+            "UPDATE gap_documentos SET especie=? WHERE COALESCE(especie,'')=?",
+            (especie, alias),
+        )
+        conn.execute(
+            "UPDATE gap_doc_checklist SET especie=? WHERE COALESCE(especie,'')=?",
+            (especie, alias),
+        )
 
     conn.commit()
     demo.registrar_accion(
@@ -2539,6 +2754,45 @@ def _post_cal_add(demo, conn) -> dict:
     return {"ok": True, "msg": "Calibración registrada."}
 
 
+def _post_cosecha_planif_save(demo, conn, especie: str) -> dict:
+    denied = _require_admin_gap(demo)
+    if denied:
+        return denied
+    if not _especie_soporta_planif(especie):
+        return {"ok": False, "msg": "Este predio no tiene planificación de cosecha."}
+    hoy = hoy_demo(demo)
+    fi = parse_date(request.form.get("cosecha_inicio"), _cosecha_ancla(especie, conn))
+    ff = parse_date(request.form.get("cosecha_fin"), _cosecha_fin(especie, conn))
+    if ff < fi:
+        return {"ok": False, "msg": "La fecha fin debe ser igual o posterior al inicio."}
+    _ensure_gap_cosecha_planif(conn)
+    conn.execute(
+        """INSERT INTO gap_cosecha_planif (especie, fecha_inicio, fecha_fin, actualizado_en)
+           VALUES (?,?,?,?)
+           ON CONFLICT(especie) DO UPDATE SET
+             fecha_inicio=excluded.fecha_inicio,
+             fecha_fin=excluded.fecha_fin,
+             actualizado_en=excluded.actualizado_en""",
+        (_especie_planif_key(especie), fi.isoformat(), ff.isoformat(), hoy.isoformat()),
+    )
+    conn.commit()
+    res = _ensure_planificacion_certificacion(conn, demo, especie, force=True)
+    if not res.get("ok"):
+        return {"ok": False, "msg": res.get("msg") or "Fechas guardadas, pero no se pudo reconstruir la Gantt."}
+    n = conn.execute(
+        "SELECT COUNT(*) FROM gantt_tareas WHERE proyecto_id=?",
+        (res["proyecto_id"],),
+    ).fetchone()[0]
+    demo.registrar_accion(
+        "GLOBALGAP COSECHA PLANIF",
+        f"{especie}: {fi.isoformat()} → {ff.isoformat()}",
+    )
+    return {
+        "ok": True,
+        "msg": f"Cosecha planificada guardada ({fi.strftime('%d-%m-%Y')} → {ff.strftime('%d-%m-%Y')}) y Gantt reconstruida ({n} actividades).",
+    }
+
+
 def _post_gantt_rebuild(demo, conn, especie: str) -> dict:
     res = _ensure_planificacion_certificacion(conn, demo, especie, force=True)
     if res.get("ok"):
@@ -2549,7 +2803,7 @@ def _post_gantt_rebuild(demo, conn, especie: str) -> dict:
         demo.registrar_accion("GLOBALGAP GANTT REBUILD", f"{especie}: {n} actividades")
         return {
             "ok": True,
-            "msg": f"Gantt {especie} reconstruida ({n} actividades) anclada a cosecha {_cosecha_ancla(especie).isoformat()}.",
+            "msg": f"Gantt {especie} reconstruida ({n} actividades) anclada a cosecha {_cosecha_ancla(especie, conn).isoformat()}.",
         }
     return {"ok": False, "msg": res.get("msg") or "No se pudo reconstruir la Gantt."}
 
@@ -2674,14 +2928,21 @@ def _planilla_cuarteles_activos() -> list[str]:
 
 
 def _especie_desde_cuartel(cuartel: str, fallback: str = "Cerezos") -> str:
-    return _PLANILLA_ESPECIE_POR_CUARTEL.get((cuartel or "").strip().upper(), fallback)
+    cu = (cuartel or "").strip().upper()
+    from demo_web.services.erp_loader import get_erp_app
+
+    if get_erp_app() == "concepcion":
+        return _LC_CUARTEL_ESPECIE.get(cu, fallback)
+    return _PLANILLA_ESPECIE_POR_CUARTEL.get(cu, fallback)
 
 
 def _cuartel_default_planilla(especie: str) -> str:
-    esp = (especie or "").strip().lower()
-    if esp.startswith("ciruel"):
+    esp = (especie or "").strip().upper()
+    if esp in ("CARLOS LIRA", "CIRUELOS") or esp.startswith("CIRUEL"):
         return "CIRUELOS"
-    if esp.startswith("cerez"):
+    if esp in ("EL ESPINO", "NOGALES") or esp.startswith("NOGAL"):
+        return "NOGALES APARICION"
+    if esp in ("LA CONCEPCION",) or esp.startswith("CEREZ"):
         return "CEREZOS CORTE 1"
     return "TODOS"
 
@@ -3790,7 +4051,7 @@ def gather_globalgap(user_email: str, user_rol: str) -> dict:
             {"Indicador": "Cuarteles", "Valor": ", ".join(cuarteles)},
             {"Indicador": "Fecha informe", "Valor": str(hoy_demo(demo))},
         ])
-        pref = "esp1" if especie == "ESPECIE 1" else "especie2"
+        pref = _gap_pdf_pref(especie)
         pdf_resumen = _pdf_url(
             demo,
             df_res,
@@ -3896,6 +4157,7 @@ def view(user_email: str, user_rol: str):
                 "agua_add": _post_agua_add,
                 "cal_add": _post_cal_add,
                 "gantt_rebuild": lambda d, c: _post_gantt_rebuild(d, c, especie),
+                "cosecha_planif_save": lambda d, c: _post_cosecha_planif_save(d, c, especie),
                 "gantt_actividad": _post_gantt_actividad,
                 "gantt_avance": _post_gantt_avance,
             }
