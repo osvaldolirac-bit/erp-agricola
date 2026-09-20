@@ -284,6 +284,43 @@ body.demo-body {
   letter-spacing: 0.04em;
 }
 
+.login-tenant-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.15rem;
+  pointer-events: auto;
+}
+
+.login-tenant-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(18, 32, 24, 0.45);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+
+.login-tenant-chip:hover {
+  background: rgba(31, 77, 58, 0.72);
+  transform: translateY(-1px);
+  color: #fff;
+}
+
+.login-tenant-chip.is-active {
+  background: rgba(46, 125, 50, 0.88);
+  border-color: rgba(200, 230, 201, 0.75);
+  box-shadow: 0 0 0 2px rgba(129, 199, 132, 0.35);
+}
+
 .login-hero-select {
   pointer-events: auto;
   width: min(420px, 92vw);
@@ -1149,6 +1186,24 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   font-weight: 800;
   margin-bottom: 1rem;
 }
+
+/* Petróleo — contador estanque (mismo bloque grande que Salida Link) */
+.petroleo-estanque-hero.salida-petroleo-estanque {
+  margin-bottom: 0;
+  padding: 1.15rem 1.25rem 1rem;
+}
+
+.petroleo-estanque-hero .salida-petroleo-estanque-valor {
+  font-size: clamp(1.85rem, 4.5vw, 2.45rem);
+  line-height: 1.1;
+}
+
+.petroleo-estanque-hero .salida-petroleo-estanque-meta {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .banner-econ {
   background: linear-gradient(135deg, var(--azul-oscuro), var(--azul-accion));
   color: white;
