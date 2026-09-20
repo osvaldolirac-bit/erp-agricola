@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if row else 'Nueva' }} orden de compra{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if row %}Editar OC {{ row.folio }}{% else %}Nueva orden de compra{% endif %}</h1>
+    <p>Solicitud al proveedor. Al recibir la factura, conviértala en Compra desde el detalle.</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('oc_list') }}">Volver</a>
+</div>
+<div class="panel">
+  <form method="post" class="row g-3" id="formOc">
+    <div class="col-md-5">
+      <label class="form-label fw-bold">Proveedor</label>
+      <select class="form-select" name="proveedor_id" required>
+        <option value="">— Seleccione —</option>
+        {% for p in proveedores %}
+        <option value="{{ p.id }}" {% if row and row.proveedor_id==p.id %}selected{% endif %}>{{ p.razon_social }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text"><a href="{{ url_for('proveedores_form') }}">+ Nuevo proveedor</a></div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold">Folio</label>
+      <input class="form-control" value="{{ row.folio if row else '(auto)' }}" disabled>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold">Concepto</label>
+      <input class="form-control" name="concepto" value="{{ row.concepto if row and row.concepto else '' }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold">Fecha OC</label>
+      <input type="date" class="form-control" name="fecha" value="{{ row.fecha if row else hoy }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold">Entrega estimada</label>
+      <input type="date" class="form-control" name="fecha_entrega" value="{{ row.fecha_entrega if row and row.fecha_entrega else '' }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label fw-bold">Notas</label>
+      <input class="form-control" name="notas" value="{{ row.notas if row and row.notas else '' }}">
+    </div>
+
+    <div class="col-12"><h2 class="h6 mt-2">Ítems</h2></div>
+    <div class="col-12">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle" id="tblItems">
+          <thead><tr><th>Catálogo</th><th>Descripción</th><th>Un</th><th>Cant</th><th>Costo</th><th>Servicio</th><th></th></tr></thead>
+          <tbody>
+            {% if items %}
+              {% for it in items %}
+              <tr>
+                <td>
+                  <select class="form-select form-select-sm" name="item_producto_id">
+                    <option value="">—</option>
+                    {% for p in productos %}
+                    <option value="{{ p.id }}" {% if it.producto_id==p.id %}selected{% endif %}>{{ p.nombre }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td><input class="form-control form-control-sm" name="item_desc" value="{{ it.descripcion }}" required></td>
+                <td><input class="form-control form-control-sm" name="item_unidad" value="{{ it.unidad or 'un' }}" style="width:4.5rem"></td>
+                <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_cant" value="{{ it.cantidad }}" style="width:5.5rem"></td>
+                <td><input class="form-control form-control-sm" type="number" step="1" name="item_costo" value="{{ it.costo_unitario|int }}" style="width:7rem"></td>
+                <td class="text-center"><input class="form-check-input" type="checkbox" name="item_servicio_{{ loop.index0 }}" value="1" {% if it.es_servicio %}checked{% endif %}></td>
+                <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()">×</button></td>
+              </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItemRow()">+ Ítem</button>
+    </div>
+    <div class="col-12 d-flex gap-2 flex-wrap">
+      <button class="btn btn-primary fw-bold" type="submit" name="accion" value="guardar">Guardar borrador</button>
+      <button class="btn btn-success fw-bold" type="submit" name="accion" value="emitir">Guardar y emitir</button>
+    </div>
+  </form>
+</div>
+<template id="rowTpl">
+  <tr>
+    <td>
+      <select class="form-select form-select-sm" name="item_producto_id" onchange="fillFromProd(this)">
+        <option value="">—</option>
+        {% for p in productos %}
+        <option value="{{ p.id }}" data-nombre="{{ p.nombre }}" data-unidad="{{ p.unidad }}" data-precio="{{ p.precio }}" data-serv="{{ p.es_servicio }}">{{ p.codigo or '' }} {{ p.nombre }}</option>
+        {% endfor %}
+      </select>
+    </td>
+    <td><input class="form-control form-control-sm" name="item_desc" required></td>
+    <td><input class="form-control form-control-sm" name="item_unidad" value="un" style="width:4.5rem"></td>
+    <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_cant" value="1" style="width:5.5rem"></td>
+    <td><input class="form-control form-control-sm" type="number" step="1" name="item_costo" value="0" style="width:7rem"></td>
+    <td class="text-center"><input class="form-check-input item-serv" type="checkbox" value="1"></td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()">×</button></td>
+  </tr>
+</template>
+<script>
+function reindexServ(){
+  document.querySelectorAll('#tblItems tbody tr').forEach((tr,i)=>{
+    const cb=tr.querySelector('.item-serv, input[type=checkbox]');
+    if(cb){ cb.name='item_servicio_'+i; cb.classList.add('item-serv'); }
+  });
+}
+function addItemRow(){
+  const tpl=document.getElementById('rowTpl');
+  const node=tpl.content.cloneNode(true);
+  document.querySelector('#tblItems tbody').appendChild(node);
+  reindexServ();
+}
+function fillFromProd(sel){
+  const opt=sel.selectedOptions[0];
+  if(!opt||!opt.value) return;
+  const tr=sel.closest('tr');
+  tr.querySelector('[name=item_desc]').value=opt.dataset.nombre||'';
+  tr.querySelector('[name=item_unidad]').value=opt.dataset.unidad||'un';
+  tr.querySelector('[name=item_costo]').value=opt.dataset.precio||0;
+  const cb=tr.querySelector('.item-serv');
+  if(cb) cb.checked=String(opt.dataset.serv)==='1';
+}
+document.getElementById('formOc').addEventListener('submit', reindexServ);
+{% if not items %}addItemRow();{% else %}reindexServ();{% endif %}
+</script>
+{% endblock %}

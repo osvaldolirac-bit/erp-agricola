@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Compra {{ row.documento }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ row.documento }}</h1>
+    <p>{{ row.proveedor or '—' }} · {{ row.concepto or 'Sin concepto' }}</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('compras_list') }}">Volver</a>
+    {% if row.orden_compra_id %}
+    <a class="btn btn-outline-secondary" href="{{ url_for('oc_detalle', oid=row.orden_compra_id) }}"><i class="bi bi-clipboard-check"></i> Ver OC</a>
+    {% endif %}
+    <a class="btn btn-outline-primary" href="{{ url_for('tesoreria_list') }}"><i class="bi bi-bank"></i> Ir a Tesorería</a>
+  </div>
+</div>
+<div class="kpi-grid">
+  <div class="kpi blue"><div class="label">Total</div><div class="value">{{ clp(row.total) }}</div></div>
+  <div class="kpi cyan"><div class="label">Pagado</div><div class="value">{{ clp(row.pagado) }}</div></div>
+  <div class="kpi pink"><div class="label">Saldo</div><div class="value">{{ clp(row.saldo) }}</div></div>
+  <div class="kpi green"><div class="label">Estado</div><div class="value"><span class="estado {{ cxp_estado_class(row.estado) }}">{{ cxp_estado_label(row.estado) }}</span></div></div>
+</div>
+<div class="panel mb-3">
+  <div class="row g-2 small">
+    <div class="col-md-3"><strong>Factura proveedor</strong><div>{{ row.documento }}</div></div>
+    <div class="col-md-3"><strong>Tipo</strong><div>{{ (row.tipo_documento or 'factura')|capitalize }}</div></div>
+    <div class="col-md-3"><strong>Emisión</strong><div>{{ fmt_dmy(row.fecha_emision) }}</div></div>
+    <div class="col-md-3"><strong>Vence</strong><div>{{ fmt_dmy(row.fecha_vencimiento) }}</div></div>
+    <div class="col-md-3"><strong>Neto / IVA</strong><div>{{ clp(row.neto) }} + {{ clp(row.iva) }}</div></div>
+    <div class="col-md-3"><strong>Bodega</strong><div>{% if row.afecta_stock %}Entrada de materiales{% else %}Sin stock{% endif %}</div></div>
+  </div>
+</div>
+<div class="panel mb-3">
+  <h2 class="h6">Ítems</h2>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Descripción</th><th>Un</th><th>Cant</th><th>Costo</th><th>Total</th><th>Tipo</th></tr></thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it.descripcion }}</td>
+          <td>{{ it.unidad }}</td>
+          <td>{{ it.cantidad }}</td>
+          <td>{{ clp(it.costo_unitario) }}</td>
+          <td>{{ clp(it.total) }}</td>
+          <td>{% if it.es_servicio %}Servicio{% else %}Material{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="panel">
+  <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+    <h2 class="h6 mb-0">Historial de pagos</h2>
+    {% if row.saldo and row.saldo > 0 %}
+    <span class="small text-muted">Para abonar o pagar, use <a href="{{ url_for('tesoreria_list') }}">Tesorería</a>.</span>
+    {% endif %}
+  </div>
+  {% if pagos %}
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Medio</th><th>Nota</th></tr></thead>
+      <tbody>
+        {% for p in pagos %}
+        <tr><td>{{ fmt_dmy(p.fecha) }}</td><td>{{ clp(p.monto) }}</td><td>{{ p.medio }}</td><td>{{ p.nota or '—' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted mb-0">Sin pagos registrados. Los pagos se hacen en Tesorería.</p>
+  {% endif %}
+</div>
+{% endblock %}
