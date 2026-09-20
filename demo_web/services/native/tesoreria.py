@@ -7,7 +7,9 @@ from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.lc_excluir_espino import filtrar_df_facturas_espino_lc, sql_and_excluir_razon_social_espino
 from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.tenant_scope import razon_social_default
 
 SECCIONES = [
     ("pendientes", "🔴 PENDIENTES"),
@@ -114,7 +116,9 @@ def _pdf_url(demo, blob, archivo: str) -> str | None:
 
 
 def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
-    dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
+    dfp = filtrar_df_facturas_espino_lc(
+        demo._cargar_facturas_pendientes_saldo(conn)
+    ).sort_values("fecha_vencimiento")
     if dfp.empty:
         return None
     dfp_show = dfp.rename(columns={
@@ -149,10 +153,11 @@ def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
 
 def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
     dfpr = pd.read_sql_query(
-        """SELECT nro_documento, fecha_vencimiento, monto_total,
+        f"""SELECT nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado
            FROM facturas
            WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           {sql_and_excluir_razon_social_espino()}
            ORDER BY fecha_vencimiento ASC""",
         conn,
         params=(proveedor,),
@@ -182,7 +187,9 @@ def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
 
 
 def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | None:
-    dfh = demo._query_historial_abonos_tesoreria(conn, fi, ff, bsq, met)
+    dfh = filtrar_df_facturas_espino_lc(
+        demo._query_historial_abonos_tesoreria(conn, fi, ff, bsq, met)
+    )
     if dfh.empty:
         return None
     fn = getattr(demo, "generar_pdf_tesoreria_pagos", None)
@@ -191,7 +198,9 @@ def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | 
 
 
 def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
-    dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
+    dfp = filtrar_df_facturas_espino_lc(
+        demo._cargar_facturas_pendientes_saldo(conn)
+    ).sort_values("fecha_vencimiento")
     if dfp.empty:
         return [], demo.f_peso(0), 0
     total = demo.f_peso(dfp["saldo"].sum())
@@ -203,7 +212,7 @@ def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
             {
                 "nro_documento": r["nro_documento"],
                 "proveedor": r["proveedor"],
-                "razon_social": r.get("razon_social") or "La Concepción",
+                "razon_social": r.get("razon_social") or razon_social_default(),
                 "fecha_vencimiento": venc.strftime("%d-%m-%Y"),
                 "dias_vencido": "" if pd.isna(r.get("dias_vencido")) else int(r["dias_vencido"]),
                 "monto_total": demo.f_peso(r["monto_total"]),
@@ -216,9 +225,11 @@ def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
 
 
 def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict], str | None, str]:
+    excl = sql_and_excluir_razon_social_espino()
     prvs = pd.read_sql_query(
-        """SELECT DISTINCT proveedor FROM facturas
+        f"""SELECT DISTINCT proveedor FROM facturas
            WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           {excl}
            ORDER BY proveedor""",
         conn,
     )
@@ -227,11 +238,12 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
         return [], [], None, ""
     psel = proveedor if proveedor in proveedores else proveedores[0]
     dfpr = pd.read_sql_query(
-        """SELECT id, nro_documento, fecha_vencimiento, monto_total,
+        f"""SELECT id, nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado,
                   COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
            FROM facturas
            WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           {excl}
            ORDER BY fecha_vencimiento ASC""",
         conn,
         params=(psel,),
@@ -267,7 +279,9 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
 
 
 def _historial_grupos(demo, conn, fi: date, ff: date, bsq: str, met: str) -> tuple[list[dict], dict]:
-    dfh = demo._query_historial_abonos_tesoreria(conn, fi, ff, bsq, met)
+    dfh = filtrar_df_facturas_espino_lc(
+        demo._query_historial_abonos_tesoreria(conn, fi, ff, bsq, met)
+    )
     if dfh.empty:
         return [], {"pagos": 0, "docs": 0, "total": demo.f_peso(0)}
     df_p = dfh.copy()
@@ -331,7 +345,7 @@ def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, 
     n_docs = len(documentos)
     linea_banco = f"<p><b>🏦 Banco:</b> {html_esc(banco)}</p>" if banco else ""
     pagador = razones_sociales_desde_docs(documentos, razon_social) or ""
-    marca_erp = (getattr(demo, "NOMBRE_ERP", None) or "Agrícola La Concepción").strip()
+    marca_erp = (getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola").strip()
     linea_razon = (
         f"<p><b>🏛️ Razón social que paga:</b> {html_esc(pagador)}</p>"
         if pagador else ""
@@ -365,11 +379,12 @@ def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, 
 
 def _docs_pendientes_proveedor(demo, conn, proveedor: str) -> pd.DataFrame:
     dfpr = pd.read_sql_query(
-        """SELECT id, nro_documento, fecha_vencimiento, monto_total,
+        f"""SELECT id, nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado,
                   COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
            FROM facturas
            WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           {sql_and_excluir_razon_social_espino()}
            ORDER BY fecha_vencimiento ASC""",
         conn,
         params=(proveedor,),
