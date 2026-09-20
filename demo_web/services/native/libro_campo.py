@@ -801,6 +801,33 @@ def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
 
+    from demo_web.services.erp_loader import current_tenant
+
+    tenant = current_tenant()
+    if tenant and tenant.get("slug") == "espino":
+        from demo_web.services.module_runner import redirect_module
+
+        sec_lc = (request.args.get("sec") or request.form.get("sec") or "historial").strip()
+        op_map = {"ingreso": "ingreso", "historial": "historial", "desfase": "desfase"}
+        lc_op = (request.args.get("op") or request.form.get("op") or op_map.get(sec_lc, "ingreso")).strip()
+        temp = request.args.get("temp") or request.form.get("temp") or ""
+        if not temp:
+            from demo_web.services.native._helpers import temporada_sel
+
+            temps = getattr(demo, "TEMPORADAS_ESPINO", None) or getattr(demo, "TEMPORADAS_COSTOS", None)
+            if temps:
+                temp, _, _ = temporada_sel(demo, temporadas=temps)
+            else:
+                temp = ""
+        passthrough = {
+            k: request.values.get(k)
+            for k in ("desde", "hasta", "q", "n_app", "cuartel", "ventana", "prod", "temp")
+            if request.values.get(k)
+        }
+        if temp and "temp" not in passthrough:
+            passthrough["temp"] = temp
+        return redirect_module("espino", sec="libro_campo", op=lc_op, **passthrough)
+
     if request.method == "GET" and request.args.get("clima") == "1":
         from demo_web.services.weather import fetch_daily_weather
 
