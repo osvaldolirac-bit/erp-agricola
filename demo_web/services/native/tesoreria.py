@@ -124,20 +124,18 @@ def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
         "fecha_vencimiento": "VENCIMIENTO",
         "dias_vencido": "DÍAS VENC.",
         "monto_total": "MONTO DOC.",
-        "monto_pagado": "ABONADO",
-        "saldo": "SALDO",
-    }).drop(columns=["id"], errors="ignore")
+    }).drop(columns=["id", "monto_pagado", "saldo"], errors="ignore")
     dfp_show = dfp_show[
         [
             "N° DOCUMENTO", "PROVEEDOR", "RAZÓN SOCIAL", "VENCIMIENTO", "DÍAS VENC.",
-            "MONTO DOC.", "ABONADO", "SALDO",
+            "MONTO DOC.",
         ]
     ]
     estilo = getattr(demo, "_pdf_estilo_tesoreria_vencida", None)
     blob = demo.generar_pdf_blob(
         dfp_show,
         "DEUDAS PENDIENTES",
-        campo_suma_forzado="SALDO",
+        campo_suma_forzado="MONTO DOC.",
         estilo_celda_fn=estilo,
         font_size_header=12,
         font_size_body=11,
@@ -167,14 +165,15 @@ def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
     if dfpr.empty:
         return None
     dfpr_show = dfpr.rename(columns={
-        "monto_total": "monto_doc",
-        "monto_pagado": "abonado",
-    })
+        "nro_documento": "N° DOCUMENTO",
+        "fecha_vencimiento": "VENCIMIENTO",
+        "monto_total": "MONTO DOC.",
+    })[["N° DOCUMENTO", "VENCIMIENTO", "MONTO DOC."]]
     estilo = getattr(demo, "_pdf_estilo_tesoreria_vencida", None)
     blob = demo.generar_pdf_blob(
         dfpr_show,
         f"DEUDA {proveedor}",
-        campo_suma_forzado="saldo_pendiente",
+        campo_suma_forzado="MONTO DOC.",
         estilo_celda_fn=estilo,
     )
     safe = proveedor.lower().replace(" ", "_")[:40]
