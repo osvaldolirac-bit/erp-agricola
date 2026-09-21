@@ -21,7 +21,7 @@ def _pdf_filename_producto(nombre: str, prefix: str = "KARDEX") -> str:
 
 def _normalize_tipo_mov(tipo: str) -> str:
     t = (tipo or "").strip().lower()
-    if t.startswith("ing"):
+    if t.startswith("ing") or t.startswith("entr"):
         return "Ingreso"
     if t.startswith("sal"):
         return "Salida"
