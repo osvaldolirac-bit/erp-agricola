@@ -308,6 +308,15 @@ def _kardex_row(
     }
 
 
+def _recalc_kardex_saldos(demo, rows: list[dict]) -> None:
+    saldo = 0.0
+    for r in rows:
+        delta = r["cant_raw"] if r["tipo"] == "Ingreso" else -r["cant_raw"]
+        saldo += delta
+        r["saldo"] = demo.f_cantidad(saldo)
+        r["saldo_raw"] = saldo
+
+
 def _build_kardex_rows(
     demo,
     conn: sqlite3.Connection,
@@ -315,15 +324,14 @@ def _build_kardex_rows(
     producto_nombre: str,
     movs: list[tuple],
     lc_lineas: list[dict],
+    *,
+    stock_objetivo: float | None = None,
 ) -> list[dict]:
-    """Arma filas kardex solo desde movimientos reales (compras, ingresos manuales, salidas)."""
+    """Arma filas kardex desde movimientos; agrega apertura si el stock no cuadra."""
     rows: list[dict] = []
-    saldo = 0.0
     for mid, tipo, cant, fecha, cc in movs:
         tipo_n = _normalize_tipo_mov(str(tipo))
         qty = float(cant or 0)
-        delta = qty if tipo_n == "Ingreso" else -qty
-        saldo += delta
         rows.append(
             _kardex_row(
                 demo,
@@ -342,9 +350,30 @@ def _build_kardex_rows(
                     str(cc or ""),
                     lc_lineas,
                 ),
-                saldo=saldo,
+                saldo=0.0,
             )
         )
+
+    if stock_objetivo is not None:
+        ing = sum(r["cant_raw"] for r in rows if r["tipo"] == "Ingreso")
+        sal = sum(r["cant_raw"] for r in rows if r["tipo"] == "Salida")
+        apertura = float(stock_objetivo) - ing + sal
+        if apertura > 1e-6:
+            rows.insert(
+                0,
+                _kardex_row(
+                    demo,
+                    row_id=0,
+                    fecha="—",
+                    tipo="Ingreso",
+                    qty=apertura,
+                    cuartel=ETIQUETA_BODEGA,
+                    origen="Stock inicial / apertura",
+                    saldo=0.0,
+                ),
+            )
+
+    _recalc_kardex_saldos(demo, rows)
     return rows
 
 
@@ -376,7 +405,9 @@ def gather_kardex_producto(demo, conn, producto_id: int) -> dict:
     ).fetchall()
 
     stock_ui = _stock_disponible_producto(conn, pid)
-    kardex_rows = _build_kardex_rows(demo, conn, pid, nombre, movs, lc_lineas)
+    kardex_rows = _build_kardex_rows(
+        demo, conn, pid, nombre, movs, lc_lineas, stock_objetivo=stock_ui
+    )
     lc_sin_par = [lc for lc in lc_lineas if not lc.get("_used")]
 
     ing_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Ingreso")

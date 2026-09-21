@@ -73,7 +73,7 @@
     {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK OPERATIVO', filename=pdf_stock_filename|default('STOCK_BODEGA_EL_ESPINO.pdf')) }}
   </div>
   {% endif %}
-  {% if es_admin and not es_certificacion and stock_rows and not bodega_espino %}
+  {% if es_admin and not es_certificacion and stock_rows %}
   <div class="panel-card">
     <h2 class="h6">Corregir stock / nombre / familia / PMP</h2>
     {% if stock_edit %}
@@ -107,6 +107,15 @@
       <div class="col-md-6"><label class="form-label small">Ingrediente activo</label><input type="text" name="ingrediente_activo" class="form-control form-control-sm" value="{{ stock_edit.ingrediente_activo }}"></div>
       <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
       <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm w-100">Guardar corrección</button></div>
+    </form>
+    <form method="post" class="row g-2 mt-2 border-top pt-2" onsubmit="return confirm('¿Eliminar «{{ stock_edit.producto }}» del inventario? Solo si no tiene movimientos kardex.');">
+      <input type="hidden" name="action" value="eliminar_producto">
+      <input type="hidden" name="sec" value="stock">
+      <input type="hidden" name="producto_id" value="{{ stock_edit.id }}">
+      {% if filtro_q %}<input type="hidden" name="q" value="{{ filtro_q }}">{% endif %}
+      <div class="col-md-6"><p class="small text-muted mb-0">Eliminar producto sin historial kardex (ej. carga errónea).</p></div>
+      <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-danger btn-sm w-100">Eliminar producto</button></div>
     </form>
     {% endif %}
   </div>
