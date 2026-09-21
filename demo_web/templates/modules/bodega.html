@@ -39,18 +39,18 @@
   </div>
   {% if stock_rows %}
   <div class="panel-card mb-3">
-    {% if bodega_espino %}
+    {% if bodega_kardex %}
     <p class="small text-muted mb-2">Haga clic en el <strong>nombre del producto</strong> para ver su cuenta corriente (entradas, salidas y saldo).</p>
     {% endif %}
     <div class="table-responsive">
-      <table class="table table-sm table-striped {% if not bodega_espino %}demo-datatable{% endif %} w-100">
+      <table class="table table-sm table-striped {% if not bodega_kardex %}demo-datatable{% endif %} w-100">
         <thead><tr>{% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for row in stock_rows %}
           <tr>
             {% for c in stock_cols %}
             <td>
-              {% if bodega_espino and c == 'producto' and row.id %}
+              {% if bodega_kardex and c == 'producto' and row.id %}
               <a href="{{ url_for('modules.bodega', sec='kardex', pid=row.id, q=filtro_q|default('')) }}"
                  class="fw-semibold link-primary"
                  title="Ver cuenta corriente">{{ row[c] }}</a>
@@ -121,7 +121,7 @@
   </div>
   {% endif %}
 
-  {% elif sec_activa == 'kardex' and bodega_espino %}
+  {% elif sec_activa == 'kardex' and bodega_kardex %}
   <div class="mb-3">
     <a class="btn btn-outline-primary btn-sm"
        href="{{ url_for('modules.bodega', sec='stock', q=filtro_q|default('')) }}">
