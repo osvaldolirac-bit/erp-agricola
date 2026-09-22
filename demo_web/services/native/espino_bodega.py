@@ -611,7 +611,17 @@ def validar_salida_bodega(
         return False, "Producto no encontrado.", None, None, None
     iid, prod_nombre, _pmp, um_sel = int(row[0]), row[1], float(row[2] or 0), row[3]
     inv_st = conn.execute("SELECT COALESCE(stock, 0) FROM inventario WHERE id=?", (iid,)).fetchone()
-    stock = _stock_disponible_producto(conn, iid, inventario_stock=float(inv_st[0] if inv_st else 0))
+    inv_stock = float(inv_st[0] if inv_st else 0)
+    if _ingresos_pool(conn, iid) <= 1e-9 and inv_stock > 1e-9:
+        return (
+            False,
+            f"{prod_nombre}: registre ingreso de apertura o compra en Bodega antes de salidas "
+            f"(kardex sin movimientos; imputación CC sería incorrecta).",
+            None,
+            None,
+            None,
+        )
+    stock = _stock_disponible_producto(conn, iid, inventario_stock=inv_stock)
     if cantidad > stock + 1e-9:
         return False, (
             f"Stock insuficiente de {prod_nombre} "
@@ -745,6 +755,11 @@ def post_ingreso_nuevo(demo, conn) -> dict:
         return {"ok": False, "msg": "Indique el ingrediente activo."}
     if ns < 0:
         return {"ok": False, "msg": "El stock inicial no puede ser negativo."}
+    if ns > 0 and npr <= 0:
+        return {
+            "ok": False,
+            "msg": "Indique precio medio (PMP) al abrir stock; es necesario para imputar salidas al CC.",
+        }
     if conn.execute("SELECT id FROM inventario WHERE UPPER(producto)=?", (np.upper(),)).fetchone():
         return {"ok": False, "msg": "El producto ya existe. Consulte stock en Bodega."}
 
