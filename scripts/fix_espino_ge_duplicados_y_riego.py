@@ -73,13 +73,68 @@ def _migrar_ge(conn: sqlite3.Connection, row: sqlite3.Row, apply: bool) -> None:
 
 
 def _fix_naturavital(conn: sqlite3.Connection, apply: bool) -> None:
+    """Recalcula PMP NATURAVITAL desde compras Tattersall y kardex de apertura."""
     row = conn.execute(
-        "SELECT id, producto, precio_medio FROM inventario WHERE id = 115"
+        "SELECT id, producto, precio_medio, COALESCE(unidad_medida, 'lt') "
+        "FROM inventario WHERE UPPER(producto) LIKE '%NATUR%VITAL%'"
     ).fetchone()
     if not row:
-        print("NATURAVITAL (id 115) no encontrado; omitiendo.")
+        print("NATURAVITAL no encontrado; omitiendo.")
         return
-    pid, nombre, pmp = row[0], row[1], float(row[2] or 0)
+    pid, nombre, pmp_actual, um = row[0], row[1], float(row[2] or 0), row[3]
+
+    compras = conn.execute(
+        """
+        SELECT COALESCE(SUM(monto_total), 0)
+        FROM facturas
+        WHERE nro_documento NOT GLOB '*_P'
+          AND UPPER(TRIM(concepto)) LIKE '%NATUR%VITAL%'
+          AND proveedor LIKE '%TATTERSALL%'
+        """
+    ).fetchone()[0]
+    total_compras = float(compras or 0)
+    if total_compras <= 0:
+        print(f"{nombre}: sin compras Tattersall de referencia; omitiendo.")
+        return
+
+    ing_qty = conn.execute(
+        "SELECT COALESCE(SUM(cantidad), 0) FROM movimientos WHERE producto_id=? AND tipo='Ingreso'",
+        (pid,),
+    ).fetchone()[0]
+    sal_qty = conn.execute(
+        "SELECT COALESCE(SUM(cantidad), 0) FROM movimientos WHERE producto_id=? AND tipo='Salida'",
+        (pid,),
+    ).fetchone()[0]
+    qty_stock = float(ing_qty or 0)
+    if qty_stock <= 0:
+        qty_stock = float(sal_qty or 0)
+    if qty_stock <= 0:
+        qty_stock = float(
+            conn.execute("SELECT COALESCE(stock, 0) FROM inventario WHERE id=?", (pid,)).fetchone()[0]
+            or 0
+        )
+    if qty_stock <= 0:
+        print(f"{nombre}: no se pudo inferir litros de stock; omitiendo.")
+        return
+
+    nuevo_pmp = round(total_compras / qty_stock, 4)
+    print(
+        f"{nombre}: PMP {pmp_actual} -> {nuevo_pmp} "
+        f"(${total_compras:,.0f} / {qty_stock} {um})"
+    )
+
+    if float(ing_qty or 0) <= 0:
+        print(f"  ingreso apertura kardex: {qty_stock} {um} = ${total_compras:,.0f}")
+        if apply:
+            conn.execute(
+                """
+                INSERT INTO movimientos
+                (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+                VALUES (?, 'Ingreso', ?, '2026-09-21', 'Cerezos', ?, ?)
+                """,
+                (pid, qty_stock, total_compras, um),
+            )
+
     movs = conn.execute(
         """
         SELECT id, cantidad, valor_imputado, centro_costo
@@ -88,14 +143,9 @@ def _fix_naturavital(conn: sqlite3.Connection, apply: bool) -> None:
         """,
         (pid,),
     ).fetchall()
-    if pmp <= 5000:
-        print(f"{nombre}: precio_medio {pmp} ya parece razonable; omitiendo.")
-        return
-    nuevo_pmp = round(pmp / 100.0, 2)
-    print(f"{nombre}: precio_medio {pmp} -> {nuevo_pmp} (factor 100)")
     for mid, cant, valor, cc in movs:
         nuevo_valor = round(float(cant) * nuevo_pmp, 2)
-        print(f"  mov {mid} {cc}: valor {valor} -> {nuevo_valor}")
+        print(f"  salida {mid} {cc}: ${valor:,.0f} -> ${nuevo_valor:,.0f}")
         if apply:
             conn.execute(
                 "UPDATE movimientos SET valor_imputado = ? WHERE id = ?",

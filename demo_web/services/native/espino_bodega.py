@@ -139,6 +139,21 @@ def _stock_disponible_producto(conn, producto_id: int, *, inventario_stock: floa
     return max(float(inventario_stock or 0), 0.0)
 
 
+def _precio_medio_kardex(conn: sqlite3.Connection, producto_id: int) -> float | None:
+    """PMP ponderado desde ingresos pool bodega (más fiable que inventario.precio_medio)."""
+    ph, ccs = _cc_pool_bodega_sql()
+    row = conn.execute(
+        f"""SELECT COALESCE(SUM(valor_imputado), 0), COALESCE(SUM(cantidad), 0)
+            FROM movimientos
+            WHERE producto_id=? AND tipo='Ingreso'
+              AND UPPER(TRIM(centro_costo)) IN ({ph})""",
+        (producto_id, *ccs),
+    ).fetchone()
+    if not row or float(row[1] or 0) <= 1e-9:
+        return None
+    return float(row[0]) / float(row[1])
+
+
 def _stock_cc_map(conn) -> dict[int, float]:
     """Stock disponible por producto (bodega El Espino)."""
     out: dict[int, float] = {}
@@ -622,14 +637,18 @@ def registrar_salida_bodega(
     if not ok:
         return False, msg
     row = _producto_por_id(conn, demo, iid)
-    pmp, um_sel = float(row[2] or 0), row[3]
+    um_sel = row[3]
+    pmp = _precio_medio_kardex(conn, iid)
+    if pmp is None:
+        pmp = float(row[2] or 0)
     fecha_mov = str(fecha or hoy_demo(demo))
     cc_imputacion = _normalizar_cc_salida(centro_costo)
+    valor = round(float(cantidad) * pmp, 2)
     conn.execute(
         """INSERT INTO movimientos
            (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
            VALUES (?,?,?,?,?,?,?)""",
-        (iid, "Salida", cantidad, fecha_mov, cc_imputacion, cantidad * pmp, um_sel),
+        (iid, "Salida", cantidad, fecha_mov, cc_imputacion, valor, um_sel),
     )
     if _stock_esperado_kardex(conn, iid) is not None:
         _sync_inventario_stock(conn, iid)
