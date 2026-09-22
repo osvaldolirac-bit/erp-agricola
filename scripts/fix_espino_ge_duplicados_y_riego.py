@@ -67,29 +67,67 @@ def _migrar_ge(conn: sqlite3.Connection, row: sqlite3.Row, apply: bool) -> None:
     conn.execute("DELETE FROM facturas WHERE id = ?", (row["ge_id"],))
 
 
-def _reparar_estado_tesoreria(conn: sqlite3.Connection, apply: bool) -> None:
-    """Restaura Pendiente en facturas reales sin abono (GE Pagado era artefacto migración)."""
+def _reparar_estado_tesoreria_ge(conn: sqlite3.Connection, apply: bool) -> None:
+    """Solo facturas reales que tuvieron duplicado GE: Pendiente si quedaron Pagado sin abono."""
     rows = conn.execute(
         """
-        SELECT id, nro_documento, proveedor, monto_total, monto_pagado, estado
-        FROM facturas
-        WHERE nro_documento NOT GLOB 'GE-*'
-          AND nro_documento NOT GLOB '*_P'
-          AND estado = 'Pagado'
-          AND monto_total > 0
-          AND COALESCE(monto_pagado, 0) < monto_total - 0.01
-        ORDER BY id
+        SELECT f.id, f.nro_documento, f.proveedor, f.monto_total, f.monto_pagado
+        FROM facturas f
+        WHERE f.nro_documento NOT GLOB 'GE-*'
+          AND f.nro_documento NOT GLOB '*_P'
+          AND f.estado = 'Pagado'
+          AND f.monto_total > 0
+          AND COALESCE(f.monto_pagado, 0) < f.monto_total - 0.01
+          AND EXISTS (
+            SELECT 1 FROM facturas g
+            WHERE g.nro_documento GLOB 'GE-*'
+              AND g.nro_documento NOT GLOB '*_P'
+              AND TRIM(g.proveedor) = TRIM(f.nro_documento)
+              AND g.fecha_compra = f.fecha_compra
+              AND ABS(g.monto_total - f.monto_total) < 500
+          )
+        ORDER BY f.id
         """
     ).fetchall()
-    print(f"Facturas Pagado sin abono (tesorería): {len(rows)}")
-    for rid, nro, prov, mt, mp, est in rows:
+    print(f"Facturas GE duplicado con Pagado sin abono: {len(rows)}")
+    for rid, nro, prov, mt, mp in rows:
         saldo = float(mt or 0) - float(mp or 0)
-        print(f"  id {rid} {nro} {prov}: estado Pagado -> Pendiente (saldo ${saldo:,.0f})")
+        print(f"  id {rid} {nro} {prov}: Pagado -> Pendiente (saldo ${saldo:,.0f})")
         if apply:
-            conn.execute(
-                "UPDATE facturas SET estado = 'Pendiente' WHERE id = ?",
-                (rid,),
-            )
+            conn.execute("UPDATE facturas SET estado = 'Pendiente' WHERE id = ?", (rid,))
+
+
+def _restaurar_factura_pagada(
+    conn: sqlite3.Connection, nro: str, apply: bool, *, proveedor: str | None = None
+) -> None:
+    """Marca Pagado con abono completo (facturas pagadas fuera del flujo Tesorería)."""
+    sql = """
+        SELECT id, nro_documento, proveedor, monto_total, estado, monto_pagado
+        FROM facturas
+        WHERE nro_documento = ? AND nro_documento NOT GLOB '*_P'
+    """
+    params: list = [nro]
+    if proveedor:
+        sql += " AND proveedor = ?"
+        params.append(proveedor)
+    row = conn.execute(sql, params).fetchone()
+    if not row:
+        print(f"Factura {nro}: no encontrada.")
+        return
+    rid, nro_d, prov, mt, est, mp = row
+    if est == "Pagado" and float(mp or 0) >= float(mt or 0) - 0.01:
+        print(f"Factura {nro_d} id {rid}: ya Pagado con abono completo.")
+        return
+    print(f"Factura {nro_d} id {rid} ({prov}): restaurar Pagado ${float(mt or 0):,.0f}")
+    if apply:
+        conn.execute(
+            """
+            UPDATE facturas
+            SET estado = 'Pagado', monto_pagado = monto_total
+            WHERE id = ?
+            """,
+            (rid,),
+        )
 
 
 def _fix_naturavital(conn: sqlite3.Connection, apply: bool) -> None:
@@ -209,8 +247,16 @@ def main() -> None:
         print("\n--- NATURAVITAL riego ---")
         _fix_naturavital(conn, apply=args.apply)
 
-        print("\n--- Tesorería (estado facturas) ---")
-        _reparar_estado_tesoreria(conn, apply=args.apply)
+        print("\n--- Tesorería (solo duplicados GE) ---")
+        _reparar_estado_tesoreria_ge(conn, apply=args.apply)
+
+        print("\n--- Factura 42 ventanas (pagada) ---")
+        _restaurar_factura_pagada(
+            conn,
+            "42",
+            apply=args.apply,
+            proveedor="FRABRICA DE VENTANAS CLAUDIA SILVA GONZALEZ",
+        )
 
         if args.apply:
             conn.commit()
