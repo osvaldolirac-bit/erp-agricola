@@ -5,7 +5,11 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.costos_compras_coherencia import sql_historial_compras_listado
+
+DOC_IMPUTACION_COSTOS_PREFIX = "GE-"
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -63,6 +67,21 @@ def _es_documento_interno(nro_documento: str | None) -> bool:
     return doc.startswith("INT-") or doc.startswith("INT/")
 
 
+def _sql_historial_compras(col_prefix: str = "") -> str:
+    """Historial Compras: sin GE-* duplicados de factura real (tenant Espino)."""
+    return sql_historial_compras_listado(col_prefix)
+
+
+def _sql_solo_compras_reales(col_prefix: str = "") -> str:
+    p = f"{col_prefix}." if col_prefix else ""
+    return f"""
+          AND {p}nro_documento NOT LIKE '%_P'
+          AND UPPER(TRIM({p}nro_documento)) NOT LIKE 'INT-%'
+          AND UPPER(TRIM({p}nro_documento)) NOT LIKE 'INT/%'
+          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'GE-*'
+    """
+
+
 def _ensure_folio_interno_col(conn) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -82,6 +101,7 @@ def _ensure_folio_interno_col(conn) -> None:
               AND (
                 UPPER(TRIM(nro_documento)) LIKE 'INT-%'
                 OR UPPER(TRIM(nro_documento)) LIKE 'INT/%'
+                OR UPPER(TRIM(nro_documento)) GLOB 'GE-*'
               )
             """
         )
@@ -90,14 +110,12 @@ def _ensure_folio_interno_col(conn) -> None:
 
 def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str:
     """Siguiente correlativo por razón social (solo facturas reales, no INT-)."""
-    sql = """
+    sql = f"""
         SELECT MAX(CAST(folio_interno AS INTEGER))
         FROM facturas
         WHERE TRIM(COALESCE(folio_interno, '')) != ''
           AND folio_interno GLOB '[0-9]*'
-          AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_solo_compras_reales()}
     """
     params: list = []
     if razon_social:
@@ -115,9 +133,7 @@ def _correlativo_duplicado(conn, folio: str, razon_social: str, exclude_id: int 
         WHERE TRIM(COALESCE(folio_interno,''))=?
           AND TRIM(COALESCE(razon_social,''))=?
           AND id!=?
-          AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_solo_compras_reales()}
         """,
         (folio, (razon_social or "").strip(), exclude_id),
     ).fetchone()
@@ -151,8 +167,10 @@ def _historial(demo, conn) -> dict:
                COALESCE(NULLIF(TRIM(tipo_gasto), ''), ?) AS tipo_gasto_cc,
                concepto, monto_total
         FROM facturas
-        WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P'
+        WHERE monto_total > 0
+          {_sql_historial_compras()}
           AND fecha_compra BETWEEN ? AND ?
+          {sql_and_excluir_razon_social_espino()}
     """
     params: list = [demo.TIPO_GASTO_SIN_CLASIFICAR, str(fi), str(ff)]
     if q:
