@@ -64,12 +64,32 @@ def _migrar_ge(conn: sqlite3.Connection, row: sqlite3.Row, apply: bool) -> None:
             """,
             (f"{real_nro}_P", real_prov, imp[0]),
         )
-    if row["ge_estado"] == "Pagado" and row["real_estado"] != "Pagado":
-        conn.execute(
-            "UPDATE facturas SET estado = 'Pagado' WHERE id = ?",
-            (row["real_id"],),
-        )
     conn.execute("DELETE FROM facturas WHERE id = ?", (row["ge_id"],))
+
+
+def _reparar_estado_tesoreria(conn: sqlite3.Connection, apply: bool) -> None:
+    """Restaura Pendiente en facturas reales sin abono (GE Pagado era artefacto migración)."""
+    rows = conn.execute(
+        """
+        SELECT id, nro_documento, proveedor, monto_total, monto_pagado, estado
+        FROM facturas
+        WHERE nro_documento NOT GLOB 'GE-*'
+          AND nro_documento NOT GLOB '*_P'
+          AND estado = 'Pagado'
+          AND monto_total > 0
+          AND COALESCE(monto_pagado, 0) < monto_total - 0.01
+        ORDER BY id
+        """
+    ).fetchall()
+    print(f"Facturas Pagado sin abono (tesorería): {len(rows)}")
+    for rid, nro, prov, mt, mp, est in rows:
+        saldo = float(mt or 0) - float(mp or 0)
+        print(f"  id {rid} {nro} {prov}: estado Pagado -> Pendiente (saldo ${saldo:,.0f})")
+        if apply:
+            conn.execute(
+                "UPDATE facturas SET estado = 'Pendiente' WHERE id = ?",
+                (rid,),
+            )
 
 
 def _fix_naturavital(conn: sqlite3.Connection, apply: bool) -> None:
@@ -188,6 +208,9 @@ def main() -> None:
 
         print("\n--- NATURAVITAL riego ---")
         _fix_naturavital(conn, apply=args.apply)
+
+        print("\n--- Tesorería (estado facturas) ---")
+        _reparar_estado_tesoreria(conn, apply=args.apply)
 
         if args.apply:
             conn.commit()
