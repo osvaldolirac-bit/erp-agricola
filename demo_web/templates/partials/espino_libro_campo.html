@@ -1,13 +1,14 @@
 {% from "partials/pdf_button.html" import pdf_btn %}
+{% set lc_ep = 'modules.libro_campo' if lc_standalone else 'modules.espino' %}
 <p class="small text-muted mb-2">
-  Aplicaciones fitosanitarias cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong> · stock desde bodega El Espino
+  Variedades <strong>ROYAL DOWN</strong>, <strong>SWEET ARYANA</strong>, <strong>SANTINA</strong> · stock desde bodega <strong>{{ bodega_cc|default('EL ESPINO') }}</strong>
 </p>
 
 <ul class="nav nav-pills mb-3 gap-1 flex-wrap">
   {% for key, label in libro_ops %}
   <li class="nav-item">
     <a class="nav-link {% if key == lc_op_activa %}active{% endif %}"
-       href="{{ url_for('modules.espino', temp=temp_sel, sec='libro_campo', op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}">{{ label }}</a>
+       href="{% if lc_standalone %}{{ url_for('modules.libro_campo', temp=temp_sel, op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), cuartel=filtro_cuartel|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}{% else %}{{ url_for('modules.espino', temp=temp_sel, sec='libro_campo', op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), cuartel=filtro_cuartel|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}{% endif %}">{{ label }}</a>
   </li>
   {% endfor %}
 </ul>
@@ -28,7 +29,7 @@
   <h2 class="h6 panel-title">🔍 Filtros</h2>
   <form method="get" class="row g-2">
     <input type="hidden" name="temp" value="{{ temp_sel }}">
-    <input type="hidden" name="sec" value="libro_campo">
+    {% if not lc_standalone %}<input type="hidden" name="sec" value="libro_campo">{% endif %}
     <input type="hidden" name="op" value="historial">
     <div class="col-md-2">
       <label class="form-label">Desde</label>
@@ -38,7 +39,15 @@
       <label class="form-label">Hasta</label>
       <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
+      <label class="form-label">Variedad / cuartel</label>
+      <select name="cuartel" class="form-select">
+        {% for c in cuarteles|default(['TODOS']) %}
+        <option value="{{ c }}" {% if c == filtro_cuartel|default('TODOS') %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
       <label class="form-label">Producto / ing. activo</label>
       <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="ej. cobre, nordox">
     </div>
@@ -91,12 +100,12 @@
 {% elif lc_op_activa == 'desfase' %}
 <div class="alert alert-info small">
   Detecta productos <strong>PPPL</strong> registrados en Libro de Campo El Espino o en bodega El Espino sin reflejo equivalente en el otro módulo
-  (mismo producto, cuartel {{ cc_espino|default('EL ESPINO') }}, cantidad ±2%, fecha dentro de la ventana).
+  (mismo producto, bodega {{ bodega_cc|default('EL ESPINO') }}, cantidad ±2%, fecha dentro de la ventana).
 </div>
 <div class="panel-card mb-3">
   <form method="get" class="row g-2">
     <input type="hidden" name="temp" value="{{ temp_sel }}">
-    <input type="hidden" name="sec" value="libro_campo">
+    {% if not lc_standalone %}<input type="hidden" name="sec" value="libro_campo">{% endif %}
     <input type="hidden" name="op" value="desfase">
     <div class="col-md-3"><label class="form-label">Desde</label><input type="date" name="desde" class="form-control" value="{{ filtro_desde }}"></div>
     <div class="col-md-3"><label class="form-label">Hasta</label><input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}"></div>
@@ -134,15 +143,15 @@
 {% else %}
 <div class="alert alert-primary small mb-3">
   Al guardar una aplicación se archiva en Libro de Campo y se <strong>rebaja automáticamente</strong> el stock en
-  <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock') }}">Bodega</a></strong>.
+  <strong><a href="{{ url_for('modules.bodega', sec='stock') }}">Bodega</a></strong>.
   Use entrada/salida manual en Bodega solo para ajustes.
 </div>
 {% if not productos_stock %}
-<div class="alert alert-warning">No hay productos con stock en bodega El Espino (Piriproxifen, Bioil spray, Cobre).</div>
+<div class="alert alert-warning">No hay productos con stock disponible en bodega El Espino.</div>
 {% else %}
 <div class="panel-card mb-3">
   <h2 class="h6">Nueva orden N° {{ '%05d'|format(siguiente_app) }}</h2>
-  <p class="small text-muted">Cuartel fijo <strong>{{ cc_espino|default('EL ESPINO') }}</strong> · un evento puede incluir varios productos fitosanitarios.</p>
+  <p class="small text-muted">Seleccione la variedad · un evento puede incluir varios productos fitosanitarios.</p>
   <form method="post" id="lcEventoForm">
     <input type="hidden" name="action" value="lc_guardar_evento">
     <input type="hidden" name="sec" value="libro_campo">
@@ -150,7 +159,20 @@
     <input type="hidden" name="temp" value="{{ temp_sel }}">
     <div class="row g-2 mb-3" id="lcCabeceraFields">
       <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
-      <div class="col-md-3"><label class="form-label small">Cuartel</label><input type="text" class="form-control form-control-sm" value="{{ cc_espino|default('EL ESPINO') }}" readonly disabled></div>
+      <div class="col-md-3"><label class="form-label small">Variedad</label>
+        <select name="cuartel" class="form-select form-select-sm lc-cab" required>
+          {% set vars = cuarteles|default(cuarteles_lc|default([])) %}
+          {% if not vars %}
+          <option value="ROYAL DOWN">ROYAL DOWN</option>
+          <option value="SWEET ARYANA">SWEET ARYANA</option>
+          <option value="SANTINA">SANTINA</option>
+          {% else %}
+          {% for c in vars %}
+          <option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+          {% endif %}
+        </select>
+      </div>
       <div class="col-md-3"><label class="form-label small">Especie</label>
         <select name="especie" class="form-select form-select-sm lc-cab">{% for e in especies %}<option value="{{ e }}" {% if e == form_especie %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
       </div>
@@ -171,7 +193,7 @@
   <h2 class="h6">Agregar producto al evento</h2>
   <form method="get" class="mb-2" id="lcProdForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
     <input type="hidden" name="temp" value="{{ temp_sel }}">
-    <input type="hidden" name="sec" value="libro_campo">
+    {% if not lc_standalone %}<input type="hidden" name="sec" value="libro_campo">{% endif %}
     <input type="hidden" name="op" value="ingreso">
     <label class="form-label small">Producto (stock bodega El Espino)</label>
     <select name="prod" class="form-select form-select-sm" onchange="lcCambiarProducto(this.form)">
