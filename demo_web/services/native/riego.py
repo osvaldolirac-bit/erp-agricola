@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
+import pandas as pd
 from flask import flash, render_template, request
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
-from demo_web.services.module_runner import redirect_module
+from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 
 SECCIONES = [
@@ -12,6 +15,88 @@ SECCIONES = [
     ("manual", "✏️ REGISTRO MANUAL"),
     ("bitacora", "🔗 LINK RIEGO"),
 ]
+
+PDF_HISTORIAL_FILENAME = "RIEGO_HISTORIAL.pdf"
+
+
+def _historial(demo, conn) -> dict:
+    from demo_web.services.registro_riego import listar_historial, resumen_npk_por_huerto
+
+    hoy = hoy_demo(demo)
+    try:
+        f_min_q = conn.execute("SELECT MIN(fecha) FROM riego").fetchone()[0]
+        f_min_p = parse_date(f_min_q, hoy - timedelta(days=365)) if f_min_q else hoy - timedelta(days=365)
+    except Exception:
+        f_min_p = hoy - timedelta(days=365)
+
+    fi = parse_date(request.args.get("desde"), f_min_p)
+    ff = parse_date(request.args.get("hasta"), hoy)
+    huerto = (request.args.get("huerto") or "TODOS").strip()
+    origen = (request.args.get("origen") or "TODOS").strip()
+    regador_q = (request.args.get("regador") or "").strip()
+
+    fi_s, ff_s = str(fi), str(ff)
+    huerto_f = None if huerto.upper() == "TODOS" else huerto
+    origen_f = None if origen.upper() == "TODOS" else origen
+
+    historial_rows = listar_historial(
+        conn,
+        desde=fi_s,
+        hasta=ff_s,
+        huerto=huerto_f,
+        origen=origen_f,
+        regador_q=regador_q or None,
+    )
+    npk_resumen = resumen_npk_por_huerto(
+        conn,
+        desde=fi_s,
+        hasta=ff_s,
+        huerto=huerto_f,
+        origen=origen_f,
+        regador_q=regador_q or None,
+    )
+
+    pdf_url = None
+    if historial_rows:
+        df = pd.DataFrame(
+            [
+                {
+                    "N°": r["codigo"],
+                    "FECHA": r["fecha"],
+                    "HUERTO": r["huerto"],
+                    "HORAS": r["horas"],
+                    "M³": r["m3"],
+                    "MODO": r.get("modo_txt", ""),
+                    "FERTILIZACIÓN": r.get("fert_txt", ""),
+                    "N (kg)": r.get("n_kg_fmt", "—"),
+                    "N kg/ha": r.get("n_ha_fmt", "—"),
+                    "P₂O₅ (kg)": r.get("p_kg_fmt", "—"),
+                    "P kg/ha": r.get("p_ha_fmt", "—"),
+                    "K₂O (kg)": r.get("k_kg_fmt", "—"),
+                    "K kg/ha": r.get("k_ha_fmt", "—"),
+                    "REGADOR": r["regador"],
+                    "ORIGEN": r["origen"],
+                }
+                for r in historial_rows
+            ]
+        )
+        titulo = f"HISTORIAL RIEGO ({fi.strftime('%d-%m-%Y')} — {ff.strftime('%d-%m-%Y')})"
+        blob = demo.generar_pdf_blob(df, titulo, incluir_precios=False)
+        if blob:
+            pdf_url = pdf_download_url(store_pdf(blob, PDF_HISTORIAL_FILENAME), PDF_HISTORIAL_FILENAME)
+
+    return {
+        "historial_rows": historial_rows,
+        "npk_resumen": npk_resumen,
+        "filtro_desde": fi.isoformat(),
+        "filtro_hasta": ff.isoformat(),
+        "filtro_huerto": huerto,
+        "filtro_origen": origen,
+        "filtro_regador": regador_q,
+        "historial_stats": {"total": len(historial_rows)},
+        "pdf_historial_url": pdf_url,
+        "pdf_historial_filename": PDF_HISTORIAL_FILENAME,
+    }
 
 
 def gather_riego(user_email: str, user_rol: str) -> dict:
@@ -27,8 +112,6 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         links_personales_regadores_demo,
         listar_bitacora,
         listar_config_riego_cc,
-        listar_historial,
-        resumen_npk_por_huerto,
     )
 
     sec = request.values.get("sec") or request.args.get("sec", "historial")
@@ -54,8 +137,7 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         ctx["riego_desfase"] = n_pend > 0
 
         if sec == "historial":
-            ctx["historial_rows"] = listar_historial(conn)
-            ctx["npk_resumen"] = resumen_npk_por_huerto(conn)
+            ctx.update(_historial(demo, conn))
         elif sec == "bitacora" and habilitado():
             es_demo = get_erp_app() == "demo"
             ctx.update(
