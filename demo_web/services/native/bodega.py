@@ -7,7 +7,8 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl, parse_decimal_input
+from demo_web.services.tenant_scope import centros_costo
 
 SECCIONES = [
     ("stock", "📊 STOCK ACTUAL"),
@@ -49,6 +50,95 @@ def _pop_alertas() -> dict:
     if "bodega_alerta_lc" in session:
         out["alerta_lc"] = session.pop("bodega_alerta_lc")
     return out
+
+
+def _is_espino_tenant() -> bool:
+    try:
+        from flask import g
+
+        return str(getattr(g, "tenant_slug", None) or "").strip().lower() == "espino"
+    except Exception:
+        return False
+
+
+def _kardex_pid() -> int:
+    raw = (request.args.get("pid") or "0").strip()
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _stock_edit_context(demo, conn, dfs_view: pd.DataFrame, *, cert: bool = False) -> dict:
+    """Panel admin corregir / eliminar producto (LC y Espino)."""
+    edit_id = request.args.get("edit_id")
+    edit_item = None
+    if not dfs_view.empty and demo.es_admin() and not cert:
+        sel_id = None
+        if edit_id and str(edit_id).isdigit():
+            sel_id = int(edit_id)
+        if sel_id is None:
+            sel_id = int(dfs_view.iloc[0]["id"])
+        match = dfs_view[dfs_view["id"] == sel_id]
+        if not match.empty:
+            r = match.iloc[0]
+            stock_val = r.get("stock_cc", r.get("stock", 0))
+            edit_item = {
+                "id": int(r["id"]),
+                "producto": r["producto"],
+                "familia": r.get("familia") or "",
+                "stock": float(stock_val or 0),
+                "unidad_medida": r.get("unidad_medida") or demo.DEFAULT_UNIDAD_INSUMO,
+                "precio_medio": float(r.get("precio_medio") or 0),
+                "ingrediente_activo": r.get("ingrediente_activo")
+                or demo._ingrediente_pppl_producto(conn, r["producto"]),
+            }
+    um_key = "unidad_medida"
+    return {
+        "es_admin": demo.es_admin(),
+        "stock_edit": edit_item,
+        "stock_opts": [
+            {
+                "id": int(r["id"]),
+                "label": (
+                    f"{int(r['id'])} — {r['producto']} "
+                    f"(stock: {demo.f_cantidad(r.get('stock_cc', r.get('stock', 0)))} {r.get(um_key, 'kg')})"
+                ),
+            }
+            for _, r in dfs_view.iterrows()
+        ]
+        if demo.es_admin() and not cert and not dfs_view.empty
+        else [],
+        "familias_prod": demo.listar_familias_producto(conn),
+        "unidades_medida": demo.UNIDADES_MEDIDA_INSUMO,
+    }
+
+
+def _espino_stock_admin_context(demo, conn) -> dict:
+    """Contexto edit/delete para stock Espino (misma vista filtrada que kardex)."""
+    import pandas as pd
+
+    from demo_web.services.native import espino_bodega
+
+    stock_map = espino_bodega._stock_cc_map(conn)
+    dfs = pd.read_sql_query(
+        """SELECT id, producto, familia, COALESCE(stock, 0) AS stock_inv,
+                  COALESCE(unidad_medida, 'kg') AS unidad_medida,
+                  precio_medio, COALESCE(ingrediente_activo,'') AS ingrediente_activo
+           FROM inventario ORDER BY producto COLLATE NOCASE""",
+        conn,
+    )
+    dfs["stock_cc"] = dfs["id"].map(lambda i: stock_map.get(int(i), 0.0))
+    q = (request.args.get("q") or "").strip()
+    dfs_view = dfs.copy()
+    if q:
+        ql = q.lower()
+        dfs_view = dfs_view[
+            dfs_view["producto"].astype(str).str.lower().str.contains(ql, na=False)
+            | dfs_view["familia"].astype(str).str.lower().str.contains(ql, na=False)
+            | dfs_view["ingrediente_activo"].astype(str).str.lower().str.contains(ql, na=False)
+        ]
+    return _stock_edit_context(demo, conn, dfs_view, cert=False)
 
 
 def _stock_rows(demo, dfs_view: pd.DataFrame, con_precio: bool) -> list[dict]:
@@ -106,46 +196,21 @@ def _stock(demo, conn, cert: bool = False) -> dict:
             token = store_pdf(blob, "stock_operativo.pdf")
             pdf_url = url_for("modules.pdf_download", token=token)
 
-    edit_id = request.args.get("edit_id")
-    edit_item = None
-    if not dfs_view.empty and demo.es_admin() and not cert:
-        sel_id = None
-        if edit_id and str(edit_id).isdigit():
-            sel_id = int(edit_id)
-        if sel_id is None:
-            sel_id = int(dfs_view.iloc[0]["id"])
-        match = dfs_view[dfs_view["id"] == sel_id]
-        if not match.empty:
-            r = match.iloc[0]
-            edit_item = {
-                "id": int(r["id"]),
-                "producto": r["producto"],
-                "familia": r["familia"] or "",
-                "stock": float(r["stock"] or 0),
-                "unidad_medida": r["unidad_medida"],
-                "precio_medio": float(r["precio_medio"] or 0),
-                "ingrediente_activo": r.get("ingrediente_activo") or demo._ingrediente_pppl_producto(conn, r["producto"]),
-            }
-
-    return {
-        "stock_rows": _stock_rows(demo, dfs_view, con_precio=not cert),
-        "stock_cols": (
-            ["producto", "ing_activo", "familia", "stock", "um", "pppl", "phi"]
-            if cert
-            else ["producto", "ing_activo", "familia", "stock", "um", "pmp", "pppl", "phi"]
-        ),
-        "filtro_q": q,
-        "pdf_stock_url": pdf_url,
-        "pdf_stock_habilitado": not cert,
-        "es_admin": demo.es_admin(),
-        "stock_edit": edit_item,
-        "stock_opts": [
-            {"id": int(r["id"]), "label": f"{int(r['id'])} — {r['producto']} (stock: {demo.f_cantidad(r['stock'])} {r['unidad_medida']})"}
-            for _, r in dfs_view.iterrows()
-        ] if demo.es_admin() and not cert and not dfs_view.empty else [],
-        "familias_prod": demo.listar_familias_producto(conn),
-        "unidades_medida": demo.UNIDADES_MEDIDA_INSUMO,
-    }
+    ctx = _stock_edit_context(demo, conn, dfs_view, cert=cert)
+    ctx.update(
+        {
+            "stock_rows": _stock_rows(demo, dfs_view, con_precio=not cert),
+            "stock_cols": (
+                ["producto", "ing_activo", "familia", "stock", "um", "pppl", "phi"]
+                if cert
+                else ["producto", "ing_activo", "familia", "stock", "um", "pmp", "pppl", "phi"]
+            ),
+            "filtro_q": q,
+            "pdf_stock_url": pdf_url,
+            "pdf_stock_habilitado": not cert,
+        }
+    )
+    return ctx
 
 
 def _productos_salida(demo, conn) -> list[dict]:
@@ -168,6 +233,12 @@ def _productos_salida(demo, conn) -> list[dict]:
 
 
 def _procesar_salida(demo, conn) -> dict:
+    if _is_espino_tenant():
+        return {
+            "ok": False,
+            "msg": "En El Espino las salidas van por Libro de Campo (rebaje automático). No use Salida bodega aquí.",
+        }
+
     try:
         iid = int(request.form.get("producto_id") or 0)
     except (TypeError, ValueError):
@@ -176,7 +247,8 @@ def _procesar_salida(demo, conn) -> dict:
     if ct is None:
         return {"ok": False, "msg": "Cantidad inválida. Use coma decimal (ej. 1,5)."}
 
-    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in demo.CENTROS_COSTO]
+    ccs_validos = {c.upper(): c for c in centros_costo(demo)}
+    ccs = [ccs_validos[c.upper()] for c in request.form.getlist("cuarteles") if c.upper() in ccs_validos]
     row = conn.execute(
         "SELECT producto, precio_medio, COALESCE(unidad_medida, ?), COALESCE(stock, 0) "
         "FROM inventario WHERE id=?",
@@ -302,11 +374,20 @@ def _pppl(demo, conn) -> dict:
     }
 
 
+def _resolve_cuartel_filtro(ccq: str | None, ccs: list[str]) -> str:
+    raw = (ccq or "").strip()
+    if not ccs:
+        return raw
+    for c in ccs:
+        if c.upper() == raw.upper():
+            return c
+    return ccs[0]
+
+
 def _consulta_cuartel(demo, conn) -> dict:
     hoy = hoy_demo(demo)
-    ccq = request.args.get("cuartel", demo.CENTROS_COSTO[0])
-    if ccq not in demo.CENTROS_COSTO:
-        ccq = demo.CENTROS_COSTO[0]
+    ccs = centros_costo(demo)
+    ccq = _resolve_cuartel_filtro(request.args.get("cuartel"), ccs)
     fi = parse_date(request.args.get("desde"), hoy - timedelta(days=90))
     ff = parse_date(request.args.get("hasta"), hoy)
 
@@ -315,11 +396,11 @@ def _consulta_cuartel(demo, conn) -> dict:
         f"""SELECT m.id AS ID, m.producto_id AS PRODUCTO_ID, m.fecha AS FECHA, i.producto AS PRODUCTO,
                    m.cantidad AS CANTIDAD, {sql_um} AS UM, m.valor_imputado AS VALOR_IMPUTADO
             FROM movimientos m JOIN inventario i ON m.producto_id = i.id
-            WHERE m.centro_costo = ? AND m.tipo = 'Salida'
+            WHERE UPPER(m.centro_costo) = UPPER(?) AND m.tipo = 'Salida'
               AND m.fecha BETWEEN ? AND ?
             ORDER BY m.fecha ASC, m.id ASC""",
         conn,
-        params=(ccq.upper(), str(fi), str(ff)),
+        params=(ccq, str(fi), str(ff)),
     )
 
     rows = []
@@ -380,7 +461,7 @@ def _consulta_cuartel(demo, conn) -> dict:
         "mov_opts": mov_opts,
         "mov_edit": mov_edit,
         "filtro_cuartel": ccq,
-        "cuarteles": demo.CENTROS_COSTO,
+        "cuarteles": ccs,
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "pdf_consulta_url": pdf_url,
@@ -426,8 +507,8 @@ def _post_corregir_stock(demo, conn) -> dict:
         iid = int(request.form.get("producto_id") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Valores inválidos."}
-    nst = parse_decimal_cl(request.form.get("stock"), None)
-    npmp = parse_decimal_cl(request.form.get("precio_medio"), None)
+    nst = parse_decimal_input(request.form.get("stock"), None)
+    npmp = parse_decimal_input(request.form.get("precio_medio"), None)
     if nst is None or npmp is None:
         return {"ok": False, "msg": "Valores inválidos."}
     if nst < 0:
@@ -460,6 +541,30 @@ def _post_corregir_stock(demo, conn) -> dict:
     conn.commit()
     demo.registrar_accion("BODEGA", f"ID {iid} producto={nprod} stock={nst}")
     return {"ok": True, "msg": "Producto corregido.", "extra": {"edit_id": iid}}
+
+
+def _post_eliminar_producto(demo, conn) -> dict:
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Requiere perfil admin."}
+    if not _check_master(demo, request.form.get("clave_maestra")):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+    try:
+        iid = int(request.form.get("producto_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Producto inválido."}
+    row = conn.execute("SELECT producto FROM inventario WHERE id=?", (iid,)).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Producto no encontrado."}
+    n_mov = conn.execute("SELECT COUNT(*) FROM movimientos WHERE producto_id=?", (iid,)).fetchone()[0]
+    if n_mov:
+        return {
+            "ok": False,
+            "msg": f"No se puede eliminar «{row[0]}»: tiene {n_mov} movimiento(s) en kardex. Deje stock en 0.",
+        }
+    conn.execute("DELETE FROM inventario WHERE id=?", (iid,))
+    conn.commit()
+    demo.registrar_accion("BODEGA", f"Eliminado inventario ID {iid} ({row[0]})")
+    return {"ok": True, "msg": f"Producto «{row[0]}» eliminado del inventario."}
 
 
 def _post_apertura(demo, conn) -> dict:
@@ -659,8 +764,12 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
     secciones = _secciones(demo)
+    is_espino = _is_espino_tenant()
     sec = request.args.get("sec", secciones[0][0])
-    if sec not in {k for k, _ in secciones}:
+    valid_secs = {k for k, _ in secciones}
+    if is_espino:
+        valid_secs.add("kardex")
+    if sec not in valid_secs:
         sec = secciones[0][0]
 
     conn = demo.conectar_db()
@@ -669,13 +778,31 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
             "secciones": secciones,
             "sec_activa": sec,
             "es_certificacion": demo.es_certificacion(),
+            "bodega_espino": is_espino,
             **_pop_alertas(),
         }
         if sec == "stock":
-            ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
+            if is_espino:
+                from demo_web.services.native import espino_bodega
+
+                ctx.update(espino_bodega.gather_bodega_stock(demo, conn))
+                ctx["pdf_stock_habilitado"] = bool(ctx.get("pdf_stock_url"))
+                if not demo.es_certificacion():
+                    ctx.update(_espino_stock_admin_context(demo, conn))
+            else:
+                ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
+        elif sec == "kardex" and is_espino:
+            from demo_web.services.native import espino_bodega
+
+            pid = _kardex_pid()
+            ctx["filtro_q"] = (request.args.get("q") or "").strip()
+            if pid:
+                ctx.update(espino_bodega.gather_kardex_producto(demo, conn, pid))
+            else:
+                ctx["kardex_error"] = "Seleccione un producto desde el listado de stock."
         elif sec == "salida":
             ctx["productos_salida"] = _productos_salida(demo, conn)
-            ctx["cuarteles"] = demo.CENTROS_COSTO
+            ctx["cuarteles"] = centros_costo(demo)
         elif sec == "pppl":
             ctx.update(_pppl(demo, conn))
         elif sec == "apertura":
@@ -701,6 +828,7 @@ def view(user_email: str, user_rol: str):
             handlers = {
                 "salida": _procesar_salida,
                 "corregir_stock": _post_corregir_stock,
+                "eliminar_producto": _post_eliminar_producto,
                 "apertura": _post_apertura,
                 "pppl_sync_ok": lambda d, c: _post_pppl_sync(d, c, incluir_baja=False),
                 "pppl_sync_all": lambda d, c: _post_pppl_sync(d, c, incluir_baja=True),

@@ -39,14 +39,25 @@
   </div>
   {% if stock_rows %}
   <div class="panel-card mb-3">
+    {% if bodega_espino %}
+    <p class="small text-muted mb-2">Haga clic en el <strong>nombre del producto</strong> para ver su cuenta corriente (entradas, salidas y saldo).</p>
+    {% endif %}
     <div class="table-responsive">
-      <table class="table table-sm table-striped demo-datatable w-100">
+      <table class="table table-sm table-striped {% if not bodega_espino %}demo-datatable{% endif %} w-100">
         <thead><tr>{% for c in stock_cols %}<th>{{ c|upper }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for row in stock_rows %}
           <tr>
             {% for c in stock_cols %}
-            <td>{{ row[c] }}</td>
+            <td>
+              {% if bodega_espino and c == 'producto' and row.id %}
+              <a href="{{ url_for('modules.bodega', sec='kardex', pid=row.id, q=filtro_q|default('')) }}"
+                 class="fw-semibold link-primary"
+                 title="Ver cuenta corriente">{{ row[c] }}</a>
+              {% else %}
+              {{ row[c] }}
+              {% endif %}
+            </td>
             {% endfor %}
           </tr>
           {% endfor %}
@@ -57,9 +68,9 @@
   {% else %}
   <div class="alert alert-info">No hay productos que coincidan con la búsqueda.</div>
   {% endif %}
-  {% if pdf_stock_habilitado %}
+  {% if pdf_stock_habilitado and pdf_stock_url %}
   <div class="d-flex justify-content-end mb-3">
-    {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK OPERATIVO') }}
+    {{ pdf_btn(pdf_stock_url, '📥 PDF STOCK OPERATIVO', filename=pdf_stock_filename|default('STOCK_BODEGA_EL_ESPINO.pdf')) }}
   </div>
   {% endif %}
   {% if es_admin and not es_certificacion and stock_rows %}
@@ -97,8 +108,86 @@
       <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
       <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm w-100">Guardar corrección</button></div>
     </form>
+    <form method="post" class="row g-2 mt-2 border-top pt-2" onsubmit="return confirm('¿Eliminar «{{ stock_edit.producto }}» del inventario? Solo si no tiene movimientos kardex.');">
+      <input type="hidden" name="action" value="eliminar_producto">
+      <input type="hidden" name="sec" value="stock">
+      <input type="hidden" name="producto_id" value="{{ stock_edit.id }}">
+      {% if filtro_q %}<input type="hidden" name="q" value="{{ filtro_q }}">{% endif %}
+      <div class="col-md-6"><p class="small text-muted mb-0">Eliminar producto sin historial kardex (ej. carga errónea).</p></div>
+      <div class="col-md-3"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-danger btn-sm w-100">Eliminar producto</button></div>
+    </form>
     {% endif %}
   </div>
+  {% endif %}
+
+  {% elif sec_activa == 'kardex' and bodega_espino %}
+  <div class="mb-3">
+    <a class="btn btn-outline-primary btn-sm"
+       href="{{ url_for('modules.bodega', sec='stock', q=filtro_q|default('')) }}">
+      ← Volver a stock
+    </a>
+  </div>
+  {% if kardex_error %}
+  <div class="alert alert-warning">{{ kardex_error }}</div>
+  {% elif kardex_producto %}
+  <div class="panel-card mb-3">
+    <h2 class="h5 mb-1">{{ kardex_producto.nombre }}</h2>
+    <p class="small text-muted mb-2">
+      {{ kardex_producto.familia }} · {{ kardex_producto.ing_activo }} · UM: {{ kardex_producto.um }}
+    </p>
+    <div class="row g-2 small align-items-center">
+      <div class="col-auto"><strong>Stock actual:</strong> {{ kardex_producto.stock }} {{ kardex_producto.um }}</div>
+      <div class="col-auto"><strong>Ingresos:</strong> {{ kardex_producto.ing_total }} {{ kardex_producto.um }}</div>
+      <div class="col-auto"><strong>Salidas:</strong> {{ kardex_producto.sal_total }} {{ kardex_producto.um }}</div>
+      {% if pdf_kardex_url %}
+      <div class="col-auto ms-auto">
+        {{ pdf_btn(pdf_kardex_url, '📥 PDF CUENTA CORRIENTE', css='btn-outline-success btn-sm', filename=pdf_kardex_filename|default('KARDEX.pdf')) }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% if kardex_lc_pendientes %}
+  <div class="alert alert-warning small">
+    <strong>Libro de Campo sin par en bodega:</strong>
+    {% for lc in kardex_lc_pendientes %}
+    App N° {{ '%05d'|format(lc.n_app) }} · {{ lc.fecha }} · {{ lc.sector }} · −{{ lc.gasto }} {{ kardex_producto.um }}{% if not loop.last %} · {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if kardex_rows %}
+  <div class="panel-card mb-3">
+    <h3 class="h6 panel-title">Cuenta corriente bodega</h3>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th class="text-end">Cantidad</th>
+            <th>Cuartel / CC</th>
+            <th>Origen</th>
+            <th class="text-end">Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in kardex_rows %}
+          <tr class="{% if m.tipo == 'Ingreso' %}table-success{% else %}table-danger{% endif %}">
+            <td>{{ m.fecha }}</td>
+            <td>{{ m.tipo }}</td>
+            <td class="text-end fw-semibold">{{ m.delta_fmt }} {{ kardex_producto.um }}</td>
+            <td>{{ m.cuartel }}</td>
+            <td>{{ m.origen }}</td>
+            <td class="text-end">{{ m.saldo }} {{ kardex_producto.um }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Sin movimientos registrados en bodega para este producto.</div>
+  {% endif %}
   {% endif %}
 
   {% elif sec_activa == 'salida' %}
