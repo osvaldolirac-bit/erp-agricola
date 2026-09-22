@@ -14,6 +14,35 @@ from demo_web.services.demo_loader import get_demo_module, get_erp_app
 
 _CODIGO_RE = re.compile(r"^RIE-(\d+)$", re.I)
 _FAMILIAS_FERTILIZANTE = ("FERTILIZANTE",)
+_FAMILIAS_FERTILIZANTE_ESPINO = ("FERTILIZANTE", "FERTILIZANTE FOLIAR")
+
+
+def _familias_fertilizante() -> tuple[str, ...]:
+    """Espino bodega usa familia FERTILIZANTE FOLIAR además de FERTILIZANTE."""
+    if _es_tenant_espino():
+        return _FAMILIAS_FERTILIZANTE_ESPINO
+    return _FAMILIAS_FERTILIZANTE
+
+
+def _stock_fertilizante_bodega(
+    conn: sqlite3.Connection, producto_id: int, inventario_stock: float
+) -> float:
+    """Stock disponible: kardex bodega Espino o inventario.stock (LC)."""
+    if _es_tenant_espino():
+        try:
+            from demo_web.services.native import espino_bodega
+
+            fn = getattr(espino_bodega, "_stock_disponible_producto", None)
+            if callable(fn):
+                return float(
+                    fn(conn, int(producto_id), inventario_stock=float(inventario_stock or 0))
+                )
+            fn_cc = getattr(espino_bodega, "_stock_cc", None)
+            if callable(fn_cc):
+                return float(fn_cc(conn, int(producto_id), inventario_stock=float(inventario_stock or 0)))
+        except Exception:
+            pass
+    return float(inventario_stock or 0)
 # Fórmula comercial N-P₂O₅-K₂O en nombre (ej. 20-20-20, 13 40 13, 10/34/0).
 _NPK_FORMULA_RE = re.compile(
     r"(?<![\d.])(\d{1,2})\s*[-–/]\s*(\d{1,2})\s*[-–/]\s*(\d{1,2})(?![\d.])",
@@ -499,11 +528,12 @@ def sincronizar_npk_fertilizantes_bodega(conn: sqlite3.Connection) -> int:
     if conn_en_solo_lectura(conn):
         return 0
     _ensure_riego_fertilizante_npk(conn)
-    placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+    familias = _familias_fertilizante()
+    placeholders = ",".join("?" * len(familias))
     rows = conn.execute(
         f"""SELECT id, producto FROM inventario
             WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})""",
-        _FAMILIAS_FERTILIZANTE,
+        familias,
     ).fetchall()
     n = 0
     for pid, nombre in rows:
@@ -834,18 +864,19 @@ def fertilizantes_bodega_para_formulario() -> list[dict[str, Any]]:
     conn = _conn()
     try:
         migrar_tabla(conn)
-        placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+        familias = _familias_fertilizante()
+        placeholders = ",".join("?" * len(familias))
         rows = conn.execute(
             f"""SELECT id, producto, COALESCE(stock, 0), COALESCE(unidad_medida, 'kg'), familia
                 FROM inventario
                 WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})
                 ORDER BY producto COLLATE NOCASE""",
-            _FAMILIAS_FERTILIZANTE,
+            familias,
         ).fetchall()
         out: list[dict[str, Any]] = []
         f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
         for pid, nombre, stock, um, fam in rows:
-            stock_f = float(stock or 0)
+            stock_f = _stock_fertilizante_bodega(conn, int(pid), float(stock or 0))
             um_s = str(um or "kg")
             nom = str(nombre or "").strip()
             out.append(
@@ -904,7 +935,8 @@ def _validar_lineas_fertilizantes(
     if not lineas:
         return False, "Agregue al menos un fertilizante de bodega.", []
     demo = get_demo_module()
-    placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+    familias = _familias_fertilizante()
+    placeholders = ",".join("?" * len(familias))
     out: list[dict[str, Any]] = []
     for ln in lineas:
         pid = int(ln.get("producto_id") or 0)
@@ -918,12 +950,12 @@ def _validar_lineas_fertilizantes(
             f"""SELECT id, producto, COALESCE(stock, 0), COALESCE(unidad_medida, 'kg'), familia
                 FROM inventario WHERE id=?
                   AND UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})""",
-            (pid, *_FAMILIAS_FERTILIZANTE),
+            (pid, *familias),
         ).fetchone()
         if not row:
             return False, "Uno de los fertilizantes no existe o no es de bodega.", []
         _id, nombre, stock, um, _fam = row
-        stock_f = float(stock or 0)
+        stock_f = _stock_fertilizante_bodega(conn, int(_id), float(stock or 0))
         um_s = str(um or "kg")
         f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
         if cant > stock_f + 1e-9:
@@ -1002,6 +1034,36 @@ def _aplicar_salidas_bodega_fertilizantes(
     lineas = _listar_fertilizantes(conn, codigo)
     if not lineas:
         return True, ""
+    if _es_tenant_espino():
+        try:
+            from demo_web.services.native import espino_bodega
+
+            for ln in lineas:
+                pid = ln["producto_id"]
+                cant = float(ln["cantidad"])
+                ok, msg = espino_bodega.registrar_salida_bodega(
+                    demo,
+                    conn,
+                    cant,
+                    producto_id=int(pid),
+                    fecha=fecha,
+                    centro_costo=huerto_cc,
+                )
+                if not ok:
+                    return False, msg
+            return True, ""
+        except TypeError:
+            for ln in lineas:
+                pid = ln["producto_id"]
+                cant = float(ln["cantidad"])
+                ok, msg = espino_bodega.registrar_salida_bodega(
+                    demo, conn, cant, producto_id=int(pid), fecha=fecha
+                )
+                if not ok:
+                    return False, msg
+            return True, ""
+        except Exception:
+            pass
     um_default = getattr(demo, "DEFAULT_UNIDAD_INSUMO", "kg")
     for ln in lineas:
         pid = ln["producto_id"]
