@@ -78,9 +78,51 @@ def _siguiente_codigo(conn: sqlite3.Connection, tabla: str = "riego_bitacora") -
     return formatear_codigo_rie(max(n1, n2) + 1)
 
 
+def _tenant_slug_actual() -> str:
+    try:
+        from demo_web.services.erp_loader import _request_tenant_slug
+
+        return _request_tenant_slug()
+    except Exception:
+        return ""
+
+
+def _es_tenant_espino() -> bool:
+    return _tenant_slug_actual() == "espino"
+
+
+_VARIEDADES_ESPINO_FALLBACK = ("ROYAL DOWN", "SWEET ARYANA", "SANTINA")
+RIEGO_M3_HR_HA_ESPINO = 18.0
+
+
+def _huertos_espino() -> list[str]:
+    """Variedades El Espino — no usar CENTROS_COSTO de app_concepcion (LC)."""
+    try:
+        from demo_web.services.espino_scope import cuarteles_espino
+
+        out = list(cuarteles_espino())
+        if out:
+            return out
+    except ImportError:
+        pass
+    try:
+        from demo_web.services.tenant_scope import cuarteles_oficiales
+
+        demo = get_demo_module()
+        out = list(cuarteles_oficiales(demo))
+        if out:
+            return out
+    except ImportError:
+        pass
+    return list(_VARIEDADES_ESPINO_FALLBACK)
+
+
 def huertos_para_formulario() -> list[str]:
     demo = get_demo_module()
-    raw = list(getattr(demo, "CENTROS_COSTO", []) or [])
+    if _es_tenant_espino():
+        raw = _huertos_espino()
+    else:
+        raw = list(getattr(demo, "CENTROS_COSTO", []) or [])
     otros = [c for c in raw if str(c).strip().upper() == "OTROS"]
     resto = [c for c in raw if str(c).strip().upper() != "OTROS"]
     return resto + otros
@@ -98,8 +140,23 @@ RIEGO_SOLO_SURCO: frozenset[str] = frozenset({"NOGALES CRUZ DEL SUR"})
 RIEGO_M3_HR_SURCO = 40.0
 
 
+def _norm_cc(huerto: str) -> str:
+    return (huerto or "").strip().upper()
+
+
 def _huertos_riego_auto() -> frozenset[str]:
+    if _es_tenant_espino():
+        return frozenset(_norm_cc(h) for h in _huertos_espino())
     return frozenset(RIEGO_M3_HR_HA.keys()) | RIEGO_SOLO_SURCO
+
+
+def _coef_m3_hr_ha_tecnificado(cc: str) -> float | None:
+    cc_u = _norm_cc(cc)
+    if _es_tenant_espino():
+        if cc_u in {_norm_cc(h) for h in _huertos_espino()}:
+            return RIEGO_M3_HR_HA_ESPINO
+        return None
+    return RIEGO_M3_HR_HA.get(cc_u)
 
 
 def huerto_tiene_calculo_auto(huerto: str) -> bool:
@@ -117,10 +174,6 @@ def _modo_efectivo(huerto: str, modo: str | None) -> str:
     return "surcos" if modo_n == "surcos" else "horas"
 
 
-def _norm_cc(huerto: str) -> str:
-    return (huerto or "").strip().upper()
-
-
 def _cargar_superficie_ha(conn: sqlite3.Connection, huerto: str) -> float:
     cc = _norm_cc(huerto)
     try:
@@ -132,6 +185,15 @@ def _cargar_superficie_ha(conn: sqlite3.Connection, huerto: str) -> float:
             return float(row[0])
     except sqlite3.OperationalError:
         pass
+    if _es_tenant_espino():
+        try:
+            from demo_web.services.espino_scope import SUPERFICIE_HA_ESPINO
+
+            ha = float(SUPERFICIE_HA_ESPINO.get(cc, 0) or 0)
+            if ha > 0:
+                return ha
+        except ImportError:
+            pass
     return 0.0
 
 
@@ -186,8 +248,9 @@ def config_riego_cc_para_formulario() -> dict[str, dict[str, float | bool]]:
         out: dict[str, dict[str, float | bool]] = {}
         for cc in sorted(_huertos_riego_auto()):
             solo = cc in RIEGO_SOLO_SURCO
+            coef = _coef_m3_hr_ha_tecnificado(cc)
             out[cc] = {
-                "m3_hr_ha": float(RIEGO_M3_HR_HA.get(cc, 0)),
+                "m3_hr_ha": float(coef or 0),
                 "m3_hr_surco": float(RIEGO_M3_HR_SURCO),
                 "ha": _cargar_superficie_ha(conn, cc),
                 "solo_surco": solo,
@@ -207,7 +270,7 @@ def listar_config_riego_cc() -> list[dict[str, Any]]:
             rows.append(
                 {
                     "centro_costo": cc,
-                    "m3_hr_ha": RIEGO_M3_HR_HA.get(cc),
+                    "m3_hr_ha": _coef_m3_hr_ha_tecnificado(cc),
                     "m3_hr_surco": RIEGO_M3_HR_SURCO,
                     "superficie_ha": _cargar_superficie_ha(conn, cc),
                     "solo_surco": solo,
@@ -237,7 +300,7 @@ def calcular_m3_riego(
     modo_n = _modo_efectivo(cc, modo)
     if modo_n == "surcos":
         return round(horas * RIEGO_M3_HR_SURCO * ha, 2), ""
-    coef = RIEGO_M3_HR_HA.get(cc)
+    coef = _coef_m3_hr_ha_tecnificado(cc)
     if coef is None:
         return round(horas * RIEGO_M3_HR_SURCO * ha, 2), ""
     return round(horas * coef * ha, 2), ""
