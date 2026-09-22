@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
 {% block title %}Riego — {{ erp_title|default('ERP') }}{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
@@ -384,6 +385,47 @@
   </div>
 
   {% elif sec_activa == 'historial' %}
+  <div class="panel-card mb-3">
+    <h2 class="h6 panel-title">🔍 Filtros</h2>
+    <form method="get" class="row g-2">
+      <input type="hidden" name="sec" value="historial">
+      <div class="col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control" value="{{ filtro_desde }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Huerto (CC)</label>
+        <select name="huerto" class="form-select">
+          <option value="TODOS" {% if filtro_huerto|default('TODOS') == 'TODOS' %}selected{% endif %}>Todos</option>
+          {% for h in huertos %}
+          <option value="{{ h }}" {% if h == filtro_huerto %}selected{% endif %}>{{ h }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Origen</label>
+        <select name="origen" class="form-select">
+          <option value="TODOS" {% if filtro_origen|default('TODOS') == 'TODOS' %}selected{% endif %}>Todos</option>
+          <option value="manual" {% if filtro_origen == 'manual' %}selected{% endif %}>Manual</option>
+          <option value="link" {% if filtro_origen == 'link' %}selected{% endif %}>Link regador</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Regador</label>
+        <input type="search" name="regador" class="form-control" value="{{ filtro_regador|default('') }}" placeholder="Nombre…">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL RIEGO', css='btn-outline-success w-100', filename=pdf_historial_filename|default('RIEGO_HISTORIAL.pdf'), rows=historial_stats.total|default(0)) }}
+      </div>
+    </form>
+  </div>
   {% if npk_resumen %}
   <div class="panel-card mb-3 riego-npk-panel">
     <div class="alert alert-info py-2 small mb-3 riego-npk-ayuda">
@@ -442,6 +484,9 @@
   <div class="panel-card">
     <h2 class="h6">Historial de riego</h2>
     <p class="small text-muted mb-2">
+      {% if historial_stats %}
+      <strong>{{ historial_stats.total }}</strong> registro(s) en el período filtrado ·
+      {% endif %}
       Columnas N/P/K: kg nutriente del evento (riqueza del producto) y kg/ha según superficie del CC en
       <strong>prorrateo</strong> (Administración o Consola master).
     </p>
@@ -489,7 +534,7 @@
       </table>
     </div>
     {% else %}
-    <p class="text-muted mb-0">Sin registros.</p>
+    <div class="alert alert-info mb-0">No hay registros para los filtros seleccionados.</div>
     {% endif %}
   </div>
   {% endif %}
