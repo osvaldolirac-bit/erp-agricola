@@ -7,12 +7,22 @@
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <div>
       <h1 class="h3 mb-0">{{ title }}</h1>
-      <p class="text-muted mb-0">Gastos sector El Espino · temporada {{ temp_sel }} ({{ fi }} → {{ ff }})</p>
+      <p class="text-muted mb-0">
+        {% if sec_activa == 'libro_campo' %}
+        Libro de Campo El Espino · variedades ROYAL DOWN, SWEET ARYANA, SANTINA
+        {% elif sec_activa == 'bodega' %}
+        Bodega El Espino · stock e insumos fitosanitarios
+        {% else %}
+        Gastos sector El Espino · temporada {{ temp_sel }} ({{ fi }} → {{ ff }})
+        {% endif %}
+      </p>
     </div>
     <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
   </div>
 
+  {% if sec_activa not in ('libro_campo', 'bodega') %}
   {{ nav_temporada('modules.espino', temporadas, temp_sel, {'sec': sec_activa}) }}
+  {% endif %}
   {{ nav_modulo('modules.espino', secciones, sec_activa) }}
 
   {% if sec_activa == 'historial' %}
