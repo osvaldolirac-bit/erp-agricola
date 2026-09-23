@@ -8,7 +8,7 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
 
 SECCIONES = [
     ("personal", "📋 PERSONAL"),
@@ -832,10 +832,10 @@ def _post_registrar_servicio(demo, conn) -> dict:
     concepto = (request.form.get("concepto") or "").strip()
     razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
     iva_bruto = request.form.get("iva_bruto") == "1"
-    try:
-        monto = float(request.form.get("monto") or 0)
-    except ValueError:
+    monto_raw = parse_decimal_cl(request.form.get("monto"), None)
+    if monto_raw is None:
         return {"ok": False, "msg": "Monto inválido."}
+    monto = float(monto_raw)
     selcc = [c for c in demo.CENTROS_COSTO if request.form.get(f"cc_{c}") == "1"]
 
     row = conn.execute("SELECT razon_social FROM contratistas WHERE id=?", (cid,)).fetchone()
