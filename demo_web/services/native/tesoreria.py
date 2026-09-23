@@ -7,7 +7,9 @@ from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
 from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.tesoreria_cxp import sql_solo_cxp_tesoreria
 
 SECCIONES = [
     ("pendientes", "🔴 PENDIENTES"),
@@ -147,10 +149,11 @@ def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
 
 def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
     dfpr = pd.read_sql_query(
-        """SELECT nro_documento, fecha_vencimiento, monto_total,
+        f"""SELECT nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           WHERE proveedor=? AND estado='Pendiente' AND monto_total > 0
+             {sql_solo_cxp_tesoreria()}
            ORDER BY fecha_vencimiento ASC""",
         conn,
         params=(proveedor,),
@@ -215,9 +218,12 @@ def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
 
 
 def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict], str | None, str]:
+    excl = sql_and_excluir_razon_social_espino()
     prvs = pd.read_sql_query(
-        """SELECT DISTINCT proveedor FROM facturas
-           WHERE estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+        f"""SELECT DISTINCT proveedor FROM facturas
+           WHERE estado='Pendiente' AND monto_total > 0
+             {sql_solo_cxp_tesoreria()}
+             {excl}
            ORDER BY proveedor""",
         conn,
     )
@@ -226,11 +232,13 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
         return [], [], None, ""
     psel = proveedor if proveedor in proveedores else proveedores[0]
     dfpr = pd.read_sql_query(
-        """SELECT id, nro_documento, fecha_vencimiento, monto_total,
+        f"""SELECT id, nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado,
                   COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           WHERE proveedor=? AND estado='Pendiente' AND monto_total > 0
+             {sql_solo_cxp_tesoreria()}
+             {excl}
            ORDER BY fecha_vencimiento ASC""",
         conn,
         params=(psel,),
@@ -364,11 +372,13 @@ def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, 
 
 def _docs_pendientes_proveedor(demo, conn, proveedor: str) -> pd.DataFrame:
     dfpr = pd.read_sql_query(
-        """SELECT id, nro_documento, fecha_vencimiento, monto_total,
+        f"""SELECT id, nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado,
                   COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
+           WHERE proveedor=? AND estado='Pendiente' AND monto_total > 0
+             {sql_solo_cxp_tesoreria()}
+             {sql_and_excluir_razon_social_espino()}
            ORDER BY fecha_vencimiento ASC""",
         conn,
         params=(proveedor,),

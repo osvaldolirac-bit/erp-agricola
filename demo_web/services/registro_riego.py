@@ -14,6 +14,35 @@ from demo_web.services.demo_loader import get_demo_module, get_erp_app
 
 _CODIGO_RE = re.compile(r"^RIE-(\d+)$", re.I)
 _FAMILIAS_FERTILIZANTE = ("FERTILIZANTE",)
+_FAMILIAS_FERTILIZANTE_ESPINO = ("FERTILIZANTE", "FERTILIZANTE FOLIAR")
+
+
+def _familias_fertilizante() -> tuple[str, ...]:
+    """Espino bodega usa familia FERTILIZANTE FOLIAR además de FERTILIZANTE."""
+    if _es_tenant_espino():
+        return _FAMILIAS_FERTILIZANTE_ESPINO
+    return _FAMILIAS_FERTILIZANTE
+
+
+def _stock_fertilizante_bodega(
+    conn: sqlite3.Connection, producto_id: int, inventario_stock: float
+) -> float:
+    """Stock disponible: kardex bodega Espino o inventario.stock (LC)."""
+    if _es_tenant_espino():
+        try:
+            from demo_web.services.native import espino_bodega
+
+            fn = getattr(espino_bodega, "_stock_disponible_producto", None)
+            if callable(fn):
+                return float(
+                    fn(conn, int(producto_id), inventario_stock=float(inventario_stock or 0))
+                )
+            fn_cc = getattr(espino_bodega, "_stock_cc", None)
+            if callable(fn_cc):
+                return float(fn_cc(conn, int(producto_id), inventario_stock=float(inventario_stock or 0)))
+        except Exception:
+            pass
+    return float(inventario_stock or 0)
 # Fórmula comercial N-P₂O₅-K₂O en nombre (ej. 20-20-20, 13 40 13, 10/34/0).
 _NPK_FORMULA_RE = re.compile(
     r"(?<![\d.])(\d{1,2})\s*[-–/]\s*(\d{1,2})\s*[-–/]\s*(\d{1,2})(?![\d.])",
@@ -78,9 +107,51 @@ def _siguiente_codigo(conn: sqlite3.Connection, tabla: str = "riego_bitacora") -
     return formatear_codigo_rie(max(n1, n2) + 1)
 
 
+def _tenant_slug_actual() -> str:
+    try:
+        from demo_web.services.erp_loader import _request_tenant_slug
+
+        return _request_tenant_slug()
+    except Exception:
+        return ""
+
+
+def _es_tenant_espino() -> bool:
+    return _tenant_slug_actual() == "espino"
+
+
+_VARIEDADES_ESPINO_FALLBACK = ("ROYAL DOWN", "SWEET ARYANA", "SANTINA")
+RIEGO_M3_HR_HA_ESPINO = 18.0
+
+
+def _huertos_espino() -> list[str]:
+    """Variedades El Espino — no usar CENTROS_COSTO de app_concepcion (LC)."""
+    try:
+        from demo_web.services.espino_scope import cuarteles_espino
+
+        out = list(cuarteles_espino())
+        if out:
+            return out
+    except ImportError:
+        pass
+    try:
+        from demo_web.services.tenant_scope import cuarteles_oficiales
+
+        demo = get_demo_module()
+        out = list(cuarteles_oficiales(demo))
+        if out:
+            return out
+    except ImportError:
+        pass
+    return list(_VARIEDADES_ESPINO_FALLBACK)
+
+
 def huertos_para_formulario() -> list[str]:
     demo = get_demo_module()
-    raw = list(getattr(demo, "CENTROS_COSTO", []) or [])
+    if _es_tenant_espino():
+        raw = _huertos_espino()
+    else:
+        raw = list(getattr(demo, "CENTROS_COSTO", []) or [])
     otros = [c for c in raw if str(c).strip().upper() == "OTROS"]
     resto = [c for c in raw if str(c).strip().upper() != "OTROS"]
     return resto + otros
@@ -98,8 +169,23 @@ RIEGO_SOLO_SURCO: frozenset[str] = frozenset({"NOGALES CRUZ DEL SUR"})
 RIEGO_M3_HR_SURCO = 40.0
 
 
+def _norm_cc(huerto: str) -> str:
+    return (huerto or "").strip().upper()
+
+
 def _huertos_riego_auto() -> frozenset[str]:
+    if _es_tenant_espino():
+        return frozenset(_norm_cc(h) for h in _huertos_espino())
     return frozenset(RIEGO_M3_HR_HA.keys()) | RIEGO_SOLO_SURCO
+
+
+def _coef_m3_hr_ha_tecnificado(cc: str) -> float | None:
+    cc_u = _norm_cc(cc)
+    if _es_tenant_espino():
+        if cc_u in {_norm_cc(h) for h in _huertos_espino()}:
+            return RIEGO_M3_HR_HA_ESPINO
+        return None
+    return RIEGO_M3_HR_HA.get(cc_u)
 
 
 def huerto_tiene_calculo_auto(huerto: str) -> bool:
@@ -117,10 +203,6 @@ def _modo_efectivo(huerto: str, modo: str | None) -> str:
     return "surcos" if modo_n == "surcos" else "horas"
 
 
-def _norm_cc(huerto: str) -> str:
-    return (huerto or "").strip().upper()
-
-
 def _cargar_superficie_ha(conn: sqlite3.Connection, huerto: str) -> float:
     cc = _norm_cc(huerto)
     try:
@@ -132,6 +214,15 @@ def _cargar_superficie_ha(conn: sqlite3.Connection, huerto: str) -> float:
             return float(row[0])
     except sqlite3.OperationalError:
         pass
+    if _es_tenant_espino():
+        try:
+            from demo_web.services.espino_scope import SUPERFICIE_HA_ESPINO
+
+            ha = float(SUPERFICIE_HA_ESPINO.get(cc, 0) or 0)
+            if ha > 0:
+                return ha
+        except ImportError:
+            pass
     return 0.0
 
 
@@ -186,8 +277,9 @@ def config_riego_cc_para_formulario() -> dict[str, dict[str, float | bool]]:
         out: dict[str, dict[str, float | bool]] = {}
         for cc in sorted(_huertos_riego_auto()):
             solo = cc in RIEGO_SOLO_SURCO
+            coef = _coef_m3_hr_ha_tecnificado(cc)
             out[cc] = {
-                "m3_hr_ha": float(RIEGO_M3_HR_HA.get(cc, 0)),
+                "m3_hr_ha": float(coef or 0),
                 "m3_hr_surco": float(RIEGO_M3_HR_SURCO),
                 "ha": _cargar_superficie_ha(conn, cc),
                 "solo_surco": solo,
@@ -207,7 +299,7 @@ def listar_config_riego_cc() -> list[dict[str, Any]]:
             rows.append(
                 {
                     "centro_costo": cc,
-                    "m3_hr_ha": RIEGO_M3_HR_HA.get(cc),
+                    "m3_hr_ha": _coef_m3_hr_ha_tecnificado(cc),
                     "m3_hr_surco": RIEGO_M3_HR_SURCO,
                     "superficie_ha": _cargar_superficie_ha(conn, cc),
                     "solo_surco": solo,
@@ -237,7 +329,7 @@ def calcular_m3_riego(
     modo_n = _modo_efectivo(cc, modo)
     if modo_n == "surcos":
         return round(horas * RIEGO_M3_HR_SURCO * ha, 2), ""
-    coef = RIEGO_M3_HR_HA.get(cc)
+    coef = _coef_m3_hr_ha_tecnificado(cc)
     if coef is None:
         return round(horas * RIEGO_M3_HR_SURCO * ha, 2), ""
     return round(horas * coef * ha, 2), ""
@@ -436,11 +528,12 @@ def sincronizar_npk_fertilizantes_bodega(conn: sqlite3.Connection) -> int:
     if conn_en_solo_lectura(conn):
         return 0
     _ensure_riego_fertilizante_npk(conn)
-    placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+    familias = _familias_fertilizante()
+    placeholders = ",".join("?" * len(familias))
     rows = conn.execute(
         f"""SELECT id, producto FROM inventario
             WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})""",
-        _FAMILIAS_FERTILIZANTE,
+        familias,
     ).fetchall()
     n = 0
     for pid, nombre in rows:
@@ -600,17 +693,64 @@ def _fertilizantes_por_codigos(
     return out
 
 
-def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
+def _where_historial_riego(
+    *,
+    desde: str | None = None,
+    hasta: str | None = None,
+    huerto: str | None = None,
+    origen: str | None = None,
+    regador_q: str | None = None,
+    alias: str = "",
+) -> tuple[str, list]:
+    """Cláusula WHERE compartida para historial y resumen NPK."""
+    prefix = f"{alias}." if alias else ""
+    clauses: list[str] = []
+    params: list = []
+    if desde and hasta:
+        clauses.append(f"{prefix}fecha BETWEEN ? AND ?")
+        params.extend([desde, hasta])
+    if huerto and str(huerto).strip().upper() not in ("", "TODOS"):
+        clauses.append(f"UPPER(TRIM({prefix}huerto)) = ?")
+        params.append(str(huerto).strip().upper())
+    if origen and str(origen).strip().upper() not in ("", "TODOS"):
+        clauses.append(f"LOWER(COALESCE({prefix}origen, 'manual')) = ?")
+        params.append(str(origen).strip().lower())
+    if regador_q and str(regador_q).strip():
+        clauses.append(f"UPPER(COALESCE({prefix}regador,'')) LIKE ?")
+        params.append(f"%{str(regador_q).strip().upper()}%")
+    if clauses:
+        return " AND ".join(clauses), params
+    return "1=1", []
+
+
+def resumen_npk_por_huerto(
+    conn: sqlite3.Connection,
+    *,
+    desde: str | None = None,
+    hasta: str | None = None,
+    huerto: str | None = None,
+    origen: str | None = None,
+    regador_q: str | None = None,
+) -> dict[str, Any]:
     """N, P₂O₅ y K₂O acumulados por CC expresados en kg/ha (superficie prorrateo_cc)."""
     migrar_tabla(conn)
     demo = get_demo_module()
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
+    where_r, params_r = _where_historial_riego(
+        desde=desde,
+        hasta=hasta,
+        huerto=huerto,
+        origen=origen,
+        regador_q=regador_q,
+        alias="r",
+    )
     rows = conn.execute(
-        """SELECT r.huerto, rf.producto, rf.producto_id, rf.cantidad, rf.unidad,
+        f"""SELECT r.huerto, rf.producto, rf.producto_id, rf.cantidad, rf.unidad,
                   rf.n_pct, rf.p_pct, rf.k_pct, COALESCE(rf.npk_reconocido, 0)
            FROM riego r
            INNER JOIN riego_fertilizantes rf ON rf.codigo = r.codigo
-           WHERE COALESCE(rf.cantidad, 0) > 0"""
+           WHERE COALESCE(rf.cantidad, 0) > 0 AND {where_r}""",
+        params_r,
     ).fetchall()
     por_huerto: dict[str, dict[str, float]] = {}
     sin_analisis: dict[str, float] = {}
@@ -637,6 +777,10 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
         bucket["k"] += k
 
     cc_list = _listar_cc_prorrateo(conn)
+    if huerto and str(huerto).strip().upper() not in ("", "TODOS"):
+        hu_u = _norm_cc(huerto)
+        cc_filtrado = [(cc, ha) for cc, ha in cc_list if _norm_cc(cc) == hu_u]
+        cc_list = cc_filtrado or [(str(huerto).strip().upper(), 0.0)]
     cc_norms = {_norm_cc(cc): cc for cc, _ in cc_list}
     filas: list[dict[str, Any]] = []
     sum_ha = 0.0
@@ -720,18 +864,19 @@ def fertilizantes_bodega_para_formulario() -> list[dict[str, Any]]:
     conn = _conn()
     try:
         migrar_tabla(conn)
-        placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+        familias = _familias_fertilizante()
+        placeholders = ",".join("?" * len(familias))
         rows = conn.execute(
             f"""SELECT id, producto, COALESCE(stock, 0), COALESCE(unidad_medida, 'kg'), familia
                 FROM inventario
                 WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})
                 ORDER BY producto COLLATE NOCASE""",
-            _FAMILIAS_FERTILIZANTE,
+            familias,
         ).fetchall()
         out: list[dict[str, Any]] = []
         f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
         for pid, nombre, stock, um, fam in rows:
-            stock_f = float(stock or 0)
+            stock_f = _stock_fertilizante_bodega(conn, int(pid), float(stock or 0))
             um_s = str(um or "kg")
             nom = str(nombre or "").strip()
             out.append(
@@ -790,7 +935,8 @@ def _validar_lineas_fertilizantes(
     if not lineas:
         return False, "Agregue al menos un fertilizante de bodega.", []
     demo = get_demo_module()
-    placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+    familias = _familias_fertilizante()
+    placeholders = ",".join("?" * len(familias))
     out: list[dict[str, Any]] = []
     for ln in lineas:
         pid = int(ln.get("producto_id") or 0)
@@ -804,12 +950,12 @@ def _validar_lineas_fertilizantes(
             f"""SELECT id, producto, COALESCE(stock, 0), COALESCE(unidad_medida, 'kg'), familia
                 FROM inventario WHERE id=?
                   AND UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})""",
-            (pid, *_FAMILIAS_FERTILIZANTE),
+            (pid, *familias),
         ).fetchone()
         if not row:
             return False, "Uno de los fertilizantes no existe o no es de bodega.", []
         _id, nombre, stock, um, _fam = row
-        stock_f = float(stock or 0)
+        stock_f = _stock_fertilizante_bodega(conn, int(_id), float(stock or 0))
         um_s = str(um or "kg")
         f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
         if cant > stock_f + 1e-9:
@@ -888,6 +1034,36 @@ def _aplicar_salidas_bodega_fertilizantes(
     lineas = _listar_fertilizantes(conn, codigo)
     if not lineas:
         return True, ""
+    if _es_tenant_espino():
+        try:
+            from demo_web.services.native import espino_bodega
+
+            for ln in lineas:
+                pid = ln["producto_id"]
+                cant = float(ln["cantidad"])
+                ok, msg = espino_bodega.registrar_salida_bodega(
+                    demo,
+                    conn,
+                    cant,
+                    producto_id=int(pid),
+                    fecha=fecha,
+                    centro_costo=huerto_cc,
+                )
+                if not ok:
+                    return False, msg
+            return True, ""
+        except TypeError:
+            for ln in lineas:
+                pid = ln["producto_id"]
+                cant = float(ln["cantidad"])
+                ok, msg = espino_bodega.registrar_salida_bodega(
+                    demo, conn, cant, producto_id=int(pid), fecha=fecha
+                )
+                if not ok:
+                    return False, msg
+            return True, ""
+        except Exception:
+            pass
     um_default = getattr(demo, "DEFAULT_UNIDAD_INSUMO", "kg")
     for ln in lineas:
         pid = ln["producto_id"]
@@ -1697,16 +1873,33 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
     return out
 
 
-def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
+def listar_historial(
+    conn,
+    *,
+    desde: str | None = None,
+    hasta: str | None = None,
+    huerto: str | None = None,
+    origen: str | None = None,
+    regador_q: str | None = None,
+    limite: int = 500,
+) -> list[dict[str, Any]]:
     demo = get_demo_module()
     migrar_tabla(conn)
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
+    where_sql, params = _where_historial_riego(
+        desde=desde,
+        hasta=hasta,
+        huerto=huerto,
+        origen=origen,
+        regador_q=regador_q,
+    )
     rows = conn.execute(
-        """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
+        f"""SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
                   regador, origen, bitacora_codigo, creado_por, creado_en,
                   COALESCE(modo_riego, 'horas'), surcos
-           FROM riego ORDER BY fecha DESC, id DESC LIMIT ?""",
-        (limite,),
+           FROM riego WHERE {where_sql}
+           ORDER BY fecha DESC, id DESC LIMIT ?""",
+        (*params, limite),
     ).fetchall()
     codigos = [str(r[0] or "").strip() for r in rows if str(r[0] or "").strip()]
     fert_por_codigo = _fertilizantes_por_codigos(conn, codigos)
