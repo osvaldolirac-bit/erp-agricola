@@ -148,7 +148,7 @@
         <input type="text" class="form-control form-control-sm" value="" disabled
                title="Solo documentos con N° de factura real">
         <input type="hidden" name="folio_interno" value="">
-        <div class="form-text small">No aplica a docs internos (INT-…)</div>
+        <div class="form-text small">No aplica a documentos internos (INT-, CONTR-, GE-*).</div>
         {% else %}
         <input type="text" name="folio_interno" class="form-control form-control-sm"
                value="{{ factura_edit.folio_interno }}" autocomplete="off"
