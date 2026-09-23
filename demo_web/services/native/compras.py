@@ -5,7 +5,16 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.lc_excluir_espino import sql_and_excluir_razon_social_espino
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.costos_compras_coherencia import sql_historial_compras_listado
+from demo_web.services.espino_compras_guards import (
+    consolidar_ge_duplicado_al_ingresar,
+    registrar_ingreso_kardex_compra_espino,
+    validar_nueva_factura_compra,
+)
+
+DOC_IMPUTACION_COSTOS_PREFIX = "GE-"
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -56,11 +65,39 @@ def _folio_interno(conn, fecha) -> str:
 
 
 def _es_documento_interno(nro_documento: str | None) -> bool:
-    """True si el N° doc es interno (sin factura real), p.ej. INT-20260810-01."""
+    """True si el N° doc es interno (sin factura real): INT-, CONTR-, GE-*, etc."""
     doc = (nro_documento or "").strip().upper()
-    if not doc:
+    if not doc or doc.endswith("_P"):
         return True
-    return doc.startswith("INT-") or doc.startswith("INT/")
+    prefijos_sin_correlativo = (
+        "INT-",
+        "INT/",
+        "CONTR-",
+        f"{DOC_IMPUTACION_COSTOS_PREFIX}",
+    )
+    return any(doc.startswith(p) for p in prefijos_sin_correlativo)
+
+
+def documento_lleva_correlativo(nro_documento: str | None) -> bool:
+    """Correlativo solo en facturas reales (no folios internos del sistema)."""
+    return not _es_documento_interno(nro_documento)
+
+
+def _sql_historial_compras(col_prefix: str = "") -> str:
+    """Historial Compras: sin GE-* duplicados de factura real (tenant Espino)."""
+    return sql_historial_compras_listado(col_prefix)
+
+
+def _sql_solo_compras_reales(col_prefix: str = "") -> str:
+    """Facturas reales para correlativo: excluye INT-, CONTR-, GE-* e imputaciones _P."""
+    p = f"{col_prefix}." if col_prefix else ""
+    return f"""
+          AND {p}nro_documento NOT LIKE '%_P'
+          AND UPPER(TRIM({p}nro_documento)) NOT LIKE 'INT-%'
+          AND UPPER(TRIM({p}nro_documento)) NOT LIKE 'INT/%'
+          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'CONTR-*'
+          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'GE-*'
+    """
 
 
 def _ensure_folio_interno_col(conn) -> None:
@@ -72,7 +109,7 @@ def _ensure_folio_interno_col(conn) -> None:
             return
         conn.execute("ALTER TABLE facturas ADD COLUMN folio_interno TEXT DEFAULT ''")
         conn.commit()
-    # El correlativo solo aplica a facturas reales: limpiar en documentos INT-…
+    # Correlativo solo en facturas reales: limpiar folios erróneos en docs internos.
     if not conn_en_solo_lectura(conn):
         conn.execute(
             """
@@ -82,6 +119,8 @@ def _ensure_folio_interno_col(conn) -> None:
               AND (
                 UPPER(TRIM(nro_documento)) LIKE 'INT-%'
                 OR UPPER(TRIM(nro_documento)) LIKE 'INT/%'
+                OR UPPER(TRIM(nro_documento)) GLOB 'CONTR-*'
+                OR UPPER(TRIM(nro_documento)) GLOB 'GE-*'
               )
             """
         )
@@ -90,14 +129,12 @@ def _ensure_folio_interno_col(conn) -> None:
 
 def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str:
     """Siguiente correlativo por razón social (solo facturas reales, no INT-)."""
-    sql = """
+    sql = f"""
         SELECT MAX(CAST(folio_interno AS INTEGER))
         FROM facturas
         WHERE TRIM(COALESCE(folio_interno, '')) != ''
           AND folio_interno GLOB '[0-9]*'
-          AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_solo_compras_reales()}
     """
     params: list = []
     if razon_social:
@@ -115,9 +152,7 @@ def _correlativo_duplicado(conn, folio: str, razon_social: str, exclude_id: int 
         WHERE TRIM(COALESCE(folio_interno,''))=?
           AND TRIM(COALESCE(razon_social,''))=?
           AND id!=?
-          AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_solo_compras_reales()}
         """,
         (folio, (razon_social or "").strip(), exclude_id),
     ).fetchone()
@@ -151,8 +186,10 @@ def _historial(demo, conn) -> dict:
                COALESCE(NULLIF(TRIM(tipo_gasto), ''), ?) AS tipo_gasto_cc,
                concepto, monto_total
         FROM facturas
-        WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P'
+        WHERE monto_total > 0
+          {_sql_historial_compras()}
           AND fecha_compra BETWEEN ? AND ?
+          {sql_and_excluir_razon_social_espino()}
     """
     params: list = [demo.TIPO_GASTO_SIN_CLASIFICAR, str(fi), str(ff)]
     if q:
@@ -170,9 +207,10 @@ def _historial(demo, conn) -> dict:
     for _, r in df.iterrows():
         nro = str(r["nro_documento"] or "").strip()
         es_interno = _es_documento_interno(nro)
+        lleva_corr = documento_lleva_correlativo(nro)
         folio = "" if es_interno else (r["folio_interno"] or "").strip()
         razon = str(r["razon_social"] or "").strip()
-        if razon not in siguientes_por_razon:
+        if lleva_corr and razon not in siguientes_por_razon:
             siguientes_por_razon[razon] = _siguiente_correlativo_interno(conn, razon)
         rows.append(
             {
@@ -180,7 +218,7 @@ def _historial(demo, conn) -> dict:
                 "nro_documento": nro,
                 "folio_interno": folio,
                 "es_doc_interno": es_interno,
-                "puede_correlativo": (not es_interno),
+                "puede_correlativo": lleva_corr,
                 "siguiente_correlativo": siguientes_por_razon.get(razon, ""),
                 "proveedor": r["proveedor"],
                 "razon_social": r["razon_social"],
@@ -196,7 +234,14 @@ def _historial(demo, conn) -> dict:
         )
     pdf_url = None
     if not df.empty:
-        df_pdf = df.rename(
+        df_pdf = df.copy()
+        df_pdf["folio_interno"] = df_pdf.apply(
+            lambda r: ""
+            if _es_documento_interno(str(r.get("nro_documento") or ""))
+            else (r.get("folio_interno") or ""),
+            axis=1,
+        )
+        df_pdf = df_pdf.rename(
             columns={
                 "folio_interno": "CORRELATIVO",
                 "nro_documento": "N° DOCUMENTO",
@@ -208,7 +253,7 @@ def _historial(demo, conn) -> dict:
                 "concepto": "DETALLE / CONCEPTO",
                 "monto_total": "MONTO BRUTO",
             }
-        ).copy()
+        )
         cols_pdf = [
             "CORRELATIVO",
             "N° DOCUMENTO",
@@ -504,6 +549,14 @@ def _post_save_agro(demo, conn) -> dict:
     if not car:
         return {"ok": False, "msg": "Agregue al menos un ítem al carro."}
 
+    total_bruto_est = sum(i["t"] for i in car) * 1.19
+    ok_val, msg_val = validar_nueva_factura_compra(
+        conn, nro, prov, fecha_compra=fe, monto_total=total_bruto_est
+    )
+    if not ok_val:
+        return {"ok": False, "msg": msg_val}
+    ge_nro = consolidar_ge_duplicado_al_ingresar(conn, nro, prov, fe, total_bruto_est)
+
     desglose = [f"{i['c']} {i.get('um', demo.DEFAULT_UNIDAD_INSUMO)} x {i['n']}" for i in car]
     concepto = "[" + ", ".join(desglose) + "]"
     total_bruto = sum(i["t"] for i in car) * 1.19
@@ -522,14 +575,23 @@ def _post_save_agro(demo, conn) -> dict:
                 (i["n"], i.get("familia", "OTROS"), i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
             )
             poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
+            registrar_ingreso_kardex_compra_espino(
+                demo, conn, int(cur_ins.lastrowid), float(i["c"]), float(i["p"]), fe
+            )
         else:
-            cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i["id"],)).fetchone()
+            pid = int(i["id"])
+            cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
             npmp = ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"]) if (cur[0] + i["c"]) > 0 else i["p"]
             conn.execute(
                 "UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?",
-                (i["c"], npmp, i["id"]),
+                (i["c"], npmp, pid),
+            )
+            registrar_ingreso_kardex_compra_espino(
+                demo, conn, pid, float(i["c"]), float(i["p"]), fe
             )
     conn.commit()
+    if ge_nro:
+        demo.registrar_accion("COMPRA", f"Consolidado {ge_nro} → {nro}")
     _clear_car()
     demo.registrar_accion("COMPRA", nro)
     return {"ok": True, "msg": f"Factura {nro} guardada. Stock y PMP actualizados."}
@@ -561,21 +623,37 @@ def _post_save_gastos(demo, conn) -> dict:
         return {"ok": False, "msg": "Seleccione al menos un centro de costo."}
 
     ng = _folio_interno(conn, fe) if sin_doc else nro
+    if not sin_doc:
+        ok_val, msg_val = validar_nueva_factura_compra(
+            conn, ng, prov, fecha_compra=fe, monto_total=mt
+        )
+        if not ok_val:
+            return {"ok": False, "msg": msg_val}
+    ge_nro = (
+        consolidar_ge_duplicado_al_ingresar(conn, ng, prov, fe, mt) if not sin_doc else None
+    )
     imp = mt if iva_bruto else mt / 1.19
     conn.execute(
         """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
            tipo, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?)""",
         (ng, prov, fe, fv, mt, "Gasto Operacional", concepto, razon, tipo_gasto),
     )
-    for c in selcc:
-        conn.execute(
-            """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-               tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (ng + "_P", prov, fe, fv, 0, "Gasto Operacional", c.upper(), imp / len(selcc), concepto, razon, tipo_gasto),
-        )
+    if not ge_nro:
+        for c in selcc:
+            conn.execute(
+                """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
+                   tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (ng + "_P", prov, fe, fv, 0, "Gasto Operacional", c.upper(), imp / len(selcc), concepto, razon, tipo_gasto),
+            )
     conn.commit()
-    demo.registrar_accion("GASTO", ng)
-    return {"ok": True, "msg": f"Gasto registrado bajo folio {ng}."}
+    det = f"Gasto {ng}"
+    if ge_nro:
+        det += f" (consolidado {ge_nro})"
+    demo.registrar_accion("GASTO", det)
+    msg = f"Gasto registrado bajo folio {ng}."
+    if ge_nro:
+        msg += f" Imputaciones históricas de {ge_nro} vinculadas a este documento."
+    return {"ok": True, "msg": msg}
 
 
 def _post_save_petroleo(demo, conn) -> dict:
@@ -602,6 +680,13 @@ def _post_save_petroleo(demo, conn) -> dict:
         return {"ok": False, "msg": "Ingrese los litros cargados al estanque."}
 
     ng = _folio_interno(conn, fe) if sin_doc else nro
+    if not sin_doc:
+        ok_val, msg_val = validar_nueva_factura_compra(
+            conn, ng, prov, fecha_compra=fe, monto_total=mt
+        )
+        if not ok_val:
+            return {"ok": False, "msg": msg_val}
+        consolidar_ge_duplicado_al_ingresar(conn, ng, prov, fe, mt)
     conn.execute(
         """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
            tipo, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?)""",
@@ -682,7 +767,7 @@ def _post_asignar_folio_interno(demo, conn) -> dict:
     if _es_documento_interno(doc):
         return {
             "ok": False,
-            "msg": "El correlativo solo aplica a documentos con N° de factura real (no internos INT-…).",
+            "msg": "El correlativo solo aplica a facturas reales (no INT-, CONTR- ni GE-*).",
         }
     folio_old = str(fila[2] or "").strip()
     razon = str(fila[3] or "").strip()
@@ -748,6 +833,11 @@ def _post_corregir_factura(demo, conn) -> dict:
         return {"ok": False, "msg": "Proveedor y N° documento son obligatorios."}
     if nmonto <= 0:
         return {"ok": False, "msg": "El monto bruto debe ser superior a $0."}
+    ok_val, msg_val = validar_nueva_factura_compra(
+        conn, doc_new, prov_new, fecha_compra=nfe, monto_total=nmonto, exclude_id=fid
+    )
+    if not ok_val:
+        return {"ok": False, "msg": msg_val}
 
     razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
     if nrazon not in razones and razones:
