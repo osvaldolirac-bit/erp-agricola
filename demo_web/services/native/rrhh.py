@@ -866,10 +866,9 @@ def _post_guardar_ficha(demo, conn) -> dict:
     tid = int(request.form.get("trabajador_id") or 0)
     mes = demo._mes_rrhh_norm(request.form.get("mes") or "")
     anio = int(request.form.get("anio") or demo.hora_chile().year)
-    try:
-        sueldo = float(request.form.get("sueldo") or 0)
-        suple = float(request.form.get("suple") or 0)
-    except ValueError:
+    sueldo = _monto_cl_form(request.form.get("sueldo"))
+    suple = _monto_cl_form(request.form.get("suple"))
+    if sueldo is None or suple is None:
         return {"ok": False, "msg": "Valores inválidos."}
     ficha = conn.execute(
         "SELECT monto_prestamo, cuotas_prestamo, cuotas_pagadas, primera_cuota_mes, primera_cuota_anio FROM remuneraciones_fichas WHERE trabajador_id=?",
@@ -896,17 +895,19 @@ def _post_guardar_ficha(demo, conn) -> dict:
     return {"ok": True, "msg": f"Sueldo/suple guardados en planilla {mes}/{anio}."}
 
 
+def _monto_cl_form(raw: str | None) -> float | None:
+    """Monto desde formulario RRHH: vacío → 0; formato chileno vía parse_decimal_cl."""
+    if raw is None or not str(raw).strip():
+        return 0.0
+    return parse_decimal_cl(raw, None)
+
+
 def _parse_monto_form(raw: str | None) -> float:
     """Acepta enteros, decimales con coma, o miles con punto (100.000)."""
-    s = (raw or "").strip().replace(" ", "").replace("$", "")
-    if not s:
-        return 0.0
-    # Miles chilenos: 100.000 o 1.250.000
-    if re.fullmatch(r"\d{1,3}(\.\d{3})+", s):
-        s = s.replace(".", "")
-    else:
-        s = s.replace(",", ".")
-    return float(s)
+    val = _monto_cl_form(raw)
+    if val is None:
+        raise ValueError("monto inválido")
+    return val
 
 
 def _post_registrar_prestamo(demo, conn) -> dict:
@@ -992,11 +993,10 @@ def _post_guardar_planilla(demo, conn) -> dict:
         if not key.startswith("liq_"):
             continue
         tid = int(key.replace("liq_", ""))
-        try:
-            liq = float(request.form.get(f"liq_{tid}") or 0)
-            sup = float(request.form.get(f"sup_{tid}") or 0)
-            desc = float(request.form.get(f"desc_{tid}") or 0)
-        except ValueError:
+        liq = _monto_cl_form(request.form.get(f"liq_{tid}"))
+        sup = _monto_cl_form(request.form.get(f"sup_{tid}"))
+        desc = _monto_cl_form(request.form.get(f"desc_{tid}"))
+        if liq is None or sup is None or desc is None:
             errores.append(f"ID {tid}: valores inválidos")
             continue
         if desc <= 0:
@@ -1016,10 +1016,9 @@ def _post_liquidacion(demo, conn) -> dict:
     mes = demo._mes_rrhh_norm(request.form.get("mes") or "")
     anio = int(request.form.get("anio") or demo.hora_chile().year)
     licencia = request.form.get("licencia") == "1"
-    try:
-        liq = float(request.form.get("liquido") or 0)
-        ley = float(request.form.get("leyes") or 0)
-    except ValueError:
+    liq = _monto_cl_form(request.form.get("liquido"))
+    ley = _monto_cl_form(request.form.get("leyes"))
+    if liq is None or ley is None:
         return {"ok": False, "msg": "Montos inválidos."}
     ok, err = demo._upsert_pago_rrhh(conn, tid, mes, anio, liq, ley, licencia)
     if not ok:
