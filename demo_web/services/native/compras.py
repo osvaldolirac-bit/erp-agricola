@@ -6,6 +6,7 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import is_espino_tenant, razones_sociales_compras
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -315,6 +316,7 @@ def _gather_ingreso(demo, conn) -> dict:
     car_rows = [
         {
             "producto": i["n"],
+            "ing_activo": i.get("ingrediente_activo") or "",
             "cantidad": i["c"],
             "um": i.get("um", demo.DEFAULT_UNIDAD_INSUMO),
             "neto": demo.f_peso(i["p"]),
@@ -332,9 +334,10 @@ def _gather_ingreso(demo, conn) -> dict:
         "productos": productos,
         "familias": demo.listar_familias_producto(conn),
         "unidades": demo.UNIDADES_MEDIDA_INSUMO,
-        "razones_sociales": demo.RAZONES_SOCIALES_COMPRAS,
+        "razones_sociales": razones_sociales_compras(demo),
         "tipos_gasto": demo.TIPOS_GASTO_ALTA,
         "centros_costo": demo.CENTROS_COSTO,
+        "is_espino_tenant": is_espino_tenant(),
         "car_rows": car_rows,
         "car_total_bruto": demo.f_peso(car_total * 1.19) if car else "",
         "car_count": len(car),
@@ -475,18 +478,22 @@ def _post_add_car(demo) -> dict:
         nom = (request.form.get("prod_nuevo") or "").strip()
         if not nom:
             return {"ok": False, "msg": "Ingrese el nombre del producto nuevo."}
-        car.append(
-            {
-                "id": None,
-                "n": nom,
-                "familia": request.form.get("familia") or "OTROS",
-                "c": cant,
-                "p": neto,
-                "t": cant * neto,
-                "nuevo": True,
-                "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
-            }
-        )
+        nia = (request.form.get("ingrediente_activo") or "").strip()
+        if is_espino_tenant() and not nia:
+            return {"ok": False, "msg": "Indique el ingrediente activo."}
+        item = {
+            "id": None,
+            "n": nom,
+            "familia": request.form.get("familia") or "OTROS",
+            "c": cant,
+            "p": neto,
+            "t": cant * neto,
+            "nuevo": True,
+            "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
+        }
+        if is_espino_tenant():
+            item["ingrediente_activo"] = nia
+        car.append(item)
     _set_car(car)
     return {"ok": True, "msg": "Ítem agregado al carro."}
 
@@ -507,7 +514,7 @@ def _post_save_agro(demo, conn) -> dict:
     desglose = [f"{i['c']} {i.get('um', demo.DEFAULT_UNIDAD_INSUMO)} x {i['n']}" for i in car]
     concepto = "[" + ", ".join(desglose) + "]"
     total_bruto = sum(i["t"] for i in car) * 1.19
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = request.form.get("razon_social") or razones_sociales_compras(demo)[0]
     tipo_gasto = (request.form.get("tipo_gasto") or "Agroquímicos").strip() or "Agroquímicos"
     conn.execute(
         """INSERT INTO facturas
@@ -517,11 +524,31 @@ def _post_save_agro(demo, conn) -> dict:
     )
     for i in car:
         if i.get("nuevo") or i.get("id") is None:
-            cur_ins = conn.execute(
-                "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
-                (i["n"], i.get("familia", "OTROS"), i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
-            )
-            poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
+            nia = (i.get("ingrediente_activo") or "").strip()
+            nf = i.get("familia", "OTROS")
+            if is_espino_tenant():
+                cur_ins = conn.execute(
+                    "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida, ingrediente_activo) VALUES (?,?,?,?,?,?)",
+                    (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO), nia),
+                )
+                new_id = cur_ins.lastrowid
+                req_pppl = getattr(demo, "requiere_autorizacion_pppl", None)
+                if nia and req_pppl and req_pppl(nf):
+                    gap = conn.execute(
+                        "SELECT id FROM gap_pppl WHERE UPPER(TRIM(producto))=?",
+                        (i["n"].upper(),),
+                    ).fetchone()
+                    if gap:
+                        conn.execute(
+                            "UPDATE gap_pppl SET ingrediente_activo=?, vigente=1 WHERE id=?",
+                            (nia, gap[0]),
+                        )
+            else:
+                cur_ins = conn.execute(
+                    "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
+                    (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
+                )
+                poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
         else:
             cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i["id"],)).fetchone()
             npmp = ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"]) if (cur[0] + i["c"]) > 0 else i["p"]
