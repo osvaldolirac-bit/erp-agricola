@@ -281,7 +281,7 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
                 df_mov = demo._obtener_detalle_gastos_cc(
                     conn, vista, prorr, det_fi, det_ff, fi, ff,
                 )
-                df_mov = filtrar_detalle_movimientos_espino_lc(conn, df_mov)
+                df_mov = filtrar_detalle_movimientos_espino_lc(conn, df_mov, vista)
                 if df_mov is not None and not df_mov.empty:
                     df_mov = df_mov.copy()
                     df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")

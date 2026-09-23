@@ -115,13 +115,28 @@ def _nros_imputacion_espino_lc(conn) -> set[str]:
     return {str(r[0]) for r in rows}
 
 
-def filtrar_detalle_movimientos_espino_lc(conn, df: pd.DataFrame | None) -> pd.DataFrame | None:
-    """Quita líneas de costos imputadas desde facturas razón social El Espino."""
-    if df is None or df.empty or not excluir_razon_social_espino_en_lc():
+def _es_cuartel_espino_lc(cuartel: str | None) -> bool:
+    return str(cuartel or "").upper().strip() == CUARTEL_ESPINO_LC
+
+
+def filtrar_detalle_movimientos_espino_lc(
+    conn,
+    df: pd.DataFrame | None,
+    cuartel: str | None = None,
+) -> pd.DataFrame | None:
+    """Detalle CC EL ESPINO en LC: solo salidas de petróleo; resto sin facturas Espino."""
+    if df is None or df.empty:
         return df
+    out = df.copy()
+    if excluir_razon_social_espino_en_lc() and _es_cuartel_espino_lc(cuartel):
+        if "Rubro" in out.columns:
+            out = out[out["Rubro"].astype(str) == RUBRO_PETROLEO_MATRIZ].copy()
+        return out.reset_index(drop=True)
+    if not excluir_razon_social_espino_en_lc():
+        return out
     excluidos = _nros_imputacion_espino_lc(conn)
     if not excluidos:
-        return df
+        return out
 
     def _mantener(row) -> bool:
         det = str(row.get("Detalle") or "")
@@ -131,7 +146,7 @@ def filtrar_detalle_movimientos_espino_lc(conn, df: pd.DataFrame | None) -> pd.D
                 return False
         return True
 
-    out = df[df.apply(_mantener, axis=1)].copy()
+    out = out[out.apply(_mantener, axis=1)].copy()
     return out.reset_index(drop=True)
 
 
@@ -254,48 +269,55 @@ def ajustar_matriz_costos_excluir_espino_lc(
     return _recomputar_cierre_matriz(out)
 
 
+def total_gasto_espino_lc(conn, demo: Any, cuarteles: list[str], prorr: Any) -> float:
+    """Total EL ESPINO alineado con Costos: solo petróleo imputado (temporada vigente)."""
+    if not excluir_razon_social_espino_en_lc():
+        return 0.0
+    fn_temp = getattr(demo, "_temporada_vigente_costos", None)
+    if not callable(fn_temp):
+        return 0.0
+    nombre, fi, ff = fn_temp()
+    matriz = demo._armar_matriz_costos_vista_b(
+        conn, None, None, list(cuarteles), prorr, nombre, fi_rrhh=fi, ff_rrhh=ff,
+    )
+    matriz = ajustar_matriz_costos_excluir_espino_lc(conn, demo, matriz, list(cuarteles), None, None)
+    matriz = ocultar_cuartel_espino_en_matriz_lc(matriz)
+    if matriz is None or matriz.empty or CUARTEL_ESPINO_LC not in matriz.columns:
+        return 0.0
+    tg = matriz[matriz["Rubro"] == "TOTAL GASTO"]
+    if tg.empty:
+        return 0.0
+    return float(tg.iloc[0].get(CUARTEL_ESPINO_LC, 0) or 0)
+
+
 def ajustar_gastos_dashboard_excluir_espino_lc(
     conn,
     demo: Any,
     dfr_base: pd.DataFrame | None,
     cuarteles: list[str],
+    prorr: Any = None,
 ) -> pd.DataFrame | None:
-    """Resta gastos El Espino del panel dashboard por cuartel."""
+    """Dashboard LC: EL ESPINO muestra solo petróleo (misma lógica que Costos)."""
     if not excluir_razon_social_espino_en_lc() or dfr_base is None or dfr_base.empty:
         return dfr_base
 
-    q = """
-        SELECT UPPER(TRIM(p.centro_costo)) AS cc, SUM(COALESCE(p.monto_imputado, 0)) AS m
-        FROM facturas p
-        INNER JOIN facturas f
-          ON f.nro_documento = SUBSTR(p.nro_documento, 1, LENGTH(p.nro_documento) - 2)
-         AND f.proveedor = p.proveedor
-        WHERE p.nro_documento LIKE '%_P'
-          AND TRIM(COALESCE(f.razon_social, '')) = ?
-          AND ABS(COALESCE(p.monto_imputado, 0)) > 0.01
-        GROUP BY 1
-    """
-    rows = conn.execute(q, (RAZON_SOCIAL_ESPINO,)).fetchall()
-    if not rows:
-        return dfr_base
+    if prorr is None:
+        from demo_web.services.native._helpers import prorrateo_rrhh
 
-    cc_canon = {str(c).upper().strip(): c for c in cuarteles}
+        prorr = prorrateo_rrhh(demo, conn)
+
+    nuevo = total_gasto_espino_lc(conn, demo, list(cuarteles), prorr)
     out = dfr_base.copy()
-    resta_total = 0.0
-    for cc_raw, m in rows:
-        cc_key = cc_canon.get(str(cc_raw or "").upper().strip())
-        if not cc_key:
-            continue
-        monto = float(m or 0)
-        resta_total += monto
-        mask = out["Cuartel"].astype(str) == cc_key
-        if mask.any():
-            out.loc[mask, "Total"] = out.loc[mask, "Total"].apply(
-                lambda v: max(0.0, float(v or 0) - monto)
-            )
+    mask = out["Cuartel"].astype(str) == CUARTEL_ESPINO_LC
+    if not mask.any():
+        return out
+    viejo = float(out.loc[mask, "Total"].iloc[0] or 0)
+    if abs(viejo - nuevo) < 0.01:
+        return out
+    out.loc[mask, "Total"] = nuevo
     mask_tg = out["Cuartel"].astype(str).str.upper() == "TOTAL GENERAL"
-    if mask_tg.any() and resta_total > 0:
-        out.loc[mask_tg, "Total"] = out.loc[mask_tg, "Total"].apply(
-            lambda v: max(0.0, float(v or 0) - resta_total)
+    if mask_tg.any():
+        out.loc[mask_tg, "Total"] = max(
+            0.0, float(out.loc[mask_tg, "Total"].iloc[0] or 0) - viejo + nuevo,
         )
     return out
