@@ -54,11 +54,11 @@
           {% for row in historial_rows %}
           <tr>
             <td class="text-nowrap align-middle">
-              {% if row.es_doc_interno %}
-                <span class="text-muted" title="Sin factura real (documento interno): no lleva correlativo">—</span>
+              {% if row.es_doc_interno or not row.puede_correlativo %}
+                <span class="text-muted" title="Solo facturas reales llevan correlativo (no INT-, CONTR- ni GE-*)">—</span>
               {% elif row.folio_interno %}
                 <strong>{{ row.folio_interno }}</strong>
-              {% elif puede_folio and row.puede_correlativo %}
+              {% elif puede_folio %}
               <form method="post" class="d-flex align-items-center gap-1 mb-0">
                 <input type="hidden" name="action" value="asignar_folio_interno">
                 <input type="hidden" name="sec" value="historial">
@@ -148,7 +148,7 @@
         <input type="text" class="form-control form-control-sm" value="" disabled
                title="Solo documentos con N° de factura real">
         <input type="hidden" name="folio_interno" value="">
-        <div class="form-text small">No aplica a docs internos (INT-…)</div>
+        <div class="form-text small">No aplica a documentos internos (INT-, CONTR-, GE-*).</div>
         {% else %}
         <input type="text" name="folio_interno" class="form-control form-control-sm"
                value="{{ factura_edit.folio_interno }}" autocomplete="off"

@@ -327,7 +327,7 @@
             {% endfor %}
           </div>
         </div>
-        <div class="col-md-3"><label class="form-label">Monto bruto ($)</label><input type="number" name="monto" class="form-control form-control-sm" min="0" step="1000" required></div>
+        <div class="col-md-3"><label class="form-label">Monto bruto ($)</label><input type="number" name="monto" class="form-control form-control-sm" min="1" step="1" inputmode="numeric" required placeholder="Ej. 850000"></div>
         <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="iva_bruto" value="1" id="srvIva" checked><label class="form-check-label small" for="srvIva">Imputar bruto</label></div></div>
         <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Registrar servicio</button></div>
       </div>
@@ -411,8 +411,8 @@
               {% for t in trabajadores %}<option value="{{ t.id }}" {% if t.id == trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
             </select>
           </div>
-          <div class="col-md-6"><label class="form-label small">Sueldo líquido pactado ($)</label><input type="number" name="sueldo" class="form-control form-control-sm" value="{{ ficha_sueldo|int }}" min="0" step="1000"></div>
-          <div class="col-md-6"><label class="form-label small">Suple fijo ($)</label><input type="number" name="suple" class="form-control form-control-sm" value="{{ ficha_suple|int }}" min="0" step="1000"></div>
+          <div class="col-md-6"><label class="form-label small">Sueldo líquido pactado ($)</label><input type="number" name="sueldo" class="form-control form-control-sm" value="{{ ficha_sueldo|int }}" min="0" step="1" inputmode="numeric"></div>
+          <div class="col-md-6"><label class="form-label small">Suple fijo ($)</label><input type="number" name="suple" class="form-control form-control-sm" value="{{ ficha_suple|int }}" min="0" step="1" inputmode="numeric"></div>
           <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar sueldo y suple</button></div>
         </form>
 
@@ -519,9 +519,9 @@
             {% for row in planilla_rows %}
             <tr>
               <td>{{ row.trabajador }}</td>
-              <td><input type="number" name="liq_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.liquido_ganado|int }}" min="0" step="1000"></td>
-              <td><input type="number" name="sup_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.suple|int }}" min="0" step="1000"></td>
-              <td><input type="number" name="desc_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.descuento_prestamo|int }}" min="0" step="1000"></td>
+              <td><input type="number" name="liq_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.liquido_ganado|int }}" min="0" step="1" inputmode="numeric"></td>
+              <td><input type="number" name="sup_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.suple|int }}" min="0" step="1" inputmode="numeric"></td>
+              <td><input type="number" name="desc_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.descuento_prestamo|int }}" min="0" step="1" inputmode="numeric"></td>
               <td class="fw-semibold">{{ row.prov_fmt }}</td>
             </tr>
             {% endfor %}
