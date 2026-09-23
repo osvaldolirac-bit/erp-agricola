@@ -148,7 +148,7 @@
         <input type="text" class="form-control form-control-sm" value="" disabled
                title="Solo documentos con N° de factura real">
         <input type="hidden" name="folio_interno" value="">
-        <div class="form-text small">No aplica a docs internos (INT-…)</div>
+        <div class="form-text small">No aplica a documentos internos (INT-, CONTR-, GE-*).</div>
         {% else %}
         <input type="text" name="folio_interno" class="form-control form-control-sm"
                value="{{ factura_edit.folio_interno }}" autocomplete="off"
@@ -389,6 +389,13 @@
                   {% for u in unidades %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
                 </select>
               </div>
+              {% if is_espino_tenant %}
+              <div class="col-12">
+                <label class="form-label small mb-0">Ingrediente activo (ING. activo)</label>
+                <input type="text" name="ingrediente_activo" id="ingredienteActivoAgro" class="form-control form-control-sm"
+                       placeholder="Ej. Tebuconazol, Glifosato" autocomplete="off">
+              </div>
+              {% endif %}
             </div>
           </div>
           <div class="col-6">
@@ -416,10 +423,10 @@
         {% if car_rows %}
         <div class="table-responsive mb-2">
           <table class="table table-sm table-bordered mb-0">
-            <thead><tr><th>Producto</th><th>Cant.</th><th>UM</th><th>Neto</th><th>Total neto</th></tr></thead>
+            <thead><tr><th>Producto</th>{% if is_espino_tenant %}<th>ING. activo</th>{% endif %}<th>Cant.</th><th>UM</th><th>Neto</th><th>Total neto</th></tr></thead>
             <tbody>
               {% for r in car_rows %}
-              <tr><td>{{ r.producto }}</td><td>{{ r.cantidad }}</td><td>{{ r.um }}</td><td>{{ r.neto }}</td><td>{{ r.total }}</td></tr>
+              <tr><td>{{ r.producto }}</td>{% if is_espino_tenant %}<td>{{ r.ing_activo or '—' }}</td>{% endif %}<td>{{ r.cantidad }}</td><td>{{ r.um }}</td><td>{{ r.neto }}</td><td>{{ r.total }}</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -602,20 +609,24 @@ function toggleNroDoc(sinDoc) {
     inp.setAttribute('required', 'required');
   }
 }
+function toggleModoProdAgro() {
+  const sel = document.querySelector('input[name="modo_prod"]:checked');
+  const ex = document.getElementById('blkExistente');
+  const nu = document.getElementById('blkNuevo');
+  const ia = document.getElementById('ingredienteActivoAgro');
+  if (!ex || !nu || !sel) return;
+  const esNuevo = sel.value === 'nuevo';
+  ex.classList.toggle('d-none', esNuevo);
+  nu.classList.toggle('d-none', !esNuevo);
+  if (ia) {
+    ia.required = esNuevo;
+    if (!esNuevo) ia.value = '';
+  }
+}
 document.querySelectorAll('input[name="modo_prod"]').forEach(function(r) {
-  r.addEventListener('change', function() {
-    const ex = document.getElementById('blkExistente');
-    const nu = document.getElementById('blkNuevo');
-    if (!ex || !nu) return;
-    if (this.value === 'nuevo') {
-      ex.classList.add('d-none');
-      nu.classList.remove('d-none');
-    } else {
-      ex.classList.remove('d-none');
-      nu.classList.add('d-none');
-    }
-  });
+  r.addEventListener('change', toggleModoProdAgro);
 });
+toggleModoProdAgro();
 
 function toggleCajaProveedor() {
   const sel = document.getElementById('cajaTipoMov');
