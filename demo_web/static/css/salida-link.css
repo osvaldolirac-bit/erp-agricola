@@ -1,0 +1,341 @@
+/* Salida Link / Registro Riego — formularios móvil (QR)
+   Aislado de erp.css para evitar regresiones al tocar otros módulos. */
+/* Bitácora salida petróleo (QR, móvil) */
+.salida-petroleo-body {
+  margin: 0;
+  min-height: 100dvh;
+  background: linear-gradient(160deg, #e8f5e9 0%, #f4f7f6 45%, #fff 100%);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1f2933;
+}
+
+.salida-petroleo-page {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2rem;
+}
+
+.salida-petroleo-header {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.salida-petroleo-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+  margin-bottom: 0.35rem;
+}
+
+.salida-petroleo-header h1 {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #1b5e20;
+  margin: 0 0 0.25rem;
+}
+
+.salida-petroleo-header p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #5f6b7a;
+}
+
+.salida-petroleo-estanque {
+  background: var(--alert-roja-bg, #ffebee);
+  border: 2px solid var(--alert-roja-border, #ef9a9a);
+  border-radius: 12px;
+  padding: 1rem 1rem 0.9rem;
+  text-align: center;
+}
+
+.salida-petroleo-estanque-kicker {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--alert-roja-text, #b71c1c);
+}
+
+.salida-petroleo-estanque-valor {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #c62828;
+  margin: 0.2rem 0;
+  letter-spacing: -0.02em;
+}
+
+.salida-petroleo-estanque-meta {
+  font-size: 0.8rem;
+  color: #8d6e63;
+}
+
+.salida-petroleo-form .form-label {
+  font-weight: 700;
+  font-size: 0.88rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.salida-petroleo-form .form-control-lg {
+  font-size: 1.1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+}
+
+.salida-petroleo-submit {
+  margin-top: 1.35rem;
+  font-weight: 800;
+  padding: 0.75rem;
+  border-radius: 12px;
+}
+
+.salida-petroleo-ok {
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: #1b5e20;
+}
+
+.salida-petroleo-foot {
+  margin-top: 1.25rem;
+  font-size: 0.78rem;
+  color: #78909c;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.salida-petroleo-honeypot {
+  position: absolute;
+  left: -9999px;
+  height: 0;
+  overflow: hidden;
+}
+
+.salida-petroleo-qr-page .salida-petroleo-qr-img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #dde5df;
+  border-radius: 12px;
+}
+
+.salida-petroleo-cuarteles {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+  background: #fafcfa;
+  border: 1px solid #dde5df;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.salida-petroleo-cc-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid #c5d6cb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  min-height: 2.75rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.salida-petroleo-cc-chip .form-check-input {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.salida-petroleo-cc-label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.salida-petroleo-cc-chip:has(input:checked) {
+  border-color: #2e7d32;
+  background: #e8f5e9;
+}
+
+.salida-petroleo-cc-chip:has(input:focus-visible) {
+  outline: 2px solid rgba(46, 125, 50, 0.35);
+  outline-offset: 1px;
+}
+
+.salida-petroleo-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.salida-petroleo-body.salida-petroleo-exito {
+  background: #2e7d32 !important;
+  transition: background 0.35s ease;
+}
+
+.salida-petroleo-body.salida-petroleo-exito .salida-petroleo-page {
+  color: #fff;
+}
+
+.salida-petroleo-body.salida-petroleo-exito .salida-petroleo-header h1,
+.salida-petroleo-body.salida-petroleo-exito .salida-petroleo-header p {
+  color: #fff;
+}
+
+.salida-petroleo-ok-flash {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.45) !important;
+  color: #fff !important;
+  text-align: center;
+  padding: 1.5rem 1rem !important;
+  font-size: 1.05rem;
+}
+
+.salida-petroleo-ok-flash strong {
+  display: block;
+  font-size: 1.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.salida-petroleo-recarga-hint {
+  display: block;
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+  opacity: 0.9;
+}
+
+/* Registro riego link — pantalla azul al confirmar (como petróleo) */
+.registro-riego-body.registro-riego-exito {
+  background: #1565c0 !important;
+  transition: background 0.35s ease;
+}
+
+.registro-riego-body.registro-riego-exito .salida-petroleo-page {
+  color: #fff;
+}
+
+.registro-riego-body.registro-riego-exito .salida-petroleo-header h1,
+.registro-riego-body.registro-riego-exito .salida-petroleo-header p {
+  color: #fff;
+}
+
+.registro-riego-fert-block {
+  margin-top: 1rem;
+}
+
+.registro-riego-fert-kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #1565c0;
+}
+
+.registro-riego-fert-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.85rem 0.95rem;
+  border: 2px solid #90caf9;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #e3f2fd 0%, #f5fbff 100%);
+  cursor: pointer;
+  min-height: 4.25rem;
+  box-shadow: 0 2px 8px rgba(21, 101, 192, 0.12);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.registro-riego-fert-toggle .form-check-input {
+  flex-shrink: 0;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-top: 0.15rem;
+  border-width: 2px;
+  cursor: pointer;
+}
+
+.registro-riego-fert-toggle-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.registro-riego-fert-toggle-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #0d47a1;
+}
+
+.registro-riego-fert-toggle-hint {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #546e7a;
+}
+
+.registro-riego-fert-toggle:has(input:checked) {
+  border-color: #1565c0;
+  background: linear-gradient(135deg, #bbdefb 0%, #e3f2fd 100%);
+  box-shadow: 0 3px 12px rgba(21, 101, 192, 0.22);
+}
+
+.registro-riego-fert-toggle:has(input:checked) .registro-riego-fert-toggle-title {
+  color: #0d47a1;
+}
+
+.registro-riego-fert-toggle:has(input:focus-visible) {
+  outline: 2px solid rgba(21, 101, 192, 0.45);
+  outline-offset: 2px;
+}
+
+.riego-links-demo .riego-link-demo-row td,
+.riego-links-demo .js-link-personal {
+  opacity: 0.38;
+}
+
+.riego-links-demo .js-link-personal {
+  background-color: rgba(248, 249, 250, 0.6);
+  color: #6c757d;
+}
+
+.riego-links-demo .btn {
+  opacity: 0.45;
+}
+
+/* Petróleo — salida manual (formulario ordenado) */
+.petroleo-salida-manual .panel-title { margin-bottom: 0; }
+.petroleo-salida-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.petroleo-salida-manual .form-label {
+  font-weight: 600;
+  color: #37474F;
+  margin-bottom: 0.35rem;
+}
+.petroleo-salida-manual .form-control-lg,
+.petroleo-salida-manual .form-select-lg {
+  font-size: 1rem;
+  min-height: 2.75rem;
+}
+.petroleo-pmp-pill {
+  background: #E3F2FD;
+  color: #0D47A1;
+  border: 1px solid #90CAF9;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  white-space: nowrap;
+}
+.petroleo-salida-manual .salida-petroleo-cuarteles {
+  margin-top: 0.25rem;
+}

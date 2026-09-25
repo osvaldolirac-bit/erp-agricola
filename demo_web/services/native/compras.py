@@ -6,6 +6,8 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.espino_compras_guards import registrar_ingreso_kardex_compra_espino
+from demo_web.services.tenant_scope import is_espino_tenant, razones_sociales_compras
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -55,12 +57,33 @@ def _folio_interno(conn, fecha) -> str:
     return f"{prefijo}{int(n) + 1:02d}"
 
 
+DOC_IMPUTACION_COSTOS_PREFIX = "GE-"
+
+
 def _es_documento_interno(nro_documento: str | None) -> bool:
-    """True si el N° doc es interno (sin factura real), p.ej. INT-20260810-01."""
+    """True si el N° doc es interno (sin factura real): INT-, CONTR-, GE-*, etc."""
     doc = (nro_documento or "").strip().upper()
-    if not doc:
+    if not doc or doc.endswith("_P"):
         return True
-    return doc.startswith("INT-") or doc.startswith("INT/")
+    prefijos_sin_correlativo = (
+        "INT-",
+        "INT/",
+        "CONTR-",
+        DOC_IMPUTACION_COSTOS_PREFIX,
+    )
+    return any(doc.startswith(p) for p in prefijos_sin_correlativo)
+
+
+def _sql_solo_compras_reales(col_prefix: str = "") -> str:
+    """Facturas reales para correlativo: excluye INT-, CONTR-, GE-* e imputaciones _P."""
+    p = f"{col_prefix}." if col_prefix else ""
+    return f"""
+          AND {p}nro_documento NOT LIKE '%_P'
+          AND UPPER(TRIM({p}nro_documento)) NOT LIKE 'INT-%'
+          AND UPPER(TRIM({p}nro_documento)) NOT LIKE 'INT/%'
+          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'CONTR-*'
+          AND UPPER(TRIM({p}nro_documento)) NOT GLOB 'GE-*'
+    """
 
 
 def _ensure_folio_interno_col(conn) -> None:
@@ -72,7 +95,7 @@ def _ensure_folio_interno_col(conn) -> None:
             return
         conn.execute("ALTER TABLE facturas ADD COLUMN folio_interno TEXT DEFAULT ''")
         conn.commit()
-    # El correlativo solo aplica a facturas reales: limpiar en documentos INT-…
+    # Correlativo solo en facturas reales: limpiar folios erróneos en docs internos.
     if not conn_en_solo_lectura(conn):
         conn.execute(
             """
@@ -82,6 +105,8 @@ def _ensure_folio_interno_col(conn) -> None:
               AND (
                 UPPER(TRIM(nro_documento)) LIKE 'INT-%'
                 OR UPPER(TRIM(nro_documento)) LIKE 'INT/%'
+                OR UPPER(TRIM(nro_documento)) GLOB 'CONTR-*'
+                OR UPPER(TRIM(nro_documento)) GLOB 'GE-*'
               )
             """
         )
@@ -89,15 +114,13 @@ def _ensure_folio_interno_col(conn) -> None:
 
 
 def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str:
-    """Siguiente correlativo por razón social (solo facturas reales, no INT-)."""
-    sql = """
+    """Siguiente correlativo por razón social (solo facturas reales)."""
+    sql = f"""
         SELECT MAX(CAST(folio_interno AS INTEGER))
         FROM facturas
         WHERE TRIM(COALESCE(folio_interno, '')) != ''
           AND folio_interno GLOB '[0-9]*'
-          AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_solo_compras_reales()}
     """
     params: list = []
     if razon_social:
@@ -110,14 +133,12 @@ def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str
 def _correlativo_duplicado(conn, folio: str, razon_social: str, exclude_id: int = 0):
     """True si el correlativo ya existe en la misma razón social (puede repetirse entre razones)."""
     return conn.execute(
-        """
+        f"""
         SELECT id FROM facturas
         WHERE TRIM(COALESCE(folio_interno,''))=?
           AND TRIM(COALESCE(razon_social,''))=?
           AND id!=?
-          AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_solo_compras_reales()}
         """,
         (folio, (razon_social or "").strip(), exclude_id),
     ).fetchone()
@@ -315,6 +336,7 @@ def _gather_ingreso(demo, conn) -> dict:
     car_rows = [
         {
             "producto": i["n"],
+            "ing_activo": i.get("ingrediente_activo") or "",
             "cantidad": i["c"],
             "um": i.get("um", demo.DEFAULT_UNIDAD_INSUMO),
             "neto": demo.f_peso(i["p"]),
@@ -332,9 +354,10 @@ def _gather_ingreso(demo, conn) -> dict:
         "productos": productos,
         "familias": demo.listar_familias_producto(conn),
         "unidades": demo.UNIDADES_MEDIDA_INSUMO,
-        "razones_sociales": demo.RAZONES_SOCIALES_COMPRAS,
+        "razones_sociales": razones_sociales_compras(demo),
         "tipos_gasto": demo.TIPOS_GASTO_ALTA,
         "centros_costo": demo.CENTROS_COSTO,
+        "is_espino_tenant": is_espino_tenant(),
         "car_rows": car_rows,
         "car_total_bruto": demo.f_peso(car_total * 1.19) if car else "",
         "car_count": len(car),
@@ -475,18 +498,22 @@ def _post_add_car(demo) -> dict:
         nom = (request.form.get("prod_nuevo") or "").strip()
         if not nom:
             return {"ok": False, "msg": "Ingrese el nombre del producto nuevo."}
-        car.append(
-            {
-                "id": None,
-                "n": nom,
-                "familia": request.form.get("familia") or "OTROS",
-                "c": cant,
-                "p": neto,
-                "t": cant * neto,
-                "nuevo": True,
-                "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
-            }
-        )
+        nia = (request.form.get("ingrediente_activo") or "").strip()
+        if is_espino_tenant() and not nia:
+            return {"ok": False, "msg": "Indique el ingrediente activo."}
+        item = {
+            "id": None,
+            "n": nom,
+            "familia": request.form.get("familia") or "OTROS",
+            "c": cant,
+            "p": neto,
+            "t": cant * neto,
+            "nuevo": True,
+            "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
+        }
+        if is_espino_tenant():
+            item["ingrediente_activo"] = nia
+        car.append(item)
     _set_car(car)
     return {"ok": True, "msg": "Ítem agregado al carro."}
 
@@ -507,7 +534,7 @@ def _post_save_agro(demo, conn) -> dict:
     desglose = [f"{i['c']} {i.get('um', demo.DEFAULT_UNIDAD_INSUMO)} x {i['n']}" for i in car]
     concepto = "[" + ", ".join(desglose) + "]"
     total_bruto = sum(i["t"] for i in car) * 1.19
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = request.form.get("razon_social") or razones_sociales_compras(demo)[0]
     tipo_gasto = (request.form.get("tipo_gasto") or "Agroquímicos").strip() or "Agroquímicos"
     conn.execute(
         """INSERT INTO facturas
@@ -517,17 +544,44 @@ def _post_save_agro(demo, conn) -> dict:
     )
     for i in car:
         if i.get("nuevo") or i.get("id") is None:
-            cur_ins = conn.execute(
-                "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
-                (i["n"], i.get("familia", "OTROS"), i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
-            )
-            poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
+            nia = (i.get("ingrediente_activo") or "").strip()
+            nf = i.get("familia", "OTROS")
+            if is_espino_tenant():
+                cur_ins = conn.execute(
+                    "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida, ingrediente_activo) VALUES (?,?,?,?,?,?)",
+                    (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO), nia),
+                )
+                new_id = cur_ins.lastrowid
+                req_pppl = getattr(demo, "requiere_autorizacion_pppl", None)
+                if nia and req_pppl and req_pppl(nf):
+                    gap = conn.execute(
+                        "SELECT id FROM gap_pppl WHERE UPPER(TRIM(producto))=?",
+                        (i["n"].upper(),),
+                    ).fetchone()
+                    if gap:
+                        conn.execute(
+                            "UPDATE gap_pppl SET ingrediente_activo=?, vigente=1 WHERE id=?",
+                            (nia, gap[0]),
+                        )
+                registrar_ingreso_kardex_compra_espino(
+                    demo, conn, int(new_id), float(i["c"]), float(i["p"]), fe,
+                )
+            else:
+                cur_ins = conn.execute(
+                    "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
+                    (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
+                )
+                poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
         else:
-            cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i["id"],)).fetchone()
+            pid = int(i["id"])
+            cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
             npmp = ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"]) if (cur[0] + i["c"]) > 0 else i["p"]
             conn.execute(
                 "UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?",
-                (i["c"], npmp, i["id"]),
+                (i["c"], npmp, pid),
+            )
+            registrar_ingreso_kardex_compra_espino(
+                demo, conn, pid, float(i["c"]), float(i["p"]), fe,
             )
     conn.commit()
     _clear_car()
@@ -682,7 +736,7 @@ def _post_asignar_folio_interno(demo, conn) -> dict:
     if _es_documento_interno(doc):
         return {
             "ok": False,
-            "msg": "El correlativo solo aplica a documentos con N° de factura real (no internos INT-…).",
+            "msg": "El correlativo solo aplica a facturas reales (no INT-, CONTR- ni GE-*).",
         }
     folio_old = str(fila[2] or "").strip()
     razon = str(fila[3] or "").strip()
