@@ -590,6 +590,74 @@ def _producto_por_nombre(conn, demo, nombre: str):
     ).fetchone()
 
 
+def reconciliar_stock_kardex_espino(
+    demo,
+    conn,
+    producto_id: int,
+    stock_objetivo: float,
+    *,
+    pmp: float | None = None,
+    um: str | None = None,
+    fecha: str | None = None,
+) -> float:
+    """Ajusta kardex bodega al stock objetivo (corrección admin en módulo Bodega)."""
+    stock_objetivo = max(float(stock_objetivo or 0), 0.0)
+    row = conn.execute(
+        """SELECT COALESCE(precio_medio, 0), COALESCE(unidad_medida, ?)
+           FROM inventario WHERE id=?""",
+        (demo.DEFAULT_UNIDAD_INSUMO, int(producto_id)),
+    ).fetchone()
+    if not row:
+        return 0.0
+    pmp_val = float(pmp if pmp is not None else row[0] or 0)
+    um_val = um or row[1] or demo.DEFAULT_UNIDAD_INSUMO
+    fecha_mov = str(fecha or hoy_demo(demo))
+
+    stock_actual = _stock_disponible_producto(conn, int(producto_id))
+    delta = stock_objetivo - stock_actual
+    if abs(delta) <= 1e-9:
+        conn.execute("UPDATE inventario SET stock=? WHERE id=?", (stock_objetivo, int(producto_id)))
+        return stock_objetivo
+
+    if _ingresos_pool(conn, int(producto_id)) <= 1e-9:
+        if stock_objetivo > 1e-9 and pmp_val > 0:
+            valor = round(stock_objetivo * pmp_val, 2)
+            conn.execute(
+                """INSERT INTO movimientos
+                   (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+                   VALUES (?, 'Ingreso', ?, ?, ?, ?, ?)""",
+                (int(producto_id), stock_objetivo, fecha_mov, CC_ESPINO, valor, um_val),
+            )
+        else:
+            conn.execute(
+                "UPDATE inventario SET stock=? WHERE id=?",
+                (stock_objetivo, int(producto_id)),
+            )
+        _sync_inventario_stock(conn, int(producto_id))
+        return _stock_disponible_producto(conn, int(producto_id))
+
+    if pmp_val <= 0:
+        pmp_k = _precio_medio_kardex(conn, int(producto_id))
+        pmp_val = float(pmp_k or 0)
+    valor = round(abs(delta) * pmp_val, 2)
+    if delta > 0:
+        conn.execute(
+            """INSERT INTO movimientos
+               (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+               VALUES (?, 'Ingreso', ?, ?, ?, ?, ?)""",
+            (int(producto_id), delta, fecha_mov, CC_ESPINO, valor, um_val),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO movimientos
+               (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+               VALUES (?, 'Salida', ?, ?, ?, ?, ?)""",
+            (int(producto_id), abs(delta), fecha_mov, CC_ESPINO, valor, um_val),
+        )
+    _sync_inventario_stock(conn, int(producto_id))
+    return _stock_disponible_producto(conn, int(producto_id))
+
+
 def _bootstrap_kardex_apertura(
     demo,
     conn,
