@@ -211,6 +211,26 @@ def flujo_th_class(col: str) -> str:
     return "flujo-th-mes"
 
 
+def fmt_dosis_lc(value, unidad_dosis: str = "", *, decimales_default: int = 3) -> str:
+    """Formatea dosis /100 L; cc como entero cuando aplica (80 cc, no 80,000)."""
+    u = (unidad_dosis or "").lower()
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return "0" if ("cc" in u or "cúbico" in u or "cubico" in u) else "0,000"
+    if "cc" in u or "cúbico" in u or "cubico" in u:
+        if abs(x - round(x)) < 1e-9:
+            return str(int(round(x)))
+        s = f"{x:.2f}".replace(".", ",")
+        return s.rstrip("0").rstrip(",") or "0"
+    try:
+        return (
+            f"{x:,.{decimales_default}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+    except Exception:
+        return "0,000"
+
+
 def df_to_records(df, money_cols: set[str] | None = None, demo=None) -> tuple[list[str], list[dict]]:
     import pandas as pd
 
