@@ -68,12 +68,8 @@ def normalizar_cuarteles(cuarteles: list[str]) -> str:
     return ", ".join(canon.get(v, v) for v in ordenados)
 
 
-# Misma maestra / mismos tipos que el módulo Petróleo (incluye Otro, Motobomba, etc.).
-# Antes solo Tractor/Camión/Vehículo: equipos nuevos (p.ej. sala de riego) no aparecían en el QR.
-
-
 def maquinaria_para_formulario() -> list[dict[str, str]]:
-    """Equipos activos de la maestra (todos los tipos usados en Petróleo)."""
+    """Equipos activos: tractores, camiones y vehículos (TIPOS_MAQUINARIA_PETROLEO)."""
     from erp_maquinaria import (
         TIPOS_MAQUINARIA_PETROLEO,
         etiqueta_maquinaria,

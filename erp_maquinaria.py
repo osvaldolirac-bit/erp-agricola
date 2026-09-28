@@ -24,7 +24,8 @@ TIPOS_MAQUINARIA = [
 
 TIPOS_MAQUINARIA_TRACTOR = ("Tractor",)
 TIPOS_MAQUINARIA_APLICACION = ("Nebulizador", "Aplicador", "Implemento", "Motobomba")
-TIPOS_MAQUINARIA_PETROLEO = TIPOS_MAQUINARIA
+# Salida manual petróleo y formulario link: solo tractores y vehículos (sin implementos/nebulizadores).
+TIPOS_MAQUINARIA_PETROLEO = ("Tractor", "Camión", "Vehículo")
 
 TRACTORES_PREDETERMINADOS = (
     ("TRAC-SAME", "Tractor Same", "Tractor"),

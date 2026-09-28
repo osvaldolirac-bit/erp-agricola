@@ -45,8 +45,6 @@ def _opciones_maquinaria(conn):
     from erp_maquinaria import TIPOS_MAQUINARIA_PETROLEO, etiqueta_maquinaria, listar_maquinaria
 
     items = listar_maquinaria(conn, solo_activos=True, tipos=TIPOS_MAQUINARIA_PETROLEO)
-    if not items:
-        items = listar_maquinaria(conn, solo_activos=True)
     return [(m["codigo"], etiqueta_maquinaria(m["codigo"], m["nombre"])) for m in items]
 
 
