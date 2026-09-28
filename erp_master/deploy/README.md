@@ -69,3 +69,59 @@ systemctl restart erp-master-web
 ## Credenciales
 
 Las claves **no se resetean** en deploy. Usuario master en `/root/erp_master.db`. Cambios de clave solo desde consola → Usuarios consola.
+
+---
+
+# Despliegue rubro agrícola (demo-web, :8508)
+
+Mismas reglas que consola: **repo + script + verify**, no SCP suelto.
+
+## Despliegue correcto (VPS)
+
+```bash
+cd /root/erp-agricola   # clone git
+git pull
+bash erp_master/deploy/deploy-demo-web.sh
+```
+
+El script:
+
+1. Backup en `/root/backups/demo-web/<timestamp>/`
+2. Sincroniza `demo_web/` completo (templates, static, services, blueprints)
+3. Reinicia `erp-agricola-web`
+4. Ejecuta `scripts/verify_agricola.py`
+5. Si falla → rollback automático
+
+## Verificación manual
+
+```bash
+DEMO_WEB_ROOT=/root/demo-web/demo_web python3 /root/scripts/verify_agricola.py
+```
+
+Debe pasar: CSS modular (`salida-link.css`, `globalgap.css`), `erp.css` sin estilos de esos módulos, login agrícola, login GlobalGAP, ruta salida-petroleo, tenant globalgap en consola.
+
+## CSS modular (evitar regresiones)
+
+| Archivo | Uso |
+|---------|-----|
+| `css/erp.css` | Común: sidebar, login, dashboard, módulos base |
+| `css/salida-link.css` | Salida Link petróleo, Registro Riego, chips en módulo Petróleo |
+| `css/globalgap.css` | Panel consultor, Gantt, estilo Comercial GlobalGAP |
+
+**Regla:** no agregar estilos de GlobalGAP ni Salida Link en `erp.css`. Un PR = un módulo.
+
+## Orden al agregar tenant agrícola + consola
+
+1. Bootstrap DB tenant
+2. Merge consola (`patch_globalgap_consola_merge.py`)
+3. `deploy-consola.sh` + `verify_consola.py`
+4. Cambios en `demo_web/` en rama dedicada
+5. `deploy-demo-web.sh` + `verify_agricola.py`
+
+## Rollback manual demo-web
+
+```bash
+BK=/root/backups/demo-web/<timestamp>
+rsync -a "$BK/code/" /root/demo-web/
+systemctl restart erp-agricola-web
+```
