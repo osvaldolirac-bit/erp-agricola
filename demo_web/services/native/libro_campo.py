@@ -9,7 +9,7 @@ from flask import flash, jsonify, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_fecha_aplicacion
 
 SECCIONES_BASE = [
     ("historial", "📜 HISTORIAL AUDITABLE"),
@@ -713,7 +713,9 @@ def _post_guardar_evento(demo, conn) -> dict:
     if total_agua <= 0:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
-    fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    meta_pre = _leer_evento_meta(demo)
+    fe_raw = (request.form.get("fecha") or meta_pre.get("fecha") or "").strip()
+    fe_app = parse_fecha_aplicacion(fe_raw, hoy_demo(demo))
     huerto = request.form.get("cuartel") or demo.CENTROS_COSTO[0]
     especies = _especies_libro_campo(demo)
     especie = request.form.get("especie") or (especies[0] if especies else "")

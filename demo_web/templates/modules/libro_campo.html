@@ -250,7 +250,7 @@
       <input type="hidden" name="action" value="guardar_evento">
       <input type="hidden" name="sec" value="ingreso">
       <div class="row g-2 mb-3" id="lcCabeceraFields">
-        <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" id="lcFechaApp" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
+        <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" id="lcFechaApp" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required><div class="form-text">Día/mes/año — ej. 26/09/2026</div></div>
         <div class="col-md-3"><label class="form-label small">Cuartel</label>
           <select name="cuartel" id="lcCuartel" class="form-select form-select-sm lc-cab">{% for c in cuarteles %}<option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
         </div>
