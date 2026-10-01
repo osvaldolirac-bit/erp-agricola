@@ -31,6 +31,17 @@
   </div>
   {% endif %}
 
+  {% if rebaje_bodega_ok %}
+  <div class="alert alert-success">
+    <strong>Aplicación N° {{ '%05d'|format(rebaje_bodega_ok.n_app) }} guardada.</strong> Bodega rebajada:
+    <ul class="mb-0 mt-1">
+      {% for linea in rebaje_bodega_ok.rebajes %}
+      <li>{{ linea }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   {% if sec_activa == 'historial' %}
   <div class="panel-card mb-3">
     <h2 class="h6 panel-title">🔍 Filtros</h2>
