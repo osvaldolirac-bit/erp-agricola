@@ -16,7 +16,7 @@ from demo_web.services.espino_scope import (
 )
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
-from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_fecha_aplicacion
 
 BODEGA_CC = espino_bodega.CC_ESPINO  # stock bodega (EL ESPINO), distinto de cuartel LC
 CAR_KEY = "espino_lc_car"
