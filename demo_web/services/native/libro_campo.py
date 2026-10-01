@@ -33,6 +33,61 @@ def _especies_libro_campo(demo) -> list[str]:
         return list(especies)
     return list(getattr(demo, "GAP_ESPECIES", []) or [])
 
+
+def _es_tenant_espino(demo) -> bool:
+    slug = str(getattr(demo, "TENANT_SLUG", "") or "").strip().lower()
+    if slug == "espino":
+        return True
+    try:
+        from demo_web.services.tenant_scope import is_espino_tenant
+
+        return is_espino_tenant()
+    except ImportError:
+        return False
+
+
+def _validar_salida_bodega_espino_car(demo, conn, car: list[dict]) -> tuple[bool, str]:
+    from demo_web.services.native import espino_bodega
+
+    for item in car:
+        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
+            demo,
+            conn,
+            float(item.get("gasto_total") or 0),
+            producto=str(item.get("producto") or ""),
+        )
+        if not ok:
+            return False, msg
+    return True, ""
+
+
+def _rebajar_bodega_espino_desde_car(
+    demo,
+    conn,
+    car: list[dict],
+    fe_app,
+    huerto: str,
+) -> tuple[bool, str, list[str]]:
+    """Salidas kardex bodega El Espino (después de persistir líneas LC)."""
+    from demo_web.services.native import espino_bodega
+
+    rebajes: list[str] = []
+    for item in car:
+        ok, msg = espino_bodega.registrar_salida_bodega(
+            demo,
+            conn,
+            float(item.get("gasto_total") or 0),
+            producto=str(item.get("producto") or ""),
+            fecha=fe_app,
+            centro_costo=huerto,
+        )
+        if not ok:
+            return False, msg, rebajes
+        rebajes.append(
+            f"{item['producto']} −{demo.f_cantidad(item.get('gasto_total', 0))} {item.get('um_gasto', '')}"
+        )
+    return True, "", rebajes
+
 FITOSANITARIO_PROGRAMAS = {
     "cerezos": {
         "titulo": "Programa Fitosanitario Cerezas",
@@ -207,6 +262,8 @@ def _pop_alertas() -> dict:
             "huerto": al.get("huerto", ""),
             "productos": prods,
         }
+    if "espino_lc_rebaje_ok" in session:
+        out["rebaje_bodega_ok"] = session.pop("espino_lc_rebaje_ok")
     return out
 
 
@@ -667,6 +724,11 @@ def _post_guardar_evento(demo, conn) -> dict:
     # n_orden = correlativo de planilla GlobalGAP (por cuartel); independiente del N° APP.
     n_orden = _siguiente_n_orden(conn, huerto)
 
+    if _es_tenant_espino(demo):
+        ok_val, msg_val = _validar_salida_bodega_espino_car(demo, conn, car)
+        if not ok_val:
+            return {"ok": False, "msg": msg_val}
+
     for item in car:
         demo._insertar_linea_libro_campo(
             conn,
@@ -682,6 +744,15 @@ def _post_guardar_evento(demo, conn) -> dict:
             tractor,
             n_orden=n_orden,
         )
+
+    rebajes_bodega: list[str] = []
+    if _es_tenant_espino(demo):
+        ok_bod, msg_bod, rebajes_bodega = _rebajar_bodega_espino_desde_car(
+            demo, conn, car, fe_app, huerto,
+        )
+        if not ok_bod:
+            return {"ok": False, "msg": msg_bod}
+
     from demo_web.services.libro_campo_gap import enriquecer_aplicacion_globalgap
 
     wx = enriquecer_aplicacion_globalgap(
@@ -695,14 +766,21 @@ def _post_guardar_evento(demo, conn) -> dict:
     )
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
-    demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
-    session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
+    accion = "LIBRO CAMPO ESPINO" if _es_tenant_espino(demo) else "LIBRO CAMPO"
+    demo.registrar_accion(accion, f"App N°{n_app} · {huerto} · {prods_txt}")
+    if _es_tenant_espino(demo) and rebajes_bodega:
+        session["espino_lc_rebaje_ok"] = {"n_app": n_app, "rebajes": rebajes_bodega}
+    else:
+        session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
     msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
     if wx:
         msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
-    msg += " — visible en planilla GlobalGAP."
+    if _es_tenant_espino(demo):
+        msg += ". Bodega rebajada automáticamente."
+    else:
+        msg += " — visible en planilla GlobalGAP."
     return {"ok": True, "msg": msg}
 
 
