@@ -104,6 +104,8 @@ def _post_manual(demo, conn, user_email: str) -> dict:
     if con_fert and not fert_lineas:
         return {"ok": False, "msg": "Agregue al menos un fertilizante con cantidad."}
 
+    nota = (request.form.get("nota") or "").strip()
+
     return registrar_manual(
         fecha,
         huerto,
@@ -113,6 +115,7 @@ def _post_manual(demo, conn, user_email: str) -> dict:
         user_email,
         fertilizantes=fert_lineas,
         modo_riego=modo_riego,
+        nota=nota,
     )
 
 
