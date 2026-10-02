@@ -233,11 +233,12 @@
             <th class="text-end">Total</th>
             <th class="text-end">Haber</th>
             <th class="text-end">Saldo</th>
+            {% if es_admin and not solo_lectura %}<th></th>{% endif %}
           </tr>
         </thead>
         <tbody>
           {% for row in trabajos_rows|default([]) %}
-          <tr{% if row.es_abono %} class="table-light"{% endif %}>
+          <tr class="{% if maq_edit and row.maq_id == maq_edit.maq_id and row.maq_kind == maq_edit.maq_kind %}table-primary{% elif row.es_abono %}table-light{% endif %}">
             <td>{{ row.fecha }}</td>
             <td>{{ row.documento }}</td>
             <td>{{ row.tractor }}</td>
@@ -252,6 +253,13 @@
             <td class="text-end fw-semibold">{{ row.monto }}</td>
             <td class="text-end text-success">{{ row.haber }}</td>
             <td class="text-end fw-semibold">{{ row.saldo }}</td>
+            {% if es_admin and not solo_lectura %}
+            <td class="actions-cell text-end">
+              <a class="btn-act edit"
+                 href="{{ url_for('modules.espino', temp=temp_sel, sec='maquinaria', op='gastos', desde=filtro_desde, hasta=filtro_hasta, q=filtro_q|default(''), maq_id=row.maq_id, maq_kind=row.maq_kind) }}"
+                 title="Modificar / eliminar"><i class="bi bi-pencil-square"></i></a>
+            </td>
+            {% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -261,6 +269,106 @@
     <p class="text-muted p-3 mb-0">Sin movimientos en el periodo.</p>
     {% endif %}
   </div>
+
+  {% if es_admin and maq_edit and not solo_lectura %}
+  <div class="panel-card mb-3 border border-primary" id="maqEditPanel">
+    <h2 class="h6 panel-title">
+      {% if maq_edit.maq_kind == 'abono' %}Corregir o eliminar abono{% else %}Corregir o eliminar trabajo{% endif %}
+      (ID {{ maq_edit.maq_id }})
+    </h2>
+    <form method="get" class="mb-3">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="gastos">
+      <input type="hidden" name="q" value="{{ filtro_q|default('') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <label class="form-label small">Seleccionar registro</label>
+      <select name="maq_id" class="form-select form-select-sm mb-1" onchange="this.form.querySelector('[name=maq_kind]').value=this.options[this.selectedIndex].dataset.kind; this.form.submit();">
+        {% for o in maq_mov_opts %}
+        <option value="{{ o.id }}" data-kind="{{ o.kind }}"
+                {% if o.id == maq_edit.maq_id and o.kind == maq_edit.maq_kind %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="maq_kind" value="{{ maq_edit.maq_kind }}">
+    </form>
+
+    {% if maq_edit.maq_kind == 'trabajo' %}
+    <form method="post" class="row g-2 mb-2">
+      <input type="hidden" name="action" value="maquinaria_modificar">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="gastos">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="maq_id" value="{{ maq_edit.maq_id }}">
+      <input type="hidden" name="maq_kind" value="trabajo">
+      <input type="hidden" name="q" value="{{ filtro_q|default('') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ maq_edit.fecha_raw }}" min="{{ fi_iso }}" max="{{ ff_iso }}" required></div>
+      <div class="col-md-2"><label class="form-label small">Documento</label><input type="text" name="documento" id="maqEditDoc" class="form-control form-control-sm" value="{{ maq_edit.documento }}" {% if maq_edit.sin_doc %}readonly{% endif %}></div>
+      <div class="col-md-2"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="maqEditSinDoc" {% if maq_edit.sin_doc %}checked{% endif %} onchange="toggleMaqEditDoc(this.checked)"><label class="form-check-label small" for="maqEditSinDoc">Folio interno</label></div></div>
+      <div class="col-md-3"><label class="form-label small">Tractor</label>
+        <select name="tractor_codigo" class="form-select form-select-sm" required>
+          {% for t in tractores|default([]) %}
+          <option value="{{ t.codigo }}" {% if t.codigo == maq_edit.tractor_codigo %}selected{% endif %}>{{ t.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3"><label class="form-label small">Implemento</label>
+        <select name="implemento_codigo" class="form-select form-select-sm">
+          <option value="">— Sin implemento —</option>
+          {% for t in implementos|default([]) %}
+          <option value="{{ t.codigo }}" {% if t.codigo == maq_edit.implemento_codigo %}selected{% endif %}>{{ t.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4"><label class="form-label small">Trabajo</label><input type="text" name="trabajo" class="form-control form-control-sm" value="{{ maq_edit.trabajo }}" required></div>
+      <div class="col-md-2"><label class="form-label small">Ha</label><input type="number" name="hectareas" class="form-control form-control-sm" min="0" step="0.01" value="{{ maq_edit.hectareas }}"></div>
+      <div class="col-md-2"><label class="form-label small">Horas</label><input type="number" name="horas" class="form-control form-control-sm" min="0" step="0.01" value="{{ maq_edit.horas }}"></div>
+      <div class="col-md-2"><label class="form-label small">Tractor $/ha</label><input type="number" name="monto_tractor" class="form-control form-control-sm" min="0" step="1" value="{{ maq_edit.monto_tractor|int }}"></div>
+      <div class="col-md-2"><label class="form-label small">Implemento $/ha</label><input type="number" name="monto_implemento" class="form-control form-control-sm" min="0" step="1" value="{{ maq_edit.monto_implemento|int }}"></div>
+      <div class="col-md-2"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button></div>
+    </form>
+    {% else %}
+    <form method="post" class="row g-2 mb-2">
+      <input type="hidden" name="action" value="maquinaria_modificar">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="gastos">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="maq_id" value="{{ maq_edit.maq_id }}">
+      <input type="hidden" name="maq_kind" value="abono">
+      <input type="hidden" name="q" value="{{ filtro_q|default('') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-2"><label class="form-label small">Fecha</label><input type="date" name="fecha" class="form-control form-control-sm" value="{{ maq_edit.fecha_raw }}" min="{{ fi_iso }}" max="{{ ff_iso }}" required></div>
+      <div class="col-md-3"><label class="form-label small">Documento</label><input type="text" name="documento" id="maqEditDoc" class="form-control form-control-sm" value="{{ maq_edit.documento }}" {% if maq_edit.sin_doc %}readonly{% endif %}></div>
+      <div class="col-md-2"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="maqEditSinDoc" {% if maq_edit.sin_doc %}checked{% endif %} onchange="toggleMaqEditDoc(this.checked)"><label class="form-check-label small" for="maqEditSinDoc">Folio interno</label></div></div>
+      <div class="col-md-3"><label class="form-label small">Detalle</label><input type="text" name="detalle" class="form-control form-control-sm" value="{{ maq_edit.detalle }}" required></div>
+      <div class="col-md-2"><label class="form-label small">Monto ($)</label><input type="number" name="monto" class="form-control form-control-sm" min="1" step="1" value="{{ maq_edit.haber_raw|int }}" required></div>
+      <div class="col-md-2"><label class="form-label small">Clave maestra</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button></div>
+    </form>
+    {% endif %}
+
+    <form method="post" class="row g-2" onsubmit="return confirm('¿Eliminar el registro ID {{ maq_edit.maq_id }}? Esta acción no se puede deshacer.');">
+      <input type="hidden" name="action" value="maquinaria_eliminar">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="gastos">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="maq_id" value="{{ maq_edit.maq_id }}">
+      <input type="hidden" name="maq_kind" value="{{ maq_edit.maq_kind }}">
+      <input type="hidden" name="q" value="{{ filtro_q|default('') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-3"><label class="form-label small">Clave maestra p/ eliminar</label><input type="password" name="clave_maestra" class="form-control form-control-sm" required></div>
+      <div class="col-md-3 d-flex align-items-end gap-2">
+        <button type="submit" class="btn btn-danger btn-sm">Eliminar registro</button>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('modules.espino', temp=temp_sel, sec='maquinaria', op='gastos', desde=filtro_desde, hasta=filtro_hasta, q=filtro_q|default('')) }}">Cerrar</a>
+      </div>
+    </form>
+  </div>
+  {% endif %}
 
   {% elif maq_op_activa == 'abono' %}
   {% if not solo_lectura %}
@@ -580,6 +688,18 @@ function toggleMaqIngDoc(sinDoc) {
   if (sinDoc) { inp.value = 'AUTOGENERADO'; inp.readOnly = true; inp.removeAttribute('required'); }
   else { inp.value = ''; inp.readOnly = false; }
 }
+function toggleMaqEditDoc(sinDoc) {
+  const inp = document.getElementById('maqEditDoc');
+  if (!inp) return;
+  if (sinDoc) { inp.readOnly = true; }
+  else { inp.readOnly = false; }
+}
+{% if sec_activa == 'maquinaria' and maq_edit %}
+document.addEventListener('DOMContentLoaded', function () {
+  var panel = document.getElementById('maqEditPanel');
+  if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+{% endif %}
 {% if sec_activa == 'libro_campo' and lc_op_activa == 'ingreso' %}
 window.lcSyncCabecera = function (targetForm) {
   if (!targetForm) return true;

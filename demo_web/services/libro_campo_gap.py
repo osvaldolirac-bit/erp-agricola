@@ -18,6 +18,9 @@ _PLANILLA_COLS = [
 _VARIEDAD_POR_SECTOR = {
     "CEREZOS CORTE 1": "Santina",
     "CIRUELOS": "D'Agen",
+    "ROYAL DOWN": "Royal Down",
+    "SWEET ARYANA": "Sweet Aryana",
+    "SANTINA": "Santina",
 }
 
 _MOTIVO_DEF = "Control fitosanitario"

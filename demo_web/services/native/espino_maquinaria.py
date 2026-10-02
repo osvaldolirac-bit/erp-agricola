@@ -92,6 +92,116 @@ def _maq_op_activa() -> str:
     return op
 
 
+def _admin_clave_ok(demo) -> tuple[bool, str]:
+    if demo.es_solo_lectura():
+        return False, "Modo solo lectura: no puede modificar ni eliminar registros."
+    if not demo.es_admin():
+        return False, "Requiere perfil admin."
+    if (request.form.get("clave_maestra") or "").strip() != demo.CLAVE_MAESTRA:
+        return False, "Clave maestra incorrecta."
+    return True, ""
+
+
+def _fecha_en_temporada(fecha, fi, ff) -> bool:
+    return fi <= fecha <= ff
+
+
+def _maq_mov_opts(demo, conn, fi_f, ff_f) -> list[dict]:
+    opts: list[dict] = []
+    for r in conn.execute(
+        f"""SELECT id, fecha, documento, tractor, implemento, trabajo, monto
+            FROM {TABLA} WHERE fecha BETWEEN ? AND ? ORDER BY fecha ASC, id ASC""",
+        (str(fi_f), str(ff_f)),
+    ).fetchall():
+        lbl = (
+            f"Trabajo ID {r[0]} · {str(r[1])[:10]} · {r[2] or '—'} · "
+            f"{r[5] or '—'} · {demo.f_peso(float(r[6] or 0))}"
+        )
+        opts.append({"id": int(r[0]), "kind": "trabajo", "label": lbl})
+    for r in conn.execute(
+        f"""SELECT id, fecha, documento, detalle, haber
+            FROM {TABLA_MOV}
+            WHERE fecha BETWEEN ? AND ? AND COALESCE(haber, 0) > 0
+            ORDER BY fecha ASC, id ASC""",
+        (str(fi_f), str(ff_f)),
+    ).fetchall():
+        lbl = (
+            f"Abono ID {r[0]} · {str(r[1])[:10]} · {r[2] or '—'} · "
+            f"{r[3] or 'Abono'} · {demo.f_peso(float(r[4] or 0))}"
+        )
+        opts.append({"id": int(r[0]), "kind": "abono", "label": lbl})
+    return opts
+
+
+def _cargar_maq_edit(conn, demo, fi_f, ff_f) -> dict | None:
+    sel_id = (request.args.get("maq_id") or "").strip()
+    sel_kind = (request.args.get("maq_kind") or "").strip()
+    if not sel_id.isdigit() or sel_kind not in ("trabajo", "abono"):
+        return None
+    row_id = int(sel_id)
+    if sel_kind == "trabajo":
+        r = conn.execute(
+            f"""SELECT id, fecha, documento, tractor_codigo, tractor, implemento_codigo,
+                       implemento, trabajo, horas, hectareas, monto_tractor, monto_implemento, monto
+                FROM {TABLA} WHERE id=?""",
+            (row_id,),
+        ).fetchone()
+        if not r:
+            return None
+        fecha = parse_date(str(r[1])[:10], hoy_demo(demo))
+        if not _fecha_en_temporada(fecha, fi_f, ff_f):
+            return None
+        ha_raw = r[9]
+        try:
+            ha_val = float(ha_raw) if ha_raw is not None else 0.0
+        except (TypeError, ValueError):
+            ha_val = 0.0
+        horas_raw = r[8]
+        return {
+            "maq_id": int(r[0]),
+            "maq_kind": "trabajo",
+            "fecha_raw": str(r[1])[:10],
+            "documento": r[2] or "",
+            "sin_doc": bool(str(r[2] or "").startswith("INT-")),
+            "tractor_codigo": (r[3] or "").strip(),
+            "implemento_codigo": (r[5] or "").strip(),
+            "trabajo": r[7] or "",
+            "horas": "" if horas_raw is None else f"{float(horas_raw):g}",
+            "hectareas": ha_val,
+            "monto_tractor": float(r[10] or 0),
+            "monto_implemento": float(r[11] or 0),
+            "monto_raw": float(r[12] or 0),
+            "detalle": "",
+            "haber_raw": 0.0,
+        }
+    r = conn.execute(
+        f"SELECT id, fecha, documento, detalle, haber FROM {TABLA_MOV} WHERE id=?",
+        (row_id,),
+    ).fetchone()
+    if not r:
+        return None
+    fecha = parse_date(str(r[1])[:10], hoy_demo(demo))
+    if not _fecha_en_temporada(fecha, fi_f, ff_f):
+        return None
+    return {
+        "maq_id": int(r[0]),
+        "maq_kind": "abono",
+        "fecha_raw": str(r[1])[:10],
+        "documento": r[2] or "",
+        "sin_doc": bool(str(r[2] or "").startswith("ABO-")),
+        "detalle": r[3] or "",
+        "haber_raw": float(r[4] or 0),
+        "tractor_codigo": "",
+        "implemento_codigo": "",
+        "trabajo": "",
+        "horas": "",
+        "hectareas": 0.0,
+        "monto_tractor": 0.0,
+        "monto_implemento": 0.0,
+        "monto_raw": 0.0,
+    }
+
+
 def _tabla_gastos_unificada(
     demo, conn, nombre: str, fi_f, ff_f
 ) -> tuple[list[dict], float, float, float, int, str | None]:
@@ -117,6 +227,7 @@ def _tabla_gastos_unificada(
         monto = float(r[10] or (tot_tr + tot_imp))
         raw.append(
             {
+                "row_id": int(r[0]),
                 "sort": (str(r[1])[:10], 0, int(r[0])),
                 "kind": "trabajo",
                 "fecha": str(r[1])[:10],
@@ -148,6 +259,7 @@ def _tabla_gastos_unificada(
             continue
         raw.append(
             {
+                "row_id": int(r[0]),
                 "sort": (str(r[1])[:10], 1, int(r[0])),
                 "kind": "abono",
                 "fecha": str(r[1])[:10],
@@ -201,6 +313,8 @@ def _tabla_gastos_unificada(
 
         if es_abono:
             row = {
+                "maq_id": item["row_id"],
+                "maq_kind": "abono",
                 "fecha": fecha_fmt,
                 "documento": item["documento"],
                 "tractor": "—",
@@ -220,6 +334,8 @@ def _tabla_gastos_unificada(
         else:
             ha = item["ha"]
             row = {
+                "maq_id": item["row_id"],
+                "maq_kind": "trabajo",
                 "fecha": fecha_fmt,
                 "documento": item["documento"],
                 "tractor": item["tractor"],
@@ -305,9 +421,17 @@ def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
 
     from erp_maquinaria import TIPOS_MAQUINARIA_TRACTOR, TIPOS_MAQUINARIA_APLICACION
 
+    maq_mov_opts = _maq_mov_opts(demo, conn, fi_f, ff_f) if demo.es_admin() else []
+    maq_edit = None
+    if demo.es_admin() and (request.args.get("maq_id") or "").strip().isdigit():
+        maq_edit = _cargar_maq_edit(conn, demo, fi_f, ff_f)
+
     return {
         "maq_ops": MAQ_OPS,
         "maq_op_activa": op,
+        "es_admin": demo.es_admin(),
+        "maq_mov_opts": maq_mov_opts,
+        "maq_edit": maq_edit,
         "trabajos_rows": gastos_rows,
         "trabajos_n": n_trabajos,
         "trabajos_total": demo.f_peso(tot_debe),
@@ -325,11 +449,8 @@ def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
     }
 
 
-def post_registrar(demo, conn, fi, ff) -> dict:
+def _parse_trabajo_form(demo, conn, fi, ff) -> tuple[dict | None, str]:
     from erp_maquinaria import etiqueta_maquinaria
-
-    if demo.es_solo_lectura():
-        return {"ok": False, "msg": "Modo solo lectura: no puede registrar trabajos."}
 
     fecha = parse_date(request.form.get("fecha"), hoy_demo(demo))
     trabajo = (request.form.get("trabajo") or "").strip()
@@ -344,24 +465,24 @@ def post_registrar(demo, conn, fi, ff) -> dict:
         horas = request.form.get("horas")
         horas_f = float(horas) if horas not in (None, "") else None
     except (TypeError, ValueError):
-        return {"ok": False, "msg": "Datos numéricos inválidos."}
+        return None, "Datos numéricos inválidos."
 
     if not tr_cod:
-        return {"ok": False, "msg": "Seleccione el tractor."}
+        return None, "Seleccione el tractor."
     if not trabajo:
-        return {"ok": False, "msg": "Indique el detalle del trabajo."}
-    if not (fi <= fecha <= ff):
-        return {
-            "ok": False,
-            "msg": f"La fecha debe estar dentro de la temporada ({fi.strftime('%d-%m-%Y')} al {ff.strftime('%d-%m-%Y')}).",
-        }
+        return None, "Indique el detalle del trabajo."
+    if not _fecha_en_temporada(fecha, fi, ff):
+        return None, (
+            f"La fecha debe estar dentro de la temporada "
+            f"({fi.strftime('%d-%m-%Y')} al {ff.strftime('%d-%m-%Y')})."
+        )
 
     tr_row = conn.execute(
         "SELECT nombre FROM maestra_maquinaria WHERE UPPER(TRIM(codigo))=?",
         (tr_cod.upper(),),
     ).fetchone()
     if not tr_row:
-        return {"ok": False, "msg": "Tractor no encontrado en maestra."}
+        return None, "Tractor no encontrado en maestra."
     tr_lbl = etiqueta_maquinaria(tr_cod, tr_row[0])
 
     imp_lbl = ""
@@ -371,22 +492,57 @@ def post_registrar(demo, conn, fi, ff) -> dict:
             (imp_cod.upper(),),
         ).fetchone()
         if not imp_row:
-            return {"ok": False, "msg": "Implemento no encontrado en maestra."}
+            return None, "Implemento no encontrado en maestra."
         imp_lbl = etiqueta_maquinaria(imp_cod, imp_row[0])
 
     ha_eff = _hectareas_efectivas(hectareas)
     monto = (monto_tr + monto_imp) * ha_eff
     if monto <= 0:
-        return {"ok": False, "msg": "Indique valores $/ha de tractor y/o implemento."}
+        return None, "Indique valores $/ha de tractor y/o implemento."
 
+    return {
+        "fecha": fecha,
+        "trabajo": trabajo,
+        "sin_doc": sin_doc,
+        "tr_cod": tr_cod,
+        "imp_cod": imp_cod,
+        "tr_lbl": tr_lbl,
+        "imp_lbl": imp_lbl,
+        "horas_f": horas_f,
+        "monto": monto,
+        "monto_tr": monto_tr,
+        "monto_imp": monto_imp,
+        "hectareas": hectareas,
+        "combo": _combo_maquinaria(tr_lbl, imp_lbl),
+    }, ""
+
+
+def _documento_trabajo(conn, fecha, sin_doc: bool, doc_form: str, doc_actual: str = "") -> tuple[str | None, str]:
     if sin_doc:
-        doc = _folio_trabajo(conn, fecha)
-    else:
-        doc = (request.form.get("documento") or "").strip()
-        if not doc:
-            return {"ok": False, "msg": "Ingrese N° documento o marque folio interno."}
+        doc_ini = str(doc_actual or "").strip()
+        if doc_ini.startswith("INT-"):
+            return doc_ini, ""
+        return _folio_trabajo(conn, fecha), ""
+    doc = (doc_form or "").strip()
+    if not doc:
+        return None, "Ingrese N° documento o marque folio interno."
+    return doc, ""
 
-    combo = _combo_maquinaria(tr_lbl, imp_lbl)
+
+def post_registrar(demo, conn, fi, ff) -> dict:
+    if demo.es_solo_lectura():
+        return {"ok": False, "msg": "Modo solo lectura: no puede registrar trabajos."}
+
+    data, err = _parse_trabajo_form(demo, conn, fi, ff)
+    if err:
+        return {"ok": False, "msg": err}
+
+    doc, err = _documento_trabajo(
+        conn, data["fecha"], data["sin_doc"], request.form.get("documento") or ""
+    )
+    if err:
+        return {"ok": False, "msg": err}
+
     conn.execute(
         f"""INSERT INTO {TABLA}
             (fecha, documento, maquinaria_codigo, maquinaria, trabajo, horas, monto,
@@ -394,25 +550,29 @@ def post_registrar(demo, conn, fi, ff) -> dict:
              monto_tractor, monto_implemento, hectareas)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
-            str(fecha),
+            str(data["fecha"]),
             doc,
-            tr_cod,
-            combo,
-            trabajo,
-            horas_f,
-            monto,
-            tr_cod,
-            tr_lbl,
-            imp_cod,
-            imp_lbl,
-            monto_tr,
-            monto_imp,
-            hectareas if hectareas > 0 else None,
+            data["tr_cod"],
+            data["combo"],
+            data["trabajo"],
+            data["horas_f"],
+            data["monto"],
+            data["tr_cod"],
+            data["tr_lbl"],
+            data["imp_cod"],
+            data["imp_lbl"],
+            data["monto_tr"],
+            data["monto_imp"],
+            data["hectareas"] if data["hectareas"] > 0 else None,
         ),
     )
     conn.commit()
-    demo.registrar_accion(ETIQUETA, f"Trabajo maquinaria {doc} — {trabajo}")
-    return {"ok": True, "msg": f"Trabajo registrado ({demo.f_peso(monto)}). Imputado al Debe.", "extra": {"op": "gastos"}}
+    demo.registrar_accion(ETIQUETA, f"Trabajo maquinaria {doc} — {data['trabajo']}")
+    return {
+        "ok": True,
+        "msg": f"Trabajo registrado ({demo.f_peso(data['monto'])}). Imputado al Debe.",
+        "extra": {"op": "gastos"},
+    }
 
 
 def post_ingreso(demo, conn, fi, ff) -> dict:
@@ -452,3 +612,175 @@ def post_ingreso(demo, conn, fi, ff) -> dict:
     conn.commit()
     demo.registrar_accion(ETIQUETA, f"Abono maquinaria {doc} — {detalle}")
     return {"ok": True, "msg": f"Abono registrado ({demo.f_peso(monto)}).", "extra": {"op": "gastos"}}
+
+
+def _documento_abono(conn, fecha, sin_doc: bool, doc_form: str, doc_actual: str = "") -> tuple[str | None, str]:
+    if sin_doc:
+        doc_ini = str(doc_actual or "").strip()
+        if doc_ini.startswith("ABO-"):
+            return doc_ini, ""
+        return _folio_ingreso(conn, fecha), ""
+    doc = (doc_form or "").strip()
+    if not doc:
+        return None, "Ingrese N° documento o marque folio interno."
+    return doc, ""
+
+
+def _extra_gastos_redirect(row_id: int | None = None, kind: str | None = None) -> dict:
+    extra: dict = {"op": "gastos"}
+    if row_id is not None:
+        extra["maq_id"] = str(row_id)
+    if kind:
+        extra["maq_kind"] = kind
+    return extra
+
+
+def post_modificar(demo, conn, fi, ff) -> dict:
+    ok, msg = _admin_clave_ok(demo)
+    if not ok:
+        return {"ok": False, "msg": msg}
+
+    kind = (request.form.get("maq_kind") or "").strip()
+    try:
+        row_id = int(request.form.get("maq_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Registro inválido."}
+    if not row_id or kind not in ("trabajo", "abono"):
+        return {"ok": False, "msg": "Seleccione un registro válido."}
+
+    if kind == "trabajo":
+        exists = conn.execute(f"SELECT documento FROM {TABLA} WHERE id=?", (row_id,)).fetchone()
+        if not exists:
+            return {"ok": False, "msg": "Trabajo no encontrado."}
+        data, err = _parse_trabajo_form(demo, conn, fi, ff)
+        if err:
+            return {"ok": False, "msg": err}
+        doc, err = _documento_trabajo(
+            conn,
+            data["fecha"],
+            data["sin_doc"],
+            request.form.get("documento") or "",
+            str(exists[0] or ""),
+        )
+        if err:
+            return {"ok": False, "msg": err}
+        conn.execute(
+            f"""UPDATE {TABLA}
+                SET fecha=?, documento=?, maquinaria_codigo=?, maquinaria=?, trabajo=?,
+                    horas=?, monto=?, tractor_codigo=?, tractor=?,
+                    implemento_codigo=?, implemento=?,
+                    monto_tractor=?, monto_implemento=?, hectareas=?
+                WHERE id=?""",
+            (
+                str(data["fecha"]),
+                doc,
+                data["tr_cod"],
+                data["combo"],
+                data["trabajo"],
+                data["horas_f"],
+                data["monto"],
+                data["tr_cod"],
+                data["tr_lbl"],
+                data["imp_cod"],
+                data["imp_lbl"],
+                data["monto_tr"],
+                data["monto_imp"],
+                data["hectareas"] if data["hectareas"] > 0 else None,
+                row_id,
+            ),
+        )
+        conn.commit()
+        demo.registrar_accion(ETIQUETA, f"Corrección trabajo maquinaria ID {row_id} — {doc}")
+        return {
+            "ok": True,
+            "msg": "Trabajo corregido.",
+            "extra": _extra_gastos_redirect(row_id, "trabajo"),
+        }
+
+    exists = conn.execute(
+        f"SELECT documento FROM {TABLA_MOV} WHERE id=? AND COALESCE(haber, 0) > 0",
+        (row_id,),
+    ).fetchone()
+    if not exists:
+        return {"ok": False, "msg": "Abono no encontrado."}
+
+    fecha = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    detalle = (request.form.get("detalle") or "").strip()
+    sin_doc = request.form.get("sin_doc") == "1"
+    try:
+        monto = float(request.form.get("monto") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Monto inválido."}
+    if monto <= 0:
+        return {"ok": False, "msg": "Indique un monto de abono mayor a cero."}
+    if not detalle:
+        return {"ok": False, "msg": "Indique el detalle del abono."}
+    if not _fecha_en_temporada(fecha, fi, ff):
+        return {"ok": False, "msg": "La fecha debe estar dentro de la temporada."}
+
+    doc, err = _documento_abono(
+        conn,
+        fecha,
+        sin_doc,
+        request.form.get("documento") or "",
+        str(exists[0] or ""),
+    )
+    if err:
+        return {"ok": False, "msg": err}
+
+    conn.execute(
+        f"""UPDATE {TABLA_MOV}
+            SET fecha=?, documento=?, detalle=?, haber=?
+            WHERE id=?""",
+        (str(fecha), doc, detalle, monto, row_id),
+    )
+    conn.commit()
+    demo.registrar_accion(ETIQUETA, f"Corrección abono maquinaria ID {row_id} — {doc}")
+    return {
+        "ok": True,
+        "msg": "Abono corregido.",
+        "extra": _extra_gastos_redirect(row_id, "abono"),
+    }
+
+
+def post_eliminar(demo, conn, fi, ff) -> dict:
+    ok, msg = _admin_clave_ok(demo)
+    if not ok:
+        return {"ok": False, "msg": msg}
+
+    kind = (request.form.get("maq_kind") or "").strip()
+    try:
+        row_id = int(request.form.get("maq_id") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Registro inválido."}
+    if not row_id or kind not in ("trabajo", "abono"):
+        return {"ok": False, "msg": "Seleccione un registro a eliminar."}
+
+    if kind == "trabajo":
+        row = conn.execute(
+            f"SELECT fecha, documento, trabajo FROM {TABLA} WHERE id=?",
+            (row_id,),
+        ).fetchone()
+        if not row:
+            return {"ok": False, "msg": "Trabajo no encontrado."}
+        fecha = parse_date(str(row[0])[:10], hoy_demo(demo))
+        if not _fecha_en_temporada(fecha, fi, ff):
+            return {"ok": False, "msg": "El registro no pertenece a la temporada seleccionada."}
+        conn.execute(f"DELETE FROM {TABLA} WHERE id=?", (row_id,))
+        conn.commit()
+        demo.registrar_accion(ETIQUETA, f"Eliminado trabajo maquinaria ID {row_id} — {row[1]}")
+        return {"ok": True, "msg": "Trabajo eliminado.", "extra": {"op": "gastos"}}
+
+    row = conn.execute(
+        f"SELECT fecha, documento, detalle FROM {TABLA_MOV} WHERE id=? AND COALESCE(haber, 0) > 0",
+        (row_id,),
+    ).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Abono no encontrado."}
+    fecha = parse_date(str(row[0])[:10], hoy_demo(demo))
+    if not _fecha_en_temporada(fecha, fi, ff):
+        return {"ok": False, "msg": "El registro no pertenece a la temporada seleccionada."}
+    conn.execute(f"DELETE FROM {TABLA_MOV} WHERE id=?", (row_id,))
+    conn.commit()
+    demo.registrar_accion(ETIQUETA, f"Eliminado abono maquinaria ID {row_id} — {row[1]}")
+    return {"ok": True, "msg": "Abono eliminado.", "extra": {"op": "gastos"}}

@@ -19,6 +19,19 @@ def parse_date(val: str | None, default: date) -> date:
         return default
 
 
+def parse_fecha_aplicacion(val: str | None, default: date) -> date:
+    """Fecha de aplicación LC: ISO (input date) o dd/mm/yyyy y dd-mm-yyyy."""
+    if not val:
+        return default
+    s = str(val).strip()
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return parse_date(s, default)
+
+
 def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | None:
     """Parsea cantidad/monto con decimal chileno: solo coma decimal (1,5).
 
@@ -38,6 +51,20 @@ def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | No
         return float(s)
     except ValueError:
         return default
+
+
+def parse_decimal_input(raw: str | None, default: float | None = 0.0) -> float | None:
+    """Parsea decimal desde formularios: coma chilena o punto (inputs type=number)."""
+    s = (raw or "").strip()
+    if not s:
+        return default
+    val = parse_decimal_cl(s, None)
+    if val is not None:
+        return val
+    try:
+        return float(s.replace(" ", "").replace("$", "").replace(",", "."))
+    except ValueError:
+        return None
 
 
 def temporada_sel(demo, param: str = "temp", temporadas=None) -> tuple[str, date, date]:

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/nav_modulo.html" import nav_modulo, nav_temporada %}
 {% from "partials/pdf_button.html" import pdf_btn %}
 {% block title %}Libro de Campo — {{ erp_title|default('ERP') }}{% endblock %}
 {% block content %}
@@ -12,6 +12,10 @@
     <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
   </div>
 
+  {% if espino_lc %}
+  {{ nav_temporada('modules.libro_campo', temporadas, temp_sel, {'op': lc_op_activa}) }}
+  {% include "partials/espino_libro_campo.html" %}
+  {% else %}
   {{ nav_modulo('modules.libro_campo', secciones, sec_activa) }}
 
   {% if alerta_bodega %}
@@ -22,6 +26,17 @@
     <ul class="mb-0 mt-1">
       {% for p in alerta_bodega.productos %}
       <li><strong>{{ p.producto }}</strong> — {{ p.cantidad }} {{ p.um }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if rebaje_bodega_ok %}
+  <div class="alert alert-success">
+    <strong>Aplicación N° {{ '%05d'|format(rebaje_bodega_ok.n_app) }} guardada.</strong> Bodega rebajada:
+    <ul class="mb-0 mt-1">
+      {% for linea in rebaje_bodega_ok.rebajes %}
+      <li>{{ linea }}</li>
       {% endfor %}
     </ul>
   </div>
@@ -235,7 +250,7 @@
       <input type="hidden" name="action" value="guardar_evento">
       <input type="hidden" name="sec" value="ingreso">
       <div class="row g-2 mb-3" id="lcCabeceraFields">
-        <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" id="lcFechaApp" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
+        <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" id="lcFechaApp" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required><div class="form-text">Día/mes/año — ej. 26/09/2026</div></div>
         <div class="col-md-3"><label class="form-label small">Cuartel</label>
           <select name="cuartel" id="lcCuartel" class="form-select form-select-sm lc-cab">{% for c in cuarteles %}<option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
         </div>
@@ -346,11 +361,47 @@
   <div class="alert alert-danger">Programa no configurado.</div>
   {% endif %}
   {% endif %}
+  {% endif %}
 </div>
 {% endblock %}
 {% block scripts %}
 {{ super() }}
-{% if sec_activa == 'ingreso' %}
+{% if espino_lc and lc_op_activa == 'ingreso' %}
+<script>
+window.lcSyncCabecera = function (targetForm) {
+  if (!targetForm) return true;
+  var root = document.getElementById('lcCabeceraFields');
+  if (!root) return true;
+  root.querySelectorAll('.lc-cab').forEach(function (el) {
+    var name = el.getAttribute('name');
+    if (!name) return;
+    targetForm.querySelectorAll('[data-lc-sync="1"][name="' + name + '"]').forEach(function (n) { n.remove(); });
+    if (el.type === 'checkbox') {
+      if (el.checked) {
+        var h = document.createElement('input');
+        h.type = 'hidden'; h.name = name; h.value = el.value || '1';
+        h.setAttribute('data-lc-sync', '1');
+        targetForm.appendChild(h);
+      }
+      return;
+    }
+    if (el.tagName === 'SELECT' || (el.value || '').trim()) {
+      var hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = name;
+      hidden.value = el.value || '';
+      hidden.setAttribute('data-lc-sync', '1');
+      targetForm.appendChild(hidden);
+    }
+  });
+  return true;
+};
+window.lcCambiarProducto = function (form) {
+  if (window.lcSyncCabecera) window.lcSyncCabecera(form);
+  form.submit();
+};
+</script>
+{% elif sec_activa == 'ingreso' %}
 <script>
 window.lcSyncCabecera = function (targetForm) {
   if (!targetForm) return true;

@@ -9,7 +9,7 @@ from flask import flash, jsonify, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_fecha_aplicacion
 
 SECCIONES_BASE = [
     ("historial", "📜 HISTORIAL AUDITABLE"),
@@ -18,6 +18,75 @@ SECCIONES_BASE = [
     ("prog_cerezos", "🍒 PROGRAMA CEREZAS"),
     ("prog_ciruelos", "🟣 PROGRAMA CIRUELOS"),
 ]
+
+
+def _especies_libro_campo(demo) -> list[str]:
+    """Especies agrícolas LC (Cerezos, Ciruelos, Nogales) — no confundir con GAP_ESPECIES / razón social."""
+    try:
+        from demo_web.services.tenant_scope import libro_campo_especies
+
+        return list(libro_campo_especies(demo))
+    except ImportError:
+        pass
+    especies = getattr(demo, "LIBRO_CAMPO_ESPECIES", None)
+    if especies:
+        return list(especies)
+    return list(getattr(demo, "GAP_ESPECIES", []) or [])
+
+
+def _es_tenant_espino(demo) -> bool:
+    slug = str(getattr(demo, "TENANT_SLUG", "") or "").strip().lower()
+    if slug == "espino":
+        return True
+    try:
+        from demo_web.services.tenant_scope import is_espino_tenant
+
+        return is_espino_tenant()
+    except ImportError:
+        return False
+
+
+def _validar_salida_bodega_espino_car(demo, conn, car: list[dict]) -> tuple[bool, str]:
+    from demo_web.services.native import espino_bodega
+
+    for item in car:
+        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
+            demo,
+            conn,
+            float(item.get("gasto_total") or 0),
+            producto=str(item.get("producto") or ""),
+        )
+        if not ok:
+            return False, msg
+    return True, ""
+
+
+def _rebajar_bodega_espino_desde_car(
+    demo,
+    conn,
+    car: list[dict],
+    fe_app,
+    huerto: str,
+) -> tuple[bool, str, list[str]]:
+    """Salidas kardex bodega El Espino (después de persistir líneas LC)."""
+    from demo_web.services.native import espino_bodega
+
+    rebajes: list[str] = []
+    for item in car:
+        ok, msg = espino_bodega.registrar_salida_bodega(
+            demo,
+            conn,
+            float(item.get("gasto_total") or 0),
+            producto=str(item.get("producto") or ""),
+            fecha=fe_app,
+            centro_costo=huerto,
+        )
+        if not ok:
+            return False, msg, rebajes
+        rebajes.append(
+            f"{item['producto']} −{demo.f_cantidad(item.get('gasto_total', 0))} {item.get('um_gasto', '')}"
+        )
+    return True, "", rebajes
 
 FITOSANITARIO_PROGRAMAS = {
     "cerezos": {
@@ -193,6 +262,8 @@ def _pop_alertas() -> dict:
             "huerto": al.get("huerto", ""),
             "productos": prods,
         }
+    if "espino_lc_rebaje_ok" in session:
+        out["rebaje_bodega_ok"] = session.pop("espino_lc_rebaje_ok")
     return out
 
 
@@ -257,8 +328,9 @@ def _leer_evento_meta(demo) -> dict:
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
     if not out.get("cuartel") and getattr(demo, "CENTROS_COSTO", None):
         out["cuartel"] = demo.CENTROS_COSTO[0]
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    especies = _especies_libro_campo(demo)
+    if not out.get("especie") and especies:
+        out["especie"] = especies[0]
     return out
 
 # Histórico importado (planillas antiguas) vive en n_aplicacion >= 10000
@@ -330,7 +402,7 @@ def _ingreso(demo, conn) -> dict:
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
         "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_libro_campo(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -559,7 +631,7 @@ def _modificar(demo, conn) -> dict:
         "mod_edit": edit_linea,
         "mod_app_sel": edit_app,
         "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_libro_campo(demo),
         "unidades_dosis": UNIDADES_DOSIS,
         "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
@@ -641,15 +713,23 @@ def _post_guardar_evento(demo, conn) -> dict:
     if total_agua <= 0:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
-    fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    meta_pre = _leer_evento_meta(demo)
+    fe_raw = (request.form.get("fecha") or meta_pre.get("fecha") or "").strip()
+    fe_app = parse_fecha_aplicacion(fe_raw, hoy_demo(demo))
     huerto = request.form.get("cuartel") or demo.CENTROS_COSTO[0]
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    especies = _especies_libro_campo(demo)
+    especie = request.form.get("especie") or (especies[0] if especies else "")
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
     n_app = _siguiente_n_aplicacion(conn)
     # n_orden = correlativo de planilla GlobalGAP (por cuartel); independiente del N° APP.
     n_orden = _siguiente_n_orden(conn, huerto)
+
+    if _es_tenant_espino(demo):
+        ok_val, msg_val = _validar_salida_bodega_espino_car(demo, conn, car)
+        if not ok_val:
+            return {"ok": False, "msg": msg_val}
 
     for item in car:
         demo._insertar_linea_libro_campo(
@@ -666,6 +746,15 @@ def _post_guardar_evento(demo, conn) -> dict:
             tractor,
             n_orden=n_orden,
         )
+
+    rebajes_bodega: list[str] = []
+    if _es_tenant_espino(demo):
+        ok_bod, msg_bod, rebajes_bodega = _rebajar_bodega_espino_desde_car(
+            demo, conn, car, fe_app, huerto,
+        )
+        if not ok_bod:
+            return {"ok": False, "msg": msg_bod}
+
     from demo_web.services.libro_campo_gap import enriquecer_aplicacion_globalgap
 
     wx = enriquecer_aplicacion_globalgap(
@@ -679,14 +768,21 @@ def _post_guardar_evento(demo, conn) -> dict:
     )
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
-    demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
-    session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
+    accion = "LIBRO CAMPO ESPINO" if _es_tenant_espino(demo) else "LIBRO CAMPO"
+    demo.registrar_accion(accion, f"App N°{n_app} · {huerto} · {prods_txt}")
+    if _es_tenant_espino(demo) and rebajes_bodega:
+        session["espino_lc_rebaje_ok"] = {"n_app": n_app, "rebajes": rebajes_bodega}
+    else:
+        session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
     msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
     if wx:
         msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
-    msg += " — visible en planilla GlobalGAP."
+    if _es_tenant_espino(demo):
+        msg += ". Bodega rebajada automáticamente."
+    else:
+        msg += " — visible en planilla GlobalGAP."
     return {"ok": True, "msg": msg}
 
 
@@ -797,9 +893,91 @@ def gather_libro_campo(user_email: str, user_rol: str) -> dict:
         conn.close()
 
 
+def _redirect_espino_lc(**extra) -> redirect_module:
+    return redirect_module("libro-campo", **extra)
+
+
+def _view_espino_libro_campo(user_email: str, user_rol: str):
+    """Libro de Campo El Espino en /m/libro-campo (sin redirigir al módulo Espino)."""
+    from demo_web.services.native import espino_libro_campo
+    from demo_web.services.native._helpers import temporada_sel
+
+    demo = get_demo_module()
+    bind_user_session(user_email, user_rol)
+    temporadas = getattr(demo, "TEMPORADAS_ESPINO", None) or getattr(demo, "TEMPORADAS_COSTOS", None) or {}
+    nombre, fi, ff = temporada_sel(demo, temporadas=temporadas)
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        temp = request.form.get("temp") or nombre
+        conn = demo.conectar_db()
+        try:
+            if action == "lc_pop_producto":
+                espino_libro_campo.post_pop_producto(demo)
+                flash("Último producto removido del evento.", "info")
+                return _redirect_espino_lc(op="ingreso", temp=temp)
+            lc_handlers = {
+                "lc_agregar_producto": espino_libro_campo.post_agregar_producto,
+                "lc_guardar_evento": espino_libro_campo.post_guardar_evento,
+            }
+            lc_fn = lc_handlers.get(action)
+            if lc_fn:
+                result = lc_fn(demo, conn)
+                flash(result["msg"], "success" if result["ok"] else "danger")
+                extra = {"temp": temp}
+                extra.update(result.get("extra") or {})
+                if action == "lc_agregar_producto" and request.form.get("producto"):
+                    extra["prod"] = request.form.get("producto")
+                for k in ("cuartel", "fecha", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
+                    if request.form.get(k):
+                        extra[k] = request.form.get(k)
+                if request.form.get("op_cert") == "1":
+                    extra["op_cert"] = "1"
+                if "op" not in extra:
+                    extra["op"] = request.form.get("op") or "ingreso"
+                return _redirect_espino_lc(**extra)
+        finally:
+            conn.close()
+
+    op_map = {"ingreso": "ingreso", "historial": "historial", "desfase": "desfase"}
+    sec_lc = (request.args.get("sec") or request.form.get("sec") or "").strip()
+    lc_op = (request.args.get("op") or request.form.get("op") or op_map.get(sec_lc, "historial")).strip()
+    conn = demo.conectar_db()
+    try:
+        ctx = {
+            "espino_lc": True,
+            "lc_standalone": True,
+            "temporadas": temporadas,
+            "temp_sel": nombre,
+            "fi": fi.strftime("%d-%m-%Y"),
+            "ff": ff.strftime("%d-%m-%Y"),
+            "fi_iso": fi.isoformat(),
+            "ff_iso": ff.isoformat(),
+        }
+        ctx.update(espino_libro_campo.gather_libro_campo(demo, conn, op_override=lc_op))
+    finally:
+        conn.close()
+
+    return render_template(
+        "modules/libro_campo.html",
+        page_title="Libro de Campo",
+        active_key="Libro de Campo",
+        title="📒 Libro de Campo — El Espino",
+        secciones=[],
+        sec_activa="",
+        **ctx,
+    )
+
+
 def view(user_email: str, user_rol: str):
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
+
+    from demo_web.services.erp_loader import current_tenant
+
+    tenant = current_tenant()
+    if tenant and tenant.get("slug") == "espino":
+        return _view_espino_libro_campo(user_email, user_rol)
 
     if request.method == "GET" and request.args.get("clima") == "1":
         from demo_web.services.weather import fetch_daily_weather

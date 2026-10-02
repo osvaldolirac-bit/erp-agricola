@@ -31,6 +31,45 @@ body.demo-body {
   flex-shrink: 0;
 }
 
+.demo-navbar-actions {
+  min-width: 0;
+  max-width: min(100%, 520px);
+}
+
+.demo-user-email {
+  display: none;
+  max-width: 11rem;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+@media (min-width: 576px) {
+  .demo-user-email {
+    display: inline-block;
+  }
+}
+
+@media (min-width: 992px) {
+  .demo-user-email {
+    max-width: 16rem;
+  }
+}
+
+.demo-tenant-switch-btn {
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.demo-tenant-switch-menu {
+  min-width: 14rem;
+}
+
+.demo-tenant-switch-menu .dropdown-item {
+  width: 100%;
+  text-align: left;
+}
+
 .demo-main {
   min-height: calc(100vh - 56px);
 }
