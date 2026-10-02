@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import pandas as pd
-from flask import flash, render_template, request, url_for
+from flask import flash, render_template, request, send_file, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
-from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 
 SECCIONES = [
@@ -17,40 +19,70 @@ SECCIONES = [
 _PDF_HISTORIAL_FILENAME = "HISTORIAL_RIEGO_LA_CONCEPCION.pdf"
 
 
-def _pdf_historial_riego(demo, conn) -> str | None:
+def _filas_pdf_historial(conn, demo) -> list[dict[str, str]]:
     from demo_web.services.registro_riego import listar_historial
 
-    rows = listar_historial(conn, limite=500)
-    if not rows:
-        return None
-    records = []
+    rows = listar_historial(conn, limite=500, demo=demo)
+    out: list[dict[str, str]] = []
     for r in rows:
-        records.append(
+        out.append(
             {
-                "N°": r.get("codigo", ""),
-                "FECHA": r.get("fecha", ""),
-                "HUERTO": r.get("huerto", ""),
-                "ha": r.get("ha_fmt", "—"),
-                "MODO": r.get("modo_txt", ""),
-                "HORAS": r.get("horas", ""),
-                "m³": r.get("m3", ""),
-                "FERTILIZACIÓN": r.get("fert_txt", ""),
-                "N (kg)": r.get("n_kg_fmt", "—"),
-                "N kg/ha": r.get("n_ha_fmt", "—"),
-                "P₂O₅ (kg)": r.get("p_kg_fmt", "—"),
-                "P kg/ha": r.get("p_ha_fmt", "—"),
-                "K₂O (kg)": r.get("k_kg_fmt", "—"),
-                "K kg/ha": r.get("k_ha_fmt", "—"),
-                "REGADOR": r.get("regador", ""),
-                "ORIGEN": r.get("origen", ""),
-                "NOTA": r.get("nota", "") or "—",
+                "N": str(r.get("codigo") or ""),
+                "FECHA": str(r.get("fecha") or ""),
+                "HUERTO": str(r.get("huerto") or ""),
+                "ha": str(r.get("ha_fmt") or "—"),
+                "MODO": str(r.get("modo_txt") or ""),
+                "HORAS": str(r.get("horas") or ""),
+                "m3": str(r.get("m3") or ""),
+                "FERTILIZACION": str(r.get("fert_txt") or "")[:80],
+                "REGADOR": str(r.get("regador") or ""),
+                "ORIGEN": str(r.get("origen") or ""),
+                "NOTA": str(r.get("nota") or "") or "—",
             }
         )
+    return out
+
+
+def generar_pdf_historial_blob(demo, conn) -> bytes | None:
+    records = _filas_pdf_historial(conn, demo)
+    if not records:
+        return None
     df = pd.DataFrame(records)
     blob = demo.generar_pdf_blob(df, "HISTORIAL DE RIEGO", incluir_precios=False)
+    return blob
+
+
+def export_historial_pdf(user_email: str, user_rol: str):
+    """Descarga PDF bajo demanda (evita fallos silenciosos al renderizar la pestaña)."""
+    from werkzeug.utils import secure_filename
+
+    demo = get_demo_module()
+    bind_user_session(user_email, user_rol)
+    conn = demo.conectar_db()
+    try:
+        blob = generar_pdf_historial_blob(demo, conn)
+    finally:
+        conn.close()
+    if not blob:
+        from flask import abort
+
+        abort(404)
+    fname = secure_filename(_PDF_HISTORIAL_FILENAME) or "HISTORIAL_RIEGO.pdf"
+    return send_file(
+        BytesIO(blob),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=fname,
+        max_age=0,
+    )
+
+
+def _pdf_historial_riego(demo, conn) -> str | None:
+    blob = generar_pdf_historial_blob(demo, conn)
     if not blob:
         return None
-    return url_for("modules.pdf_download", token=store_pdf(blob, _PDF_HISTORIAL_FILENAME))
+    token = store_pdf(blob, _PDF_HISTORIAL_FILENAME)
+    return pdf_download_url(token, _PDF_HISTORIAL_FILENAME)
 
 
 def gather_riego(user_email: str, user_rol: str) -> dict:
@@ -93,10 +125,14 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         ctx["riego_desfase"] = n_pend > 0
 
         if sec == "historial":
-            ctx["historial_rows"] = listar_historial(conn)
+            ctx["historial_rows"] = listar_historial(conn, demo=demo)
             ctx["npk_resumen"] = resumen_npk_por_huerto(conn)
-            ctx["pdf_historial_url"] = _pdf_historial_riego(demo, conn)
             ctx["pdf_historial_filename"] = _PDF_HISTORIAL_FILENAME
+            ctx["pdf_historial_url"] = url_for("modules.riego_pdf_historial")
+            try:
+                ctx["pdf_historial_cache_url"] = _pdf_historial_riego(demo, conn)
+            except Exception:
+                ctx["pdf_historial_cache_url"] = None
         elif sec == "bitacora" and habilitado():
             es_demo = get_erp_app() == "demo"
             ctx.update(

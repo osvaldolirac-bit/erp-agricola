@@ -447,7 +447,7 @@
   <div class="panel-card">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
       <h2 class="h6 mb-0">Historial de riego</h2>
-      {% if pdf_historial_url %}
+      {% if historial_rows and pdf_historial_url %}
       {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL', 'btn-outline-success btn-sm', filename=pdf_historial_filename|default('HISTORIAL_RIEGO.pdf')) }}
       {% endif %}
     </div>

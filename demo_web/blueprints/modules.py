@@ -119,6 +119,17 @@ def pdf_download(token: str, download_name: str | None = None):
     return resp
 
 
+@bp.route("/riego/pdf-historial")
+@login_required
+@module_required("Riego")
+def riego_pdf_historial():
+    from flask import g
+
+    from demo_web.services.native.riego import export_historial_pdf
+
+    return export_historial_pdf(g.user["email"], g.user["rol"])
+
+
 @bp.route("/flujo/excel")
 @login_required
 @module_required("Flujo financiero")

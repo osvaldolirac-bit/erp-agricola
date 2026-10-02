@@ -1712,15 +1712,25 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
     return out
 
 
-def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
-    demo = get_demo_module()
+def listar_historial(
+    conn, limite: int = 100, demo: Any | None = None
+) -> list[dict[str, Any]]:
+    if demo is None:
+        demo = get_demo_module()
     migrar_tabla(conn)
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
     rows = conn.execute(
-        """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                  regador, origen, bitacora_codigo, creado_por, creado_en,
-                  COALESCE(modo_riego, 'horas'), surcos, COALESCE(nota, '')
-           FROM riego ORDER BY fecha DESC, id DESC LIMIT ?""",
+        """SELECT r.codigo, r.fecha, r.huerto, r.horas, r.m3, r.fert_dosis_ha, r.fert_total,
+                  r.regador, r.origen, r.bitacora_codigo, r.creado_por, r.creado_en,
+                  COALESCE(r.modo_riego, 'horas'), r.surcos,
+                  TRIM(COALESCE(
+                      NULLIF(TRIM(r.nota), ''),
+                      (SELECT NULLIF(TRIM(b.nota), '') FROM riego_bitacora b
+                       WHERE b.codigo = r.codigo LIMIT 1),
+                      ''
+                  ))
+           FROM riego r
+           ORDER BY r.fecha DESC, r.id DESC LIMIT ?""",
         (limite,),
     ).fetchall()
     codigos = [str(r[0] or "").strip() for r in rows if str(r[0] or "").strip()]
@@ -1765,8 +1775,8 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
                 "bitacora_codigo": bit_cod or "",
                 "creado_por": creado_por or "",
                 "creado_en": creado_en or "",
-                "nota": str(nota or "").strip(),
                 **npk,
+                "nota": str(nota or "").strip(),
             }
         )
     return out
