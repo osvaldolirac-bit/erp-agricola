@@ -12,7 +12,10 @@ PORT = "40484"
 REMOTE = "/root/demo-web"
 FILES = [
     ("demo_web/services/registro_riego.py", "demo_web/services/registro_riego.py"),
+    ("demo_web/services/native/riego.py", "demo_web/services/native/riego.py"),
+    ("demo_web/blueprints/registro_riego.py", "demo_web/blueprints/registro_riego.py"),
     ("demo_web/templates/modules/riego.html", "demo_web/templates/modules/riego.html"),
+    ("demo_web/templates/registro_riego/form.html", "demo_web/templates/registro_riego/form.html"),
 ]
 
 
@@ -37,7 +40,7 @@ def main() -> None:
     if os.environ.get("SSHPASS"):
         ssh_base = ["sshpass", "-e", *ssh_base]
     run([*ssh_base, "systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web"])
-    print("OK — Riego historial NPK desplegado.")
+    print("OK — Riego (incl. nota manual/link) desplegado en LC demo-web.")
 
 
 if __name__ == "__main__":
