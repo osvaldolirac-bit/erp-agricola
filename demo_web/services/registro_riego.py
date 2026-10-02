@@ -1719,7 +1719,7 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
     rows = conn.execute(
         """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
                   regador, origen, bitacora_codigo, creado_por, creado_en,
-                  COALESCE(modo_riego, 'horas'), surcos
+                  COALESCE(modo_riego, 'horas'), surcos, COALESCE(nota, '')
            FROM riego ORDER BY fecha DESC, id DESC LIMIT ?""",
         (limite,),
     ).fetchall()
@@ -1742,6 +1742,7 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
             creado_en,
             modo_riego,
             surcos,
+            nota,
         ) = row
         cod = str(codigo or "").strip()
         npk = (
@@ -1764,6 +1765,7 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
                 "bitacora_codigo": bit_cod or "",
                 "creado_por": creado_por or "",
                 "creado_en": creado_en or "",
+                "nota": str(nota or "").strip(),
                 **npk,
             }
         )
