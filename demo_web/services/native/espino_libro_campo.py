@@ -456,7 +456,9 @@ def post_guardar_evento(demo, conn) -> dict:
     if total_agua <= 0:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
-    fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    meta_pre = _leer_evento_meta(demo)
+    fe_raw = (request.form.get("fecha") or meta_pre.get("fecha") or "").strip()
+    fe_app = parse_fecha_aplicacion(fe_raw, hoy_demo(demo))
     huerto = normalizar_cuartel_espino(request.form.get("cuartel") or "")
     if not huerto:
         huerto = (request.form.get("cuartel") or "").strip()
