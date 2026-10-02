@@ -13,6 +13,7 @@ REMOTE = "/root/demo-web"
 FILES = [
     ("demo_web/services/registro_riego.py", "demo_web/services/registro_riego.py"),
     ("demo_web/services/native/riego.py", "demo_web/services/native/riego.py"),
+    ("demo_web/blueprints/modules.py", "demo_web/blueprints/modules.py"),
     ("demo_web/blueprints/registro_riego.py", "demo_web/blueprints/registro_riego.py"),
     ("demo_web/templates/modules/riego.html", "demo_web/templates/modules/riego.html"),
     ("demo_web/templates/registro_riego/form.html", "demo_web/templates/registro_riego/form.html"),
