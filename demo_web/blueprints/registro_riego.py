@@ -62,6 +62,7 @@ def formulario():
     form_con_fert = False
     form_fert_lineas: list[dict] = []
     form_modo_riego = "horas"
+    form_nota = ""
 
     if request.method == "POST":
         hp = (request.form.get(_HONEYPOT_FIELD) or "").strip()
@@ -72,6 +73,7 @@ def formulario():
         form_con_fert = request.form.get("con_fertilizacion") == "1"
         form_fert_lineas = parse_fertilizantes_request(request.form)
         form_modo_riego = (request.form.get("modo_riego") or "horas").strip().lower()
+        form_nota = request.form.get("nota") or ""
 
         try:
             horas = float((form_horas or "0").replace(",", "."))
@@ -114,6 +116,7 @@ def formulario():
                     (operador or {}).get("nombre", ""),
                     fertilizantes=fert_lineas_post if form_con_fert else None,
                     modo_riego=form_modo_riego,
+                    nota=form_nota,
                 )
             except Exception as exc:
                 error = f"No se pudo guardar: {exc}"
@@ -148,6 +151,7 @@ def formulario():
         form_con_fert=form_con_fert,
         form_fert_lineas=form_fert_lineas,
         form_modo_riego=form_modo_riego,
+        form_nota=form_nota,
         riego_cc_config=config_riego_cc_para_formulario(),
     )
     resp = make_response(html)

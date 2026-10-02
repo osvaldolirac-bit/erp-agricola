@@ -145,6 +145,10 @@
         {% endif %}
       </div>
 
+      <label class="form-label mt-3" for="nota">Nota <span class="text-muted">(opcional)</span></label>
+      <textarea id="nota" name="nota" class="form-control" rows="2" maxlength="500"
+                placeholder="Observaciones del riego">{{ form_nota }}</textarea>
+
       <button type="submit" id="btnRegistrarRiego" class="btn btn-primary btn-lg w-100 mt-4 salida-petroleo-submit">Registrar riego</button>
     </form>
 

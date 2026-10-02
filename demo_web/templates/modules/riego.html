@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/nav_modulo.html" import nav_modulo %}
+{% from "partials/pdf_button.html" import pdf_btn %}
 {% block title %}Riego — {{ erp_title|default('ERP') }}{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
@@ -69,6 +70,10 @@
       <div class="col-md-3">
         <label class="form-label small">Regador / responsable</label>
         <input type="text" name="regador" class="form-control form-control-sm" placeholder="Nombre regador">
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Nota <span class="text-muted">(opcional)</span></label>
+        <textarea name="nota" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="Observaciones del riego"></textarea>
       </div>
       <div class="col-12">
         <div class="form-check">
@@ -440,7 +445,12 @@
   </div>
   {% endif %}
   <div class="panel-card">
-    <h2 class="h6">Historial de riego</h2>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h2 class="h6 mb-0">Historial de riego</h2>
+      {% if historial_rows and pdf_historial_url %}
+      {{ pdf_btn(pdf_historial_url, '📥 PDF HISTORIAL', 'btn-outline-success btn-sm', filename=pdf_historial_filename|default('HISTORIAL_RIEGO.pdf')) }}
+      {% endif %}
+    </div>
     <p class="small text-muted mb-2">
       Columnas N/P/K: kg nutriente del evento (riqueza del producto) y kg/ha según superficie del CC en
       <strong>prorrateo</strong> (Administración o Consola master).
@@ -459,7 +469,7 @@
             <th class="text-end riego-npk-th-p">P kg/ha</th>
             <th class="text-end riego-npk-th-k">K₂O (kg)</th>
             <th class="text-end riego-npk-th-k">K kg/ha</th>
-            <th>Regador</th><th>Origen</th><th>Registrado</th>
+            <th>Regador</th><th>Origen</th><th>Nota</th><th>Registrado</th>
           </tr>
         </thead>
         <tbody>
@@ -482,6 +492,7 @@
             <td class="text-end riego-npk-val-k">{{ r.k_ha_fmt|default('—') }}</td>
             <td>{{ r.regador }}</td>
             <td>{{ r.origen }}</td>
+            <td class="small" style="max-width:12rem;white-space:normal">{% if r.nota %}<span title="{{ r.nota }}">{{ r.nota[:120] }}{% if r.nota|length > 120 %}…{% endif %}</span>{% else %}—{% endif %}</td>
             <td class="small text-muted">{{ r.creado_en[:16] if r.creado_en else '—' }}</td>
           </tr>
           {% endfor %}
