@@ -516,6 +516,9 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
     kind = tenant["kind"]
 
     if action == "crear_usuario":
+        enviar_inv = request.form.get("enviar_invitacion") == "1"
+        if kind != "demo":
+            enviar_inv = False
         return tad.create_user(
             db,
             kind,
@@ -524,9 +527,11 @@ def _handle_admin_action(tenant: dict, action: str, master_email: str) -> tuple[
             request.form.get("rol") or "operador",
             dias_demo=int(request.form.get("dias_demo") or 30),
             invitado_por=master_email,
-            enviar_invitacion=(
-                kind != "demo" or request.form.get("enviar_invitacion") == "1"
-            ),
+            enviar_invitacion=enviar_inv,
+            mail_tesoreria=request.form.get("mail_tesoreria") == "1",
+            mail_petroleo=request.form.get("mail_petroleo") == "1",
+            mail_riego=request.form.get("mail_riego") == "1",
+            solo_lectura=request.form.get("solo_lectura") == "1",
         )
 
     if action == "reseed_demo":
