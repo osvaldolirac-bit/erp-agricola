@@ -184,6 +184,10 @@ def create_user(
     dias_demo: int = 30,
     invitado_por: str = "",
     enviar_invitacion: bool = True,
+    mail_tesoreria: bool = False,
+    mail_petroleo: bool = False,
+    mail_riego: bool = False,
+    solo_lectura: bool = False,
 ) -> tuple[bool, str]:
     email_n = (email or "").strip().lower()
     if not email_n or not _EMAIL_RE.match(email_n):
@@ -194,6 +198,7 @@ def create_user(
         return False, "Rol no válido para este ERP."
     exp = ""
     with tenant_conn(db_path) as conn:
+        _ensure_mail_riego_bitacora(conn)
         exists = conn.execute(
             "SELECT 1 FROM usuarios WHERE lower(email) = ?", (email_n,)
         ).fetchone()
@@ -218,6 +223,26 @@ def create_user(
                 """,
                 (email_n, pwd, rol),
             )
+        user_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        if mail_tesoreria:
+            conn.execute(
+                "UPDATE usuarios SET mail_tesoreria = 1 WHERE id = ?", (user_id,)
+            )
+        if mail_riego:
+            conn.execute(
+                "UPDATE usuarios SET mail_riego_bitacora = 1 WHERE id = ?",
+                (user_id,),
+            )
+        if kind == "lc":
+            if mail_petroleo:
+                conn.execute(
+                    "UPDATE usuarios SET mail_petroleo_bitacora = 1 WHERE id = ?",
+                    (user_id,),
+                )
+            if solo_lectura:
+                conn.execute(
+                    "UPDATE usuarios SET solo_lectura = 1 WHERE id = ?", (user_id,)
+                )
     msg = "Usuario creado."
     if kind == "demo":
         msg = f"Usuario creado. Vigencia hasta {exp}."
