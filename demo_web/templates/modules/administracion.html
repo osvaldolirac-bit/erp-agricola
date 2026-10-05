@@ -367,8 +367,9 @@
   </p>
   {% if flujo_meses_txt %}<div class="alert alert-info small py-2 mb-3">Meses: {{ flujo_meses_txt }}</div>{% endif %}
   {% if flujo_cuarteles %}
-  <form method="post">
+  <form method="post" action="{{ url_for('modules.admin', sec='flujo', temp=temp_sel) }}">
     <input type="hidden" name="action" value="guardar_ingresos_flujo">
+    <input type="hidden" name="sec" value="flujo">
     <input type="hidden" name="temporada" value="{{ temp_sel }}">
     <div class="row g-2 mb-3">
       <div class="col-md-4">

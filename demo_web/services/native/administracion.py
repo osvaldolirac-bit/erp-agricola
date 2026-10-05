@@ -62,22 +62,47 @@ def _ensure_flujo_schema(conn) -> None:
     migrar_flujo_financiero(conn)
 
 
-def _centros_flujo_ingresos(demo, conn) -> list[str]:
-    """CC para ingresos flujo: en Espino usa prorrateo_cc si existe (variedades)."""
+def _centros_flujo_ingresos(demo, conn, temporada: str | None = None) -> list[str]:
+    """CC ingresos flujo. Espino: prorrateo/variedades + filas legacy (ej. Cerezos)."""
     if _tenant_slug() == "espino":
+        ccs: list[str] = []
         try:
             rows = conn.execute(
                 "SELECT centro_costo FROM prorrateo_cc ORDER BY centro_costo"
             ).fetchall()
             ccs = [str(r[0]).strip() for r in rows if str(r[0]).strip()]
-            if ccs:
-                return ccs
         except sqlite3.OperationalError:
-            pass
-        from demo_web.services.espino_scope import cuarteles_espino
+            ccs = []
+        if not ccs:
+            from demo_web.services.espino_scope import cuarteles_espino
 
-        return cuarteles_espino()
+            ccs = cuarteles_espino()
+        if temporada:
+            try:
+                known = {c.upper() for c in ccs}
+                for (cc_db,) in conn.execute(
+                    "SELECT DISTINCT centro_costo FROM flujo_ingresos_cc WHERE temporada=?",
+                    (temporada,),
+                ).fetchall():
+                    cc_s = str(cc_db or "").strip()
+                    if cc_s and cc_s.upper() not in known:
+                        ccs.append(cc_s)
+                        known.add(cc_s.upper())
+            except sqlite3.OperationalError:
+                pass
+        return ccs
     return list(demo.CUARTELES_OFICIALES)
+
+
+def _nota_ingreso_cc(notas: dict, cc: str, anio: int, mes: int) -> str:
+    n = notas.get((cc, anio, mes), "")
+    if n:
+        return n
+    cc_u = (cc or "").upper().strip()
+    for (k, a, m), txt in notas.items():
+        if int(a) == int(anio) and int(m) == int(mes) and str(k or "").upper().strip() == cc_u:
+            return str(txt or "")
+    return ""
 
 
 def _secciones_visibles(demo) -> list[tuple[str, str]]:
@@ -409,6 +434,7 @@ def _gather_ppto(demo, conn) -> dict:
 
 def _gather_flujo(demo, conn) -> dict:
     from erp_flujo_financiero import (
+        _ingresos_cc_agrupados,
         cargar_ingresos_cc,
         cargar_notas_ingresos_cc,
         cargar_saldo_caja_inicial,
@@ -419,8 +445,9 @@ def _gather_flujo(demo, conn) -> dict:
     temp_nombre, fi, ff = temporada_sel(demo, "temp")
     _ensure_flujo_schema(conn)
     meses = list(iter_meses_rango(fi, ff))
-    centros = _centros_flujo_ingresos(demo, conn)
     ing = cargar_ingresos_cc(conn, temp_nombre)
+    centros = _centros_flujo_ingresos(demo, conn, temp_nombre)
+    ing_por_cc = _ingresos_cc_agrupados(ing, centros)
     notas = cargar_notas_ingresos_cc(conn, temp_nombre)
     caja_ini = cargar_saldo_caja_inicial(conn, temp_nombre)
     es_vigente = fi <= demo.hoy <= ff
@@ -432,7 +459,7 @@ def _gather_flujo(demo, conn) -> dict:
         total_cc = 0.0
         meses_edit = []
         for anio, mes in meses:
-            monto = ing.get((cc, anio, mes), 0.0)
+            monto = float(ing_por_cc.get(cc, {}).get((int(anio), int(mes)), 0.0) or 0.0)
             lbl = _mes_label(anio, mes)
             row[lbl] = demo.f_peso(monto)
             total_cc += monto
@@ -441,8 +468,8 @@ def _gather_flujo(demo, conn) -> dict:
                     "anio": anio,
                     "mes": mes,
                     "label": lbl,
-                    "monto": float(monto),
-                    "nota": notas.get((cc, anio, mes), ""),
+                    "monto": monto,
+                    "nota": _nota_ingreso_cc(notas, cc, anio, mes),
                 }
             )
         row["total"] = demo.f_peso(total_cc)
@@ -453,7 +480,10 @@ def _gather_flujo(demo, conn) -> dict:
     for anio, mes in meses:
         lbl = _mes_label(anio, mes)
         totales_mes[lbl] = demo.f_peso(
-            sum(ing.get((cc, anio, mes), 0.0) for cc in centros)
+            sum(
+                float(ing_por_cc.get(cc, {}).get((int(anio), int(mes)), 0.0) or 0.0)
+                for cc in centros
+            )
         )
 
     meses_txt = ", ".join(_mes_label(a, m) for a, m in meses)
@@ -1105,7 +1135,7 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
     except Exception as exc:
         return {"ok": False, "msg": f"No se pudo preparar tablas de flujo: {exc}"}
     meses = list(iter_meses_rango(fi, ff))
-    centros = _centros_flujo_ingresos(demo, conn)
+    centros = _centros_flujo_ingresos(demo, conn, temp)
     caja_raw = request.form.get("caja_inicial")
     caja_ini = parse_decimal_cl(caja_raw, None)
     if caja_ini is None:
@@ -1296,9 +1326,11 @@ def view(user_email: str, user_rol: str):
 
             if result:
                 flash(result["msg"], "success" if result["ok"] else "danger")
-                extra = {"sec": sec}
+                extra = {"sec": request.form.get("sec") or sec}
                 if action in ("guardar_metas", "guardar_ingresos_flujo"):
                     extra["temp"] = request.form.get("temporada", "")
+                if action == "guardar_ingresos_flujo":
+                    extra["sec"] = "flujo"
                 if action == "renombrar_familia":
                     extra["familia"] = request.form.get("nuevo_nombre", "")
                 elif action == "eliminar_familia":
