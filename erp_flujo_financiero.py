@@ -438,6 +438,7 @@ def armar_flujo_financiero(
     hoy,
     cuarteles,
     resumen_costos,
+    imputar_gastado_contable=False,
 ):
     # Toda la temporada: meses pasados = solo real; mes en curso y futuros = real + proyección.
     inicio_temp = date(fi.year, fi.month, 1)
@@ -563,6 +564,9 @@ def armar_flujo_financiero(
     meses_residual = list(meses_lejos)
     saldo_presupuesto_sin_cxp = max(0.0, saldo_por_gastar - teso_cxp_total)
     costos_imputado_total = 0.0
+    gastado_contable_en_flujo = 0.0
+    mes_gastado_contable = ""
+    gastado_contable_aplicado = False
 
     saldo_caja_inicial = cargar_saldo_caja_inicial(conn, temporada)
     # Caja inicial de temporada al primer mes del EERR (mismo criterio que cuando
@@ -590,6 +594,18 @@ def armar_flujo_financiero(
         if mes_caja_aplicada and (anio, mes) == mes_caja_aplicada and saldo_caja_inicial > 0.01:
             ing += saldo_caja_inicial
         eg_real = teso_real + rrhh_real
+        if (
+            imputar_gastado_contable
+            and total_gastado > 0.01
+            and mes_inicio_eerr
+            and (anio, mes) == mes_inicio_eerr
+            and not gastado_contable_aplicado
+        ):
+            eg_real += total_gastado
+            costos_imputado_total = total_gastado
+            gastado_contable_en_flujo = total_gastado
+            mes_gastado_contable = _mes_label(anio, mes)
+            gastado_contable_aplicado = True
         eg_proy = teso_proy + rrhh_proy
         eg_total = eg_real + eg_proy
         rrhh_total = rrhh_real + rrhh_proy
@@ -647,6 +663,8 @@ def armar_flujo_financiero(
         "saldo_a_proyectar_teso_bruto": teso_proy_asignado,
         "saldo_por_gastar_ppto": saldo_por_gastar,
         "costos_imputado_en_flujo": costos_imputado_total,
+        "gastado_contable_en_flujo": gastado_contable_en_flujo,
+        "mes_gastado_contable": mes_gastado_contable,
         "teso_proy_plan_total": teso_proy_plan_total,
         "teso_proy_residual": residual_teso,
         "teso_proy_cuota_lejos": cuota_teso_lejos,
