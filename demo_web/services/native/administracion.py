@@ -49,9 +49,9 @@ MSG_MOVIDO_A_MASTER = (
 
 def _tenant_slug() -> str:
     try:
-        from flask import g
+        from demo_web.services.branding import resolve_tenant_slug
 
-        return str(getattr(g, "tenant_slug", None) or "").strip().lower()
+        return (resolve_tenant_slug() or "").strip().lower()
     except Exception:
         return ""
 

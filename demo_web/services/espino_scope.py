@@ -23,7 +23,24 @@ CC_MOVIMIENTOS_BODEGA_ESPINO = "Cerezos"
 # Sector Libro de Campo antes del desglose por variedad (apps 1–5, etc.).
 LEGADO_SECTOR_LC_ESPINO = "CEREZOS"
 
+# CC histórico en flujo_ingresos_cc (antes del desglose por variedad en Administración).
+LEGADO_CC_FLUJO_INGRESOS = frozenset(
+    {
+        LEGADO_SECTOR_LC_ESPINO.upper(),
+        CC_MOVIMIENTOS_BODEGA_ESPINO.upper(),
+    }
+)
+
 _VARIEDADES_UPPER = {v.upper(): v for v in VARIEDADES_ESPINO}
+
+
+def centros_ingresos_flujo_legacy() -> tuple[str, ...]:
+    """Filas extra en ingresos flujo (nombre canónico en BD Espino)."""
+    return (CC_MOVIMIENTOS_BODEGA_ESPINO,)
+
+
+def es_cc_ingreso_flujo_legacy(centro_costo: str) -> bool:
+    return (centro_costo or "").strip().upper() in LEGADO_CC_FLUJO_INGRESOS
 
 
 def cuarteles_espino() -> list[str]:

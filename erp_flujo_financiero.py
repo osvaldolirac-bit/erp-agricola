@@ -334,13 +334,31 @@ def guardar_saldo_caja_inicial(conn, temporada, monto):
     conn.commit()
 
 
-def ingresos_por_mes_desde_cc_cuarteles(conn, temporada, meses, cuarteles):
+def _centros_para_ingresos_flujo(cuarteles, centros_ingresos_adicionales=()):
+    idx = _cuarteles_index(cuarteles)
+    out = list(cuarteles)
+    for cc in centros_ingresos_adicionales or ():
+        cc_s = str(cc or "").strip()
+        if cc_s and cc_s.upper() not in idx:
+            out.append(cc_s)
+            idx[cc_s.upper()] = cc_s
+    return out
+
+
+def ingresos_por_mes_desde_cc_cuarteles(
+    conn,
+    temporada,
+    meses,
+    cuarteles,
+    centros_ingresos_adicionales=(),
+):
     data = cargar_ingresos_cc(conn, temporada)
-    by_canon = _ingresos_cc_agrupados(data, cuarteles)
+    centros_ing = _centros_para_ingresos_flujo(cuarteles, centros_ingresos_adicionales)
+    by_canon = _ingresos_cc_agrupados(data, centros_ing)
     out = {}
     for anio, mes in meses:
         out[(anio, mes)] = sum(
-            by_canon.get(cc, {}).get((anio, mes), 0.0) for cc in cuarteles
+            by_canon.get(cc, {}).get((anio, mes), 0.0) for cc in centros_ing
         )
     return out
 
@@ -439,7 +457,43 @@ def armar_flujo_financiero(
     cuarteles,
     resumen_costos,
     imputar_gastado_contable=False,
+    centros_ingresos_adicionales=(),
 ):
+    if not centros_ingresos_adicionales:
+        try:
+            from demo_web.services.tenant_scope import is_espino_tenant
+            from demo_web.services.espino_scope import (
+                centros_ingresos_flujo_legacy,
+                es_cc_ingreso_flujo_legacy,
+            )
+
+            if is_espino_tenant():
+                known = {c.upper() for c in cuarteles}
+                extras: list[str] = []
+                for cc in centros_ingresos_flujo_legacy():
+                    if cc.upper() not in known:
+                        extras.append(cc)
+                        known.add(cc.upper())
+                for (cc_db,) in conn.execute(
+                    "SELECT DISTINCT centro_costo FROM flujo_ingresos_cc WHERE temporada=?",
+                    (temporada,),
+                ).fetchall():
+                    cc_s = str(cc_db or "").strip()
+                    if cc_s and es_cc_ingreso_flujo_legacy(cc_s) and cc_s.upper() not in known:
+                        extras.append(cc_s)
+                        known.add(cc_s.upper())
+                centros_ingresos_adicionales = tuple(extras)
+        except ImportError:
+            pass
+
+    if imputar_gastado_contable and float(resumen_costos.get("total_gastado") or 0) > 0.01:
+        costos_imputado_total = float(resumen_costos.get("total_gastado") or 0)
+        gastado_contable_en_flujo = costos_imputado_total
+    else:
+        costos_imputado_total = 0.0
+        gastado_contable_en_flujo = 0.0
+    mes_gastado_contable = ""
+
     # Toda la temporada: meses pasados = solo real; mes en curso y futuros = real + proyección.
     inicio_temp = date(fi.year, fi.month, 1)
     if inicio_temp > ff:
@@ -449,7 +503,13 @@ def armar_flujo_financiero(
     mes_hoy = date(hoy.year, hoy.month, 1)
     meses_futuros = [(a, m) for a, m in meses if date(a, m, 1) >= mes_hoy]
 
-    ingresos = ingresos_por_mes_desde_cc_cuarteles(conn, temporada, meses, cuarteles)
+    ingresos = ingresos_por_mes_desde_cc_cuarteles(
+        conn,
+        temporada,
+        meses,
+        cuarteles,
+        centros_ingresos_adicionales=centros_ingresos_adicionales,
+    )
     rrhh_map = _rrhh_real_por_mes(conn, fi, ff)
     rrhh_base_proy = _ultimo_rrhh_imputado(conn)
 
@@ -563,10 +623,6 @@ def armar_flujo_financiero(
     residual_teso = teso_proy_pool
     meses_residual = list(meses_lejos)
     saldo_presupuesto_sin_cxp = max(0.0, saldo_por_gastar - teso_cxp_total)
-    costos_imputado_total = 0.0
-    gastado_contable_en_flujo = 0.0
-    mes_gastado_contable = ""
-    gastado_contable_aplicado = False
 
     saldo_caja_inicial = cargar_saldo_caja_inicial(conn, temporada)
     # Caja inicial de temporada al primer mes del EERR (mismo criterio que cuando
@@ -594,18 +650,6 @@ def armar_flujo_financiero(
         if mes_caja_aplicada and (anio, mes) == mes_caja_aplicada and saldo_caja_inicial > 0.01:
             ing += saldo_caja_inicial
         eg_real = teso_real + rrhh_real
-        if (
-            imputar_gastado_contable
-            and total_gastado > 0.01
-            and mes_inicio_eerr
-            and (anio, mes) == mes_inicio_eerr
-            and not gastado_contable_aplicado
-        ):
-            eg_real += total_gastado
-            costos_imputado_total = total_gastado
-            gastado_contable_en_flujo = total_gastado
-            mes_gastado_contable = _mes_label(anio, mes)
-            gastado_contable_aplicado = True
         eg_proy = teso_proy + rrhh_proy
         eg_total = eg_real + eg_proy
         rrhh_total = rrhh_real + rrhh_proy
@@ -646,8 +690,14 @@ def armar_flujo_financiero(
             }
         )
 
+    if imputar_gastado_contable and gastado_contable_en_flujo > 0.01 and mes_inicio_eerr:
+        mes_gastado_contable = _mes_label(*mes_inicio_eerr)
+
     df_flujo = pd.DataFrame(filas)
-    df_cc = _armar_ingresos_cc_vista(conn, temporada, meses, cuarteles)
+    centros_ing_vista = _centros_para_ingresos_flujo(
+        cuarteles, centros_ingresos_adicionales
+    )
+    df_cc = _armar_ingresos_cc_vista(conn, temporada, meses, centros_ing_vista)
     df_eg_cc = _armar_resumen_egresos_cc(cuarteles, resumen_costos, teso_por_cc_total)
     meta = {
         "temporada": temporada,
