@@ -15,6 +15,7 @@ FILES = [
     ("demo_web/services/erp_loader.py", "demo_web/services/erp_loader.py"),
     ("demo_web/services/espino_scope.py", "demo_web/services/espino_scope.py"),
     ("demo_web/services/native/administracion.py", "demo_web/services/native/administracion.py"),
+    ("demo_web/templates/modules/administracion.html", "demo_web/templates/modules/administracion.html"),
 ]
 
 
