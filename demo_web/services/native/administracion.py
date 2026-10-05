@@ -10,7 +10,13 @@ from demo_web.auth import user_db
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
+from demo_web.services.native._helpers import (
+    df_to_records,
+    hoy_demo,
+    parse_date,
+    parse_decimal_cl,
+    temporada_sel,
+)
 
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
 SECCION_DEFS = [
@@ -39,6 +45,39 @@ MSG_MOVIDO_A_MASTER = (
     "Esta función se gestiona en la Super Consola de ERP Master "
     "(https://erpmaster.cl/), no en la Administración del ERP."
 )
+
+
+def _tenant_slug() -> str:
+    try:
+        from flask import g
+
+        return str(getattr(g, "tenant_slug", None) or "").strip().lower()
+    except Exception:
+        return ""
+
+
+def _ensure_flujo_schema(conn) -> None:
+    from erp_flujo_financiero import migrar_flujo_financiero
+
+    migrar_flujo_financiero(conn)
+
+
+def _centros_flujo_ingresos(demo, conn) -> list[str]:
+    """CC para ingresos flujo: en Espino usa prorrateo_cc si existe (variedades)."""
+    if _tenant_slug() == "espino":
+        try:
+            rows = conn.execute(
+                "SELECT centro_costo FROM prorrateo_cc ORDER BY centro_costo"
+            ).fetchall()
+            ccs = [str(r[0]).strip() for r in rows if str(r[0]).strip()]
+            if ccs:
+                return ccs
+        except sqlite3.OperationalError:
+            pass
+        from demo_web.services.espino_scope import cuarteles_espino
+
+        return cuarteles_espino()
+    return list(demo.CUARTELES_OFICIALES)
 
 
 def _secciones_visibles(demo) -> list[tuple[str, str]]:
@@ -378,7 +417,9 @@ def _gather_flujo(demo, conn) -> dict:
     )
 
     temp_nombre, fi, ff = temporada_sel(demo, "temp")
+    _ensure_flujo_schema(conn)
     meses = list(iter_meses_rango(fi, ff))
+    centros = _centros_flujo_ingresos(demo, conn)
     ing = cargar_ingresos_cc(conn, temp_nombre)
     notas = cargar_notas_ingresos_cc(conn, temp_nombre)
     caja_ini = cargar_saldo_caja_inicial(conn, temp_nombre)
@@ -386,7 +427,7 @@ def _gather_flujo(demo, conn) -> dict:
 
     filas = []
     flujo_cuarteles = []
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in centros:
         row = {"cuartel": cc.title()}
         total_cc = 0.0
         meses_edit = []
@@ -412,7 +453,7 @@ def _gather_flujo(demo, conn) -> dict:
     for anio, mes in meses:
         lbl = _mes_label(anio, mes)
         totales_mes[lbl] = demo.f_peso(
-            sum(ing.get((cc, anio, mes), 0.0) for cc in demo.CUARTELES_OFICIALES)
+            sum(ing.get((cc, anio, mes), 0.0) for cc in centros)
         )
 
     meses_txt = ", ".join(_mes_label(a, m) for a, m in meses)
@@ -1059,25 +1100,39 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
             break
     if fi is None:
         return {"ok": False, "msg": "Temporada no encontrada."}
-    meses = list(iter_meses_rango(fi, ff))
     try:
-        caja_ini = float(request.form.get("caja_inicial") or 0)
-    except ValueError:
-        return {"ok": False, "msg": "Saldo caja inicial inválido."}
+        _ensure_flujo_schema(conn)
+    except Exception as exc:
+        return {"ok": False, "msg": f"No se pudo preparar tablas de flujo: {exc}"}
+    meses = list(iter_meses_rango(fi, ff))
+    centros = _centros_flujo_ingresos(demo, conn)
+    caja_raw = request.form.get("caja_inicial")
+    caja_ini = parse_decimal_cl(caja_raw, None)
+    if caja_ini is None:
+        try:
+            caja_ini = float(caja_raw or 0)
+        except (TypeError, ValueError):
+            return {"ok": False, "msg": "Saldo caja inicial inválido."}
     ing_cc = {}
     notas_cc = {}
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in centros:
         for anio, mes in meses:
             key = f"ing_{cc}_{anio}_{mes}"
             nota_key = f"nota_{cc}_{anio}_{mes}"
-            try:
-                monto = float(request.form.get(key) or 0)
-            except ValueError:
-                return {"ok": False, "msg": f"Monto inválido en {cc}."}
+            raw_m = request.form.get(key)
+            monto = parse_decimal_cl(raw_m, None)
+            if monto is None:
+                try:
+                    monto = float(raw_m or 0)
+                except (TypeError, ValueError):
+                    return {"ok": False, "msg": f"Monto inválido en {cc}."}
             ing_cc[(cc, anio, mes)] = monto
             notas_cc[(cc, anio, mes)] = (request.form.get(nota_key) or "").strip()
-    guardar_ingresos_cc(conn, temp, ing_cc, notas_cc)
-    guardar_saldo_caja_inicial(conn, temp, caja_ini)
+    try:
+        guardar_ingresos_cc(conn, temp, ing_cc, notas_cc)
+        guardar_saldo_caja_inicial(conn, temp, float(caja_ini or 0))
+    except sqlite3.OperationalError as exc:
+        return {"ok": False, "msg": f"No se pudo guardar en base de datos: {exc}"}
     demo.registrar_accion("FLUJO INGRESOS", temp)
     return {"ok": True, "msg": f"Ingresos guardados para temporada {temp}."}
 
