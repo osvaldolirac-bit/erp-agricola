@@ -47,13 +47,34 @@ MSG_MOVIDO_A_MASTER = (
 )
 
 
-def _tenant_slug() -> str:
+def _tenant_slug(demo=None) -> str:
     try:
-        from demo_web.services.branding import resolve_tenant_slug
+        from flask import g, has_request_context, session
 
-        return (resolve_tenant_slug() or "").strip().lower()
+        if has_request_context():
+            slug = getattr(g, "tenant_slug", None) or session.get("tenant_slug")
+            if slug:
+                return str(slug).strip().lower()
     except Exception:
-        return ""
+        pass
+    mod = demo
+    if mod is None:
+        try:
+            mod = get_demo_module()
+        except Exception:
+            mod = None
+    if mod is not None:
+        slug = (getattr(mod, "TENANT_SLUG", None) or "").strip().lower()
+        if slug:
+            return slug
+        db = (getattr(mod, "NOMBRE_DB", None) or "").lower()
+        if "espino" in db:
+            return "espino"
+    return ""
+
+
+def _is_espino_admin(demo) -> bool:
+    return _tenant_slug(demo) == "espino"
 
 
 def _ensure_flujo_schema(conn) -> None:
@@ -64,7 +85,7 @@ def _ensure_flujo_schema(conn) -> None:
 
 def _centros_flujo_ingresos(demo, conn, temporada: str | None = None) -> list[str]:
     """CC ingresos flujo. Espino: solo las 3 variedades (sin fila legacy Cerezos)."""
-    if _tenant_slug() == "espino":
+    if _is_espino_admin(demo):
         ccs: list[str] = []
         try:
             rows = conn.execute(
@@ -450,7 +471,7 @@ def _gather_flujo(demo, conn) -> dict:
     ing = cargar_ingresos_cc(conn, temp_nombre)
     centros = _centros_flujo_ingresos(demo, conn, temp_nombre)
     ing_por_cc = _ingresos_cc_agrupados(ing, centros)
-    if _tenant_slug() == "espino":
+    if _is_espino_admin(demo):
         from demo_web.services.espino_scope import fold_legacy_ingresos_flujo_en_variedades
 
         ing_por_cc = fold_legacy_ingresos_flujo_en_variedades(ing, ing_por_cc, centros)
@@ -1119,6 +1140,51 @@ def _post_editar_encargado(demo, conn) -> dict:
         return {"ok": False, "msg": "Ya existe otro encargado con ese nombre."}
 
 
+def _parse_ingresos_flujo_post(meses: list[tuple[int, int]], demo) -> tuple[dict, dict, str | None]:
+    """Lee ing_* / nota_* del POST (nombres deben coincidir con el formulario)."""
+    import re
+
+    meses_ok = {(int(a), int(m)) for a, m in meses}
+    pat_ing = re.compile(r"^ing_(.+)_(\d{4})_(\d{1,2})$")
+    pat_nota = re.compile(r"^nota_(.+)_(\d{4})_(\d{1,2})$")
+    allowed: set[str] | None = None
+    if _is_espino_admin(demo):
+        from demo_web.services.espino_scope import VARIEDADES_ESPINO
+
+        allowed = {v.upper() for v in VARIEDADES_ESPINO}
+
+    ing_cc: dict = {}
+    notas_cc: dict = {}
+    for key, raw in request.form.items():
+        m = pat_ing.match(key)
+        if not m:
+            continue
+        cc, anio, mes = m.group(1), int(m.group(2)), int(m.group(3))
+        if (anio, mes) not in meses_ok:
+            continue
+        if allowed is not None and (cc or "").strip().upper() not in allowed:
+            continue
+        monto = parse_decimal_cl(raw, None)
+        if monto is None:
+            try:
+                monto = float(raw or 0)
+            except (TypeError, ValueError):
+                return {}, {}, f"Monto inválido en {cc} ({anio}-{mes})."
+        ing_cc[(cc, anio, mes)] = float(monto or 0)
+    for key, raw in request.form.items():
+        m = pat_nota.match(key)
+        if not m:
+            continue
+        cc, anio, mes = m.group(1), int(m.group(2)), int(m.group(3))
+        if (anio, mes) not in meses_ok:
+            continue
+        if allowed is not None and (cc or "").strip().upper() not in allowed:
+            continue
+        if (cc, anio, mes) in ing_cc or key.startswith("nota_"):
+            notas_cc[(cc, anio, mes)] = (raw or "").strip()
+    return ing_cc, notas_cc, None
+
+
 def _post_guardar_ingresos_flujo(demo, conn) -> dict:
     from erp_flujo_financiero import (
         guardar_ingresos_cc,
@@ -1141,7 +1207,6 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
     except Exception as exc:
         return {"ok": False, "msg": f"No se pudo preparar tablas de flujo: {exc}"}
     meses = list(iter_meses_rango(fi, ff))
-    centros = _centros_flujo_ingresos(demo, conn, temp)
     caja_raw = request.form.get("caja_inicial")
     caja_ini = parse_decimal_cl(caja_raw, None)
     if caja_ini is None:
@@ -1149,24 +1214,17 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
             caja_ini = float(caja_raw or 0)
         except (TypeError, ValueError):
             return {"ok": False, "msg": "Saldo caja inicial inválido."}
-    ing_cc = {}
-    notas_cc = {}
-    for cc in centros:
-        for anio, mes in meses:
-            key = f"ing_{cc}_{anio}_{mes}"
-            nota_key = f"nota_{cc}_{anio}_{mes}"
-            raw_m = request.form.get(key)
-            monto = parse_decimal_cl(raw_m, None)
-            if monto is None:
-                try:
-                    monto = float(raw_m or 0)
-                except (TypeError, ValueError):
-                    return {"ok": False, "msg": f"Monto inválido en {cc}."}
-            ing_cc[(cc, anio, mes)] = monto
-            notas_cc[(cc, anio, mes)] = (request.form.get(nota_key) or "").strip()
+    ing_cc, notas_cc, parse_err = _parse_ingresos_flujo_post(meses, demo)
+    if parse_err:
+        return {"ok": False, "msg": parse_err}
+    if not ing_cc:
+        return {
+            "ok": False,
+            "msg": "No se recibieron montos de ingreso. Revise la planilla e intente de nuevo.",
+        }
     try:
         guardar_ingresos_cc(conn, temp, ing_cc, notas_cc)
-        if _tenant_slug() == "espino":
+        if _is_espino_admin(demo):
             _espino_borrar_ingresos_flujo_legacy(conn, temp)
         guardar_saldo_caja_inicial(conn, temp, float(caja_ini or 0))
         conn.commit()

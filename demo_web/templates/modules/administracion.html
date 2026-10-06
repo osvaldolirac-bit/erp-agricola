@@ -374,7 +374,7 @@
     <div class="row g-2 mb-3">
       <div class="col-md-4">
         <label class="form-label small">Saldo caja inicial ($)</label>
-        <input type="number" name="caja_inicial" class="form-control form-control-sm" value="{{ caja_inicial|int }}" min="0" step="100000">
+        <input type="number" name="caja_inicial" class="form-control form-control-sm" value="{{ caja_inicial|int }}" min="0" step="1">
       </div>
     </div>
     {% for cc in flujo_cuarteles %}
@@ -387,7 +387,7 @@
             {% for m in cc.meses %}
             <tr>
               <td>{{ m.label }}</td>
-              <td><input type="number" name="ing_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.monto|int }}" min="0" step="100000"></td>
+              <td><input type="number" name="ing_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.monto|int }}" min="0" step="1"></td>
               <td><input type="text" name="nota_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.nota }}" placeholder="Nota…"></td>
             </tr>
             {% endfor %}
