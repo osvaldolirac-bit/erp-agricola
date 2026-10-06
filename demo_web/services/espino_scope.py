@@ -43,6 +43,44 @@ def es_cc_ingreso_flujo_legacy(centro_costo: str) -> bool:
     return (centro_costo or "").strip().upper() in LEGADO_CC_FLUJO_INGRESOS
 
 
+def fold_legacy_ingresos_flujo_en_variedades(
+    ing: dict,
+    ing_por_cc: dict,
+    centros: list[str],
+) -> dict:
+    """Incorpora montos bajo CC legacy (Cerezos) prorrateados en las variedades."""
+    centros_set = set(centros)
+    for (cc, anio, mes), monto in (ing or {}).items():
+        if not es_cc_ingreso_flujo_legacy(str(cc or "")):
+            continue
+        total = float(monto or 0)
+        if total <= 0.01:
+            continue
+        key = (int(anio), int(mes))
+        for variedad, part in prorratear_monto_ingreso_flujo_espino(total).items():
+            if variedad not in centros_set:
+                continue
+            bucket = ing_por_cc.setdefault(variedad, {})
+            bucket[key] = float(bucket.get(key, 0.0) or 0.0) + part
+    return ing_por_cc
+
+
+def prorratear_monto_ingreso_flujo_espino(monto: float) -> dict[str, float]:
+    """Reparte un ingreso legacy (ej. Cerezos) en las 3 variedades según ha."""
+    total = float(monto or 0)
+    if total <= 0:
+        return {v: 0.0 for v in VARIEDADES_ESPINO}
+    pcts = prorrateo_pct_espino()
+    out: dict[str, float] = {}
+    acc = 0.0
+    for v in VARIEDADES_ESPINO[:-1]:
+        part = round(total * pcts[v] / 100.0, 2)
+        out[v] = part
+        acc += part
+    out[VARIEDADES_ESPINO[-1]] = round(total - acc, 2)
+    return out
+
+
 def cuarteles_espino() -> list[str]:
     return list(VARIEDADES_ESPINO)
 

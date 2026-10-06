@@ -63,7 +63,7 @@ def _ensure_flujo_schema(conn) -> None:
 
 
 def _centros_flujo_ingresos(demo, conn, temporada: str | None = None) -> list[str]:
-    """CC ingresos flujo. Espino: prorrateo/variedades + filas legacy (ej. Cerezos)."""
+    """CC ingresos flujo. Espino: solo las 3 variedades (sin fila legacy Cerezos)."""
     if _tenant_slug() == "espino":
         ccs: list[str] = []
         try:
@@ -77,21 +77,23 @@ def _centros_flujo_ingresos(demo, conn, temporada: str | None = None) -> list[st
             from demo_web.services.espino_scope import cuarteles_espino
 
             ccs = cuarteles_espino()
-        if temporada:
-            try:
-                known = {c.upper() for c in ccs}
-                for (cc_db,) in conn.execute(
-                    "SELECT DISTINCT centro_costo FROM flujo_ingresos_cc WHERE temporada=?",
-                    (temporada,),
-                ).fetchall():
-                    cc_s = str(cc_db or "").strip()
-                    if cc_s and cc_s.upper() not in known:
-                        ccs.append(cc_s)
-                        known.add(cc_s.upper())
-            except sqlite3.OperationalError:
-                pass
         return ccs
     return list(demo.CUARTELES_OFICIALES)
+
+
+def _espino_borrar_ingresos_flujo_legacy(conn, temporada: str) -> None:
+    from demo_web.services.espino_scope import es_cc_ingreso_flujo_legacy
+
+    rows = conn.execute(
+        "SELECT DISTINCT centro_costo FROM flujo_ingresos_cc WHERE temporada=?",
+        (temporada,),
+    ).fetchall()
+    for (cc_db,) in rows:
+        if es_cc_ingreso_flujo_legacy(str(cc_db or "")):
+            conn.execute(
+                "DELETE FROM flujo_ingresos_cc WHERE temporada=? AND centro_costo=?",
+                (temporada, cc_db),
+            )
 
 
 def _nota_ingreso_cc(notas: dict, cc: str, anio: int, mes: int) -> str:
@@ -448,6 +450,10 @@ def _gather_flujo(demo, conn) -> dict:
     ing = cargar_ingresos_cc(conn, temp_nombre)
     centros = _centros_flujo_ingresos(demo, conn, temp_nombre)
     ing_por_cc = _ingresos_cc_agrupados(ing, centros)
+    if _tenant_slug() == "espino":
+        from demo_web.services.espino_scope import fold_legacy_ingresos_flujo_en_variedades
+
+        ing_por_cc = fold_legacy_ingresos_flujo_en_variedades(ing, ing_por_cc, centros)
     notas = cargar_notas_ingresos_cc(conn, temp_nombre)
     caja_ini = cargar_saldo_caja_inicial(conn, temp_nombre)
     es_vigente = fi <= demo.hoy <= ff
@@ -1160,7 +1166,10 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
             notas_cc[(cc, anio, mes)] = (request.form.get(nota_key) or "").strip()
     try:
         guardar_ingresos_cc(conn, temp, ing_cc, notas_cc)
+        if _tenant_slug() == "espino":
+            _espino_borrar_ingresos_flujo_legacy(conn, temp)
         guardar_saldo_caja_inicial(conn, temp, float(caja_ini or 0))
+        conn.commit()
     except sqlite3.OperationalError as exc:
         return {"ok": False, "msg": f"No se pudo guardar en base de datos: {exc}"}
     demo.registrar_accion("FLUJO INGRESOS", temp)
