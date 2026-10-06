@@ -694,9 +694,19 @@ def armar_flujo_financiero(
         mes_gastado_contable = _mes_label(*mes_inicio_eerr)
 
     df_flujo = pd.DataFrame(filas)
-    centros_ing_vista = _centros_para_ingresos_flujo(
-        cuarteles, centros_ingresos_adicionales
-    )
+    try:
+        from demo_web.services.tenant_scope import is_espino_tenant
+
+        if is_espino_tenant():
+            centros_ing_vista = list(cuarteles)
+        else:
+            centros_ing_vista = _centros_para_ingresos_flujo(
+                cuarteles, centros_ingresos_adicionales
+            )
+    except ImportError:
+        centros_ing_vista = _centros_para_ingresos_flujo(
+            cuarteles, centros_ingresos_adicionales
+        )
     df_cc = _armar_ingresos_cc_vista(conn, temporada, meses, centros_ing_vista)
     df_eg_cc = _armar_resumen_egresos_cc(cuarteles, resumen_costos, teso_por_cc_total)
     meta = {
@@ -749,6 +759,17 @@ def armar_flujo_financiero(
 def _armar_ingresos_cc_vista(conn, temporada, meses, cuarteles):
     data = cargar_ingresos_cc(conn, temporada)
     by_canon = _ingresos_cc_agrupados(data, cuarteles)
+    try:
+        from demo_web.services.tenant_scope import is_espino_tenant
+
+        if is_espino_tenant():
+            from demo_web.services.espino_scope import fold_legacy_ingresos_flujo_en_variedades
+
+            by_canon = fold_legacy_ingresos_flujo_en_variedades(
+                data, by_canon, list(cuarteles)
+            )
+    except ImportError:
+        pass
     filas = []
     for cc in cuarteles:
         row = {"CENTRO_COSTO": cc}
