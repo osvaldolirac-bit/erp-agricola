@@ -21,6 +21,85 @@ elif (_REPO_ROOT / "app_demo.py").exists() or (_REPO_ROOT / "app_concepcion.py")
         sys.path.insert(0, str(_REPO_ROOT))
 
 _erp_modules: dict[str, Any] = {}
+_LC_DEFAULTS: dict[str, Any] | None = None
+
+
+def _capture_lc_defaults(erp: Any) -> None:
+    global _LC_DEFAULTS
+    if _LC_DEFAULTS is not None:
+        return
+    _LC_DEFAULTS = {
+        "CENTROS_COSTO": list(erp.CENTROS_COSTO),
+        "CUARTELES_OFICIALES": list(erp.CUARTELES_OFICIALES),
+        "CUARTELES_PRORRATEO": list(erp.CUARTELES_PRORRATEO),
+        "CUARTELES_IMPUTACION_DIRECTA": list(erp.CUARTELES_IMPUTACION_DIRECTA),
+        "PRORRATEO_CC_DEFAULT": dict(erp.PRORRATEO_CC_DEFAULT),
+        "GAP_ESPECIES": list(erp.GAP_ESPECIES),
+        "GAP_ESPECIE_CUARTELES": dict(erp.GAP_ESPECIE_CUARTELES),
+        "LIBRO_CAMPO_ESPECIES": list(erp.LIBRO_CAMPO_ESPECIES),
+        "RAZONES_SOCIALES_COMPRAS": list(getattr(erp, "RAZONES_SOCIALES_COMPRAS", [])),
+    }
+
+
+def _restore_lc_defaults(erp: Any) -> None:
+    if _LC_DEFAULTS is None:
+        return
+    erp.CENTROS_COSTO = list(_LC_DEFAULTS["CENTROS_COSTO"])
+    erp.CUARTELES_OFICIALES = list(_LC_DEFAULTS["CUARTELES_OFICIALES"])
+    erp.CUARTELES_PRORRATEO = list(_LC_DEFAULTS["CUARTELES_PRORRATEO"])
+    erp.CUARTELES_IMPUTACION_DIRECTA = list(_LC_DEFAULTS["CUARTELES_IMPUTACION_DIRECTA"])
+    erp.PRORRATEO_CC_DEFAULT = dict(_LC_DEFAULTS["PRORRATEO_CC_DEFAULT"])
+    erp.GAP_ESPECIES = list(_LC_DEFAULTS["GAP_ESPECIES"])
+    erp.GAP_ESPECIE_CUARTELES = dict(_LC_DEFAULTS["GAP_ESPECIE_CUARTELES"])
+    erp.LIBRO_CAMPO_ESPECIES = list(_LC_DEFAULTS["LIBRO_CAMPO_ESPECIES"])
+    if _LC_DEFAULTS.get("RAZONES_SOCIALES_COMPRAS"):
+        erp.RAZONES_SOCIALES_COMPRAS = list(_LC_DEFAULTS["RAZONES_SOCIALES_COMPRAS"])
+
+
+def _apply_espino_tenant_overrides(erp: Any) -> None:
+    from demo_web.services.espino_scope import VARIEDADES_ESPINO, cuarteles_espino
+
+    variedades = cuarteles_espino()
+    erp.CENTROS_COSTO = list(variedades)
+    erp.CUARTELES_OFICIALES = list(variedades)
+    erp.CUARTELES_PRORRATEO = list(variedades)
+    erp.CUARTELES_IMPUTACION_DIRECTA = list(variedades)
+    total = len(variedades) or 1
+    base = round(100.0 / total, 2)
+    pcts = {v: base for v in variedades[:-1]}
+    if variedades:
+        pcts[variedades[-1]] = round(100.0 - sum(pcts.values()), 2)
+    erp.PRORRATEO_CC_DEFAULT = pcts
+    erp.GAP_ESPECIES = ["EL ESPINO"]
+    erp.GAP_ESPECIE_CUARTELES = {"EL ESPINO": list(variedades)}
+    erp.LIBRO_CAMPO_ESPECIES = list(variedades)
+    erp.RAZONES_SOCIALES_COMPRAS = ["El Espino"]
+    erp.TENANT_SLUG = "espino"
+
+
+def _apply_tenant_config(erp: Any, t: dict[str, Any]) -> None:
+    erp.NOMBRE_DB = t["db"]
+    erp.SECRETS_PATH = t["secrets"]
+    nombre_erp = (t.get("nombre_erp") or "").strip()
+    if nombre_erp:
+        erp.NOMBRE_ERP = nombre_erp
+    slug = str(t.get("slug") or "").strip().lower()
+    erp.TENANT_SLUG = slug or "concepcion"
+    if slug == "espino":
+        _apply_espino_tenant_overrides(erp)
+    elif str(t.get("erp_app") or "") == "concepcion":
+        _restore_lc_defaults(erp)
+    os.environ["ERP_DB"] = t["db"]
+    os.environ["ERP_DEMO_DB"] = t["db"]
+    os.environ["ERP_SECRETS"] = t["secrets"]
+    os.environ["ERP_DEMO_SECRETS"] = t["secrets"]
+    os.environ["ERP_APP"] = str(t.get("erp_app") or "demo")
+    try:
+        from demo_web.services.streamlit_mock import set_secrets_path
+
+        set_secrets_path(t["secrets"])
+    except Exception:
+        pass
 
 
 def _request_tenant_slug() -> str:
@@ -94,6 +173,8 @@ def _load_module(erp_app: str) -> Any:
         import app_demo as erp  # noqa: WPS433
     patch_erp_module(erp, erp_app)
     _wrap_registrar_accion(erp)
+    if erp_app == "concepcion":
+        _capture_lc_defaults(erp)
     return erp
 
 
@@ -104,19 +185,7 @@ def get_erp_module() -> Any:
         _erp_modules[erp_app] = _load_module(erp_app)
     erp = _erp_modules[erp_app]
     if t:
-        erp.NOMBRE_DB = t["db"]
-        erp.SECRETS_PATH = t["secrets"]
-        os.environ["ERP_DB"] = t["db"]
-        os.environ["ERP_DEMO_DB"] = t["db"]
-        os.environ["ERP_SECRETS"] = t["secrets"]
-        os.environ["ERP_DEMO_SECRETS"] = t["secrets"]
-        os.environ["ERP_APP"] = erp_app
-        try:
-            from demo_web.services.streamlit_mock import set_secrets_path
-
-            set_secrets_path(t["secrets"])
-        except Exception:
-            pass
+        _apply_tenant_config(erp, t)
     return erp
 
 
@@ -129,8 +198,7 @@ def get_erp_module_for(slug: str) -> Any:
     if erp_app not in _erp_modules:
         _erp_modules[erp_app] = _load_module(erp_app)
     erp = _erp_modules[erp_app]
-    erp.NOMBRE_DB = t["db"]
-    erp.SECRETS_PATH = t["secrets"]
+    _apply_tenant_config(erp, t)
     return erp
 
 
