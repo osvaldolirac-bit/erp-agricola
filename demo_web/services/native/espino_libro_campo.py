@@ -6,6 +6,11 @@ from datetime import timedelta
 import pandas as pd
 from flask import request, session, url_for
 
+from demo_web.services.espino_scope import (
+    LEGADO_SECTOR_LC_ESPINO,
+    normalizar_cuartel_espino,
+    sectores_libro_campo_espino,
+)
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
@@ -146,6 +151,37 @@ def _siguiente_n_aplicacion(conn) -> int:
     return int(res) + 1 if res is not None else 1
 
 
+def _cuarteles_lc(demo) -> list[str]:
+    """Variedades El Espino + sector legado CEREZOS si hay historial."""
+    from demo_web.services.espino_scope import cuarteles_espino
+
+    out = list(cuarteles_espino())
+    try:
+        conn = demo.conectar_db()
+        try:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM libro_campo WHERE UPPER(sector)=?",
+                (LEGADO_SECTOR_LC_ESPINO.upper(),),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        if n and LEGADO_SECTOR_LC_ESPINO not in out:
+            out.append(LEGADO_SECTOR_LC_ESPINO)
+    except Exception:
+        if LEGADO_SECTOR_LC_ESPINO not in out:
+            out.append(LEGADO_SECTOR_LC_ESPINO)
+    return out
+
+
+def _sectores_historial_sql(cuartel: str) -> tuple[str, list]:
+    if cuartel and cuartel.upper() != "TODOS":
+        norm = normalizar_cuartel_espino(cuartel) or cuartel.strip().upper()
+        return "UPPER(sector)=?", [norm]
+    sectores = sorted(sectores_libro_campo_espino())
+    placeholders = ",".join("?" * len(sectores))
+    return f"UPPER(sector) IN ({placeholders})", sectores
+
+
 def _siguiente_n_orden(conn) -> str:
     res = conn.execute(
         "SELECT MAX(CAST(n_orden AS INTEGER)) FROM libro_campo "
@@ -214,11 +250,13 @@ def _historial(demo, conn) -> dict:
     hoy = hoy_demo(demo)
     fi = parse_date(request.args.get("desde"), hoy - timedelta(days=180))
     ff = parse_date(request.args.get("hasta"), hoy)
+    cuartel = (request.args.get("cuartel") or "TODOS").strip()
     q_prod = (request.args.get("q") or "").strip()
     q_app = (request.args.get("n_app") or "").strip()
 
-    filtros = ["fecha BETWEEN ? AND ?", "UPPER(sector)=?"]
-    params: list = [str(fi), str(ff), CC_ESPINO.upper()]
+    sector_sql, sector_params = _sectores_historial_sql(cuartel)
+    filtros = ["fecha BETWEEN ? AND ?", sector_sql]
+    params: list = [str(fi), str(ff), *sector_params]
     if q_prod:
         filtros.append(
             "(UPPER(COALESCE(producto,'')) LIKE ? OR UPPER(COALESCE(ingrediente,'')) LIKE ?)"
@@ -247,8 +285,10 @@ def _historial(demo, conn) -> dict:
             "historial_stats": {"eventos": 0, "productos": 0},
             "filtro_desde": fi.isoformat(),
             "filtro_hasta": ff.isoformat(),
+            "filtro_cuartel": cuartel,
             "filtro_q": q_prod,
             "filtro_n_app": q_app,
+            "cuarteles": ["TODOS"] + _cuarteles_lc(demo),
             "pdf_historial_url": pdf_url,
             "pdf_historial_filename": pdf_filename,
         }
@@ -328,8 +368,10 @@ def _historial(demo, conn) -> dict:
         "historial_stats": {"eventos": df[col_app].nunique(), "productos": len(df)},
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
+        "filtro_cuartel": cuartel,
         "filtro_q": q_prod,
         "filtro_n_app": q_app,
+        "cuarteles": ["TODOS"] + _cuarteles_lc(demo),
         "pdf_historial_url": pdf_url,
         "pdf_historial_filename": pdf_filename,
     }
@@ -346,11 +388,12 @@ def _desfase(demo, conn) -> dict:
     dias_v = max(1, min(60, dias_v))
 
     df_lc_sin, df_bod_sin = demo._calcular_desfaces_lc_bodega(conn, fi, ff, dias_v)
-    cc_u = CC_ESPINO.upper()
+    sectores_lc = sectores_libro_campo_espino()
+    cc_bod = CC_ESPINO.upper()
     if not df_lc_sin.empty and "CUARTEL" in df_lc_sin.columns:
-        df_lc_sin = df_lc_sin[df_lc_sin["CUARTEL"].astype(str).str.upper() == cc_u]
+        df_lc_sin = df_lc_sin[df_lc_sin["CUARTEL"].astype(str).str.upper().isin(sectores_lc)]
     if not df_bod_sin.empty and "CUARTEL" in df_bod_sin.columns:
-        df_bod_sin = df_bod_sin[df_bod_sin["CUARTEL"].astype(str).str.upper() == cc_u]
+        df_bod_sin = df_bod_sin[df_bod_sin["CUARTEL"].astype(str).str.upper() == cc_bod]
 
     lc_rows = df_lc_sin.fillna("").to_dict(orient="records") if not df_lc_sin.empty else []
     bod_rows = df_bod_sin.fillna("").to_dict(orient="records") if not df_bod_sin.empty else []
@@ -417,7 +460,9 @@ def post_guardar_evento(demo, conn) -> dict:
     if total_agua <= 0:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
-    fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    meta_pre = _leer_evento_meta(demo)
+    fe_raw = (request.form.get("fecha") or meta_pre.get("fecha") or "").strip()
+    fe_app = parse_date(fe_raw or None, hoy_demo(demo))
     especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
