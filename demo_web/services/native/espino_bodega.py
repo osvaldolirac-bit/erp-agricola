@@ -695,6 +695,12 @@ def post_ingreso_nuevo(demo, conn) -> dict:
         return {"ok": False, "msg": "Stock o PMP inválido."}
     if not np:
         return {"ok": False, "msg": "Ingrese el nombre del producto."}
+    if not _es_producto_bodega_espino(np):
+        return {
+            "ok": False,
+            "msg": "Solo se pueden crear insumos del catálogo bodega El Espino "
+            "(Piriproxifen, Aceite Bioil Spray, Cobre Nordox).",
+        }
     if not nf:
         return {"ok": False, "msg": "Seleccione la familia del producto."}
     if not nia:
