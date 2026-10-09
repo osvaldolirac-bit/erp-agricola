@@ -17,6 +17,13 @@ SUPERFICIE_HA_ESPINO: dict[str, float] = {
 # Etiqueta UI / PDF bodega El Espino.
 BODEGA_CC_ESPINO = "EL ESPINO"
 
+# Catálogo autorizado bodega fitosanitaria El Espino (ingreso manual / compras agro).
+PRODUCTOS_BODEGA_ESPINO = (
+    "PIRIPROXIFEN",
+    "ACEITE BIOIL SPRAY",
+    "COBRE NORDOX",
+)
+
 # CC operativo en movimientos bodega (kardex imputado al huerto).
 CC_MOVIMIENTOS_BODEGA_ESPINO = "Cerezos"
 
@@ -88,6 +95,20 @@ def cuarteles_espino() -> list[str]:
 def cuarteles_ingreso_libro_campo_espino() -> list[str]:
     """Variedades operativas en ingreso LC El Espino (nunca CEREZOS / legado)."""
     return cuarteles_espino()
+
+
+def es_producto_catalogo_bodega_espino(nombre: str) -> bool:
+    """True si el insumo pertenece al catálogo bodega El Espino (no todo inventario LC)."""
+    n = (nombre or "").upper().strip()
+    if n in {p.upper() for p in PRODUCTOS_BODEGA_ESPINO}:
+        return True
+    if "PIRIPROXIFEN" in n:
+        return True
+    if "BIOIL" in n and "SPRAY" in n:
+        return True
+    if n.startswith("COBRE") or " COBRE" in f" {n}":
+        return True
+    return False
 
 
 def prorrateo_pct_espino() -> dict[str, float]:
