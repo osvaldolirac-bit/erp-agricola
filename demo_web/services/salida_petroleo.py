@@ -1028,5 +1028,7 @@ def habilitado() -> bool:
 
 
 def _nombre_erp() -> str:
+    from demo_web.services.tenant_scope import nombre_erp
+
     demo = get_demo_module()
-    return str(getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola")
+    return nombre_erp(demo)
