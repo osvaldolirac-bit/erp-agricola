@@ -254,6 +254,7 @@ def registrar_salida_bodega(
     producto_id: int | None = None,
     producto: str | None = None,
     fecha=None,
+    centro_costo: str | None = None,
 ) -> tuple[bool, str]:
     """Registra salida en bodega El Espino (sin commit). Usado por LC y formulario manual."""
     ok, msg, iid, prod_nombre, _um = validar_salida_bodega(
@@ -264,11 +265,12 @@ def registrar_salida_bodega(
     row = _producto_por_id(conn, demo, iid)
     pmp, um_sel = float(row[2] or 0), row[3]
     fecha_mov = str(fecha or hoy_demo(demo))
+    cc_mov = (centro_costo or CC_ESPINO).strip() or CC_ESPINO
     conn.execute(
         """INSERT INTO movimientos
            (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
            VALUES (?,?,?,?,?,?,?)""",
-        (iid, "Salida", cantidad, fecha_mov, CC_ESPINO, cantidad * pmp, um_sel),
+        (iid, "Salida", cantidad, fecha_mov, cc_mov, cantidad * pmp, um_sel),
     )
     return True, prod_nombre
 
