@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Despliega capa tenant_scope (marca ERP, loader) sin tocar lógica Espino/LC específica."""
+"""Despliega capa tenant_scope + auth multi-tenant (marca ERP, alertas LC/Espino)."""
 from __future__ import annotations
 
 import os
@@ -21,6 +21,20 @@ FILES = [
     ("demo_web/services/native/administracion.py", "demo_web/services/native/administracion.py"),
     ("demo_web/services/registro_riego.py", "demo_web/services/registro_riego.py"),
     ("demo_web/services/salida_petroleo.py", "demo_web/services/salida_petroleo.py"),
+    ("demo_web/auth/tenant_access.py", "demo_web/auth/tenant_access.py"),
+    ("demo_web/auth/routes.py", "demo_web/auth/routes.py"),
+    ("demo_web/app.py", "demo_web/app.py"),
+    ("demo_web/templates/base.html", "demo_web/templates/base.html"),
+    # Espino (BD propia; sin mezclar reglas LC)
+    ("demo_web/services/espino_scope.py", "demo_web/services/espino_scope.py"),
+    ("demo_web/services/espino_compras_kardex.py", "demo_web/services/espino_compras_kardex.py"),
+    ("demo_web/services/espino_compras_guards.py", "demo_web/services/espino_compras_guards.py"),
+    ("demo_web/services/native/espino.py", "demo_web/services/native/espino.py"),
+    ("demo_web/services/native/espino_bodega.py", "demo_web/services/native/espino_bodega.py"),
+    ("demo_web/services/native/espino_maquinaria.py", "demo_web/services/native/espino_maquinaria.py"),
+    ("demo_web/services/native/espino_libro_campo.py", "demo_web/services/native/espino_libro_campo.py"),
+    ("demo_web/templates/modules/espino.html", "demo_web/templates/modules/espino.html"),
+    ("demo_web/templates/partials/espino_libro_campo.html", "demo_web/templates/partials/espino_libro_campo.html"),
 ]
 
 
@@ -55,7 +69,7 @@ def main() -> int:
             "&& systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web",
         ]
     )
-    print("OK — tenant_scope desplegado en VPS.")
+    print("OK — VPS agrícola (tenant_scope + auth + Espino) desplegado.")
     return 0
 
 
