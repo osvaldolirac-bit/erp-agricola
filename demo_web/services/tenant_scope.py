@@ -31,6 +31,25 @@ def _espino_variedades_costo() -> list[str]:
     return list(cuarteles_espino())
 
 
+def nombre_erp(demo: Any = None) -> str:
+    """Marca ERP de la petición actual (correos, WhatsApp). No confiar en demo.NOMBRE_ERP sin sync."""
+    from demo_web.tenants import get_tenant, tenant_nombre_erp
+
+    t = None
+    try:
+        from flask import g, has_request_context, session
+
+        if has_request_context():
+            t = getattr(g, "tenant", None) or get_tenant(
+                getattr(g, "tenant_slug", None) or session.get("tenant_slug")
+            )
+    except Exception:
+        pass
+    if t:
+        return tenant_nombre_erp(t, getattr(demo, "NOMBRE_ERP", None) if demo else None)
+    return tenant_nombre_erp(None, getattr(demo, "NOMBRE_ERP", None) if demo else None)
+
+
 def tenant_slug() -> str:
     try:
         from flask import g, has_request_context, session
