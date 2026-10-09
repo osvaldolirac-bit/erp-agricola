@@ -445,7 +445,9 @@ def _gather_respaldo(demo, conn) -> dict:
 
     migrar_config_respaldo(conn)
     config = obtener_config_respaldo(conn)
-    spec_codigo = spec_respaldo_codigo_por_nombre(demo.NOMBRE_ERP)
+    from demo_web.services.tenant_scope import nombre_erp
+
+    spec_codigo = spec_respaldo_codigo_por_nombre(nombre_erp(demo))
     frecuencias = [
         {"key": f, "label": FRECUENCIAS_ETIQUETA.get(f, f)} for f in FRECUENCIAS_RESPALDO
     ]
@@ -1111,17 +1113,19 @@ def _post_guardar_respaldo_config(demo, conn, user_email: str) -> dict:
 
 
 def _post_enviar_respaldo_datos(demo, conn, user_email: str) -> dict:
+    from demo_web.services.tenant_scope import nombre_erp
     from erp_respaldo import ejecutar_respaldo, normalizar_correos, obtener_config_respaldo
 
+    marca = nombre_erp(demo)
     config = obtener_config_respaldo(conn)
     if not normalizar_correos(config.get("email", "")):
         return {"ok": False, "msg": "Configure un correo destino antes de enviar."}
     res = ejecutar_respaldo(
-        conn, demo.NOMBRE_ERP, demo.NOMBRE_DB, demo.SECRETS_PATH, forzar=True, usuario=user_email,
+        conn, marca, demo.NOMBRE_DB, demo.SECRETS_PATH, forzar=True, usuario=user_email,
     )
     if res.get("ok"):
         dest = ", ".join(res.get("destinatarios", []))
-        return {"ok": True, "msg": f"Datos de {demo.NOMBRE_ERP} enviados a {dest}."}
+        return {"ok": True, "msg": f"Datos de {marca} enviados a {dest}."}
     motivo = res.get("motivo", "")
     if motivo == "smtp":
         return {"ok": False, "msg": f"No hay SMTP configurado: {res.get('error', '')}"}
@@ -1136,7 +1140,10 @@ def _post_enviar_respaldo_codigo(demo, conn, user_email: str) -> dict:
         spec_respaldo_codigo_por_nombre,
     )
 
-    spec = spec_respaldo_codigo_por_nombre(demo.NOMBRE_ERP)
+    from demo_web.services.tenant_scope import nombre_erp
+
+    marca = nombre_erp(demo)
+    spec = spec_respaldo_codigo_por_nombre(marca)
     if not spec:
         return {"ok": False, "msg": "No hay definición de respaldo de código para este ERP."}
     config = obtener_config_respaldo(conn)
