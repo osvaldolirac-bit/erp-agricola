@@ -323,13 +323,9 @@ def _gather_ingreso(demo, conn) -> dict:
         "FROM inventario ORDER BY producto",
         conn,
     )
-    from demo_web.services.espino_scope import es_producto_catalogo_bodega_espino
-
     productos = []
     for _, r in dfi.iterrows():
         prod = str(r["producto"] or "")
-        if is_espino_tenant() and modo == "agro" and not es_producto_catalogo_bodega_espino(prod):
-            continue
         productos.append(
             {
                 "id": int(r["id"]),

@@ -12,7 +12,6 @@ from demo_web.services.espino_scope import (
     CC_MOVIMIENTOS_BODEGA_ESPINO,
     centros_costo_bodega_espino,
     es_cuartel_espino,
-    es_producto_catalogo_bodega_espino,
     normalizar_cuartel_espino,
 )
 from demo_web.services.module_runner import store_pdf
@@ -80,8 +79,8 @@ def bodega_secciones() -> list[tuple[str, str]]:
 
 
 def _es_producto_bodega_espino(nombre: str) -> bool:
-    """Solo catálogo bodega El Espino (Piriproxifen, Bioil, Cobre)."""
-    return es_producto_catalogo_bodega_espino(nombre)
+    """Inventario del tenant Espino (BD dedicada) = catálogo operativo de bodega."""
+    return bool((nombre or "").strip())
 
 
 def _cc_pool_bodega_sql() -> tuple[str, tuple[str, ...]]:
@@ -658,8 +657,6 @@ def post_ingreso_existente(demo, conn) -> dict:
     if not row:
         return {"ok": False, "msg": "Producto no encontrado."}
     prod_nombre, pmp, um_sel = row[0], float(row[1] or 0), row[2]
-    if not _es_producto_bodega_espino(prod_nombre):
-        return {"ok": False, "msg": f"{prod_nombre} no pertenece al catálogo bodega El Espino."}
     fecha = str(hoy_demo(demo))
     conn.execute(
         """INSERT INTO movimientos
@@ -695,12 +692,6 @@ def post_ingreso_nuevo(demo, conn) -> dict:
         return {"ok": False, "msg": "Stock o PMP inválido."}
     if not np:
         return {"ok": False, "msg": "Ingrese el nombre del producto."}
-    if not _es_producto_bodega_espino(np):
-        return {
-            "ok": False,
-            "msg": "Solo se pueden crear insumos del catálogo bodega El Espino "
-            "(Piriproxifen, Aceite Bioil Spray, Cobre Nordox).",
-        }
     if not nf:
         return {"ok": False, "msg": "Seleccione la familia del producto."}
     if not nia:
