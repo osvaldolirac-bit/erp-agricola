@@ -1,4 +1,21 @@
-"""Ámbito operativo por tenant (cuarteles, especies). Fuente única para Flask."""
+"""Ámbito operativo por tenant (cuarteles, especies). Fuente única para Flask.
+
+Por qué existe
+--------------
+Varios tenants comparten el mismo módulo Python ``app_concepcion`` / ``app_demo``
+(una sola copia en memoria por ``erp_app``), pero cada uno tiene su SQLite.
+Leer ``demo.GAP_ESPECIES`` o ``demo.CENTROS_COSTO`` en pantallas de El Espino
+mezcla reglas de La Concepción → “arreglo uno, rompo dos”.
+
+Regla
+-----
+En código Espino (``espino_*``, compras con ``is_espino_tenant()``) usar solo
+funciones de este módulo o ``espino_scope`` — nunca constantes globales del ERP
+sin filtrar por tenant.
+
+Separación futura (opcional): ``erp_app: espino`` con ``app_espino.py``; hoy
+basta capa de política + módulos nativos ``demo_web.services.native.espino*``.
+"""
 from __future__ import annotations
 
 from typing import Any

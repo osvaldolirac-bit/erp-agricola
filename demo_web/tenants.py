@@ -28,6 +28,16 @@ def _build_tenants() -> dict[str, dict[str, Any]]:
             "secrets": _env("ERP_LC_SECRETS", _env("ERP_SECRETS", "/root/.streamlit/secrets.toml")),
             "descripcion": "Soc. Agrícola La Concepción",
         },
+        "espino": {
+            "slug": "espino",
+            "erp_app": "concepcion",
+            "kind": "lc",
+            "nombre": "El Espino",
+            "nombre_erp": "ERP Agrícola El Espino",
+            "db": _env("ERP_ESPINO_DB", "/root/espino/erp_espino.db"),
+            "secrets": _env("ERP_ESPINO_SECRETS", "/root/espino/.streamlit/secrets.toml"),
+            "descripcion": "ERP Agrícola El Espino (BD propia; reglas en espino_scope / tenant_scope)",
+        },
         "demo": {
             "slug": "demo",
             "erp_app": "demo",
@@ -53,7 +63,7 @@ TENANTS: dict[str, dict[str, Any]] = _build_tenants()
 
 
 def list_tenants() -> list[dict[str, Any]]:
-    return [TENANTS[k] for k in ("concepcion", "demo", "globalgap") if k in TENANTS]
+    return [TENANTS[k] for k in ("concepcion", "espino", "demo", "globalgap") if k in TENANTS]
 
 
 def get_tenant(slug: str | None) -> dict[str, Any] | None:
