@@ -16,6 +16,7 @@ from demo_web.services.espino_scope import (
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import libro_campo_especies
 
 CC_ESPINO = espino_bodega.CC_ESPINO
 CAR_KEY = "espino_lc_car"
@@ -99,6 +100,25 @@ def _cuarteles_ingreso() -> list[str]:
     return list(cuarteles_ingreso_libro_campo_espino())
 
 
+def _especies_ingreso(demo) -> list[str]:
+    """Espino no hereda GAP_ESPECIES del ERP Concepción (LA CONCEPCION, CARLOS LIRA, …)."""
+    opts = list(libro_campo_especies(demo) or [])
+    if opts:
+        return opts
+    return ["Cerezos"]
+
+
+def _especie_ingreso_valida(demo, especie: str) -> str:
+    allowed = {e.upper() for e in _especies_ingreso(demo)}
+    raw = (especie or "").strip()
+    if raw.upper() in allowed:
+        for e in _especies_ingreso(demo):
+            if e.upper() == raw.upper():
+                return e
+    specs = _especies_ingreso(demo)
+    return specs[0] if specs else "Cerezos"
+
+
 def _cuarteles_historial_filtro(demo) -> list[str]:
     """Opciones de filtro historial: variedades + legado CEREZOS si existe en BD."""
     out = _cuarteles_ingreso()
@@ -147,6 +167,9 @@ def _guardar_evento_meta(demo, src=None) -> dict:
                 if norm:
                     meta[key] = norm
                 continue
+            if key == "especie":
+                meta[key] = _especie_ingreso_valida(demo, val)
+                continue
             meta[key] = val
     if "op_cert" in src:
         meta["op_cert"] = "1" if src.get("op_cert") in ("1", "on", "true", "True") else ""
@@ -162,8 +185,7 @@ def _leer_evento_meta(demo) -> dict:
         ccs = _cuarteles_ingreso()
         if ccs:
             out["cuartel"] = ccs[0]
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    out["especie"] = _especie_ingreso_valida(demo, out.get("especie") or "")
     return out
 
 
@@ -243,7 +265,7 @@ def _ingreso(demo, conn) -> dict:
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
         "cuarteles": _cuarteles_ingreso(),
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_ingreso(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -484,7 +506,9 @@ def post_guardar_evento(demo, conn) -> dict:
             "ok": False,
             "msg": "Seleccione una variedad válida (ROYAL DOWN, SWEET ARYANA o SANTINA).",
         }
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    especie = _especie_ingreso_valida(
+        demo, (request.form.get("especie") or meta_pre.get("especie") or "").strip()
+    )
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 

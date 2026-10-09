@@ -170,7 +170,12 @@
         </select>
       </div>
       <div class="col-md-3"><label class="form-label small">Especie</label>
+        {% if especies|length <= 1 %}
+        <input type="hidden" name="especie" class="lc-cab" value="{{ especies[0]|default('Cerezos') }}">
+        <input type="text" class="form-control form-control-sm" value="{{ especies[0]|default('Cerezos') }}" readonly tabindex="-1">
+        {% else %}
         <select name="especie" class="form-select form-select-sm lc-cab">{% for e in especies %}<option value="{{ e }}" {% if e == form_especie %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+        {% endif %}
       </div>
       <div class="col-md-3"><label class="form-label small">Total agua (L)</label><input type="number" name="vol_agua" class="form-control form-control-sm lc-cab" min="0.1" step="0.1" value="{{ form_vol_agua }}" required></div>
       <div class="col-md-4"><label class="form-label small">Aplicador(es)</label><input type="text" name="aplicador" class="form-control form-control-sm lc-cab" value="{{ form_aplicador }}" required></div>
