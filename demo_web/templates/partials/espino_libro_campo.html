@@ -1,13 +1,13 @@
 {% from "partials/pdf_button.html" import pdf_btn %}
 <p class="small text-muted mb-2">
-  Aplicaciones fitosanitarias cuartel <strong>{{ cc_espino|default('EL ESPINO') }}</strong> · stock desde bodega El Espino
+  Aplicaciones fitosanitarias huerto El Espino (variedades, legado <strong>CEREZOS</strong> y bodega) · stock desde bodega El Espino
 </p>
 
 <ul class="nav nav-pills mb-3 gap-1 flex-wrap">
   {% for key, label in libro_ops %}
   <li class="nav-item">
     <a class="nav-link {% if key == lc_op_activa %}active{% endif %}"
-       href="{{ url_for('modules.espino', temp=temp_sel, sec='libro_campo', op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}">{{ label }}</a>
+       href="{{ url_for('modules.espino', temp=temp_sel, sec='libro_campo', op=key, desde=filtro_desde|default(''), hasta=filtro_hasta|default(''), cuartel=filtro_cuartel|default(''), q=filtro_q|default(''), n_app=filtro_n_app|default(''), ventana=ventana_dias|default(''), prod=prod_sel|default('')) }}">{{ label }}</a>
   </li>
   {% endfor %}
 </ul>
@@ -38,7 +38,15 @@
       <label class="form-label">Hasta</label>
       <input type="date" name="hasta" class="form-control" value="{{ filtro_hasta }}">
     </div>
-    <div class="col-md-4">
+    <div class="col-md-2">
+      <label class="form-label">Cuartel</label>
+      <select name="cuartel" class="form-select">
+        {% for c in cuarteles|default(['TODOS']) %}
+        <option value="{{ c }}" {% if c == filtro_cuartel|default('TODOS') %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
       <label class="form-label">Producto / ing. activo</label>
       <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="ej. cobre, nordox">
     </div>
@@ -138,11 +146,11 @@
   Use entrada/salida manual en Bodega solo para ajustes.
 </div>
 {% if not productos_stock %}
-<div class="alert alert-warning">No hay productos con stock en bodega El Espino (Piriproxifen, Bioil spray, Cobre).</div>
+<div class="alert alert-warning">No hay productos con stock disponible en bodega El Espino.</div>
 {% else %}
 <div class="panel-card mb-3">
   <h2 class="h6">Nueva orden N° {{ '%05d'|format(siguiente_app) }}</h2>
-  <p class="small text-muted">Cuartel fijo <strong>{{ cc_espino|default('EL ESPINO') }}</strong> · un evento puede incluir varios productos fitosanitarios.</p>
+  <p class="small text-muted">Seleccione la <strong>variedad</strong> · un evento puede incluir varios productos fitosanitarios.</p>
   <form method="post" id="lcEventoForm">
     <input type="hidden" name="action" value="lc_guardar_evento">
     <input type="hidden" name="sec" value="libro_campo">
@@ -150,9 +158,24 @@
     <input type="hidden" name="temp" value="{{ temp_sel }}">
     <div class="row g-2 mb-3" id="lcCabeceraFields">
       <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
-      <div class="col-md-3"><label class="form-label small">Cuartel</label><input type="text" class="form-control form-control-sm" value="{{ cc_espino|default('EL ESPINO') }}" readonly disabled></div>
+      <div class="col-md-3"><label class="form-label small">Variedad</label>
+        <select name="cuartel" class="form-select form-select-sm lc-cab" required>
+          {% for c in cuarteles|default([]) %}
+          <option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>
+          {% else %}
+          <option value="ROYAL DOWN">ROYAL DOWN</option>
+          <option value="SWEET ARYANA">SWEET ARYANA</option>
+          <option value="SANTINA">SANTINA</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="col-md-3"><label class="form-label small">Especie</label>
+        {% if especies|length <= 1 %}
+        <input type="hidden" name="especie" class="lc-cab" value="{{ especies[0]|default('Cerezos') }}">
+        <input type="text" class="form-control form-control-sm" value="{{ especies[0]|default('Cerezos') }}" readonly tabindex="-1">
+        {% else %}
         <select name="especie" class="form-select form-select-sm lc-cab">{% for e in especies %}<option value="{{ e }}" {% if e == form_especie %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+        {% endif %}
       </div>
       <div class="col-md-3"><label class="form-label small">Total agua (L)</label><input type="number" name="vol_agua" class="form-control form-control-sm lc-cab" min="0.1" step="0.1" value="{{ form_vol_agua }}" required></div>
       <div class="col-md-4"><label class="form-label small">Aplicador(es)</label><input type="text" name="aplicador" class="form-control form-control-sm lc-cab" value="{{ form_aplicador }}" required></div>
