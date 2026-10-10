@@ -11,8 +11,49 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
+from demo_web.services.tenant_scope import cuarteles_oficiales, is_espino_tenant
 
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
+
+
+def _cuarteles_metas_flujo(demo) -> list[str]:
+    """Cuarteles/CC en PPTO y flujo ingresos (Espino: variedades; LC: CUARTELES_OFICIALES)."""
+    return list(cuarteles_oficiales(demo) or [])
+
+
+def _ingresos_flujo_map(demo, ing: dict) -> dict[tuple[str, int, int], float]:
+    """Normaliza ingresos por CC; en Espino prorratea filas legacy (Cerezos) a variedades."""
+    centros = _cuarteles_metas_flujo(demo)
+    if is_espino_tenant():
+        ing_por_cc: dict[str, dict[tuple[int, int], float]] = {cc: {} for cc in centros}
+        for (cc, anio, mes), monto in (ing or {}).items():
+            cc_s = str(cc or "")
+            if cc_s in centros:
+                ing_por_cc[cc_s][(int(anio), int(mes))] = float(monto or 0)
+        from demo_web.services.espino_scope import fold_legacy_ingresos_flujo_en_variedades
+
+        fold_legacy_ingresos_flujo_en_variedades(ing, ing_por_cc, centros)
+        out: dict[tuple[str, int, int], float] = {}
+        for cc in centros:
+            for (anio, mes), monto in ing_por_cc.get(cc, {}).items():
+                out[(cc, anio, mes)] = float(monto or 0)
+        return out
+    out = {}
+    centros_set = set(centros)
+    for (cc, anio, mes), monto in (ing or {}).items():
+        if str(cc or "") in centros_set:
+            out[(str(cc), int(anio), int(mes))] = float(monto or 0)
+    return out
+
+
+def _notas_flujo_map(demo, notas: dict) -> dict[tuple[str, int, int], str]:
+    centros = set(_cuarteles_metas_flujo(demo))
+    return {
+        (str(cc), int(anio), int(mes)): str(txt or "")
+        for (cc, anio, mes), txt in (notas or {}).items()
+        if str(cc or "") in centros
+    }
+
 SECCION_DEFS = [
     ("bitacora", "📜 BITÁCORA", "super"),
     ("familias", "🏷️ FAMILIAS PRODUCTO", "all"),
@@ -347,7 +388,7 @@ def _gather_encargados(conn) -> dict:
 def _gather_ppto(demo, conn) -> dict:
     temp_nombre, fi, ff = temporada_sel(demo, "temp")
     cuarteles = []
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in _cuarteles_metas_flujo(demo):
         ppto = demo._obtener_ppto_temporada(conn, temp_nombre, cc)
         kg = demo._obtener_kg_estimado_temporada(conn, temp_nombre, cc)
         cuarteles.append(
@@ -379,14 +420,16 @@ def _gather_flujo(demo, conn) -> dict:
 
     temp_nombre, fi, ff = temporada_sel(demo, "temp")
     meses = list(iter_meses_rango(fi, ff))
-    ing = cargar_ingresos_cc(conn, temp_nombre)
-    notas = cargar_notas_ingresos_cc(conn, temp_nombre)
+    ing_raw = cargar_ingresos_cc(conn, temp_nombre)
+    ing = _ingresos_flujo_map(demo, ing_raw)
+    notas = _notas_flujo_map(demo, cargar_notas_ingresos_cc(conn, temp_nombre))
     caja_ini = cargar_saldo_caja_inicial(conn, temp_nombre)
     es_vigente = fi <= demo.hoy <= ff
 
     filas = []
     flujo_cuarteles = []
-    for cc in demo.CUARTELES_OFICIALES:
+    centros_flujo = _cuarteles_metas_flujo(demo)
+    for cc in centros_flujo:
         row = {"cuartel": cc.title()}
         total_cc = 0.0
         meses_edit = []
@@ -412,7 +455,7 @@ def _gather_flujo(demo, conn) -> dict:
     for anio, mes in meses:
         lbl = _mes_label(anio, mes)
         totales_mes[lbl] = demo.f_peso(
-            sum(ing.get((cc, anio, mes), 0.0) for cc in demo.CUARTELES_OFICIALES)
+            sum(ing.get((cc, anio, mes), 0.0) for cc in centros_flujo)
         )
 
     meses_txt = ", ".join(_mes_label(a, m) for a, m in meses)
@@ -719,7 +762,8 @@ def _post_guardar_metas(demo, conn) -> dict:
     temp = request.form.get("temporada") or ""
     if not temp:
         return {"ok": False, "msg": "Temporada no válida."}
-    for cc in demo.CUARTELES_OFICIALES:
+    centros = _cuarteles_metas_flujo(demo)
+    for cc in centros:
         ppto_raw = request.form.get(f"ppto_{cc}") or "0"
         kg_raw = request.form.get(f"kg_{cc}") or "0"
         try:
@@ -729,7 +773,7 @@ def _post_guardar_metas(demo, conn) -> dict:
             return {"ok": False, "msg": f"Valores inválidos para {cc}."}
         demo._guardar_ppto_temporada(conn, temp, cc, ppto)
         demo._guardar_kg_estimado_temporada(conn, temp, cc, kg)
-    demo.registrar_accion("METAS COSTOS", f"{temp}: {len(demo.CUARTELES_OFICIALES)} cuarteles")
+    demo.registrar_accion("METAS COSTOS", f"{temp}: {len(centros)} cuarteles")
     return {"ok": True, "msg": f"Metas guardadas para temporada {temp}."}
 
 
@@ -1068,7 +1112,7 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
         return {"ok": False, "msg": "Saldo caja inicial inválido."}
     ing_cc = {}
     notas_cc = {}
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in _cuarteles_metas_flujo(demo):
         for anio, mes in meses:
             key = f"ing_{cc}_{anio}_{mes}"
             nota_key = f"nota_{cc}_{anio}_{mes}"

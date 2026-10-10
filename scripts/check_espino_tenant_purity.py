@@ -14,6 +14,9 @@ GLOBS = (
     "demo_web/services/espino_*.py",
 )
 
+# Módulos compartidos: no usar listas LC sin tenant_scope en rutas Espino.
+SHARED_GLOBS = ("demo_web/services/native/administracion.py",)
+
 # Atributos del módulo ERP que no deben usarse en Espino (usar tenant_scope / espino_scope).
 FORBIDDEN = (
     re.compile(r"\bdemo\.GAP_ESPECIES\b"),
@@ -40,6 +43,15 @@ def main() -> int:
                 for rx in FORBIDDEN:
                     if rx.search(line):
                         errors.append(f"{rel}:{i}: {line.strip()}")
+    for rel in SHARED_GLOBS:
+        path = ROOT / rel
+        if not path.is_file():
+            continue
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if "cuarteles_oficiales" in line or "_cuarteles_metas_flujo" in line:
+                continue
+            if re.search(r"\bdemo\.CUARTELES_OFICIALES\b", line):
+                errors.append(f"{rel}:{i}: use _cuarteles_metas_flujo / cuarteles_oficiales — {line.strip()}")
     if errors:
         print("Espino tenant purity check FAILED:", file=sys.stderr)
         for e in errors:
