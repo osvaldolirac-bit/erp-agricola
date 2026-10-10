@@ -1699,8 +1699,9 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
     return out
 
 
-def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
-    demo = get_demo_module()
+def listar_historial(conn, limite: int = 100, demo=None) -> list[dict[str, Any]]:
+    if demo is None:
+        demo = get_demo_module()
     migrar_tabla(conn)
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
     rows = conn.execute(
