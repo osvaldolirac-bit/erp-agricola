@@ -62,16 +62,23 @@
         {{ hydra_api_msg }}
       </div>
       <p class="hydra-link-sync-explain mb-2">
-        <strong>Sincronizar con ERP</strong> consulta Hydrawise, avanza la cola (siguiente sector),
-        detecta riegos terminados y los registra en el ERP (historial, centro de costo y bodega si hay fertirriego).
-        Úselo después de <em>Iniciar riego</em> y cuando un sector debería haber terminado.
+        Al <strong>iniciar</strong> o <strong>programar</strong> riego, el ERP habla con Hydrawise y registra
+        en historial/CC/bodega cuando corresponde. Al abrir Control o Estado también se actualiza solo
+        (como máximo cada ~90&nbsp;s para no saturar el controlador).
       </p>
-      <form method="post" class="hydra-link-sync-form mb-0">
-        <input type="hidden" name="t" value="{{ token }}">
-        <input type="hidden" name="action" value="hydra_sync">
-        <input type="hidden" name="tab" value="{{ tab }}">
-        <button type="submit" class="btn hydra-btn-sync w-100">Sincronizar con ERP</button>
-      </form>
+      {% if hydra_sync_cooldown > 0 %}
+      <p class="hydra-link-hint mb-2">Próxima consulta remota posible en ~{{ hydra_sync_cooldown }} s.</p>
+      {% endif %}
+      <details class="hydra-link-force-sync">
+        <summary class="small">Forzar actualización ahora</summary>
+        <p class="hydra-link-hint mb-2">Solo si algo no cuadra; evite pulsar varias veces seguidas.</p>
+        <form method="post" class="hydra-link-sync-form mb-0">
+          <input type="hidden" name="t" value="{{ token }}">
+          <input type="hidden" name="action" value="hydra_sync">
+          <input type="hidden" name="tab" value="{{ tab }}">
+          <button type="submit" class="btn hydra-btn-ghost w-100">Forzar sincronización</button>
+        </form>
+      </details>
     </section>
     {% endif %}
 

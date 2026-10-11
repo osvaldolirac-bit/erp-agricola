@@ -20,6 +20,8 @@ from demo_web.services.tenant_scope import is_concepcion_tenant
 
 META_KEY_API = "hydrawise_api_key_v1"
 META_KEY_CONTROLLER = "hydrawise_controller_id_v1"
+META_LAST_SYNC = "hydrawise_last_api_sync_v1"
+SYNC_COOLDOWN_SEC = 90
 
 
 def _fmt_api_err(err: str) -> str:
@@ -569,7 +571,56 @@ def _fert_lineas_desde_zona(conn: sqlite3.Connection, relay_id: int) -> list[dic
     ]
 
 
-def sincronizar_hydrawise(conn: sqlite3.Connection, usuario: str) -> dict[str, Any]:
+def _last_api_sync_ts(conn: sqlite3.Connection) -> float:
+    migrar_hydrawise(conn)
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"""
+    )
+    row = conn.execute(
+        "SELECT valor FROM schema_meta WHERE clave=?", (META_LAST_SYNC,)
+    ).fetchone()
+    if not row:
+        return 0.0
+    try:
+        return float(row[0])
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _mark_api_sync(conn: sqlite3.Connection, ahora: datetime) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, ?)",
+        (META_LAST_SYNC, str(ahora.timestamp())),
+    )
+    conn.commit()
+
+
+def cooldown_restante_segundos(conn: sqlite3.Connection, ahora: datetime | None = None) -> int:
+    demo = get_demo_module()
+    t = ahora or demo.hora_chile()
+    rem = SYNC_COOLDOWN_SEC - (t.timestamp() - _last_api_sync_ts(conn))
+    return max(0, int(rem + 0.999))
+
+
+def _msg_riego_en_curso(minutos: float, run_inicio: str, ahora: datetime) -> str:
+    t0 = _parse_dt_chile(run_inicio) or ahora
+    elapsed = max(0.0, (ahora - t0).total_seconds())
+    total = float(minutos) * 60.0
+    rest = max(0.0, total - elapsed)
+    rest_min = int(rest // 60) + (1 if rest % 60 else 0)
+    return f"Riego en curso (~{rest_min} min restantes). Se actualiza solo al volver a esta pantalla."
+
+
+def sincronizar_hydrawise(
+    conn: sqlite3.Connection,
+    usuario: str,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
     from erp_solo_lectura import conn_en_solo_lectura
 
     if conn_en_solo_lectura(conn):
@@ -583,39 +634,86 @@ def sincronizar_hydrawise(conn: sqlite3.Connection, usuario: str) -> dict[str, A
     ahora = demo.hora_chile()
     msgs: list[str] = []
     importados = 0
-
-    cid, cid_err = _resolver_controller_id(conn, key)
-    if cid_err:
-        return {"ok": False, "msg": cid_err}
-    st_resp = status_schedule(key, cid)
-    status_data = st_resp.get("data") if st_resp.get("ok") else {}
-    if not st_resp.get("ok") and st_resp.get("error"):
-        return {"ok": False, "msg": _fmt_api_err(st_resp.get("error"))}
+    cooldown = cooldown_restante_segundos(conn, ahora)
+    running_item = None
 
     cola = _cola_activa(conn)
+    if not cola:
+        return {"ok": True, "msg": ""}
+
     if cola:
         cola_id = int(cola[0])
         inicio_prog = str(cola[2] or "")
-        try:
-            inicio_dt = datetime.fromisoformat(inicio_prog.replace(" ", "T")[:19])
-        except ValueError:
-            inicio_dt = ahora
+        inicio_dt = _parse_dt_chile(inicio_prog) or ahora
         if cola[3] == "programado" and ahora < inicio_dt:
             return {
                 "ok": True,
-                "msg": f"Programa #{cola_id} arranca a las {inicio_prog[:16]}.",
+                "msg": f"Cola #{cola_id} programada — arranca {inicio_prog[:16]}.",
             }
 
         items = _items_cola(conn, cola_id)
         running_item = next((it for it in items if it[4] == "corriendo"), None)
         if running_item:
             item_id, _, relay_id, minutos, _, run_inicio, _, _, _ = running_item
-            if st_resp.get("ok") and not _zona_corriendo(status_data, int(relay_id)):
-                try:
-                    t0 = datetime.fromisoformat(str(run_inicio).replace(" ", "T")[:19])
-                    elapsed = (ahora - t0).total_seconds()
-                except ValueError:
-                    elapsed = float(minutos) * 60
+            t0 = _parse_dt_chile(str(run_inicio)) or ahora
+            elapsed = (ahora - t0).total_seconds()
+            dur = float(minutos) * 60.0
+            if elapsed >= dur - 15:
+                fh = ahora.strftime("%Y-%m-%d %H:%M:%S")
+                conn.execute(
+                    """UPDATE hydrawise_cola_item
+                       SET estado='terminado', run_fin=?
+                       WHERE id=?""",
+                    (fh, item_id),
+                )
+                conn.commit()
+                msgs.append(f"Zona {relay_id} terminó.")
+            elif not force and cooldown > 0:
+                return {
+                    "ok": True,
+                    "msg": _msg_riego_en_curso(float(minutos), str(run_inicio), ahora),
+                }
+
+    items_precheck = _items_cola(conn, int(cola[0])) if cola else []
+    hay_terminados = any(it[4] == "terminado" and not it[7] for it in items_precheck)
+    hay_pendiente_sin_correr = any(it[4] == "pendiente" for it in items_precheck) and not any(
+        it[4] == "corriendo" for it in items_precheck
+    )
+    need_status_api = force or cooldown <= 0 or bool(msgs) or hay_pendiente_sin_correr
+
+    status_data: dict[str, Any] = {}
+    cid: int | None = None
+    if need_status_api and (cola or force):
+        cid, cid_err = _resolver_controller_id(conn, key)
+        if cid_err:
+            return {"ok": False, "msg": cid_err}
+        st_resp = status_schedule(key, cid)
+        status_data = st_resp.get("data") if st_resp.get("ok") else {}
+        if not st_resp.get("ok") and st_resp.get("error"):
+            return {"ok": False, "msg": _fmt_api_err(st_resp.get("error"))}
+        _mark_api_sync(conn, ahora)
+    elif cola and running_item and cooldown > 0 and not force:
+        return {
+            "ok": True,
+            "msg": _msg_riego_en_curso(
+                float(running_item[3]), str(running_item[5]), ahora
+            ),
+        }
+    elif cola and cooldown > 0 and not force and not hay_terminados:
+        return {
+            "ok": True,
+            "msg": f"Cola activa — próxima consulta a Hydrawise en ~{cooldown} s.",
+        }
+
+    if cola and running_item and status_data:
+        item_id, _, relay_id, minutos, _, run_inicio, _, _, _ = running_item
+        items = _items_cola(conn, int(cola[0]))
+        running_item = next((it for it in items if it[4] == "corriendo"), None)
+        if running_item:
+            item_id, _, relay_id, minutos, _, run_inicio, _, _, _ = running_item
+            if status_data and not _zona_corriendo(status_data, int(relay_id)):
+                t0 = _parse_dt_chile(str(run_inicio)) or ahora
+                elapsed = (ahora - t0).total_seconds()
                 if elapsed >= float(minutos) * 60 - 15:
                     fh = ahora.strftime("%Y-%m-%d %H:%M:%S")
                     conn.execute(
@@ -625,12 +723,21 @@ def sincronizar_hydrawise(conn: sqlite3.Connection, usuario: str) -> dict[str, A
                         (fh, item_id),
                     )
                     conn.commit()
-                    msgs.append(f"Zona {relay_id} terminó.")
+                    if f"Zona {relay_id} terminó." not in msgs:
+                        msgs.append(f"Zona {relay_id} terminó.")
                 else:
-                    return {"ok": True, "msg": "Riego en curso… espere y sincronice de nuevo."}
-            else:
-                return {"ok": True, "msg": "Riego en curso en Hydrawise…"}
+                    return {
+                        "ok": True,
+                        "msg": _msg_riego_en_curso(float(minutos), str(run_inicio), ahora),
+                    }
+            elif status_data:
+                return {
+                    "ok": True,
+                    "msg": _msg_riego_en_curso(float(minutos), str(run_inicio), ahora),
+                }
 
+    if cola:
+        cola_id = int(cola[0])
         items = _items_cola(conn, cola_id)
         for it in items:
             if it[4] != "terminado" or it[7]:
@@ -697,14 +804,19 @@ def sincronizar_hydrawise(conn: sqlite3.Connection, usuario: str) -> dict[str, A
         hay_corriendo = any(it[4] == "corriendo" for it in items)
         pending = next((it for it in items if it[4] == "pendiente"), None)
         if pending and not hay_corriendo:
-            if st_resp.get("ok") and _alguna_zona_corriendo(status_data):
+            if status_data and _alguna_zona_corriendo(status_data):
                 return {
                     "ok": True,
                     "msg": "Hay otra zona corriendo en Hydrawise; espere a que termine.",
                 }
+            if cid is None:
+                cid, cid_err = _resolver_controller_id(conn, key)
+                if cid_err:
+                    return {"ok": False, "msg": cid_err}
             item_id, _, relay_id, minutos, _, _, _, _, _ = pending
             sec = int(float(minutos) * 60)
             run = set_zone_run(key, int(relay_id), sec, controller_id=cid)
+            _mark_api_sync(conn, ahora)
             if not run.get("ok"):
                 conn.execute(
                     "UPDATE hydrawise_cola_item SET estado='error', error_msg=? WHERE id=?",
@@ -724,7 +836,7 @@ def sincronizar_hydrawise(conn: sqlite3.Connection, usuario: str) -> dict[str, A
             conn.commit()
             return {
                 "ok": True,
-                "msg": f"Zona {relay_id} en riego ({minutos} min). Al terminar, sincronice de nuevo."
+                "msg": f"Zona {relay_id} en riego ({minutos} min)."
                 + (" " + " ".join(msgs) if msgs else ""),
             }
 

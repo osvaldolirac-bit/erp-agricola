@@ -223,7 +223,7 @@ def view(user_email: str, user_rol: str):
 
                 result = {"ok": False, "msg": "Acción no reconocida."}
                 if action == "hydra_sync":
-                    result = hw.sincronizar_hydrawise(conn, user_email)
+                    result = hw.sincronizar_hydrawise(conn, user_email, force=True)
                 elif action == "hydra_import_zonas":
                     result = hw.importar_zonas_desde_api(conn)
                 elif action == "hydra_guardar_zona":
@@ -247,7 +247,7 @@ def view(user_email: str, user_rol: str):
                         inicio_programa=inicio,
                     )
                     if result.get("ok"):
-                        sync = hw.sincronizar_hydrawise(conn, user_email)
+                        sync = hw.sincronizar_hydrawise(conn, user_email, force=True)
                         result = {
                             "ok": sync.get("ok", True),
                             "msg": result.get("msg", "") + " " + sync.get("msg", ""),

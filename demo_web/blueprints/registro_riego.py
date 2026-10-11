@@ -75,7 +75,7 @@ def _handle_hydra_action(
 
     usuario = _usuario_operador(operador)
     if action == "hydra_sync":
-        return hw.sincronizar_hydrawise(conn, usuario)
+        return hw.sincronizar_hydrawise(conn, usuario, force=True)
     if action == "hydra_refresh_estado":
         return hw.snapshot_live_zonas(conn)
     if action == "hydra_regar_ahora":
@@ -89,7 +89,7 @@ def _handle_hydra_action(
             usuario=usuario,
         )
         if result.get("ok"):
-            sync = hw.sincronizar_hydrawise(conn, usuario)
+            sync = hw.sincronizar_hydrawise(conn, usuario, force=True)
             result = {
                 "ok": sync.get("ok", True),
                 "msg": (result.get("msg") or "") + " " + (sync.get("msg") or ""),
@@ -100,13 +100,20 @@ def _handle_hydra_action(
         if len(inicio) == 16:
             inicio += ":00"
         lineas = hw.parse_cola_lineas(request.form)
-        return hw.crear_cola(
+        result = hw.crear_cola(
             conn,
             tipo="programado",
             inicio_programa=inicio,
             lineas=lineas,
             usuario=usuario,
         )
+        if result.get("ok"):
+            sync = hw.sincronizar_hydrawise(conn, usuario, force=True)
+            result = {
+                "ok": sync.get("ok", True),
+                "msg": (result.get("msg") or "") + " " + (sync.get("msg") or ""),
+            }
+        return result
     return {"ok": False, "msg": "Acción Hydra no reconocida."}
 
 
@@ -298,6 +305,7 @@ def formulario():
                 if action != "hydra_refresh_estado" and hydra_ok and action in (
                     "hydra_sync",
                     "hydra_regar_ahora",
+                    "hydra_programar",
                 ):
                     tab = "estado"
         else:
@@ -320,6 +328,7 @@ def formulario():
     hydra_colas: list = []
     hydra_api_ok = False
     hydra_api_msg = ""
+    hydra_sync_cooldown = 0
     programa_por_relay: dict = {}
     running_relay_ids: set[int] = set()
     queued_relay_ids: set[int] = set()
@@ -328,6 +337,19 @@ def formulario():
         try:
             from demo_web.services import hydrawise_riego as hw
 
+            if (
+                request.method == "GET"
+                and acceso_personal
+                and tab in ("control", "estado")
+                and not hydra_msg
+            ):
+                auto = hw.sincronizar_hydrawise(
+                    conn, _usuario_operador(operador), force=False
+                )
+                if auto.get("msg"):
+                    hydra_msg = str(auto.get("msg"))
+                    hydra_ok = bool(auto.get("ok", True))
+            hydra_sync_cooldown = hw.cooldown_restante_segundos(conn)
             hydra_cola = hw.cola_activa_en_link(conn)
             hydra_colas = hw.listar_colas_recientes(conn, limite=4)
             hydra_api_ok, hydra_api_msg = hw.api_lista_para_link(conn)
@@ -367,6 +389,7 @@ def formulario():
         hydra_colas=hydra_colas,
         hydra_api_ok=hydra_api_ok,
         hydra_api_msg=hydra_api_msg,
+        hydra_sync_cooldown=hydra_sync_cooldown,
         live_zonas=live_zonas,
         running_relay_ids=sorted(running_relay_ids),
         queued_relay_ids=sorted(queued_relay_ids),
