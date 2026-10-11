@@ -60,6 +60,18 @@
       <input id="fecha" name="fecha" type="date" class="form-control form-control-lg" required
              value="{{ form_fecha }}">
 
+      {% if hydra_sectores %}
+      <label class="form-label mt-2" for="hydraSector">Sector Hydrawise (Hydra)</label>
+      <select id="hydraSector" name="hydra_sector" class="form-select form-select-lg" required>
+        <option value="">— Seleccione sector —</option>
+        {% for s in hydra_sectores %}
+        <option value="{{ s.relay_id }}" {% if form_hydra_sector|string == s.relay_id|string %}selected{% endif %}>{{ s.label }}</option>
+        {% endfor %}
+      </select>
+      <p class="small text-muted mb-0 mt-1">Centro de costo: <strong id="hydraCcHint">—</strong> (desde mapeo Hydra)</p>
+      <input type="hidden" id="huerto" name="huerto" value="{{ form_huerto }}">
+      <script id="hydraSectorsJson" type="application/json">{{ hydra_sectores|tojson }}</script>
+      {% else %}
       <label class="form-label mt-2" for="huerto">Huerto</label>
       <select id="huerto" name="huerto" class="form-select form-select-lg" required>
         <option value="">— Seleccione —</option>
@@ -67,6 +79,7 @@
         <option value="{{ h }}" {% if form_huerto == h %}selected{% endif %}>{{ h }}</option>
         {% endfor %}
       </select>
+      {% endif %}
 
       <div id="riegoModoBlock" class="mt-3 d-none">
         <label class="form-label d-block mb-1">Tipo de registro</label>
@@ -323,10 +336,41 @@
       recalcM3();
     }
 
-    if (huertoEl) huertoEl.addEventListener('change', refreshUi);
+    var hydraEl = document.getElementById('hydraSector');
+    var hydraCcHint = document.getElementById('hydraCcHint');
+    var hydraMap = {};
+    var hydraJson = document.getElementById('hydraSectorsJson');
+    if (hydraJson) {
+      try { hydraMap = JSON.parse(hydraJson.textContent || '[]'); } catch (e) { hydraMap = []; }
+      hydraMap = hydraMap.reduce(function (acc, s) { acc[String(s.relay_id)] = s; return acc; }, {});
+    }
+    function applyHydraSector() {
+      if (!hydraEl || !huertoEl) return;
+      var s = hydraMap[hydraEl.value];
+      if (!s) {
+        huertoEl.value = '';
+        if (hydraCcHint) hydraCcHint.textContent = '—';
+        refreshUi();
+        return;
+      }
+      huertoEl.value = s.huerto_cc || '';
+      if (hydraCcHint) hydraCcHint.textContent = s.huerto_cc || '—';
+      if (s.modo_riego === 'surcos') {
+        modoInputs.forEach(function (inp) { inp.checked = (inp.value === 'surcos'); });
+      } else {
+        modoInputs.forEach(function (inp) { inp.checked = (inp.value === 'horas'); });
+      }
+      refreshUi();
+    }
+    if (hydraEl) {
+      hydraEl.addEventListener('change', applyHydraSector);
+      applyHydraSector();
+    } else if (huertoEl) {
+      huertoEl.addEventListener('change', refreshUi);
+    }
     if (horasEl) horasEl.addEventListener('input', recalcM3);
     modoInputs.forEach(function (inp) { inp.addEventListener('change', refreshUi); });
-    refreshUi();
+    if (!hydraEl) refreshUi();
 
     var form = document.getElementById('formRiego');
     var btn = document.getElementById('btnRegistrarRiego');

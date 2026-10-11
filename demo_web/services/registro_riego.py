@@ -1026,6 +1026,10 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
                 )
             if "surcos" not in cols:
                 conn.execute(f"ALTER TABLE {tabla} ADD COLUMN surcos REAL")
+            if "hydrawise_relay_id" not in cols:
+                conn.execute(
+                    f"ALTER TABLE {tabla} ADD COLUMN hydrawise_relay_id INTEGER"
+                )
         _ensure_riego_config_cc(conn)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"
@@ -1292,6 +1296,7 @@ def registrar_link(
     fertilizantes: list[dict[str, Any]] | None = None,
     modo_riego: str = "horas",
     surcos: float | None = None,
+    hydrawise_relay_id: int | None = None,
 ) -> dict[str, Any]:
     demo = get_demo_module()
     huerto = _norm_cc(huerto)
@@ -1323,8 +1328,9 @@ def registrar_link(
         conn.execute(
             """INSERT INTO riego_bitacora
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, ip_origen, creado_en, estado, modo_riego, surcos)
-               VALUES (?,?,?,?,?,?,?,?,?,?,'pendiente',?,?)""",
+                regador, ip_origen, creado_en, estado, modo_riego, surcos,
+                hydrawise_relay_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,'pendiente',?,?,?)""",
             (
                 codigo,
                 fecha,
@@ -1338,6 +1344,7 @@ def registrar_link(
                 fh,
                 modo_riego,
                 None,
+                hydrawise_relay_id,
             ),
         )
         if lineas_fert:
@@ -1400,7 +1407,8 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
         migrar_tabla(conn)
         row = conn.execute(
             """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                      regador, COALESCE(estado, 'pendiente'), modo_riego, surcos
+                      regador, COALESCE(estado, 'pendiente'), modo_riego, surcos,
+                      hydrawise_relay_id
                FROM riego_bitacora WHERE codigo=?""",
             (codigo,),
         ).fetchone()
@@ -1418,6 +1426,7 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
             estado,
             modo_riego,
             surcos,
+            hw_relay,
         ) = row
         est = str(estado or "pendiente").lower()
         if est == "autorizado":
@@ -1442,8 +1451,9 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
         conn.execute(
             """INSERT INTO riego
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, origen, bitacora_codigo, creado_por, creado_en, modo_riego, surcos)
-               VALUES (?,?,?,?,?,?,?,?, 'link', ?, ?, ?, ?, ?)""",
+                regador, origen, bitacora_codigo, creado_por, creado_en, modo_riego, surcos,
+                hydrawise_relay_id)
+               VALUES (?,?,?,?,?,?,?,?, 'link', ?, ?, ?, ?, ?, ?)""",
             (
                 codigo,
                 str(fecha)[:10],
@@ -1458,6 +1468,7 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
                 fh_auth,
                 modo_riego or "horas",
                 surcos,
+                hw_relay,
             ),
         )
         conn.execute(
@@ -1647,10 +1658,22 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
                   COALESCE(estado, 'pendiente'), COALESCE(autorizado_por, ''),
                   COALESCE(autorizado_en, ''), COALESCE(rechazado_por, ''),
                   COALESCE(rechazado_en, ''), COALESCE(rechazo_motivo, ''), creado_en,
-                  COALESCE(modo_riego, 'horas'), surcos
+                  COALESCE(modo_riego, 'horas'), surcos, hydrawise_relay_id
            FROM riego_bitacora ORDER BY id DESC LIMIT ?""",
         (limite,),
     ).fetchall()
+    hw_labels: dict[int, str] = {}
+    try:
+        from demo_web.services.tenant_scope import is_concepcion_tenant
+
+        if is_concepcion_tenant():
+            from demo_web.services.hydrawise_riego import listar_zonas
+
+            for z in listar_zonas(conn):
+                rid = int(z["relay_id"])
+                hw_labels[rid] = (z.get("alias") or z.get("nombre_hw") or f"Zona {rid}").strip()
+    except Exception:
+        pass
     out = []
     for row in rows:
         (
@@ -1671,6 +1694,7 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
             creado,
             modo_riego,
             surcos,
+            hw_relay,
         ) = row
         est = (estado or "pendiente").lower()
         modo_txt = _fmt_modo_riego(modo_riego, surcos, demo)
@@ -1694,6 +1718,7 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
                 "rechazado_en": rej_en,
                 "rechazo_motivo": rej_mot,
                 "creado_en": creado,
+                "hydra_sector": hw_labels.get(int(hw_relay)) if hw_relay else "",
             }
         )
     return out

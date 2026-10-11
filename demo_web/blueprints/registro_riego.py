@@ -12,6 +12,7 @@ from flask import (
 
 from demo_web.auth.decorators import login_required
 from demo_web.services.demo_loader import get_demo_module
+from demo_web.services.tenant_scope import is_concepcion_tenant
 from demo_web.services.registro_riego import (
     aplicar_cookie_operador,
     config_riego_cc_para_formulario,
@@ -43,8 +44,18 @@ def formulario():
     if not token_valido(tok):
         return render_template("registro_riego/denied.html"), 403
 
+    demo = get_demo_module()
     huertos = huertos_para_formulario()
     fertilizantes_opts = fertilizantes_bodega_para_formulario()
+    hydra_sectores: list[dict] = []
+    if is_concepcion_tenant():
+        conn_hw = demo.conectar_db()
+        try:
+            from demo_web.services.hydrawise_riego import sectores_para_link_riego
+
+            hydra_sectores = sectores_para_link_riego(conn_hw)
+        finally:
+            conn_hw.close()
     regadores_opts = regadores_autorizados_para_formulario()
     op_query = resolver_regador_por_id(request.args.get("op"), regadores_opts)
     op_cookie = leer_operador_cookie(regadores_opts)
@@ -62,6 +73,7 @@ def formulario():
     form_con_fert = False
     form_fert_lineas: list[dict] = []
     form_modo_riego = "horas"
+    form_hydra_sector = ""
 
     if request.method == "POST":
         hp = (request.form.get(_HONEYPOT_FIELD) or "").strip()
@@ -72,6 +84,30 @@ def formulario():
         form_con_fert = request.form.get("con_fertilizacion") == "1"
         form_fert_lineas = parse_fertilizantes_request(request.form)
         form_modo_riego = (request.form.get("modo_riego") or "horas").strip().lower()
+        form_hydra_sector = (request.form.get("hydra_sector") or "").strip()
+        hydra_relay_id: int | None = None
+
+        if hydra_sectores:
+            if not form_hydra_sector:
+                error = "Seleccione el sector Hydrawise."
+            else:
+                try:
+                    hydra_relay_id = int(form_hydra_sector)
+                except ValueError:
+                    error = "Sector Hydrawise inválido."
+                if not error:
+                    conn_r = demo.conectar_db()
+                    try:
+                        from demo_web.services.hydrawise_riego import resolver_sector_link
+
+                        sec = resolver_sector_link(conn_r, hydra_relay_id)
+                    finally:
+                        conn_r.close()
+                    if not sec:
+                        error = "Sector no disponible en Link riego."
+                    else:
+                        form_huerto = sec["huerto_cc"]
+                        form_modo_riego = sec.get("modo_riego") or form_modo_riego
 
         try:
             horas = float((form_horas or "0").replace(",", "."))
@@ -90,6 +126,8 @@ def formulario():
             error = None
         elif not acceso_personal:
             error = "Use su enlace personal para registrar riego."
+        elif error:
+            pass
         elif not form_fecha:
             error = "Indique la fecha."
         elif form_huerto not in huertos:
@@ -114,6 +152,7 @@ def formulario():
                     (operador or {}).get("nombre", ""),
                     fertilizantes=fert_lineas_post if form_con_fert else None,
                     modo_riego=form_modo_riego,
+                    hydrawise_relay_id=hydra_relay_id,
                 )
             except Exception as exc:
                 error = f"No se pudo guardar: {exc}"
@@ -148,6 +187,8 @@ def formulario():
         form_con_fert=form_con_fert,
         form_fert_lineas=form_fert_lineas,
         form_modo_riego=form_modo_riego,
+        form_hydra_sector=form_hydra_sector,
+        hydra_sectores=hydra_sectores,
         riego_cc_config=config_riego_cc_para_formulario(),
     )
     resp = make_response(html)

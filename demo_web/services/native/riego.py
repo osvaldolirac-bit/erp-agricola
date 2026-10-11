@@ -62,9 +62,15 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             ctx["npk_resumen"] = resumen_npk_por_huerto(conn)
         elif sec == "bitacora" and habilitado():
             es_demo = get_erp_app() == "demo"
+            hydra_link_n = 0
+            if is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import sectores_para_link_riego
+
+                hydra_link_n = len(sectores_para_link_riego(conn))
             ctx.update(
                 {
                     "bitacora_habilitada": True,
+                    "hydra_link_sectores": hydra_link_n,
                     "bitacora_admin_links": demo.es_super_admin(),
                     "bitacora_puede_autorizar": demo.es_admin() and not demo.es_solo_lectura(),
                     "bitacora_registros": listar_bitacora(conn),
@@ -228,6 +234,7 @@ def view(user_email: str, user_rol: str):
                         huerto_cc=request.form.get("huerto_cc") or "",
                         modo_riego=request.form.get("modo_riego") or "horas",
                         activo=request.form.get("activo") == "1",
+                        link_riego=request.form.get("link_riego") == "1",
                         fert_json=request.form.get("fert_json") or "[]",
                     )
                 elif action == "hydra_regar_ahora":

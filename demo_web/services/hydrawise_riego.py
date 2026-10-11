@@ -107,6 +107,11 @@ def migrar_hydrawise(conn: sqlite3.Connection | None = None) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_hw_cola_item_cola ON hydrawise_cola_item(cola_id, orden)"
         )
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(hydrawise_zona)").fetchall()}
+        if "link_riego" not in cols:
+            conn.execute(
+                "ALTER TABLE hydrawise_zona ADD COLUMN link_riego INTEGER DEFAULT 1"
+            )
         conn.commit()
     finally:
         if own:
@@ -329,7 +334,8 @@ def importar_zonas_desde_api(conn: sqlite3.Connection) -> dict[str, Any]:
 def listar_zonas(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     migrar_hydrawise(conn)
     rows = conn.execute(
-        """SELECT relay_id, nombre_hw, alias, huerto_cc, modo_riego, activo
+        """SELECT relay_id, nombre_hw, alias, huerto_cc, modo_riego, activo,
+                  COALESCE(link_riego, 1)
            FROM hydrawise_zona ORDER BY relay_id"""
     ).fetchall()
     out = []
@@ -348,6 +354,7 @@ def listar_zonas(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "huerto_cc": r[3] or "",
                 "modo_riego": r[4] or "horas",
                 "activo": int(r[5] or 0),
+                "link_riego": int(r[6] or 0),
                 "fertilizantes": [
                     {
                         "id": int(f[0]),
@@ -379,6 +386,7 @@ def guardar_mapeo_zona(
     huerto_cc: str,
     modo_riego: str,
     activo: bool,
+    link_riego: bool,
     fert_json: str,
 ) -> dict[str, Any]:
     from erp_solo_lectura import conn_en_solo_lectura
@@ -392,13 +400,14 @@ def guardar_mapeo_zona(
     fh = get_demo_module().hora_chile().strftime("%Y-%m-%d %H:%M:%S")
     conn.execute(
         """UPDATE hydrawise_zona
-           SET alias=?, huerto_cc=?, modo_riego=?, activo=?, actualizado_en=?
+           SET alias=?, huerto_cc=?, modo_riego=?, activo=?, link_riego=?, actualizado_en=?
            WHERE relay_id=?""",
         (
             (alias or "").strip(),
             (huerto_cc or "").strip().upper(),
             (modo_riego or "horas").strip().lower(),
             1 if activo else 0,
+            1 if link_riego else 0,
             fh,
             rid,
         ),
@@ -731,6 +740,45 @@ def listar_colas_recientes(conn: sqlite3.Connection, limite: int = 5) -> list[di
             }
         )
     return out
+
+
+def sectores_para_link_riego(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Sectores Hydra visibles en el formulario Link riego (solo LC con mapeo CC)."""
+    if not is_concepcion_tenant():
+        return []
+    out: list[dict[str, Any]] = []
+    for z in listar_zonas(conn):
+        if not z.get("activo") or not z.get("link_riego"):
+            continue
+        cc = (z.get("huerto_cc") or "").strip()
+        if not cc:
+            continue
+        label = (z.get("alias") or z.get("nombre_hw") or f"Zona {z['relay_id']}").strip()
+        out.append(
+            {
+                "relay_id": int(z["relay_id"]),
+                "label": label,
+                "huerto_cc": cc,
+                "modo_riego": z.get("modo_riego") or "horas",
+                "fertilizantes": [
+                    {
+                        "producto_id": f["producto_id"],
+                        "cantidad": f["cantidad"],
+                        "dosis_ha": f.get("dosis_ha"),
+                    }
+                    for f in z.get("fertilizantes") or []
+                ],
+            }
+        )
+    out.sort(key=lambda x: x["label"].casefold())
+    return out
+
+
+def resolver_sector_link(conn: sqlite3.Connection, relay_id: int) -> dict[str, Any] | None:
+    for s in sectores_para_link_riego(conn):
+        if s["relay_id"] == int(relay_id):
+            return s
+    return None
 
 
 def crear_cola_desde_form(form, *, tipo: str, usuario: str, inicio_programa: str) -> dict[str, Any]:

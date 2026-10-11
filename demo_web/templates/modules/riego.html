@@ -258,6 +258,18 @@
       se imputa el riego al huerto (CC) y, si traen fertilizantes, se descuenta stock de bodega
       e imputa el valor al mismo centro de costo.
     </div>
+    {% if hydra_link_sectores|default(0) > 0 %}
+    <div class="alert alert-success py-2 small mb-3">
+      <strong>Hydra + Link:</strong> el celular del regador elige entre
+      <strong>{{ hydra_link_sectores }}</strong> sector(es) Hydrawise (mapeados a CC).
+      Configure sectores en <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a> (casilla «Link riego»).
+    </div>
+    {% elif hydra_link_sectores is defined %}
+    <div class="alert alert-secondary py-2 small mb-3">
+      Para usar sectores Hydrawise en el link del regador, importe zonas en
+      <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a>, asigne CC y marque «Link riego».
+    </div>
+    {% endif %}
     {% if bitacora_admin_links %}
     <div class="mb-3{% if bitacora_links_demo %} riego-links-demo{% endif %}">
       <h3 class="h6">Enlaces personales regador</h3>
@@ -331,7 +343,7 @@
       <table class="table table-sm table-bordered align-middle demo-datatable w-100">
         <thead>
           <tr>
-            <th>N°</th><th>Fecha</th><th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
+            <th>N°</th><th>Fecha</th>{% if hydra_link_sectores|default(0) %}<th>Sector Hydra</th>{% endif %}<th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
             <th>Fertilización</th><th>Regador</th><th>Estado</th><th>Recibido</th><th></th>
           </tr>
         </thead>
