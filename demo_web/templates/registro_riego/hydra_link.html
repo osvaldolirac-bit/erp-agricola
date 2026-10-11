@@ -56,20 +56,27 @@
 
     {% if error %}<div class="alert alert-danger hydra-link-alert py-2">{{ error }}</div>{% endif %}
 
-    {% if tab == 'control' %}
-    <section class="hydra-link-panel">
-      <div class="hydra-link-api-pill hydra-link-api-pill--{{ 'ok' if hydra_api_ok else 'warn' }}">
+    {% if tab in ('control', 'estado') %}
+    <section class="hydra-link-panel hydra-link-panel--tools mb-3">
+      <div class="hydra-link-api-pill hydra-link-api-pill--{{ 'ok' if hydra_api_ok else 'warn' }}" title="Configuración hecha en Administración, no indica si hay riego en curso">
         {{ hydra_api_msg }}
       </div>
-
-      <form method="post" class="hydra-link-sync-form">
+      <p class="hydra-link-sync-explain mb-2">
+        <strong>Sincronizar con ERP</strong> consulta Hydrawise, avanza la cola (siguiente sector),
+        detecta riegos terminados y los registra en el ERP (historial, centro de costo y bodega si hay fertirriego).
+        Úselo después de <em>Iniciar riego</em> y cuando un sector debería haber terminado.
+      </p>
+      <form method="post" class="hydra-link-sync-form mb-0">
         <input type="hidden" name="t" value="{{ token }}">
         <input type="hidden" name="action" value="hydra_sync">
-        <input type="hidden" name="tab" value="control">
-        <button type="submit" class="btn hydra-btn-sync w-100">Sincronizar ahora</button>
+        <input type="hidden" name="tab" value="{{ tab }}">
+        <button type="submit" class="btn hydra-btn-sync w-100">Sincronizar con ERP</button>
       </form>
-      <p class="hydra-link-hint">Después de regar, sincronice para imputar historial, CC y bodega.</p>
+    </section>
+    {% endif %}
 
+    {% if tab == 'control' %}
+    <section class="hydra-link-panel">
       <h2 class="hydra-link-section-title">Sectores</h2>
       <div class="hydra-zone-grid">
         {% for s in hydra_sectores %}
@@ -196,11 +203,15 @@
       <p class="hydra-link-hint">No hay cola activa. Use Control para regar o programar.</p>
       {% endif %}
 
+      <p class="hydra-link-hint mb-2">
+        <strong>Actualizar en vivo</strong> (abajo) solo muestra qué zonas están regando en Hydrawise ahora;
+        no registra nada en el ERP ni enciende la cola. Para eso use <strong>Sincronizar con ERP</strong>.
+      </p>
       <form method="post" class="mb-3">
         <input type="hidden" name="t" value="{{ token }}">
         <input type="hidden" name="action" value="hydra_refresh_estado">
         <input type="hidden" name="tab" value="estado">
-        <button type="submit" class="btn hydra-btn-ghost w-100">Actualizar estado desde Hydrawise</button>
+        <button type="submit" class="btn hydra-btn-ghost w-100">Actualizar en vivo (Hydrawise)</button>
       </form>
 
       {% if live_zonas %}
@@ -233,13 +244,6 @@
       </details>
       {% endfor %}
       {% endif %}
-
-      <form method="post">
-        <input type="hidden" name="t" value="{{ token }}">
-        <input type="hidden" name="action" value="hydra_sync">
-        <input type="hidden" name="tab" value="estado">
-        <button type="submit" class="btn hydra-btn-sync w-100 mt-2">Sincronizar ahora</button>
-      </form>
     </section>
     {% endif %}
 

@@ -2185,6 +2185,17 @@ body.erp-ios .erp-pdf-viewer-object {
   box-shadow: 0 8px 28px rgba(13, 61, 86, 0.06);
 }
 
+.hydra-link-panel--tools {
+  padding: 0.85rem 0.9rem 1rem;
+}
+
+.hydra-link-sync-explain {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #546e7a;
+  margin: 0;
+}
+
 .hydra-link-alert {
   border-radius: 12px;
   margin-bottom: 1rem;

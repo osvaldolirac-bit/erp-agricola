@@ -994,13 +994,14 @@ def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:
 
 
 def api_lista_para_link(conn: sqlite3.Connection) -> tuple[bool, str]:
+    """Solo indica que administración configuró API/equipo (no es estado de riego en campo)."""
     key = get_api_key(conn)
     if not key:
-        return False, "Configure API key en Administración → Hydrawise."
+        return False, "HYDRA sin configurar — avise a administración (API Hydrawise)."
     ref = get_equipo_ref(conn)
     if ref:
-        return True, f"Listo · equipo {ref}"
-    return True, "Listo · falta serial del equipo en Administración."
+        return True, f"Conexión HYDRA OK · controlador {ref}"
+    return True, "Conexión HYDRA OK · falta serial del controlador en Administración."
 
 
 def crear_cola_desde_form(form, *, tipo: str, usuario: str, inicio_programa: str) -> dict[str, Any]:
