@@ -14,6 +14,7 @@ from demo_web.services.hydrawise_client import (
     list_controllers,
     relay_status_map,
     set_zone_run,
+    set_zone_stop_all,
     status_schedule,
 )
 from demo_web.services.tenant_scope import is_concepcion_tenant
@@ -606,6 +607,286 @@ def cooldown_restante_segundos(conn: sqlite3.Connection, ahora: datetime | None 
     return max(0, int(rem + 0.999))
 
 
+def _label_zona(conn: sqlite3.Connection, relay_id: int) -> str:
+    z = zona_por_relay(conn, int(relay_id))
+    if not z:
+        return f"Zona {relay_id}"
+    nom = (z.get("nombre_hw") or f"Zona {relay_id}").strip()
+    alias = (z.get("alias") or "").strip()
+    if alias and alias.casefold() != nom.casefold():
+        return f"{nom} — {alias}"
+    return nom
+
+
+def _horas_reales_desde_run(
+    run_inicio: str,
+    run_fin: str | None,
+    minutos_prog: float,
+    ahora: datetime,
+) -> float:
+    t0 = _parse_dt_chile(run_inicio)
+    t1 = _parse_dt_chile(run_fin) if run_fin else ahora
+    if not t0:
+        return 0.0
+    elapsed_h = max(0.0, (t1 - t0).total_seconds()) / 3600.0
+    cap = float(minutos_prog) / 60.0
+    if cap > 0:
+        return min(elapsed_h, cap)
+    return elapsed_h
+
+
+def _imputar_item_cola(
+    conn: sqlite3.Connection,
+    ahora: datetime,
+    *,
+    item_id: int,
+    relay_id: int,
+    minutos: float,
+    run_inicio: str,
+    run_fin: str,
+    usuario: str,
+    cola_id: int,
+    horas_override: float | None = None,
+    event_key: str | None = None,
+    notificar_ok: bool = True,
+) -> dict[str, Any]:
+    from demo_web.services.registro_riego import (
+        enviar_alerta_hydra_sector_ok,
+        registrar_desde_hydrawise,
+        resolver_m3_registro,
+    )
+
+    key = event_key or f"cola{item_id}"
+    if conn.execute(
+        "SELECT 1 FROM hydrawise_importados WHERE event_key=?", (key,)
+    ).fetchone():
+        row = conn.execute(
+            "SELECT codigo_riego FROM hydrawise_importados WHERE event_key=?", (key,)
+        ).fetchone()
+        cod = str(row[0]) if row else ""
+        return {"ok": True, "msg": "Ya imputado.", "codigo": cod}
+
+    z = zona_por_relay(conn, int(relay_id))
+    if not z:
+        return {"ok": False, "msg": f"Zona {relay_id} sin mapeo."}
+    huerto = (z.get("huerto_cc") or "").strip()
+    horas = (
+        float(horas_override)
+        if horas_override is not None
+        else float(minutos) / 60.0
+    )
+    if horas <= 0:
+        return {"ok": False, "msg": "Sin tiempo de riego para imputar.", "codigo": ""}
+    fecha = (run_fin or run_inicio or str(ahora.date()))[:10]
+    regador = f"Hydrawise — {z.get('alias') or z.get('nombre_hw')}"
+    fert = _fert_lineas_desde_zona(conn, int(relay_id))
+    res = registrar_desde_hydrawise(
+        fecha,
+        huerto,
+        horas,
+        regador,
+        usuario,
+        fertilizantes=fert if fert else None,
+        modo_riego=z.get("modo_riego") or "horas",
+        hydrawise_event_key=key,
+    )
+    if not res.get("ok"):
+        return res
+    cod = str(res.get("codigo") or "")
+    fh = ahora.strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        """INSERT INTO hydrawise_importados (event_key, codigo_riego, importado_en)
+           VALUES (?,?,?)""",
+        (key, cod, fh),
+    )
+    conn.execute(
+        "UPDATE hydrawise_cola_item SET codigo_riego=?, estado='importado' WHERE id=?",
+        (cod, item_id),
+    )
+    conn.commit()
+    if notificar_ok:
+        demo = get_demo_module()
+        m3_val, _ = resolver_m3_registro(
+            conn,
+            huerto,
+            horas,
+            0.0,
+            modo=z.get("modo_riego") or "horas",
+        )
+        from demo_web.services.registro_riego import _fmt_fertilizantes
+
+        fert_txt = _fmt_fertilizantes(conn, cod, demo, None, None)
+        enviar_alerta_hydra_sector_ok(
+            codigo=cod,
+            huerto=huerto,
+            horas_fmt=demo.f_decimal(horas),
+            m3_fmt=demo.f_decimal(m3_val or 0),
+            fert_txt=fert_txt,
+            sector_label=_label_zona(conn, int(relay_id)),
+            cola_id=cola_id,
+        )
+    return {"ok": True, "msg": f"{cod} imputado ({huerto}).", "codigo": cod}
+
+
+def _abortar_cola_activa(
+    conn: sqlite3.Connection,
+    usuario: str,
+    operador: str,
+    *,
+    detener_hydrawise: bool,
+    motivo: str,
+) -> dict[str, Any]:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return {"ok": False, "msg": "Solo lectura."}
+    cola = _cola_activa(conn)
+    if not cola:
+        return {"ok": False, "msg": "No hay cola activa."}
+    cola_id = int(cola[0])
+    demo = get_demo_module()
+    ahora = demo.hora_chile()
+    fh = ahora.strftime("%Y-%m-%d %H:%M:%S")
+    items = _items_cola(conn, cola_id)
+    running = next((it for it in items if it[4] == "corriendo"), None)
+    cod_parcial = ""
+    sector_label = "— (programa no iniciado)"
+    huerto = ""
+    horas_fmt = "—"
+    m3_fmt = "—"
+    fert_txt = "—"
+
+    if detener_hydrawise:
+        key = get_api_key(conn)
+        if not key:
+            return {"ok": False, "msg": "Sin API key Hydrawise."}
+        stop = set_zone_stop_all(key)
+        _mark_api_sync(conn, ahora)
+        if not stop.get("ok"):
+            return {"ok": False, "msg": stop.get("error") or "No se pudo detener Hydrawise."}
+
+    if running:
+        item_id, _, relay_id, minutos, _, run_inicio, _, _, _ = running
+        sector_label = _label_zona(conn, int(relay_id))
+        z = zona_por_relay(conn, int(relay_id))
+        huerto = (z.get("huerto_cc") or "").strip() if z else ""
+        horas_real = _horas_reales_desde_run(str(run_inicio), fh, float(minutos), ahora)
+        if horas_real > 0:
+            imp = _imputar_item_cola(
+                conn,
+                ahora,
+                item_id=int(item_id),
+                relay_id=int(relay_id),
+                minutos=float(minutos),
+                run_inicio=str(run_inicio),
+                run_fin=fh,
+                usuario=usuario,
+                cola_id=cola_id,
+                horas_override=horas_real,
+                event_key=f"cola{item_id}",
+                notificar_ok=False,
+            )
+            if imp.get("ok") and imp.get("codigo"):
+                cod_parcial = str(imp["codigo"])
+                demo = get_demo_module()
+                from demo_web.services.registro_riego import (
+                    _fmt_fertilizantes,
+                    resolver_m3_registro,
+                )
+
+                m3_val, _ = resolver_m3_registro(
+                    conn,
+                    huerto,
+                    horas_real,
+                    0.0,
+                    modo=(z or {}).get("modo_riego") or "horas",
+                )
+                horas_fmt = demo.f_decimal(horas_real)
+                m3_fmt = demo.f_decimal(m3_val or 0)
+                fert_txt = _fmt_fertilizantes(conn, cod_parcial, demo, None, None)
+            else:
+                conn.execute(
+                    "UPDATE hydrawise_cola_item SET estado='cancelado', run_fin=?, error_msg=? WHERE id=?",
+                    (fh, str(imp.get("msg") or "")[:500], int(item_id)),
+                )
+        else:
+            conn.execute(
+                "UPDATE hydrawise_cola_item SET estado='cancelado', run_fin=? WHERE id=?",
+                (fh, int(item_id)),
+            )
+
+    for it in _items_cola(conn, cola_id):
+        if it[4] == "pendiente":
+            conn.execute(
+                "UPDATE hydrawise_cola_item SET estado='cancelado' WHERE id=?",
+                (int(it[0]),),
+            )
+    conn.execute(
+        "UPDATE hydrawise_cola SET estado='cancelada' WHERE id=?", (cola_id,)
+    )
+    conn.commit()
+
+    from demo_web.services.registro_riego import enviar_alerta_hydra_interrupcion
+
+    enviar_alerta_hydra_interrupcion(
+        operador=operador or usuario,
+        cola_id=cola_id,
+        sector_label=sector_label,
+        huerto=huerto,
+        horas_fmt=horas_fmt,
+        m3_fmt=m3_fmt,
+        fert_txt=fert_txt,
+        codigo=cod_parcial,
+        motivo=motivo,
+    )
+    msg = f"Cola #{cola_id} cancelada."
+    if cod_parcial:
+        msg += f" Imputado parcial {cod_parcial} ({horas_fmt} h)."
+    return {"ok": True, "msg": msg}
+
+
+def parar_riego_manual(conn: sqlite3.Connection, usuario: str, operador: str) -> dict[str, Any]:
+    cola = _cola_activa(conn)
+    if not cola:
+        return {"ok": False, "msg": "No hay cola activa."}
+    items = _items_cola(conn, int(cola[0]))
+    if not any(it[4] == "corriendo" for it in items):
+        return {"ok": False, "msg": "No hay riego en curso en la cola."}
+    return _abortar_cola_activa(
+        conn,
+        usuario,
+        operador,
+        detener_hydrawise=True,
+        motivo="Parar riego (link regador)",
+    )
+
+
+def cancelar_cola_manual(conn: sqlite3.Connection, usuario: str, operador: str) -> dict[str, Any]:
+    cola = _cola_activa(conn)
+    if not cola:
+        return {"ok": False, "msg": "No hay cola activa."}
+    en_curso = any(
+        it[4] in ("corriendo", "pendiente") for it in _items_cola(conn, int(cola[0]))
+    )
+    if not en_curso and cola[3] == "programado":
+        return _abortar_cola_activa(
+            conn,
+            usuario,
+            operador,
+            detener_hydrawise=False,
+            motivo="Cancelar programa (link regador)",
+        )
+    return _abortar_cola_activa(
+        conn,
+        usuario,
+        operador,
+        detener_hydrawise=any(
+            it[4] == "corriendo" for it in _items_cola(conn, int(cola[0]))
+        ),
+        motivo="Cancelar cola (link regador)",
+    )
+
+
 def _msg_riego_en_curso(minutos: float, run_inicio: str, ahora: datetime) -> str:
     t0 = _parse_dt_chile(run_inicio) or ahora
     elapsed = max(0.0, (ahora - t0).total_seconds())
@@ -743,30 +1024,21 @@ def sincronizar_hydrawise(
             if it[4] != "terminado" or it[7]:
                 continue
             item_id, _, relay_id, minutos, _, run_inicio, run_fin, _, _ = it
-            event_key = f"cola{item_id}"
-            if conn.execute(
-                "SELECT 1 FROM hydrawise_importados WHERE event_key=?", (event_key,)
-            ).fetchone():
-                continue
-            z = zona_por_relay(conn, int(relay_id))
-            if not z:
-                continue
-            huerto = (z.get("huerto_cc") or "").strip()
-            horas = float(minutos) / 60.0
-            fecha = (run_fin or run_inicio or str(ahora.date()))[:10]
-            regador = f"Hydrawise — {z.get('alias') or z.get('nombre_hw')}"
-            fert = _fert_lineas_desde_zona(conn, int(relay_id))
-            from demo_web.services.registro_riego import registrar_desde_hydrawise
-
-            res = registrar_desde_hydrawise(
-                fecha,
-                huerto,
-                horas,
-                regador,
-                usuario,
-                fertilizantes=fert if fert else None,
-                modo_riego=z.get("modo_riego") or "horas",
-                hydrawise_event_key=event_key,
+            res = _imputar_item_cola(
+                conn,
+                ahora,
+                item_id=int(item_id),
+                relay_id=int(relay_id),
+                minutos=float(minutos),
+                run_inicio=str(run_inicio),
+                run_fin=str(
+                    run_fin
+                    or run_inicio
+                    or ahora.strftime("%Y-%m-%d %H:%M:%S")
+                ),
+                usuario=usuario,
+                cola_id=cola_id,
+                notificar_ok=True,
             )
             if not res.get("ok"):
                 conn.execute(
@@ -776,19 +1048,8 @@ def sincronizar_hydrawise(
                 conn.commit()
                 return {"ok": False, "msg": res.get("msg") or "Error al imputar."}
             cod = str(res.get("codigo") or "")
-            fh = ahora.strftime("%Y-%m-%d %H:%M:%S")
-            conn.execute(
-                """INSERT INTO hydrawise_importados (event_key, codigo_riego, importado_en)
-                   VALUES (?,?,?)""",
-                (event_key, cod, fh),
-            )
-            conn.execute(
-                "UPDATE hydrawise_cola_item SET codigo_riego=?, estado='importado' WHERE id=?",
-                (cod, item_id),
-            )
-            conn.commit()
             importados += 1
-            msgs.append(f"{cod} imputado ({huerto}).")
+            msgs.append(res.get("msg") or f"{cod} imputado.")
 
         items = _items_cola(conn, cola_id)
         if all(it[4] in ("importado", "error") for it in items):

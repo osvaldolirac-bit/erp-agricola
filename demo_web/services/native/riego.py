@@ -262,6 +262,10 @@ def view(user_email: str, user_rol: str):
                         usuario=user_email,
                         inicio_programa=inicio,
                     )
+                elif action == "hydra_parar":
+                    result = hw.parar_riego_manual(conn, user_email, user_email)
+                elif action == "hydra_cancelar_cola":
+                    result = hw.cancelar_cola_manual(conn, user_email, user_email)
             finally:
                 conn.close()
             flash(result.get("msg", ""), "success" if result.get("ok") else "danger")

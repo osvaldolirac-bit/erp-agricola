@@ -1291,6 +1291,102 @@ def enviar_alerta(registro: dict[str, Any]) -> bool:
     return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
 
 
+def enviar_alerta_hydra_sector_ok(
+    *,
+    codigo: str,
+    huerto: str,
+    horas_fmt: str,
+    m3_fmt: str,
+    fert_txt: str,
+    sector_label: str,
+    cola_id: int,
+) -> bool:
+    demo = get_demo_module()
+    if not hasattr(demo, "_enviar_correo_html"):
+        return False
+    from erp_correo_html import html_esc, plantilla_correo_html
+
+    dest = _destinatario_alerta()
+    if not dest:
+        return False
+    interior = f"""
+        <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
+          Un sector de riego <b>HYDRA / Hydrawise</b> terminó e fue <b>imputado</b> al ERP
+          (historial, CC y bodega si corresponde).
+        </p>
+        <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;padding:16px 18px;">
+          <p style="margin:6px 0;"><b>Código:</b> {html_esc(codigo)}</p>
+          <p style="margin:6px 0;"><b>Cola HYDRA:</b> #{cola_id}</p>
+          <p style="margin:6px 0;"><b>Sector:</b> {html_esc(sector_label)}</p>
+          <p style="margin:6px 0;"><b>Huerto (CC):</b> {html_esc(huerto)}</p>
+          <p style="margin:6px 0;"><b>Horas:</b> {html_esc(horas_fmt)}</p>
+          <p style="margin:6px 0;"><b>m³:</b> {html_esc(m3_fmt)}</p>
+          <p style="margin:6px 0;"><b>Fertirriego:</b> {html_esc(fert_txt or '—')}</p>
+        </div>
+    """
+    cuerpo = plantilla_correo_html(
+        "vencimiento",
+        f"✓ HYDRA — {codigo} imputado",
+        interior,
+        nombre_erp=_nombre_erp(),
+        pie="Alerta automática HYDRA — riego completado.",
+    )
+    asunto = f"✓ HYDRA {codigo} | {huerto[:18]} | {sector_label[:18]}"
+    return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
+
+
+def enviar_alerta_hydra_interrupcion(
+    *,
+    operador: str,
+    cola_id: int,
+    sector_label: str,
+    huerto: str,
+    horas_fmt: str,
+    m3_fmt: str,
+    fert_txt: str,
+    codigo: str,
+    motivo: str,
+) -> bool:
+    demo = get_demo_module()
+    if not hasattr(demo, "_enviar_correo_html"):
+        return False
+    from erp_correo_html import html_esc, plantilla_correo_html
+
+    dest = _destinatario_alerta()
+    if not dest:
+        return False
+    cod_line = (
+        f'<p style="margin:6px 0;"><b>Registro parcial:</b> {html_esc(codigo)}</p>'
+        if codigo
+        else "<p style=\"margin:6px 0;\"><b>Registro parcial:</b> — (sin imputación)</p>"
+    )
+    interior = f"""
+        <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
+          Se <b>interrumpió manualmente</b> un riego HYDRA desde el link del regador.
+        </p>
+        <div style="background:#FFF3E0;border:1px solid #FFCC80;border-radius:10px;padding:16px 18px;">
+          <p style="margin:6px 0;"><b>Operador:</b> {html_esc(operador)}</p>
+          <p style="margin:6px 0;"><b>Acción:</b> {html_esc(motivo)}</p>
+          <p style="margin:6px 0;"><b>Cola HYDRA:</b> #{cola_id}</p>
+          <p style="margin:6px 0;"><b>Sector:</b> {html_esc(sector_label)}</p>
+          <p style="margin:6px 0;"><b>Huerto (CC):</b> {html_esc(huerto or '—')}</p>
+          {cod_line}
+          <p style="margin:6px 0;"><b>Horas reales:</b> {html_esc(horas_fmt)}</p>
+          <p style="margin:6px 0;"><b>m³:</b> {html_esc(m3_fmt)}</p>
+          <p style="margin:6px 0;"><b>Fertirriego (aplicado al inicio):</b> {html_esc(fert_txt or '—')}</p>
+        </div>
+    """
+    cuerpo = plantilla_correo_html(
+        "vencimiento",
+        f"⚠ HYDRA — riego interrumpido (cola #{cola_id})",
+        interior,
+        nombre_erp=_nombre_erp(),
+        pie="Alerta adicional — interrupción manual HYDRA.",
+    )
+    asunto = f"⚠ HYDRA parada | {operador[:20]} | cola #{cola_id}"
+    return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
+
+
 def registrar_link(
     fecha: str,
     huerto: str,

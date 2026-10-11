@@ -62,23 +62,28 @@
         {{ hydra_api_msg }}
       </div>
       <p class="hydra-link-sync-explain mb-2">
-        Al <strong>iniciar</strong> o <strong>programar</strong> riego, el ERP habla con Hydrawise y registra
-        en historial/CC/bodega cuando corresponde. Al abrir Control o Estado también se actualiza solo
-        (como máximo cada ~90&nbsp;s para no saturar el controlador).
+        Al <strong>iniciar</strong> o <strong>programar</strong>, el ERP coordina Hydrawise y, al terminar cada sector,
+        lo imputa solo (historial, CC y bodega). Al abrir Control o Estado se refresca la cola
+        (como máximo cada ~90&nbsp;s hacia Hydrawise).
       </p>
-      {% if hydra_sync_cooldown > 0 %}
-      <p class="hydra-link-hint mb-2">Próxima consulta remota posible en ~{{ hydra_sync_cooldown }} s.</p>
-      {% endif %}
-      <details class="hydra-link-force-sync">
-        <summary class="small">Forzar actualización ahora</summary>
-        <p class="hydra-link-hint mb-2">Solo si algo no cuadra; evite pulsar varias veces seguidas.</p>
-        <form method="post" class="hydra-link-sync-form mb-0">
+      {% if hydra_cola %}
+      <div class="d-flex flex-column gap-2 mb-0">
+        {% if hydra_tiene_corriendo %}
+        <form method="post" onsubmit="return confirm('¿Parar el riego en curso? Se imputará el tiempo real y la receta de fertirriego aplicada al inicio.');">
           <input type="hidden" name="t" value="{{ token }}">
-          <input type="hidden" name="action" value="hydra_sync">
+          <input type="hidden" name="action" value="hydra_parar">
           <input type="hidden" name="tab" value="{{ tab }}">
-          <button type="submit" class="btn hydra-btn-ghost w-100">Forzar sincronización</button>
+          <button type="submit" class="btn hydra-btn-stop w-100">Parar riego</button>
         </form>
-      </details>
+        {% endif %}
+        <form method="post" onsubmit="return confirm('¿Cancelar la cola/programa?{% if hydra_tiene_corriendo %} Se detendrá Hydrawise.{% endif %} Los sectores pendientes no se regarán.');">
+          <input type="hidden" name="t" value="{{ token }}">
+          <input type="hidden" name="action" value="hydra_cancelar_cola">
+          <input type="hidden" name="tab" value="{{ tab }}">
+          <button type="submit" class="btn hydra-btn-cancel w-100">{% if hydra_cola_programada %}Cancelar programa{% else %}Cancelar cola{% endif %}</button>
+        </form>
+      </div>
+      {% endif %}
     </section>
     {% endif %}
 

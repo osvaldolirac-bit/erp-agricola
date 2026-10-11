@@ -74,8 +74,7 @@ def _handle_hydra_action(
     from demo_web.services import hydrawise_riego as hw
 
     usuario = _usuario_operador(operador)
-    if action == "hydra_sync":
-        return hw.sincronizar_hydrawise(conn, usuario, force=True)
+    operador_nombre = str(operador.get("nombre") or usuario)
     if action == "hydra_refresh_estado":
         return hw.snapshot_live_zonas(conn)
     if action == "hydra_regar_ahora":
@@ -114,6 +113,10 @@ def _handle_hydra_action(
                 "msg": (result.get("msg") or "") + " " + (sync.get("msg") or ""),
             }
         return result
+    if action == "hydra_parar":
+        return hw.parar_riego_manual(conn, usuario, operador_nombre)
+    if action == "hydra_cancelar_cola":
+        return hw.cancelar_cola_manual(conn, usuario, operador_nombre)
     return {"ok": False, "msg": "Acción Hydra no reconocida."}
 
 
@@ -303,9 +306,10 @@ def formulario():
                 else:
                     tab = "control"
                 if action != "hydra_refresh_estado" and hydra_ok and action in (
-                    "hydra_sync",
                     "hydra_regar_ahora",
                     "hydra_programar",
+                    "hydra_parar",
+                    "hydra_cancelar_cola",
                 ):
                     tab = "estado"
         else:
@@ -394,6 +398,10 @@ def formulario():
         running_relay_ids=sorted(running_relay_ids),
         queued_relay_ids=sorted(queued_relay_ids),
         programa_por_relay=programa_por_relay,
+        hydra_tiene_corriendo=bool(running_relay_ids),
+        hydra_cola_programada=bool(
+            hydra_cola and str(hydra_cola.get("estado") or "") == "programado"
+        ),
         **form_state,
     )
 
