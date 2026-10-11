@@ -2231,6 +2231,51 @@ body.erp-ios .erp-pdf-viewer-object {
   margin-bottom: 0.5rem;
 }
 
+.hydra-link-block {
+  border-radius: 16px;
+  padding: 1rem 0.95rem 1.1rem;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+  box-shadow: 0 4px 16px rgba(13, 61, 86, 0.04);
+}
+
+.hydra-link-block--sectores {
+  background: linear-gradient(160deg, rgba(224, 247, 250, 0.95) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(0, 131, 143, 0.22);
+}
+
+.hydra-link-block--sectores .hydra-link-section-title {
+  color: #006064;
+  border-left: 4px solid #00838f;
+  padding-left: 0.55rem;
+}
+
+.hydra-link-block--run {
+  background: linear-gradient(160deg, rgba(232, 245, 233, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(46, 125, 50, 0.22);
+}
+
+.hydra-link-block--run .hydra-link-section-title {
+  color: #2e7d32;
+  border-left: 4px solid #43a047;
+  padding-left: 0.55rem;
+}
+
+.hydra-link-block--plan {
+  background: linear-gradient(160deg, rgba(232, 234, 246, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(92, 107, 192, 0.25);
+}
+
+.hydra-link-block--plan .hydra-link-section-title {
+  color: #3949ab;
+  border-left: 4px solid #5c6bc0;
+  padding-left: 0.55rem;
+}
+
+.hydra-link-block .hydra-link-hint:last-child {
+  margin-bottom: 0;
+}
+
 .hydra-soft-note {
   font-size: 0.82rem;
   background: #f1f8ff;

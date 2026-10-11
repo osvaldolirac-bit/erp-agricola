@@ -81,8 +81,8 @@
     {% endif %}
 
     {% if tab == 'control' %}
-    <section class="hydra-link-panel">
-      <h2 class="hydra-link-section-title">Sectores</h2>
+    <section class="hydra-link-block hydra-link-block--sectores" aria-labelledby="hydraBlockSectores">
+      <h2 class="hydra-link-section-title" id="hydraBlockSectores">Sectores de riego</h2>
       <div class="hydra-zone-grid">
         {% for s in hydra_sectores %}
         <article class="hydra-zone-card{% if s.relay_id in running_relay_ids %} is-running{% elif s.relay_id in queued_relay_ids %} is-queued{% endif %}" data-relay="{{ s.relay_id }}">
@@ -125,9 +125,11 @@
 
       <script id="hydraSectorsJson" type="application/json">{{ hydra_sectores|tojson }}</script>
       <script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
+    </section>
 
-      <h2 class="hydra-link-section-title mt-4">Regar ahora</h2>
-      <p class="hydra-link-hint">Un sector a la vez en el controlador. Agregue filas para secuencia.</p>
+    <section class="hydra-link-block hydra-link-block--run" aria-labelledby="hydraBlockRun">
+      <h2 class="hydra-link-section-title" id="hydraBlockRun">Regar ahora</h2>
+      <p class="hydra-link-hint mb-2">Un sector a la vez en el controlador. Agregue filas para secuencia.</p>
       <form method="post" id="formHydraRunNow" class="hydra-link-run-form">
         <input type="hidden" name="t" value="{{ token }}">
         <input type="hidden" name="action" value="hydra_regar_ahora">
@@ -157,8 +159,11 @@
         <button type="button" class="btn btn-sm hydra-btn-add-sector mb-2" id="hydraAddLinea">+ Otro sector</button>
         <button type="submit" class="btn hydra-btn-run w-100">Iniciar riego</button>
       </form>
+    </section>
 
-      <h2 class="hydra-link-section-title mt-4">Programar</h2>
+    <section class="hydra-link-block hydra-link-block--plan" aria-labelledby="hydraBlockPlan">
+      <h2 class="hydra-link-section-title" id="hydraBlockPlan">Programar</h2>
+      <p class="hydra-link-hint mb-2">Cola con hora de inicio futura.</p>
       <form method="post" id="formHydraProgramar" class="hydra-link-run-form">
         <input type="hidden" name="t" value="{{ token }}">
         <input type="hidden" name="action" value="hydra_programar">
