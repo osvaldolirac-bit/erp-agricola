@@ -56,6 +56,16 @@ def main() -> int:
             "&& systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web",
         ]
     )
+    verify = root / "scripts" / "verify_hydra_cc_mapeo.py"
+    if verify.is_file():
+        run([*scp_base, str(verify), f"{HOST}:{REMOTE}/scripts/verify_hydra_cc_mapeo.py"])
+        run(
+            [
+                *ssh_base,
+                f"cd {REMOTE} && PYTHONPATH={REMOTE} ERP_LC_DB=/root/erp_concepcion_v6.db "
+                ".venv/bin/python3 scripts/verify_hydra_cc_mapeo.py",
+            ]
+        )
     print("OK — Hydra LC desplegado en VPS.")
     return 0
 
