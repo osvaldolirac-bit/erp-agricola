@@ -34,7 +34,7 @@ from demo_web.services.registro_riego import (
 bp = Blueprint("registro_riego", __name__)
 
 _HONEYPOT_FIELD = "sr_hp_x9f2"
-_HYDRA_TABS = frozenset({"control", "registro", "estado"})
+_HYDRA_TABS = frozenset({"control", "estado"})
 
 
 def _token_request() -> str | None:
@@ -276,6 +276,8 @@ def formulario():
 
     use_hydra_ui = bool(lc_contexto_hydra() and hydra_sectores)
     tab = (request.args.get("tab") or request.form.get("tab") or "control").strip().lower()
+    if use_hydra_ui and tab == "registro":
+        tab = "control"
     if tab not in _HYDRA_TABS:
         tab = "control"
 
@@ -328,17 +330,23 @@ def formulario():
                 ):
                     tab = "estado"
         else:
-            form_state = _procesar_registro_legacy(
-                demo=demo,
-                hydra_sectores=hydra_sectores,
-                huertos=huertos,
-                fertilizantes_opts=fertilizantes_opts,
-                regadores_opts=regadores_opts,
-                operador=operador,
-                acceso_personal=acceso_personal,
-            )
             if use_hydra_ui:
-                tab = "registro"
+                hydra_msg = (
+                    "El riego se registra desde HYDRA → Control o Estado. "
+                    "La pestaña Registro manual ya no está en el link."
+                )
+                hydra_ok = False
+                tab = "control"
+            else:
+                form_state = _procesar_registro_legacy(
+                    demo=demo,
+                    hydra_sectores=hydra_sectores,
+                    huertos=huertos,
+                    fertilizantes_opts=fertilizantes_opts,
+                    regadores_opts=regadores_opts,
+                    operador=operador,
+                    acceso_personal=acceso_personal,
+                )
 
     if not form_state["form_fert_lineas"] and fertilizantes_opts:
         form_state["form_fert_lineas"] = [{"producto_id": "", "cantidad": "", "dosis_ha": ""}]
@@ -417,10 +425,6 @@ def formulario():
             hydra_cola
             and str(hydra_cola.get("estado") or "") == "programado"
             and not hydra_mostrar_apagar
-        ),
-        hydra_cola_bloquea_registro=bool(
-            hydra_cola
-            and str(hydra_cola.get("estado") or "") in ("programado", "en_ejecucion")
         ),
         **form_state,
     )

@@ -260,9 +260,11 @@
     </div>
     {% if hydra_link_sectores|default(0) > 0 %}
     <div class="alert alert-success py-2 small mb-3">
-      <strong>Hydra + Link:</strong> el celular del regador elige entre
-      <strong>{{ hydra_link_sectores }}</strong> sector(es) Hydrawise (mapeados a CC).
-      Sectores = los importados desde Hydrawise en <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a> (con CC asignado).
+      <strong>Link HYDRA:</strong> en el celular el regador usa <strong>Control</strong> (iniciar/programar cola + fert)
+      y <strong>Estado</strong> (cola y fert pendiente). Imputación automática al historial —
+      <strong>{{ hydra_link_sectores }}</strong> sector(es) mapeados a CC en
+      <a href="{{ url_for('modules.riego', sec='hydra') }}">Administración HYDRA</a>.
+      Los registros manuales antiguos en la tabla de abajo siguen autorizándose aquí.
     </div>
     {% elif hydra_link_sectores is defined %}
     <div class="alert alert-secondary py-2 small mb-3">
