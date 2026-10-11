@@ -9,6 +9,7 @@ from flask import flash, render_template, request, url_for
 from demo_web.auth import user_db
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
+from demo_web.services.tenant_scope import is_concepcion_tenant
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
 from demo_web.services.tenant_scope import cuarteles_oficiales, is_espino_tenant
@@ -62,6 +63,7 @@ SECCION_DEFS = [
     ("encargados", "💵 ENCARGADOS COMPRAS", "all"),
     ("ppto", "🍒 PPTO Y PRODUCCIÓN", "all"),
     ("flujo", "💰 INGRESOS FLUJO", "all"),
+    ("hydrawise", "💧 HYDRAWISE", "lc"),
 ]
 
 ACCIONES_MOVIDAS_A_MASTER = frozenset({
@@ -86,6 +88,10 @@ def _secciones_visibles(demo) -> list[tuple[str, str]]:
     es_super = demo.es_super_admin()
     out = []
     for key, label, scope in SECCION_DEFS:
+        if scope == "lc":
+            if is_concepcion_tenant():
+                out.append((key, label))
+            continue
         if scope == "all" or es_super:
             out.append((key, label))
     return out
@@ -582,6 +588,14 @@ def gather_admin(user_email: str, user_rol: str) -> dict:
             ctx.update(_gather_ppto(demo, conn))
         elif sec == "flujo":
             ctx.update(_gather_flujo(demo, conn))
+        elif sec == "hydrawise" and is_concepcion_tenant():
+            from demo_web.services.hydrawise_riego import get_api_key, probar_conexion
+
+            key = get_api_key(conn)
+            ctx["hydrawise_tiene_key"] = bool(key)
+            ctx["hydrawise_key_masked"] = (key[:4] + "…" + key[-4:]) if len(key) > 10 else ""
+            prueba = probar_conexion(conn) if key else None
+            ctx["hydrawise_test"] = prueba
     finally:
         conn.close()
 
@@ -1289,6 +1303,23 @@ def view(user_email: str, user_rol: str):
                 result = _post_guardar_ingresos_flujo(demo, conn)
             elif action == "reseed":
                 result = _post_reseed(demo, conn)
+            elif action == "guardar_hydrawise_key" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import set_api_key
+
+                key = (request.form.get("api_key") or "").strip()
+                if key:
+                    set_api_key(conn, key)
+                    result = {"ok": True, "msg": "API key Hydrawise guardada."}
+                else:
+                    result = {"ok": True, "msg": "Sin cambios (deje la key en blanco para mantener la actual)."}
+            elif action == "probar_hydrawise" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import probar_conexion
+
+                result = probar_conexion(conn)
+                result = {
+                    "ok": bool(result.get("ok")),
+                    "msg": result.get("msg") or "Error",
+                }
 
             if result:
                 flash(result["msg"], "success" if result["ok"] else "danger")

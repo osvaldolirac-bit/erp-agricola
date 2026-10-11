@@ -1813,5 +1813,122 @@ def links_personales_regadores() -> list[dict[str, str]]:
     return out
 
 
+def registrar_desde_hydrawise(
+    fecha: str,
+    huerto: str,
+    horas: float,
+    regador: str,
+    usuario: str,
+    *,
+    fertilizantes: list[dict[str, Any]] | None = None,
+    modo_riego: str = "horas",
+    surcos: float | None = None,
+    hydrawise_event_key: str = "",
+) -> dict[str, Any]:
+    """Imputación automática (como manual) para riego confirmado vía Hydrawise."""
+    demo = get_demo_module()
+    huerto_cc = _norm_cc(huerto)
+    if not huerto_cc:
+        return {"ok": False, "msg": "Huerto/CC inválido en mapeo Hydrawise."}
+    modo_riego = _modo_efectivo(huerto_cc, modo_riego)
+
+    conn = _conn()
+    codigo = ""
+    try:
+        migrar_tabla(conn)
+        if hydrawise_event_key:
+            from demo_web.services.hydrawise_riego import migrar_hydrawise
+
+            migrar_hydrawise(conn)
+            row = conn.execute(
+                "SELECT codigo_riego FROM hydrawise_importados WHERE event_key=?",
+                (hydrawise_event_key,),
+            ).fetchone()
+            if row:
+                return {
+                    "ok": True,
+                    "msg": f"Evento ya importado ({row[0]}).",
+                    "codigo": str(row[0]),
+                }
+        m3_final, err_m3 = resolver_m3_registro(
+            conn,
+            huerto_cc,
+            float(horas or 0),
+            0.0,
+            modo=modo_riego,
+            surcos=surcos,
+        )
+        if err_m3:
+            return {"ok": False, "msg": err_m3}
+        m3 = m3_final
+        lineas_fert: list[dict[str, Any]] = []
+        if fertilizantes:
+            ok_f, msg_f, lineas_fert = _validar_lineas_fertilizantes(conn, fertilizantes)
+            if not ok_f:
+                return {"ok": False, "msg": msg_f}
+            fert_total = sum(float(ln["cantidad"]) for ln in lineas_fert)
+        else:
+            fert_total = None
+
+        conn.execute("BEGIN IMMEDIATE")
+        codigo = _siguiente_codigo(conn)
+        fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            """INSERT INTO riego
+               (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
+                regador, origen, creado_por, creado_en, modo_riego, surcos)
+               VALUES (?,?,?,?,?,?,?,?, 'hydrawise', ?, ?, ?, ?)""",
+            (
+                codigo,
+                str(fecha)[:10],
+                huerto_cc,
+                float(horas or 0),
+                float(m3 or 0),
+                None,
+                fert_total,
+                (regador or "Hydrawise").strip(),
+                usuario or "HYDRAWISE",
+                fh,
+                modo_riego,
+                surcos,
+            ),
+        )
+        if lineas_fert:
+            _guardar_fertilizantes(conn, codigo, lineas_fert)
+            ok_bod, msg_bod = _aplicar_salidas_bodega_fertilizantes(
+                conn, codigo, huerto_cc, str(fecha)[:10], demo
+            )
+            if not ok_bod:
+                conn.rollback()
+                return {"ok": False, "msg": msg_bod}
+
+        fert_resumen = _fmt_fertilizantes(conn, codigo, demo, None, fert_total)
+        conn.execute(
+            "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
+            (
+                usuario or "HYDRAWISE",
+                "RIEGO HYDRAWISE",
+                f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | "
+                f"{demo.f_decimal(m3)} m3 | {fert_resumen[:80]}",
+                fh,
+            ),
+        )
+        conn.commit()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "msg": f"No se pudo registrar Hydrawise: {exc}"}
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "msg": f"{codigo} imputado desde Hydrawise en {huerto_cc}.",
+        "codigo": codigo,
+    }
+
+
 def habilitado() -> bool:
     return get_erp_app() in ("concepcion", "demo")

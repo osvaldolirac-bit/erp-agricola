@@ -6,12 +6,14 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import is_concepcion_tenant
 
 SECCIONES = [
     ("historial", "📊 HISTORIAL"),
     ("manual", "✏️ REGISTRO MANUAL"),
     ("bitacora", "🔗 LINK RIEGO"),
 ]
+SECCION_HYDRA = ("hydra", "🌐 HYDRA")
 
 
 def gather_riego(user_email: str, user_rol: str) -> dict:
@@ -35,6 +37,8 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
     secciones = list(SECCIONES)
     if not habilitado():
         secciones = [s for s in secciones if s[0] != "bitacora"]
+    if is_concepcion_tenant():
+        secciones.append(SECCION_HYDRA)
     if sec not in {k for k, _ in secciones}:
         sec = "historial"
 
@@ -77,6 +81,43 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             )
         elif sec == "manual":
             ctx["form_fecha"] = hoy_demo(demo).isoformat()
+        elif sec == "hydra" and is_concepcion_tenant():
+            import json
+
+            from demo_web.services.hydrawise_riego import (
+                get_api_key,
+                listar_colas_recientes,
+                listar_zonas,
+                probar_conexion,
+            )
+
+            puede = demo.es_admin() and not demo.es_solo_lectura()
+            zonas = listar_zonas(conn)
+            for z in zonas:
+                z["fert_json"] = json.dumps(
+                    [
+                        {
+                            "producto_id": f["producto_id"],
+                            "cantidad": f["cantidad"],
+                            "dosis_ha": f.get("dosis_ha"),
+                        }
+                        for f in z.get("fertilizantes") or []
+                    ],
+                    ensure_ascii=False,
+                )
+            prueba = probar_conexion(conn) if get_api_key(conn) else {"ok": False}
+            ctx.update(
+                {
+                    "hydra_puede_editar": puede,
+                    "hydra_zonas": zonas,
+                    "hydra_zonas_activas": [
+                        z for z in zonas if z.get("activo") and (z.get("huerto_cc") or "").strip()
+                    ],
+                    "hydra_colas": listar_colas_recientes(conn),
+                    "hydra_api_ok": bool(prueba.get("ok")),
+                    "hydra_api_msg": prueba.get("msg") or "",
+                }
+            )
 
         return ctx
     finally:
@@ -158,6 +199,59 @@ def view(user_email: str, user_rol: str):
                 result = rechazar_registro(codigo, user_email, motivo=motivo)
                 flash(result["msg"], "success" if result["ok"] else "danger")
             return redirect_module("riego", sec="bitacora")
+
+        if is_concepcion_tenant() and action.startswith("hydra_"):
+            if not demo.es_admin():
+                flash("Solo administradores pueden operar Hydra.", "danger")
+                return redirect_module("riego", sec="hydra")
+            conn = demo.conectar_db()
+            try:
+                from demo_web.services import hydrawise_riego as hw
+
+                result = {"ok": False, "msg": "Acción no reconocida."}
+                if action == "hydra_sync":
+                    result = hw.sincronizar_hydrawise(conn, user_email)
+                elif action == "hydra_import_zonas":
+                    result = hw.importar_zonas_desde_api(conn)
+                elif action == "hydra_guardar_zona":
+                    result = hw.guardar_mapeo_zona(
+                        conn,
+                        int(request.form.get("relay_id") or 0),
+                        alias=request.form.get("alias") or "",
+                        huerto_cc=request.form.get("huerto_cc") or "",
+                        modo_riego=request.form.get("modo_riego") or "horas",
+                        activo=request.form.get("activo") == "1",
+                        fert_json=request.form.get("fert_json") or "[]",
+                    )
+                elif action == "hydra_regar_ahora":
+                    demo_mod = get_demo_module()
+                    inicio = demo_mod.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+                    result = hw.crear_cola_desde_form(
+                        request.form,
+                        tipo="run_now",
+                        usuario=user_email,
+                        inicio_programa=inicio,
+                    )
+                    if result.get("ok"):
+                        sync = hw.sincronizar_hydrawise(conn, user_email)
+                        result = {
+                            "ok": sync.get("ok", True),
+                            "msg": result.get("msg", "") + " " + sync.get("msg", ""),
+                        }
+                elif action == "hydra_programar":
+                    inicio = (request.form.get("inicio_programa") or "").strip().replace("T", " ")
+                    if len(inicio) == 16:
+                        inicio += ":00"
+                    result = hw.crear_cola_desde_form(
+                        request.form,
+                        tipo="programado",
+                        usuario=user_email,
+                        inicio_programa=inicio,
+                    )
+            finally:
+                conn.close()
+            flash(result.get("msg", ""), "success" if result.get("ok") else "danger")
+            return redirect_module("riego", sec="hydra")
 
     ctx = gather_riego(user_email, user_rol)
     return render_template(
