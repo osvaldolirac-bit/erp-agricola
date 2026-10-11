@@ -2249,6 +2249,12 @@ body.erp-ios .erp-pdf-viewer-object {
   background: #f1fbf2;
 }
 
+.hydra-zone-card.is-queued {
+  border-color: #fb8c00;
+  box-shadow: 0 0 0 2px rgba(251, 140, 0, 0.18);
+  background: #fff8f0;
+}
+
 .hydra-zone-card-top {
   display: flex;
   align-items: flex-start;
@@ -2277,6 +2283,11 @@ body.erp-ios .erp-pdf-viewer-object {
   animation: hydra-pulse 1.4s ease-in-out infinite;
 }
 
+.hydra-zone-card.is-queued .hydra-zone-dot {
+  background: #fb8c00;
+  animation: hydra-pulse 2s ease-in-out infinite;
+}
+
 @keyframes hydra-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.55; transform: scale(1.15); }
@@ -2298,6 +2309,11 @@ body.erp-ios .erp-pdf-viewer-object {
 .hydra-zone-status--idle {
   color: #90a4ae;
   font-weight: 500;
+}
+
+.hydra-zone-status--queued {
+  color: #e65100;
+  font-weight: 600;
 }
 
 .hydra-btn-sync {

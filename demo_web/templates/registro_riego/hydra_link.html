@@ -73,13 +73,19 @@
       <h2 class="hydra-link-section-title">Sectores</h2>
       <div class="hydra-zone-grid">
         {% for s in hydra_sectores %}
-        <article class="hydra-zone-card{% if s.relay_id in running_relay_ids %} is-running{% endif %}" data-relay="{{ s.relay_id }}">
+        <article class="hydra-zone-card{% if s.relay_id in running_relay_ids %} is-running{% elif s.relay_id in queued_relay_ids %} is-queued{% endif %}" data-relay="{{ s.relay_id }}">
           <div class="hydra-zone-card-top">
             <span class="hydra-zone-dot" aria-hidden="true"></span>
             <h3>{{ s.label }}</h3>
           </div>
           <p class="hydra-zone-cc">{{ s.huerto_cc }}</p>
-          {% if s.relay_id in running_relay_ids %}<span class="hydra-zone-status">Regando</span>{% else %}<span class="hydra-zone-status hydra-zone-status--idle">En reposo</span>{% endif %}
+          {% if s.relay_id in running_relay_ids %}
+          <span class="hydra-zone-status">Regando</span>
+          {% elif s.relay_id in queued_relay_ids %}
+          <span class="hydra-zone-status hydra-zone-status--queued">En cola</span>
+          {% else %}
+          <span class="hydra-zone-status hydra-zone-status--idle">En reposo</span>
+          {% endif %}
         </article>
         {% endfor %}
       </div>

@@ -321,6 +321,7 @@ def formulario():
     hydra_api_ok = False
     hydra_api_msg = ""
     running_relay_ids: set[int] = set()
+    queued_relay_ids: set[int] = set()
     if use_hydra_ui:
         conn = demo.conectar_db()
         try:
@@ -332,12 +333,21 @@ def formulario():
         finally:
             conn.close()
         if hydra_cola:
+            cola_est = str(hydra_cola.get("estado") or "")
+            cola_viva = cola_est in ("programado", "en_ejecucion")
             for it in hydra_cola.get("items") or []:
-                if it.get("estado") == "corriendo":
-                    running_relay_ids.add(int(it["relay_id"]))
+                rid = int(it["relay_id"])
+                item_est = str(it.get("estado") or "")
+                if item_est == "corriendo":
+                    running_relay_ids.add(rid)
+                elif cola_viva and item_est == "pendiente":
+                    queued_relay_ids.add(rid)
+        queued_relay_ids -= running_relay_ids
         for rid, st in (live_zonas or {}).items():
             if isinstance(st, dict) and st.get("running"):
-                running_relay_ids.add(int(rid))
+                rid_i = int(rid)
+                running_relay_ids.add(rid_i)
+                queued_relay_ids.discard(rid_i)
 
     ctx = dict(
         token=tok,
@@ -357,6 +367,7 @@ def formulario():
         hydra_api_msg=hydra_api_msg,
         live_zonas=live_zonas,
         running_relay_ids=sorted(running_relay_ids),
+        queued_relay_ids=sorted(queued_relay_ids),
         **form_state,
     )
 
