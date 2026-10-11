@@ -1335,18 +1335,18 @@ def view(user_email: str, user_rol: str):
                     "msg": ((le.get("msg") or "") + (" — " + det if det else "")).strip(),
                 }
             elif action == "guardar_hydrawise_controller" and is_concepcion_tenant():
-                from demo_web.services.hydrawise_riego import set_controller_id
+                from demo_web.services.hydrawise_riego import set_equipo_ref
 
                 raw = (request.form.get("controller_id") or "").strip()
                 if not raw:
-                    set_controller_id(conn, None)
-                    result = {"ok": True, "msg": "ID de equipo borrado (auto si hay uno solo)."}
+                    set_equipo_ref(conn, None)
+                    result = {"ok": True, "msg": "Equipo borrado (auto si hay uno solo)."}
                 else:
-                    try:
-                        set_controller_id(conn, int(raw))
-                        result = {"ok": True, "msg": f"Equipo Hydrawise ID {int(raw)} guardado."}
-                    except ValueError:
-                        result = {"ok": False, "msg": "ID de equipo debe ser numérico."}
+                    set_equipo_ref(conn, raw)
+                    result = {
+                        "ok": True,
+                        "msg": f"Equipo Hydrawise guardado: {raw} (serial o ID API).",
+                    }
 
             if result:
                 flash(result["msg"], "success" if result["ok"] else "danger")

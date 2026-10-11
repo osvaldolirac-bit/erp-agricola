@@ -121,20 +121,25 @@ def get_api_key(conn: sqlite3.Connection) -> str:
     return str(row[0] or "").strip() if row else ""
 
 
-def get_controller_id(conn: sqlite3.Connection) -> int | None:
+def _norm_equipo_tag(value: str) -> str:
+    return "".join(c for c in str(value or "").upper() if c.isalnum())
+
+
+def get_equipo_ref(conn: sqlite3.Connection) -> str:
+    """Serial alfanumérico del HCC o ID numérico API guardado en Admin."""
     migrar_hydrawise(conn)
     row = conn.execute(
         "SELECT valor FROM schema_meta WHERE clave=?", (META_KEY_CONTROLLER,)
     ).fetchone()
-    if not row or not str(row[0] or "").strip():
-        return None
-    try:
-        return int(row[0])
-    except ValueError:
-        return None
+    return str(row[0] or "").strip() if row else ""
 
 
-def set_controller_id(conn: sqlite3.Connection, controller_id: int | None) -> None:
+def get_controller_id(conn: sqlite3.Connection) -> str:
+    """Alias legado — valor guardado por el usuario (serial o ID)."""
+    return get_equipo_ref(conn)
+
+
+def set_equipo_ref(conn: sqlite3.Connection, ref: str | None) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
     if conn_en_solo_lectura(conn):
@@ -143,14 +148,44 @@ def set_controller_id(conn: sqlite3.Connection, controller_id: int | None) -> No
     conn.execute(
         """CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"""
     )
-    if controller_id is None:
+    val = (ref or "").strip()
+    if not val:
         conn.execute("DELETE FROM schema_meta WHERE clave=?", (META_KEY_CONTROLLER,))
     else:
         conn.execute(
             "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, ?)",
-            (META_KEY_CONTROLLER, str(int(controller_id))),
+            (META_KEY_CONTROLLER, val),
         )
     conn.commit()
+
+
+def set_controller_id(conn: sqlite3.Connection, controller_id: int | str | None) -> None:
+    """Compat: acepta serial alfanumérico o ID numérico."""
+    if controller_id is None:
+        set_equipo_ref(conn, None)
+    else:
+        set_equipo_ref(conn, str(controller_id).strip())
+
+
+def _api_id_desde_ref(ref: str, equipos: list[dict[str, Any]]) -> int | None:
+    raw = (ref or "").strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        api = int(raw)
+        for e in equipos:
+            if int(e.get("controller_id") or 0) == api:
+                return api
+        return api
+    tag = _norm_equipo_tag(raw)
+    for e in equipos:
+        if _norm_equipo_tag(e.get("serial_number")) == tag:
+            return int(e["controller_id"])
+        if str(e.get("controller_id") or "") == raw:
+            return int(e["controller_id"])
+        if _norm_equipo_tag(e.get("name")) == tag:
+            return int(e["controller_id"])
+    return None
 
 
 def listar_equipos(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -169,23 +204,34 @@ def listar_equipos(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def _resolver_controller_id(conn: sqlite3.Connection, key: str) -> tuple[int | None, str]:
-    """Devuelve controller_id a usar en statusschedule/setzone."""
-    cid = get_controller_id(conn)
-    if cid is not None:
-        return cid, ""
+    """Devuelve controller_id numérico API para statusschedule/setzone."""
     resp = customer_details(key)
     if not resp.get("ok"):
         return None, _fmt_api_err(resp.get("error") or "Error")
     equipos = list_controllers(resp.get("data") or {})
+    ref = get_equipo_ref(conn)
+    if ref:
+        api_id = _api_id_desde_ref(ref, equipos)
+        if api_id is not None:
+            return api_id, ""
+        return (
+            None,
+            f"No se encontró equipo «{ref}» en la cuenta. "
+            "Use «Listar equipos» y pegue el serial (alfanumérico) o el ID numérico.",
+        )
     if len(equipos) == 1:
-        cid = int(equipos[0]["controller_id"])
-        set_controller_id(conn, cid)
-        return cid, ""
+        e0 = equipos[0]
+        serial = str(e0.get("serial_number") or "").strip()
+        if serial:
+            set_equipo_ref(conn, serial)
+        else:
+            set_equipo_ref(conn, str(e0.get("controller_id")))
+        return int(e0["controller_id"]), ""
     if len(equipos) > 1:
         return (
             None,
-            "Hay varios equipos Hydrawise: indique el ID de controlador en "
-            "Administración → Hydrawise (use «Listar equipos»).",
+            "Hay varios equipos: indique el **serial** (alfanumérico del sticker) "
+            "en Administración → Hydrawise («Listar equipos»).",
         )
     return None, "No se encontró equipo con serial en la cuenta Hydrawise."
 
@@ -240,8 +286,8 @@ def probar_conexion(conn: sqlite3.Connection) -> dict[str, Any]:
     relays, err = _relays_para_cuenta(conn, key)
     if err:
         return {"ok": False, "msg": err}
-    cid = get_controller_id(conn)
-    extra = f" Equipo ID {cid}." if cid else ""
+    ref = get_equipo_ref(conn)
+    extra = f" Equipo: {ref}." if ref else ""
     return {
         "ok": True,
         "msg": f"Conexión OK — {len(relays)} zona(s).{extra}",

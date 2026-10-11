@@ -420,7 +420,8 @@
     <h2 class="h6">Hydrawise — La Concepción</h2>
     <p class="small text-muted mb-2">
       <strong>API key</strong> (Account Details → Generate API Key).
-      El <strong>número de equipo / serial</strong> del HCC se ingresa en la <strong>app Hydrawise</strong> al vincular el controlador (sticker en el equipo); en el ERP use el <strong>ID de controlador</strong> numérico si hay más de un equipo.
+      El <strong>serial alfanumérico</strong> del HCC (sticker) se vincula en la <strong>app Hydrawise</strong>.
+      En el ERP pegue ese <strong>mismo serial</strong> abajo (o el ID numérico que muestra «Listar equipos»).
     </p>
     <form method="post" class="row g-2 align-items-end mb-3">
       <input type="hidden" name="sec" value="hydrawise">
@@ -441,14 +442,14 @@
     <form method="post" class="row g-2 align-items-end mb-3">
       <input type="hidden" name="sec" value="hydrawise">
       <div class="col-md-4">
-        <label class="form-label small">ID controlador (equipo La Aparición)</label>
-        <input type="number" name="controller_id" class="form-control form-control-sm" value="{{ hydrawise_controller_id or '' }}" placeholder="Ej. 703926">
+        <label class="form-label small">Serial o ID equipo (La Aparición)</label>
+        <input type="text" name="controller_id" class="form-control form-control-sm" value="{{ hydrawise_controller_id or '' }}" placeholder="Serial alfanumérico del sticker" autocomplete="off">
       </div>
       <div class="col-auto">
-        <button type="submit" name="action" value="guardar_hydrawise_controller" class="btn btn-primary btn-sm">Guardar ID</button>
+        <button type="submit" name="action" value="guardar_hydrawise_controller" class="btn btn-primary btn-sm">Guardar equipo</button>
       </div>
       <div class="col-12">
-        <p class="small text-muted mb-0">Si solo hay un HCC en la cuenta, el ERP puede detectarlo solo al probar conexión. Use «Listar equipos» para ver serial e ID.</p>
+        <p class="small text-muted mb-0">Serial suele ser alfanumérico (ej. en el sticker del HCC). Si solo hay un equipo, al probar conexión el ERP puede guardarlo solo.</p>
       </div>
     </form>
     {% if hydrawise_test %}
