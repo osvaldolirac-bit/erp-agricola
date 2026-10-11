@@ -2235,6 +2235,10 @@ body.erp-ios .erp-pdf-viewer-object {
   margin-bottom: 0.5rem;
 }
 
+.hydra-zone-card.is-queued {
+  grid-column: 1 / -1;
+}
+
 .hydra-zone-card {
   background: #f7fbfd;
   border-radius: 14px;
@@ -2314,6 +2318,55 @@ body.erp-ios .erp-pdf-viewer-object {
 .hydra-zone-status--queued {
   color: #e65100;
   font-weight: 600;
+}
+
+.hydra-zone-program {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed rgba(230, 81, 0, 0.25);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #455a64;
+}
+
+.hydra-zone-program-line {
+  margin: 0 0 0.2rem;
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.hydra-zone-program-line span:first-child {
+  font-weight: 600;
+  color: #e65100;
+  min-width: 5.5rem;
+}
+
+.hydra-zone-program-line--muted span:first-child {
+  color: #90a4ae;
+}
+
+.hydra-zone-fert {
+  margin-top: 0.35rem;
+}
+
+.hydra-zone-fert-kicker {
+  display: block;
+  font-weight: 700;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #00838f;
+  margin-bottom: 0.15rem;
+}
+
+.hydra-zone-fert-list {
+  padding-left: 1rem;
+  margin: 0;
+}
+
+.hydra-zone-fert-list li {
+  margin-bottom: 0.1rem;
 }
 
 .hydra-btn-sync {

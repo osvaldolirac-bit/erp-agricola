@@ -83,6 +83,27 @@
           <span class="hydra-zone-status">Regando</span>
           {% elif s.relay_id in queued_relay_ids %}
           <span class="hydra-zone-status hydra-zone-status--queued">En cola</span>
+          {% set prog = programa_por_relay.get(s.relay_id) %}
+          {% if prog %}
+          <div class="hydra-zone-program">
+            <p class="hydra-zone-program-line"><span>Modo</span> {{ prog.tipo_label }} · turno #{{ prog.orden }}</p>
+            <p class="hydra-zone-program-line"><span>Inicio programa</span> {{ prog.inicio_programa_fmt }}</p>
+            <p class="hydra-zone-program-line"><span>Inicio estimado</span> ~{{ prog.inicio_estimado_fmt }}</p>
+            <p class="hydra-zone-program-line"><span>Riego</span> {{ prog.minutos_fmt }}</p>
+            {% if prog.tiene_fertirriego %}
+            <div class="hydra-zone-fert">
+              <span class="hydra-zone-fert-kicker">Fertirriego</span>
+              <ul class="hydra-zone-fert-list mb-0">
+                {% for f in prog.fertilizantes %}
+                <li>{{ f.nombre }} — {{ f.cantidad_fmt }}{% if f.dosis_fmt %} · {{ f.dosis_fmt }}{% endif %}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% else %}
+            <p class="hydra-zone-program-line hydra-zone-program-line--muted"><span>Fertirriego</span> Sin receta en HYDRA</p>
+            {% endif %}
+          </div>
+          {% endif %}
           {% else %}
           <span class="hydra-zone-status hydra-zone-status--idle">En reposo</span>
           {% endif %}

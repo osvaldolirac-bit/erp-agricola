@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from demo_web.services.demo_loader import get_demo_module
@@ -830,6 +830,129 @@ def snapshot_live_zonas(conn: sqlite3.Connection) -> dict[str, Any]:
         }
     mp = relay_status_map(st_resp.get("data") or {})
     return {"ok": True, "msg": "Estado actualizado.", "zonas": mp}
+
+
+def _parse_dt_chile(value: str | None) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace(" ", "T")[:19])
+    except ValueError:
+        return None
+
+
+def _fmt_minutos_riego(minutos: float) -> str:
+    m = float(minutos or 0)
+    if m <= 0:
+        return "—"
+    total = int(round(m))
+    if total < 60:
+        return f"{total} min"
+    h, r = divmod(total, 60)
+    if r:
+        return f"{h} h {r} min"
+    return f"{h} h"
+
+
+def _map_nombres_fertilizante(conn: sqlite3.Connection) -> dict[int, str]:
+    rows = conn.execute(
+        """SELECT id, producto FROM inventario
+           WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ('FERTILIZANTE')
+           ORDER BY producto COLLATE NOCASE"""
+    ).fetchall()
+    return {int(r[0]): str(r[1] or "").strip() or f"#{r[0]}" for r in rows}
+
+
+def _inicio_estimado_pendiente(
+    cola: dict[str, Any],
+    items: list[dict[str, Any]],
+    item: dict[str, Any],
+    ahora: datetime,
+) -> datetime:
+    ordenados = sorted(items, key=lambda x: int(x["orden"]))
+    inicio_prog = _parse_dt_chile(cola.get("inicio_programa")) or ahora
+    cola_est = str(cola.get("estado") or "")
+    if cola_est == "programado" and inicio_prog > ahora:
+        prev = sum(
+            float(it["minutos"])
+            for it in ordenados
+            if int(it["orden"]) < int(item["orden"])
+        )
+        return inicio_prog + timedelta(minutes=prev)
+
+    t = ahora
+    for it in ordenados:
+        if int(it["orden"]) >= int(item["orden"]):
+            break
+        est = str(it.get("estado") or "")
+        if est == "corriendo":
+            t0 = _parse_dt_chile(it.get("run_inicio")) or ahora
+            rem = max(0.0, float(it["minutos"]) - (ahora - t0).total_seconds() / 60.0)
+            t = ahora + timedelta(minutes=rem)
+        elif est == "pendiente":
+            t = t + timedelta(minutes=float(it["minutos"]))
+        else:
+            fin = _parse_dt_chile(it.get("run_fin"))
+            if fin and fin > t:
+                t = fin
+    return t
+
+
+def programa_por_relay_en_cola(
+    conn: sqlite3.Connection,
+    cola: dict[str, Any] | None,
+) -> dict[int, dict[str, Any]]:
+    """Detalle de programación (inicio, minutos, fertirriego) por relay en cola activa."""
+    if not cola:
+        return {}
+    demo = get_demo_module()
+    ahora = demo.hora_chile()
+    items = list(cola.get("items") or [])
+    nombres = _map_nombres_fertilizante(conn)
+    inicio_prog = _parse_dt_chile(cola.get("inicio_programa"))
+    inicio_prog_fmt = inicio_prog.strftime("%d/%m/%Y %H:%M") if inicio_prog else "—"
+    tipo = str(cola.get("tipo") or "")
+    tipo_label = "Programado" if tipo == "programado" else "Regar ahora"
+
+    out: dict[int, dict[str, Any]] = {}
+    for it in items:
+        if str(it.get("estado") or "") != "pendiente":
+            continue
+        rid = int(it["relay_id"])
+        z = zona_por_relay(conn, rid)
+        fert_lines: list[dict[str, Any]] = []
+        for f in (z or {}).get("fertilizantes") or []:
+            pid = int(f.get("producto_id") or 0)
+            cant = float(f.get("cantidad") or 0)
+            if pid <= 0 or cant <= 0:
+                continue
+            um = str(f.get("unidad") or "kg")
+            dosis = f.get("dosis_ha")
+            line = {
+                "nombre": nombres.get(pid) or f"Producto #{pid}",
+                "cantidad": cant,
+                "cantidad_fmt": f"{cant:g} {um}",
+                "dosis_ha": dosis,
+            }
+            if dosis not in (None, ""):
+                try:
+                    line["dosis_fmt"] = f"{float(dosis):g} / ha"
+                except (TypeError, ValueError):
+                    line["dosis_fmt"] = ""
+            fert_lines.append(line)
+        est_dt = _inicio_estimado_pendiente(cola, items, it, ahora)
+        out[rid] = {
+            "orden": int(it["orden"]),
+            "minutos": float(it["minutos"]),
+            "minutos_fmt": _fmt_minutos_riego(float(it["minutos"])),
+            "inicio_programa_fmt": inicio_prog_fmt,
+            "inicio_estimado_fmt": est_dt.strftime("%d/%m %H:%M"),
+            "tipo_label": tipo_label,
+            "tiene_fertirriego": bool(fert_lines),
+            "fertilizantes": fert_lines,
+        }
+    return out
 
 
 def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:

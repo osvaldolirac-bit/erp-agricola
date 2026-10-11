@@ -320,6 +320,7 @@ def formulario():
     hydra_colas: list = []
     hydra_api_ok = False
     hydra_api_msg = ""
+    programa_por_relay: dict = {}
     running_relay_ids: set[int] = set()
     queued_relay_ids: set[int] = set()
     if use_hydra_ui:
@@ -330,6 +331,7 @@ def formulario():
             hydra_cola = hw.cola_activa_en_link(conn)
             hydra_colas = hw.listar_colas_recientes(conn, limite=4)
             hydra_api_ok, hydra_api_msg = hw.api_lista_para_link(conn)
+            programa_por_relay = hw.programa_por_relay_en_cola(conn, hydra_cola)
         finally:
             conn.close()
         if hydra_cola:
@@ -368,6 +370,7 @@ def formulario():
         live_zonas=live_zonas,
         running_relay_ids=sorted(running_relay_ids),
         queued_relay_ids=sorted(queued_relay_ids),
+        programa_por_relay=programa_por_relay,
         **form_state,
     )
 
