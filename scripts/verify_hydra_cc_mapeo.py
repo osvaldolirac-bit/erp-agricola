@@ -13,19 +13,35 @@ sys.path.insert(0, str(ROOT))
 LC_DB = os.environ.get("ERP_LC_DB", "/root/erp_concepcion_v6.db")
 
 
+def _centros_costo_lc(db_path: str) -> set[str]:
+    try:
+        import app_concepcion as erp  # noqa: WPS433
+
+        erp.NOMBRE_DB = db_path
+        return {
+            str(c).strip().upper()
+            for c in (getattr(erp, "CENTROS_COSTO", []) or [])
+            if str(c).strip()
+        }
+    except Exception as exc:
+        print(f"No se pudo leer CENTROS_COSTO: {exc}")
+        return set()
+
+
 def main() -> int:
     db = Path(LC_DB)
     if not db.is_file():
         print(f"SKIP: no BD en {db}")
         return 0
     conn = sqlite3.connect(str(db))
-    os.environ["ERP_APP"] = "concepcion"
-    os.environ["ERP_DB"] = str(db)
-    from demo_web.services.erp_loader import bind_tenant_context, get_erp_module
+    cc_erp = _centros_costo_lc(str(db))
 
-    bind_tenant_context("concepcion")
-    demo = get_erp_module()
-    cc_erp = {str(c).strip().upper() for c in (getattr(demo, "CENTROS_COSTO", []) or []) if str(c).strip()}
+    try:
+        conn.execute("SELECT 1 FROM hydrawise_zona LIMIT 1")
+    except sqlite3.OperationalError:
+        print("Tabla hydrawise_zona no existe aún (sin import Hydra).")
+        conn.close()
+        return 0
 
     rows = conn.execute(
         """SELECT relay_id, nombre_hw, alias, huerto_cc, activo, COALESCE(link_riego, 1)
@@ -33,12 +49,11 @@ def main() -> int:
     ).fetchall()
     if not rows:
         print("Sin sectores importados (hydrawise_zona vacía).")
+        conn.close()
         return 0
 
-    from demo_web.services.hydrawise_riego import sectores_para_link_riego
-
-    link = sectores_para_link_riego(conn)
-    print(f"Sectores importados: {len(rows)} | En link riego: {len(link)}")
+    n_link = 0
+    print(f"Sectores importados: {len(rows)}")
     print("-" * 72)
     bad = 0
     sin_cc = 0
@@ -53,9 +68,13 @@ def main() -> int:
             st = f"CC NO EN ERP: {cc_u!r}"
         else:
             st = f"OK → {cc_u}"
-        en_link = "link" if (activo and lnk and cc_u and ok_cc) else "—"
-        print(f"  [{en_link:4}] {rid:5} {nom[:28]:28} {st}")
+        en_link = activo and lnk and cc_u and ok_cc
+        if en_link:
+            n_link += 1
+        tag = "link" if en_link else "—"
+        print(f"  [{tag:4}] {rid:5} {(nom or '')[:28]:28} {st}")
     print("-" * 72)
+    print(f"En link regador (activo + CC válido): {n_link}")
     if sin_cc:
         print(f"⚠ {sin_cc} sector(es) sin CC — no aparecen en link ni sync imputable.")
     if bad:
