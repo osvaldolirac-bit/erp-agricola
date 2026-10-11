@@ -397,6 +397,7 @@ def formulario():
         operador=operador,
         acceso_personal=acceso_personal,
         hydra_sectores=hydra_sectores,
+        regadores=regadores_opts,
         riego_cc_config=config_riego_cc_para_formulario(),
         tab=tab,
         hydra_msg=hydra_msg,

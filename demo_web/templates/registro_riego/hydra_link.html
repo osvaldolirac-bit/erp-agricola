@@ -30,8 +30,27 @@
 
     {% if not acceso_personal %}
     <div class="alert alert-warning hydra-link-alert">
-      <strong>Enlace personal requerido.</strong>
-      <div class="small mb-0 mt-1">Abra el link que le entregó RRHH (incluye su código de regador).</div>
+      <strong>Identifíquese como regador</strong>
+      <p class="small mb-2 mt-1">Cualquier regador autorizado puede operar HYDRA. Elija su nombre (queda en este celular).</p>
+      {% if regadores %}
+      <form method="get" class="d-flex gap-2 flex-wrap align-items-end">
+        <input type="hidden" name="t" value="{{ token }}">
+        <input type="hidden" name="tenant" value="concepcion">
+        <input type="hidden" name="tab" value="{{ tab }}">
+        <div class="flex-grow-1">
+          <label class="form-label small mb-0">Regador</label>
+          <select name="op" class="form-select" required>
+            <option value="">—</option>
+            {% for r in regadores %}
+            <option value="{{ r.id }}">{{ r.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn hydra-btn-run">Continuar</button>
+      </form>
+      {% else %}
+      <div class="small mb-0">No hay regadores autorizados. RRHH debe marcar regadores en personal.</div>
+      {% endif %}
     </div>
     {% else %}
 
@@ -230,7 +249,7 @@
                     <select name="fert_producto_id" class="form-select form-select-sm mb-1">
                       <option value="">Producto</option>
                       {% for f in fertilizantes %}
-                      <option value="{{ f.id }}" {% if f.id|string == ln.producto_id|string %}selected{% endif %}>{{ f.nombre }}</option>
+                      <option value="{{ f.id }}" {% if f.id|string == ln.producto_id|string %}selected{% endif %}>{{ f.etiqueta|default(f.nombre) }}</option>
                       {% endfor %}
                     </select>
                     <div class="row g-1">
@@ -247,7 +266,7 @@
                     <select name="fert_producto_id" class="form-select form-select-sm mb-1">
                       <option value="">Producto</option>
                       {% for f in fertilizantes %}
-                      <option value="{{ f.id }}">{{ f.nombre }}</option>
+                      <option value="{{ f.id }}">{{ f.etiqueta|default(f.nombre) }}</option>
                       {% endfor %}
                     </select>
                     <input type="number" name="fert_cantidad" class="form-control form-control-sm" min="0" step="any" placeholder="Cantidad">
@@ -326,7 +345,7 @@
       <select name="fert_producto_id" class="form-select form-select-sm mb-1">
         <option value="">Producto</option>
         {% for f in fertilizantes %}
-        <option value="{{ f.id }}">{{ f.nombre }}</option>
+        <option value="{{ f.id }}">{{ f.etiqueta|default(f.nombre) }}</option>
         {% endfor %}
       </select>
       <div class="row g-1">

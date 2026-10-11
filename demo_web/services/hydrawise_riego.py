@@ -684,9 +684,11 @@ def _items_cola(conn: sqlite3.Connection, cola_id: int) -> list[sqlite3.Row]:
 def _fert_lineas_item_cola(
     conn: sqlite3.Connection, fert_json: str | None, relay_id: int
 ) -> list[dict[str, Any]]:
+    from demo_web.services.registro_riego import filtrar_fert_lineas_bodega
+
     parsed = _fert_lineas_desde_json(fert_json)
     if parsed is not None:
-        return [ln for ln in parsed if float(ln.get("cantidad") or 0) > 0]
+        return filtrar_fert_lineas_bodega(conn, parsed)
     return _fert_lineas_desde_zona(conn, relay_id)
 
 
@@ -774,10 +776,12 @@ def _zona_corriendo(status_data: dict[str, Any], relay_id: int) -> bool:
 
 
 def _fert_lineas_desde_zona(conn: sqlite3.Connection, relay_id: int) -> list[dict[str, Any]]:
+    from demo_web.services.registro_riego import filtrar_fert_lineas_bodega
+
     z = zona_por_relay(conn, relay_id)
     if not z:
         return []
-    return [
+    raw = [
         {
             "producto_id": f["producto_id"],
             "cantidad": f["cantidad"],
@@ -785,6 +789,7 @@ def _fert_lineas_desde_zona(conn: sqlite3.Connection, relay_id: int) -> list[dic
         }
         for f in z.get("fertilizantes") or []
     ]
+    return filtrar_fert_lineas_bodega(conn, raw)
 
 
 def _last_api_sync_ts(conn: sqlite3.Connection) -> float:
@@ -893,7 +898,14 @@ def _imputar_item_cola(
     if horas <= 0:
         return {"ok": False, "msg": "Sin tiempo de riego para imputar.", "codigo": ""}
     fecha = (run_fin or run_inicio or str(ahora.date()))[:10]
-    regador = f"Hydrawise — {z.get('alias') or z.get('nombre_hw')}"
+    cola_row = conn.execute(
+        "SELECT creado_por FROM hydrawise_cola WHERE id=?", (int(cola_id),)
+    ).fetchone()
+    regador = (
+        str(cola_row[0] or "").strip()
+        if cola_row and str(cola_row[0] or "").strip()
+        else (usuario or "Regador")
+    )
     item_row = conn.execute(
         "SELECT COALESCE(fert_json, '') FROM hydrawise_cola_item WHERE id=?",
         (int(item_id),),
@@ -1419,14 +1431,7 @@ def sectores_para_link_riego(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "label": label,
                 "huerto_cc": cc,
                 "modo_riego": z.get("modo_riego") or "horas",
-                "fertilizantes": [
-                    {
-                        "producto_id": f["producto_id"],
-                        "cantidad": f["cantidad"],
-                        "dosis_ha": f.get("dosis_ha"),
-                    }
-                    for f in z.get("fertilizantes") or []
-                ],
+                "fertilizantes": _fert_lineas_desde_zona(conn, int(z["relay_id"])),
             }
         )
     out.sort(key=lambda x: x["label"].casefold())

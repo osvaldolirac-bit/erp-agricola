@@ -714,6 +714,41 @@ def _fmt_modo_riego(modo: str | None, surcos: float | None, demo) -> str:
     return "Tecnificado"
 
 
+def ids_fertilizante_bodega(conn: sqlite3.Connection) -> set[int]:
+    placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+    rows = conn.execute(
+        f"""SELECT id FROM inventario
+            WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})""",
+        _FAMILIAS_FERTILIZANTE,
+    ).fetchall()
+    return {int(r[0]) for r in rows}
+
+
+def filtrar_fert_lineas_bodega(
+    conn: sqlite3.Connection, lineas: list[dict[str, Any]] | None
+) -> list[dict[str, Any]]:
+    """Mantiene solo producto_id que existen hoy en bodega (familia fertilizante)."""
+    if not lineas:
+        return []
+    valid = ids_fertilizante_bodega(conn)
+    out: list[dict[str, Any]] = []
+    for ln in lineas:
+        if not isinstance(ln, dict):
+            continue
+        pid = int(ln.get("producto_id") or 0)
+        cant = float(ln.get("cantidad") or 0)
+        if pid not in valid or cant <= 0:
+            continue
+        out.append(
+            {
+                "producto_id": pid,
+                "cantidad": cant,
+                "dosis_ha": ln.get("dosis_ha"),
+            }
+        )
+    return out
+
+
 def fertilizantes_bodega_para_formulario() -> list[dict[str, Any]]:
     """Productos de bodega (familia fertilizante) para el formulario link."""
     demo = get_demo_module()
