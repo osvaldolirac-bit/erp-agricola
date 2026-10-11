@@ -849,15 +849,18 @@ def parar_riego_manual(conn: sqlite3.Connection, usuario: str, operador: str) ->
     cola = _cola_activa(conn)
     if not cola:
         return {"ok": False, "msg": "No hay cola activa."}
-    items = _items_cola(conn, int(cola[0]))
-    if not any(it[4] == "corriendo" for it in items):
-        return {"ok": False, "msg": "No hay riego en curso en la cola."}
+    cola_id = int(cola[0])
+    items = _items_cola(conn, cola_id)
+    en_ejecucion = str(cola[3] or "") == "en_ejecucion"
+    hay_corriendo = any(it[4] == "corriendo" for it in items)
+    if not en_ejecucion and not hay_corriendo:
+        return {"ok": False, "msg": "No hay riego en curso. Use «Cancelar programa» si aún no arrancó."}
     return _abortar_cola_activa(
         conn,
         usuario,
         operador,
         detener_hydrawise=True,
-        motivo="Parar riego (link regador)",
+        motivo="Apagar riego (link regador)",
     )
 
 

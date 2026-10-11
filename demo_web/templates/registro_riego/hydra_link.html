@@ -68,15 +68,15 @@
       </p>
       {% if hydra_cola %}
       <div class="d-flex flex-column gap-2 mb-0">
-        {% if hydra_tiene_corriendo %}
-        <form method="post" onsubmit="return confirm('¿Parar el riego en curso? Se imputará el tiempo real y la receta de fertirriego aplicada al inicio.');">
+        {% if hydra_mostrar_apagar %}
+        <form method="post" onsubmit="return confirm('¿Apagar el riego ahora? Se detiene Hydrawise. Si un sector estaba regando, se imputa el tiempo real y el fertirriego aplicado al inicio.');">
           <input type="hidden" name="t" value="{{ token }}">
           <input type="hidden" name="action" value="hydra_parar">
           <input type="hidden" name="tab" value="{{ tab }}">
-          <button type="submit" class="btn hydra-btn-stop w-100">Parar riego</button>
+          <button type="submit" class="btn hydra-btn-stop w-100">Apagar riego</button>
         </form>
         {% endif %}
-        <form method="post" onsubmit="return confirm('¿Cancelar la cola/programa?{% if hydra_tiene_corriendo %} Se detendrá Hydrawise.{% endif %} Los sectores pendientes no se regarán.');">
+        <form method="post" onsubmit="return confirm('¿Cancelar la cola/programa?{% if hydra_mostrar_apagar %} Se detendrá Hydrawise si corresponde.{% endif %} Los sectores pendientes no se regarán.');">
           <input type="hidden" name="t" value="{{ token }}">
           <input type="hidden" name="action" value="hydra_cancelar_cola">
           <input type="hidden" name="tab" value="{{ tab }}">

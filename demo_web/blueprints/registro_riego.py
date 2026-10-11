@@ -399,6 +399,13 @@ def formulario():
         queued_relay_ids=sorted(queued_relay_ids),
         programa_por_relay=programa_por_relay,
         hydra_tiene_corriendo=bool(running_relay_ids),
+        hydra_mostrar_apagar=bool(
+            hydra_cola
+            and (
+                running_relay_ids
+                or str(hydra_cola.get("estado") or "") == "en_ejecucion"
+            )
+        ),
         hydra_cola_programada=bool(
             hydra_cola and str(hydra_cola.get("estado") or "") == "programado"
         ),
