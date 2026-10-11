@@ -418,7 +418,10 @@
   {% elif sec_activa == 'hydrawise' %}
   <div class="panel-card">
     <h2 class="h6">Hydrawise — La Concepción</h2>
-    <p class="small text-muted">API key desde Hydrawise → Account Details → Generate API Key. Solo este tenant.</p>
+    <p class="small text-muted mb-2">
+      <strong>API key</strong> (Account Details → Generate API Key).
+      El <strong>número de equipo / serial</strong> del HCC se ingresa en la <strong>app Hydrawise</strong> al vincular el controlador (sticker en el equipo); en el ERP use el <strong>ID de controlador</strong> numérico si hay más de un equipo.
+    </p>
     <form method="post" class="row g-2 align-items-end mb-3">
       <input type="hidden" name="sec" value="hydrawise">
       <div class="col-md-6">
@@ -426,10 +429,26 @@
         <input type="password" name="api_key" class="form-control form-control-sm" placeholder="{% if hydrawise_tiene_key %}Dejar en blanco para mantener ({{ hydrawise_key_masked }}){% else %}Pegar key…{% endif %}" autocomplete="off">
       </div>
       <div class="col-auto">
-        <button type="submit" name="action" value="guardar_hydrawise_key" class="btn btn-primary btn-sm">Guardar</button>
+        <button type="submit" name="action" value="guardar_hydrawise_key" class="btn btn-primary btn-sm">Guardar key</button>
       </div>
       <div class="col-auto">
         <button type="submit" name="action" value="probar_hydrawise" class="btn btn-outline-secondary btn-sm">Probar conexión</button>
+      </div>
+      <div class="col-auto">
+        <button type="submit" name="action" value="listar_hydrawise_equipos" class="btn btn-outline-secondary btn-sm">Listar equipos</button>
+      </div>
+    </form>
+    <form method="post" class="row g-2 align-items-end mb-3">
+      <input type="hidden" name="sec" value="hydrawise">
+      <div class="col-md-4">
+        <label class="form-label small">ID controlador (equipo La Aparición)</label>
+        <input type="number" name="controller_id" class="form-control form-control-sm" value="{{ hydrawise_controller_id or '' }}" placeholder="Ej. 703926">
+      </div>
+      <div class="col-auto">
+        <button type="submit" name="action" value="guardar_hydrawise_controller" class="btn btn-primary btn-sm">Guardar ID</button>
+      </div>
+      <div class="col-12">
+        <p class="small text-muted mb-0">Si solo hay un HCC en la cuenta, el ERP puede detectarlo solo al probar conexión. Use «Listar equipos» para ver serial e ID.</p>
       </div>
     </form>
     {% if hydrawise_test %}

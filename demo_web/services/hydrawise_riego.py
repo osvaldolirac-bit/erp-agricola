@@ -10,6 +10,8 @@ from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.hydrawise_client import (
     customer_details,
     flatten_relays,
+    flatten_relays_from_status,
+    list_controllers,
     relay_status_map,
     set_zone_run,
     status_schedule,
@@ -17,6 +19,16 @@ from demo_web.services.hydrawise_client import (
 from demo_web.services.tenant_scope import is_concepcion_tenant
 
 META_KEY_API = "hydrawise_api_key_v1"
+META_KEY_CONTROLLER = "hydrawise_controller_id_v1"
+
+
+def _fmt_api_err(err: str) -> str:
+    if "429" in str(err):
+        return (
+            "Hydrawise limitó las consultas (HTTP 429). Espere 1–2 minutos "
+            "y use solo «Probar conexión» o «Sincronizar» (no recargue HYDRA en loop)."
+        )
+    return str(err)
 
 
 def hydrawise_habilitado() -> bool:
@@ -109,6 +121,95 @@ def get_api_key(conn: sqlite3.Connection) -> str:
     return str(row[0] or "").strip() if row else ""
 
 
+def get_controller_id(conn: sqlite3.Connection) -> int | None:
+    migrar_hydrawise(conn)
+    row = conn.execute(
+        "SELECT valor FROM schema_meta WHERE clave=?", (META_KEY_CONTROLLER,)
+    ).fetchone()
+    if not row or not str(row[0] or "").strip():
+        return None
+    try:
+        return int(row[0])
+    except ValueError:
+        return None
+
+
+def set_controller_id(conn: sqlite3.Connection, controller_id: int | None) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return
+    migrar_hydrawise(conn)
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"""
+    )
+    if controller_id is None:
+        conn.execute("DELETE FROM schema_meta WHERE clave=?", (META_KEY_CONTROLLER,))
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, ?)",
+            (META_KEY_CONTROLLER, str(int(controller_id))),
+        )
+    conn.commit()
+
+
+def listar_equipos(conn: sqlite3.Connection) -> dict[str, Any]:
+    key = get_api_key(conn)
+    if not key:
+        return {"ok": False, "msg": "Sin API key.", "equipos": []}
+    resp = customer_details(key)
+    if not resp.get("ok"):
+        return {
+            "ok": False,
+            "msg": _fmt_api_err(resp.get("error") or "Error"),
+            "equipos": [],
+        }
+    equipos = list_controllers(resp.get("data") or {})
+    return {"ok": True, "msg": f"{len(equipos)} equipo(s) en la cuenta.", "equipos": equipos}
+
+
+def _resolver_controller_id(conn: sqlite3.Connection, key: str) -> tuple[int | None, str]:
+    """Devuelve controller_id a usar en statusschedule/setzone."""
+    cid = get_controller_id(conn)
+    if cid is not None:
+        return cid, ""
+    resp = customer_details(key)
+    if not resp.get("ok"):
+        return None, _fmt_api_err(resp.get("error") or "Error")
+    equipos = list_controllers(resp.get("data") or {})
+    if len(equipos) == 1:
+        cid = int(equipos[0]["controller_id"])
+        set_controller_id(conn, cid)
+        return cid, ""
+    if len(equipos) > 1:
+        return (
+            None,
+            "Hay varios equipos Hydrawise: indique el ID de controlador en "
+            "Administración → Hydrawise (use «Listar equipos»).",
+        )
+    return None, "No se encontró equipo con serial en la cuenta Hydrawise."
+
+
+def _relays_para_cuenta(conn: sqlite3.Connection, key: str) -> tuple[list[dict[str, Any]], str]:
+    cid, err = _resolver_controller_id(conn, key)
+    if err:
+        return [], err
+    st = status_schedule(key, cid)
+    if st.get("ok"):
+        relays = flatten_relays_from_status(st.get("data") or {})
+        if relays:
+            return relays, ""
+    resp = customer_details(key)
+    if not resp.get("ok"):
+        return [], _fmt_api_err(resp.get("error") or "Error")
+    relays = flatten_relays(resp.get("data") or {})
+    if relays:
+        return relays, ""
+    if not st.get("ok"):
+        return [], _fmt_api_err(st.get("error") or "Sin zonas")
+    return [], "No se encontraron zonas. Verifique serial del HCC en app Hydrawise."
+
+
 def set_api_key(conn: sqlite3.Connection, api_key: str) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -133,11 +234,19 @@ def probar_conexion(conn: sqlite3.Connection) -> dict[str, Any]:
     key = get_api_key(conn)
     if not key:
         return {"ok": False, "msg": "Configure la API key en Administración → Hydrawise."}
-    resp = customer_details(key)
-    if not resp.get("ok"):
-        return {"ok": False, "msg": resp.get("error") or "Error Hydrawise."}
-    relays = flatten_relays(resp.get("data") or {})
-    return {"ok": True, "msg": f"Conexión OK — {len(relays)} zona(s) en la cuenta."}
+    equipos = listar_equipos(conn)
+    if not equipos.get("ok"):
+        return {"ok": False, "msg": equipos.get("msg")}
+    relays, err = _relays_para_cuenta(conn, key)
+    if err:
+        return {"ok": False, "msg": err}
+    cid = get_controller_id(conn)
+    extra = f" Equipo ID {cid}." if cid else ""
+    return {
+        "ok": True,
+        "msg": f"Conexión OK — {len(relays)} zona(s).{extra}",
+        "equipos": equipos.get("equipos") or [],
+    }
 
 
 def importar_zonas_desde_api(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -148,10 +257,9 @@ def importar_zonas_desde_api(conn: sqlite3.Connection) -> dict[str, Any]:
     key = get_api_key(conn)
     if not key:
         return {"ok": False, "msg": "Sin API key."}
-    resp = customer_details(key)
-    if not resp.get("ok"):
-        return {"ok": False, "msg": resp.get("error") or "Error al importar."}
-    relays = flatten_relays(resp.get("data") or {})
+    relays, err = _relays_para_cuenta(conn, key)
+    if err:
+        return {"ok": False, "msg": err}
     if not relays:
         return {"ok": False, "msg": "No se encontraron zonas en Hydrawise."}
     fh = get_demo_module().hora_chile().strftime("%Y-%m-%d %H:%M:%S")
@@ -395,8 +503,13 @@ def sincronizar_hydrawise(conn: sqlite3.Connection, usuario: str) -> dict[str, A
     msgs: list[str] = []
     importados = 0
 
-    st_resp = status_schedule(key)
+    cid, cid_err = _resolver_controller_id(conn, key)
+    if cid_err:
+        return {"ok": False, "msg": cid_err}
+    st_resp = status_schedule(key, cid)
     status_data = st_resp.get("data") if st_resp.get("ok") else {}
+    if not st_resp.get("ok") and st_resp.get("error"):
+        return {"ok": False, "msg": _fmt_api_err(st_resp.get("error"))}
 
     cola = _cola_activa(conn)
     if cola:
@@ -510,7 +623,7 @@ def sincronizar_hydrawise(conn: sqlite3.Connection, usuario: str) -> dict[str, A
                 }
             item_id, _, relay_id, minutos, _, _, _, _, _ = pending
             sec = int(float(minutos) * 60)
-            run = set_zone_run(key, int(relay_id), sec)
+            run = set_zone_run(key, int(relay_id), sec, controller_id=cid)
             if not run.get("ok"):
                 conn.execute(
                     "UPDATE hydrawise_cola_item SET estado='error', error_msg=? WHERE id=?",

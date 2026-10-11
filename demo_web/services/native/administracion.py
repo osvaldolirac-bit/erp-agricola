@@ -589,13 +589,14 @@ def gather_admin(user_email: str, user_rol: str) -> dict:
         elif sec == "flujo":
             ctx.update(_gather_flujo(demo, conn))
         elif sec == "hydrawise" and is_concepcion_tenant():
-            from demo_web.services.hydrawise_riego import get_api_key, probar_conexion
+            from demo_web.services.hydrawise_riego import get_api_key, get_controller_id
 
             key = get_api_key(conn)
             ctx["hydrawise_tiene_key"] = bool(key)
             ctx["hydrawise_key_masked"] = (key[:4] + "…" + key[-4:]) if len(key) > 10 else ""
-            prueba = probar_conexion(conn) if key else None
-            ctx["hydrawise_test"] = prueba
+            ctx["hydrawise_controller_id"] = get_controller_id(conn)
+            ctx["hydrawise_test"] = None
+            ctx["hydrawise_equipos"] = []
     finally:
         conn.close()
 
@@ -1315,11 +1316,37 @@ def view(user_email: str, user_rol: str):
             elif action == "probar_hydrawise" and is_concepcion_tenant():
                 from demo_web.services.hydrawise_riego import probar_conexion
 
-                result = probar_conexion(conn)
+                pr = probar_conexion(conn)
                 result = {
-                    "ok": bool(result.get("ok")),
-                    "msg": result.get("msg") or "Error",
+                    "ok": bool(pr.get("ok")),
+                    "msg": pr.get("msg") or "Error",
                 }
+            elif action == "listar_hydrawise_equipos" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import listar_equipos
+
+                le = listar_equipos(conn)
+                eq = le.get("equipos") or []
+                det = " | ".join(
+                    f"{e.get('name')}: serial {e.get('serial_number') or '—'} → ID {e.get('controller_id')}"
+                    for e in eq
+                )
+                result = {
+                    "ok": bool(le.get("ok")),
+                    "msg": ((le.get("msg") or "") + (" — " + det if det else "")).strip(),
+                }
+            elif action == "guardar_hydrawise_controller" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import set_controller_id
+
+                raw = (request.form.get("controller_id") or "").strip()
+                if not raw:
+                    set_controller_id(conn, None)
+                    result = {"ok": True, "msg": "ID de equipo borrado (auto si hay uno solo)."}
+                else:
+                    try:
+                        set_controller_id(conn, int(raw))
+                        result = {"ok": True, "msg": f"Equipo Hydrawise ID {int(raw)} guardado."}
+                    except ValueError:
+                        result = {"ok": False, "msg": "ID de equipo debe ser numérico."}
 
             if result:
                 flash(result["msg"], "success" if result["ok"] else "danger")

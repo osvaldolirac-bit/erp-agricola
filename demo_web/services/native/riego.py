@@ -86,9 +86,9 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
 
             from demo_web.services.hydrawise_riego import (
                 get_api_key,
+                get_controller_id,
                 listar_colas_recientes,
                 listar_zonas,
-                probar_conexion,
             )
 
             puede = demo.es_admin() and not demo.es_solo_lectura()
@@ -105,7 +105,8 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
                     ],
                     ensure_ascii=False,
                 )
-            prueba = probar_conexion(conn) if get_api_key(conn) else {"ok": False}
+            tiene_key = bool(get_api_key(conn))
+            cid = get_controller_id(conn)
             ctx.update(
                 {
                     "hydra_puede_editar": puede,
@@ -114,8 +115,14 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
                         z for z in zonas if z.get("activo") and (z.get("huerto_cc") or "").strip()
                     ],
                     "hydra_colas": listar_colas_recientes(conn),
-                    "hydra_api_ok": bool(prueba.get("ok")),
-                    "hydra_api_msg": prueba.get("msg") or "",
+                    "hydra_api_ok": tiene_key,
+                    "hydra_api_msg": (
+                        "API key guardada. Use «Probar conexión» en Admin o acciones aquí "
+                        "(no se consulta Hydrawise al abrir esta pestaña)."
+                        if tiene_key
+                        else "Configure API key en Administración → Hydrawise."
+                    ),
+                    "hydra_controller_id": cid,
                 }
             )
 

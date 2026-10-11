@@ -5,9 +5,7 @@
     Control oficial vía Hydrawise — La Aparición. API key en Administración → Hydrawise.
     Tras regar en campo, use <strong>Sincronizar ahora</strong> para historial, CC y bodega.
   </p>
-  {% if not hydra_api_ok %}
-  <div class="alert alert-warning py-2 small">{{ hydra_api_msg|default('Configure API key en Administración.') }}</div>
-  {% endif %}
+  <div class="alert alert-{{ 'info' if hydra_api_ok else 'warning' }} py-2 small">{{ hydra_api_msg|default('Configure API key en Administración.') }}{% if hydra_controller_id %} · Equipo ID {{ hydra_controller_id }}{% endif %}</div>
 
   <form method="post" class="mb-3">
     <input type="hidden" name="sec" value="hydra">

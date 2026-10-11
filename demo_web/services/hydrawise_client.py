@@ -44,22 +44,74 @@ def customer_details(api_key: str) -> dict[str, Any]:
     return _get(api_key, "customerdetails.php")
 
 
-def status_schedule(api_key: str) -> dict[str, Any]:
-    return _get(api_key, "statusschedule.php")
+def status_schedule(api_key: str, controller_id: int | None = None) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    if controller_id is not None:
+        params["controller_id"] = int(controller_id)
+    return _get(api_key, "statusschedule.php", params or None)
 
 
-def set_zone_run(api_key: str, relay_id: int, seconds: int) -> dict[str, Any]:
+def set_zone_run(
+    api_key: str,
+    relay_id: int,
+    seconds: int,
+    *,
+    controller_id: int | None = None,
+) -> dict[str, Any]:
     sec = max(1, int(seconds or 0))
-    return _get(
-        api_key,
-        "setzone.php",
-        {
-            "action": "run",
-            "relay_id": int(relay_id),
-            "period_id": 999,
-            "custom": sec,
-        },
-    )
+    params: dict[str, Any] = {
+        "action": "run",
+        "relay_id": int(relay_id),
+        "period_id": 999,
+        "custom": sec,
+    }
+    if controller_id is not None:
+        params["controller_id"] = int(controller_id)
+    return _get(api_key, "setzone.php", params)
+
+
+def list_controllers(customer_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    root = customer_payload if isinstance(customer_payload, dict) else {}
+    controllers = root.get("controllers") or []
+    if isinstance(controllers, dict):
+        controllers = [controllers]
+    out: list[dict[str, Any]] = []
+    for ctrl in controllers:
+        if not isinstance(ctrl, dict):
+            continue
+        cid = ctrl.get("controller_id") or ctrl.get("id")
+        if cid is None:
+            continue
+        out.append(
+            {
+                "controller_id": int(cid),
+                "name": str(ctrl.get("name") or "Controlador"),
+                "serial_number": str(ctrl.get("serial_number") or ""),
+            }
+        )
+    if not out and root.get("controller_id"):
+        out.append(
+            {
+                "controller_id": int(root["controller_id"]),
+                "name": str(root.get("current_controller") or "Controlador"),
+                "serial_number": "",
+            }
+        )
+    return out
+
+
+def flatten_relays_from_status(status_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    mp = relay_status_map(status_payload)
+    out: list[dict[str, Any]] = []
+    for rid, info in sorted(mp.items()):
+        out.append(
+            {
+                "relay_id": rid,
+                "nombre": info.get("nombre") or f"Zona {rid}",
+                "raw": info.get("raw"),
+            }
+        )
+    return out
 
 
 def set_zone_stop_all(api_key: str) -> dict[str, Any]:
