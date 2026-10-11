@@ -23,6 +23,7 @@ from demo_web.services.registro_riego import (
     habilitado,
     huerto_tiene_calculo_auto,
     huertos_para_formulario,
+    _norm_cc,
     leer_operador_cookie,
     parse_fertilizantes_request,
     registrar_link,
@@ -139,8 +140,8 @@ def formulario():
             pass
         elif not form_fecha:
             error = "Indique la fecha."
-        elif form_huerto not in huertos:
-            error = "Seleccione un huerto válido."
+        elif _norm_cc(form_huerto) not in {_norm_cc(h) for h in huertos}:
+            error = "Centro de costo del sector no válido en ERP."
         elif huerto_tiene_calculo_auto(form_huerto) and horas <= 0:
             error = "Indique horas de riego mayores a cero."
         elif not huerto_tiene_calculo_auto(form_huerto) and horas <= 0 and m3 <= 0:

@@ -452,6 +452,15 @@ def guardar_mapeo_zona(
             (rid, pid, cant, dosis_f, str(ln.get("unidad") or "kg"), i),
         )
     conn.commit()
+    cc_u = (huerto_cc or "").strip().upper()
+    if cc_u:
+        demo = get_demo_module()
+        valid = {(str(c) or "").strip().upper() for c in (getattr(demo, "CENTROS_COSTO", []) or [])}
+        if valid and cc_u not in valid:
+            return {
+                "ok": True,
+                "msg": f"Mapeo guardado. Advertencia: {cc_u} no está en la maestra CENTROS_COSTO.",
+            }
     return {"ok": True, "msg": "Mapeo guardado."}
 
 
