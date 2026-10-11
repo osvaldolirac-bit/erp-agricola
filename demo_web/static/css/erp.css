@@ -2465,6 +2465,66 @@ body.erp-ios .erp-pdf-viewer-object {
   border-color: #558b2f;
 }
 
+.hydra-fert-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border: 2px solid rgba(85, 139, 47, 0.55);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f1f8e9 0%, #fafdf6 100%);
+  cursor: pointer;
+  min-height: 3.75rem;
+  box-shadow: 0 2px 8px rgba(51, 105, 30, 0.1);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hydra-fert-toggle .form-check-input {
+  flex-shrink: 0;
+  width: 1.45rem;
+  height: 1.45rem;
+  margin-top: 0.2rem;
+  border-width: 2px;
+  border-color: #558b2f;
+  cursor: pointer;
+}
+
+.hydra-fert-toggle .form-check-input:checked {
+  background-color: #558b2f;
+  border-color: #33691e;
+}
+
+.hydra-fert-toggle-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.hydra-fert-toggle-title {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #33691e;
+}
+
+.hydra-fert-toggle-hint {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: #546e7a;
+}
+
+.hydra-fert-toggle:has(input:checked) {
+  border-color: #558b2f;
+  background: linear-gradient(135deg, #dcedc8 0%, #f1f8e9 100%);
+  box-shadow: 0 3px 12px rgba(51, 105, 30, 0.2);
+}
+
+.hydra-fert-toggle:has(input:focus-visible) {
+  outline: 2px solid rgba(85, 139, 47, 0.5);
+  outline-offset: 2px;
+}
+
 .hydra-link-run-form .form-select,
 .hydra-link-run-form .form-control {
   border-radius: 10px;

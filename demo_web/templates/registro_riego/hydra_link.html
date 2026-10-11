@@ -238,9 +238,12 @@
               <input type="hidden" name="tab" value="estado">
               <input type="hidden" name="cola_item_id" value="{{ it.id }}">
               <p class="small fw-semibold mb-1">Editar fertirriego (pendiente)</p>
-              <label class="form-check mb-1">
+              <label class="hydra-fert-toggle mb-2 d-block">
                 <input type="checkbox" class="form-check-input" name="con_fertilizacion" value="1" {% if it.con_fertilizacion %}checked{% endif %}>
-                <span class="form-check-label small">Aplicar fertilizantes</span>
+                <span class="hydra-fert-toggle-body">
+                  <span class="hydra-fert-toggle-title">Fertirriego en este sector</span>
+                  <span class="hydra-fert-toggle-hint">Desmarque si regará solo agua</span>
+                </span>
               </label>
               <div class="hydra-fert-block{% if not it.con_fertilizacion %} d-none{% endif %}">
                 <div class="hydra-fert-rows">
