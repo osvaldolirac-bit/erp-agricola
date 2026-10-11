@@ -352,6 +352,7 @@
           <tr class="{% if r.pendiente %}table-warning{% elif r.rechazado %}table-secondary{% endif %}">
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha }}</td>
+            {% if hydra_link_sectores|default(0) %}<td class="small">{{ r.hydra_sector or '—' }}</td>{% endif %}
             <td>{{ r.huerto }}</td>
             <td class="small">{{ r.modo_txt|default('Tecnificado') }}</td>
             <td>{{ r.horas }}</td>
