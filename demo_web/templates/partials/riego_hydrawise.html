@@ -57,8 +57,9 @@
         </div>
         <div class="form-check">
           <input class="form-check-input" type="checkbox" name="link_riego" value="1" id="lnk{{ z.relay_id }}" {% if z.link_riego %}checked{% endif %}>
-          <label class="form-check-label small" for="lnk{{ z.relay_id }}">Link riego</label>
+          <label class="form-check-label small" for="lnk{{ z.relay_id }}">En link regador</label>
         </div>
+        <p class="small text-muted mb-0">Nombre Hydrawise: {{ z.nombre_hw }}</p>
       </div>
       <div class="col-12">
         <label class="form-label small">Receta fertirriego (JSON producto_id, cantidad, dosis_ha opcional)</label>

@@ -262,12 +262,12 @@
     <div class="alert alert-success py-2 small mb-3">
       <strong>Hydra + Link:</strong> el celular del regador elige entre
       <strong>{{ hydra_link_sectores }}</strong> sector(es) Hydrawise (mapeados a CC).
-      Configure sectores en <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a> (casilla «Link riego»).
+      Sectores = los importados desde Hydrawise en <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a> (con CC asignado).
     </div>
     {% elif hydra_link_sectores is defined %}
     <div class="alert alert-secondary py-2 small mb-3">
-      Para usar sectores Hydrawise en el link del regador, importe zonas en
-      <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a>, asigne CC y marque «Link riego».
+      Importe sectores en <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a> y asigne CC a cada uno;
+      el link del regador copia esa lista de Hydrawise.
     </div>
     {% endif %}
     {% if bitacora_admin_links %}

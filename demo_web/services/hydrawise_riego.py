@@ -32,7 +32,22 @@ def _fmt_api_err(err: str) -> str:
 
 
 def hydrawise_habilitado() -> bool:
-    return is_concepcion_tenant()
+    return lc_contexto_hydra()
+
+
+def lc_contexto_hydra() -> bool:
+    """LC en sesión o tenant=concepcion en link público."""
+    if is_concepcion_tenant():
+        return True
+    try:
+        from flask import g
+
+        t = getattr(g, "tenant", None) or {}
+        if str(t.get("slug") or "").lower() == "concepcion":
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _conn():
@@ -319,11 +334,13 @@ def importar_zonas_desde_api(conn: sqlite3.Connection) -> dict[str, Any]:
         rid = int(rel["relay_id"])
         nom = str(rel.get("nombre") or f"Zona {rid}")
         conn.execute(
-            """INSERT INTO hydrawise_zona (relay_id, nombre_hw, alias, actualizado_en)
-               VALUES (?, ?, COALESCE((SELECT alias FROM hydrawise_zona WHERE relay_id=?), ''), ?)
+            """INSERT INTO hydrawise_zona
+               (relay_id, nombre_hw, alias, actualizado_en, activo, link_riego)
+               VALUES (?, ?, COALESCE((SELECT alias FROM hydrawise_zona WHERE relay_id=?), ''), ?, 1, 1)
                ON CONFLICT(relay_id) DO UPDATE SET
                  nombre_hw=excluded.nombre_hw,
-                 actualizado_en=excluded.actualizado_en""",
+                 actualizado_en=excluded.actualizado_en,
+                 link_riego=1""",
             (rid, nom, rid, fh),
         )
         n += 1
@@ -743,17 +760,23 @@ def listar_colas_recientes(conn: sqlite3.Connection, limite: int = 5) -> list[di
 
 
 def sectores_para_link_riego(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Sectores Hydra visibles en el formulario Link riego (solo LC con mapeo CC)."""
-    if not is_concepcion_tenant():
+    """Sectores importados de Hydrawise para Link riego (misma lista que HYDRA, con CC)."""
+    if not lc_contexto_hydra():
         return []
     out: list[dict[str, Any]] = []
     for z in listar_zonas(conn):
-        if not z.get("activo") or not z.get("link_riego"):
+        if not z.get("activo"):
+            continue
+        if not z.get("link_riego", 1):
             continue
         cc = (z.get("huerto_cc") or "").strip()
         if not cc:
             continue
-        label = (z.get("alias") or z.get("nombre_hw") or f"Zona {z['relay_id']}").strip()
+        nom = (z.get("nombre_hw") or f"Zona {z['relay_id']}").strip()
+        alias = (z.get("alias") or "").strip()
+        label = nom
+        if alias and alias.casefold() != nom.casefold():
+            label = f"{nom} — {alias}"
         out.append(
             {
                 "relay_id": int(z["relay_id"]),

@@ -11,8 +11,11 @@ from flask import (
 )
 
 from demo_web.auth.decorators import login_required
+from flask import session
+
 from demo_web.services.demo_loader import get_demo_module
-from demo_web.services.tenant_scope import is_concepcion_tenant
+from demo_web.services.erp_loader import bind_tenant_context
+from demo_web.services.hydrawise_riego import lc_contexto_hydra
 from demo_web.services.registro_riego import (
     aplicar_cookie_operador,
     config_riego_cc_para_formulario,
@@ -40,6 +43,12 @@ def _token_request() -> str | None:
 def formulario():
     if not habilitado():
         abort(404)
+    slug = (session.get("tenant_slug") or request.args.get("tenant") or "").strip().lower()
+    if slug in ("concepcion", "demo", "espino", "globalgap"):
+        bind_tenant_context(slug)
+    elif habilitado():
+        # Link público sin sesión: BD La Concepción (Hydrawise / link riego LC).
+        bind_tenant_context("concepcion")
     tok = _token_request()
     if not token_valido(tok):
         return render_template("registro_riego/denied.html"), 403
@@ -48,7 +57,7 @@ def formulario():
     huertos = huertos_para_formulario()
     fertilizantes_opts = fertilizantes_bodega_para_formulario()
     hydra_sectores: list[dict] = []
-    if is_concepcion_tenant():
+    if lc_contexto_hydra():
         conn_hw = demo.conectar_db()
         try:
             from demo_web.services.hydrawise_riego import sectores_para_link_riego
