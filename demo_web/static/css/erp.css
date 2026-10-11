@@ -2432,6 +2432,39 @@ body.erp-ios .erp-pdf-viewer-object {
   border-radius: 10px;
 }
 
+/* Secuencia de sectores vs filas de fertirriego (link HYDRA) */
+.hydra-btn-add-sector {
+  background: rgba(0, 131, 143, 0.06);
+  border: 2px dashed rgba(0, 105, 120, 0.55);
+  color: #006064;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+}
+
+.hydra-btn-add-sector:hover,
+.hydra-btn-add-sector:focus {
+  background: rgba(0, 131, 143, 0.12);
+  color: #004d40;
+  border-color: #00838f;
+}
+
+.hydra-btn-add-fert {
+  background: rgba(124, 179, 66, 0.12);
+  border: 1px solid rgba(85, 139, 47, 0.65);
+  color: #33691e;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+}
+
+.hydra-btn-add-fert:hover,
+.hydra-btn-add-fert:focus {
+  background: rgba(124, 179, 66, 0.22);
+  color: #1b5e20;
+  border-color: #558b2f;
+}
+
 .hydra-link-run-form .form-select,
 .hydra-link-run-form .form-control {
   border-radius: 10px;
