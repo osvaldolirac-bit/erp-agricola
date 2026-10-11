@@ -2068,6 +2068,365 @@ body.erp-ios .erp-pdf-viewer-object {
   outline-offset: 2px;
 }
 
+/* Link regador — HYDRA / Hydrawise (La Concepción) */
+.hydra-link-body {
+  background: linear-gradient(165deg, #e8f4fc 0%, #f0f7fb 38%, #e3f0ea 100%);
+  min-height: 100vh;
+  color: #1a3a4a;
+}
+
+.hydra-link-page {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 1rem 1rem 2.5rem;
+}
+
+.hydra-link-header {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.hydra-link-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.hydra-link-logo {
+  max-height: 2.25rem;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+}
+
+.hydra-link-logo-tenant {
+  max-height: 2.5rem;
+}
+
+.hydra-link-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(135deg, #00897b, #26a69a);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  margin-bottom: 0.35rem;
+  box-shadow: 0 2px 8px rgba(0, 137, 123, 0.35);
+}
+
+.hydra-link-title-block h1 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  margin: 0 0 0.15rem;
+  color: #0d3d56;
+}
+
+.hydra-link-title-block p {
+  font-size: 0.85rem;
+  color: #5a7a8a;
+}
+
+.hydra-link-regador {
+  margin-top: 0.85rem;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 12px;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.9rem;
+  border: 1px solid rgba(13, 61, 86, 0.08);
+}
+
+.hydra-link-regador-label {
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #78909c;
+}
+
+.hydra-link-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 14px;
+  padding: 0.35rem;
+  border: 1px solid rgba(13, 61, 86, 0.06);
+}
+
+.hydra-link-tab {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #546e7a;
+  padding: 0.55rem 0.35rem;
+  border-radius: 10px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.hydra-link-tab.is-active {
+  background: #fff;
+  color: #00838f;
+  box-shadow: 0 2px 8px rgba(0, 131, 143, 0.12);
+}
+
+.hydra-link-panel {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 18px;
+  padding: 1.1rem 1rem 1.25rem;
+  border: 1px solid rgba(13, 61, 86, 0.07);
+  box-shadow: 0 8px 28px rgba(13, 61, 86, 0.06);
+}
+
+.hydra-link-alert {
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.hydra-link-api-pill {
+  font-size: 0.78rem;
+  border-radius: 10px;
+  padding: 0.45rem 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.hydra-link-api-pill--ok {
+  background: #e0f2f1;
+  color: #00695c;
+}
+
+.hydra-link-api-pill--warn {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
+.hydra-link-hint {
+  font-size: 0.78rem;
+  color: #78909c;
+  margin-bottom: 0.85rem;
+}
+
+.hydra-link-section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0d3d56;
+  margin-bottom: 0.5rem;
+}
+
+.hydra-soft-note {
+  font-size: 0.82rem;
+  background: #f1f8ff;
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  color: #37474f;
+}
+
+.hydra-zone-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+  margin-bottom: 0.5rem;
+}
+
+.hydra-zone-card {
+  background: #f7fbfd;
+  border-radius: 14px;
+  padding: 0.65rem 0.6rem;
+  border: 1px solid rgba(0, 131, 143, 0.12);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.hydra-zone-card.is-running {
+  border-color: #43a047;
+  box-shadow: 0 0 0 2px rgba(67, 160, 71, 0.2);
+  background: #f1fbf2;
+}
+
+.hydra-zone-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.hydra-zone-card h3 {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.25;
+  color: #0d3d56;
+}
+
+.hydra-zone-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #90a4ae;
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+
+.hydra-zone-card.is-running .hydra-zone-dot {
+  background: #43a047;
+  animation: hydra-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes hydra-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.15); }
+}
+
+.hydra-zone-cc {
+  font-size: 0.65rem;
+  color: #78909c;
+  margin: 0.25rem 0 0.35rem;
+  line-height: 1.2;
+}
+
+.hydra-zone-status {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+.hydra-zone-status--idle {
+  color: #90a4ae;
+  font-weight: 500;
+}
+
+.hydra-btn-sync {
+  background: linear-gradient(135deg, #0288d1, #039be5);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+}
+
+.hydra-btn-run {
+  background: linear-gradient(135deg, #00897b, #26a69a);
+  color: #fff;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+}
+
+.hydra-btn-plan {
+  background: linear-gradient(135deg, #5c6bc0, #7986cb);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+}
+
+.hydra-btn-ghost {
+  background: transparent;
+  border: 1px dashed rgba(0, 131, 143, 0.35);
+  color: #00838f;
+  border-radius: 10px;
+}
+
+.hydra-link-run-form .form-select,
+.hydra-link-run-form .form-control {
+  border-radius: 10px;
+  border-color: rgba(13, 61, 86, 0.12);
+  font-size: 0.9rem;
+}
+
+.hydra-cola-card {
+  background: #f7fbfd;
+  border-radius: 14px;
+  padding: 0.85rem;
+  border: 1px solid rgba(0, 131, 143, 0.15);
+}
+
+.hydra-cola-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.hydra-cola-estado {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  background: #eceff1;
+  color: #546e7a;
+}
+
+.hydra-cola-estado--en_ejecucion,
+.hydra-cola-estado--programado {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.hydra-cola-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.hydra-cola-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  align-items: center;
+}
+
+.hydra-cola-item--corriendo {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.hydra-cola-codigo {
+  grid-column: 1 / -1;
+  font-size: 0.72rem;
+  color: #00838f;
+}
+
+.hydra-cola-history {
+  background: #fafcfd;
+  border-radius: 10px;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.hydra-cola-history summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.hydra-link-foot {
+  text-align: center;
+  font-size: 0.72rem;
+  color: #90a4ae;
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.hydra-registro-form .form-control-lg,
+.hydra-registro-form .form-select-lg {
+  border-radius: 12px;
+}
+
 .riego-links-demo .riego-link-demo-row td,
 .riego-links-demo .js-link-personal {
   opacity: 0.38;

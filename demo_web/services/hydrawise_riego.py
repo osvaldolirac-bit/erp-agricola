@@ -464,7 +464,7 @@ def guardar_mapeo_zona(
     return {"ok": True, "msg": "Mapeo guardado."}
 
 
-def _parse_cola_lineas(form) -> list[tuple[int, float]]:
+def parse_cola_lineas(form) -> list[tuple[int, float]]:
     relays = form.getlist("hw_relay_id")
     mins = form.getlist("hw_minutos")
     out: list[tuple[int, float]] = []
@@ -813,8 +813,75 @@ def resolver_sector_link(conn: sqlite3.Connection, relay_id: int) -> dict[str, A
     return None
 
 
+def snapshot_live_zonas(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Estado en vivo de zonas (una llamada statusschedule). Solo acciones explícitas del link."""
+    key = get_api_key(conn)
+    if not key:
+        return {"ok": False, "msg": "Configure API key en Administración.", "zonas": {}}
+    cid, err = _resolver_controller_id(conn, key)
+    if err:
+        return {"ok": False, "msg": err, "zonas": {}}
+    st_resp = status_schedule(key, cid)
+    if not st_resp.get("ok"):
+        return {
+            "ok": False,
+            "msg": _fmt_api_err(st_resp.get("error") or "Error"),
+            "zonas": {},
+        }
+    mp = relay_status_map(st_resp.get("data") or {})
+    return {"ok": True, "msg": "Estado actualizado.", "zonas": mp}
+
+
+def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    """Cola programada o en ejecución, con ítems enriquecidos para el link regador."""
+    row = _cola_activa(conn)
+    if not row:
+        return None
+    cola_id = int(row[0])
+    labels = {
+        int(s["relay_id"]): s["label"]
+        for s in sectores_para_link_riego(conn)
+    }
+    items = []
+    for it in _items_cola(conn, cola_id):
+        rid = int(it[2])
+        items.append(
+            {
+                "id": int(it[0]),
+                "orden": int(it[1]),
+                "relay_id": rid,
+                "label": labels.get(rid) or f"Zona {rid}",
+                "minutos": float(it[3]),
+                "estado": str(it[4]),
+                "run_inicio": it[5],
+                "run_fin": it[6],
+                "codigo_riego": it[7],
+                "error_msg": it[8],
+            }
+        )
+    return {
+        "id": cola_id,
+        "tipo": row[1],
+        "inicio_programa": row[2],
+        "estado": row[3],
+        "creado_por": row[4],
+        "creado_en": row[5],
+        "items": items,
+    }
+
+
+def api_lista_para_link(conn: sqlite3.Connection) -> tuple[bool, str]:
+    key = get_api_key(conn)
+    if not key:
+        return False, "Configure API key en Administración → Hydrawise."
+    ref = get_equipo_ref(conn)
+    if ref:
+        return True, f"Listo · equipo {ref}"
+    return True, "Listo · falta serial del equipo en Administración."
+
+
 def crear_cola_desde_form(form, *, tipo: str, usuario: str, inicio_programa: str) -> dict[str, Any]:
-    lineas = _parse_cola_lineas(form)
+    lineas = parse_cola_lineas(form)
     conn = _conn()
     try:
         return crear_cola(
