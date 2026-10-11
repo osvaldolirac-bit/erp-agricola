@@ -1,0 +1,21 @@
+{% if hydra_cola %}
+<section class="hydra-link-panel hydra-link-cola-actions mb-3">
+  {% if hydra_mostrar_apagar %}
+  <p class="hydra-link-hint mb-2">Hay riego o cola en marcha — puede <strong>apagar</strong> o <strong>cancelar</strong>.</p>
+  <form method="post" class="mb-2" onsubmit="return confirm('¿Apagar el riego ahora? Se detiene Hydrawise. Si un sector estaba regando, se imputa el tiempo real y el fertirriego aplicado al inicio.');">
+    <input type="hidden" name="t" value="{{ token }}">
+    <input type="hidden" name="action" value="hydra_parar">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <button type="submit" class="btn hydra-btn-stop w-100">Apagar / detener riego</button>
+  </form>
+  {% elif hydra_cola_programada %}
+  <p class="hydra-link-hint mb-2">Programa en espera — al arrancar aparecerá <strong>Apagar</strong>. Puede cancelar antes del inicio.</p>
+  {% endif %}
+  <form method="post" onsubmit="return confirm('¿Cancelar la cola/programa?{% if hydra_mostrar_apagar %} Se detendrá Hydrawise si corresponde.{% endif %} Los sectores pendientes no se regarán.');">
+    <input type="hidden" name="t" value="{{ token }}">
+    <input type="hidden" name="action" value="hydra_cancelar_cola">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <button type="submit" class="btn hydra-btn-cancel w-100">{% if hydra_cola_programada %}Cancelar programa{% else %}Cancelar cola{% endif %}</button>
+  </form>
+</section>
+{% endif %}

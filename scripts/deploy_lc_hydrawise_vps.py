@@ -19,6 +19,7 @@ FILES = [
     ("demo_web/templates/registro_riego/form.html", "demo_web/templates/registro_riego/form.html"),
     ("demo_web/templates/registro_riego/hydra_link.html", "demo_web/templates/registro_riego/hydra_link.html"),
     ("demo_web/templates/registro_riego/_form_registro_body.html", "demo_web/templates/registro_riego/_form_registro_body.html"),
+    ("demo_web/templates/registro_riego/_hydra_cola_actions.html", "demo_web/templates/registro_riego/_hydra_cola_actions.html"),
     ("demo_web/static/css/erp.css", "demo_web/static/css/erp.css"),
     ("demo_web/static/js/registro_riego_form.js", "demo_web/static/js/registro_riego_form.js"),
     ("demo_web/services/native/riego.py", "demo_web/services/native/riego.py"),

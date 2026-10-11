@@ -56,34 +56,18 @@
 
     {% if error %}<div class="alert alert-danger hydra-link-alert py-2">{{ error }}</div>{% endif %}
 
+    {% include "registro_riego/_hydra_cola_actions.html" %}
+
     {% if tab in ('control', 'estado') %}
     <section class="hydra-link-panel hydra-link-panel--tools mb-3">
       <div class="hydra-link-api-pill hydra-link-api-pill--{{ 'ok' if hydra_api_ok else 'warn' }}" title="Configuración hecha en Administración, no indica si hay riego en curso">
         {{ hydra_api_msg }}
       </div>
-      <p class="hydra-link-sync-explain mb-2">
+      <p class="hydra-link-sync-explain mb-0">
         Al <strong>iniciar</strong> o <strong>programar</strong>, el ERP coordina Hydrawise y, al terminar cada sector,
         lo imputa solo (historial, CC y bodega). Al abrir Control o Estado se refresca la cola
         (como máximo cada ~90&nbsp;s hacia Hydrawise).
       </p>
-      {% if hydra_cola %}
-      <div class="d-flex flex-column gap-2 mb-0">
-        {% if hydra_mostrar_apagar %}
-        <form method="post" onsubmit="return confirm('¿Apagar el riego ahora? Se detiene Hydrawise. Si un sector estaba regando, se imputa el tiempo real y el fertirriego aplicado al inicio.');">
-          <input type="hidden" name="t" value="{{ token }}">
-          <input type="hidden" name="action" value="hydra_parar">
-          <input type="hidden" name="tab" value="{{ tab }}">
-          <button type="submit" class="btn hydra-btn-stop w-100">Apagar riego</button>
-        </form>
-        {% endif %}
-        <form method="post" onsubmit="return confirm('¿Cancelar la cola/programa?{% if hydra_mostrar_apagar %} Se detendrá Hydrawise si corresponde.{% endif %} Los sectores pendientes no se regarán.');">
-          <input type="hidden" name="t" value="{{ token }}">
-          <input type="hidden" name="action" value="hydra_cancelar_cola">
-          <input type="hidden" name="tab" value="{{ tab }}">
-          <button type="submit" class="btn hydra-btn-cancel w-100">{% if hydra_cola_programada %}Cancelar programa{% else %}Cancelar cola{% endif %}</button>
-        </form>
-      </div>
-      {% endif %}
     </section>
     {% endif %}
 

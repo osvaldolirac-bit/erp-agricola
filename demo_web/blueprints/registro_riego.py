@@ -334,6 +334,7 @@ def formulario():
     hydra_api_msg = ""
     hydra_sync_cooldown = 0
     programa_por_relay: dict = {}
+    hydra_mostrar_apagar = False
     running_relay_ids: set[int] = set()
     queued_relay_ids: set[int] = set()
     if use_hydra_ui:
@@ -341,12 +342,7 @@ def formulario():
         try:
             from demo_web.services import hydrawise_riego as hw
 
-            if (
-                request.method == "GET"
-                and acceso_personal
-                and tab in ("control", "estado")
-                and not hydra_msg
-            ):
+            if request.method == "GET" and acceso_personal and not hydra_msg:
                 auto = hw.sincronizar_hydrawise(
                     conn, _usuario_operador(operador), force=False
                 )
@@ -358,6 +354,7 @@ def formulario():
             hydra_colas = hw.listar_colas_recientes(conn, limite=4)
             hydra_api_ok, hydra_api_msg = hw.api_lista_para_link(conn)
             programa_por_relay = hw.programa_por_relay_en_cola(conn, hydra_cola)
+            hydra_mostrar_apagar = hw.cola_permite_apagar(hydra_cola)
         finally:
             conn.close()
         if hydra_cola:
@@ -399,15 +396,11 @@ def formulario():
         queued_relay_ids=sorted(queued_relay_ids),
         programa_por_relay=programa_por_relay,
         hydra_tiene_corriendo=bool(running_relay_ids),
-        hydra_mostrar_apagar=bool(
-            hydra_cola
-            and (
-                running_relay_ids
-                or str(hydra_cola.get("estado") or "") == "en_ejecucion"
-            )
-        ),
+        hydra_mostrar_apagar=hydra_mostrar_apagar,
         hydra_cola_programada=bool(
-            hydra_cola and str(hydra_cola.get("estado") or "") == "programado"
+            hydra_cola
+            and str(hydra_cola.get("estado") or "") == "programado"
+            and not hydra_mostrar_apagar
         ),
         **form_state,
     )

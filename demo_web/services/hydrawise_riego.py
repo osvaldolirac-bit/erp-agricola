@@ -845,15 +845,44 @@ def _abortar_cola_activa(
     return {"ok": True, "msg": msg}
 
 
+def cola_permite_apagar(cola: dict[str, Any] | None) -> bool:
+    """True si hay cola viva (no solo un programa futuro sin arrancar)."""
+    if not cola:
+        return False
+    est = str(cola.get("estado") or "")
+    if est == "en_ejecucion":
+        return True
+    items = list(cola.get("items") or [])
+    if any(str(it.get("estado") or "") == "corriendo" for it in items):
+        return True
+    activos = ("pendiente", "corriendo")
+    if str(cola.get("tipo") or "") == "run_now":
+        return any(str(it.get("estado") or "") in activos for it in items)
+    if est == "programado":
+        inicio = _parse_dt_chile(str(cola.get("inicio_programa") or ""))
+        demo = get_demo_module()
+        ahora = demo.hora_chile()
+        if inicio and ahora >= inicio:
+            return any(str(it.get("estado") or "") in activos for it in items)
+    return False
+
+
 def parar_riego_manual(conn: sqlite3.Connection, usuario: str, operador: str) -> dict[str, Any]:
     cola = _cola_activa(conn)
     if not cola:
         return {"ok": False, "msg": "No hay cola activa."}
     cola_id = int(cola[0])
     items = _items_cola(conn, cola_id)
-    en_ejecucion = str(cola[3] or "") == "en_ejecucion"
-    hay_corriendo = any(it[4] == "corriendo" for it in items)
-    if not en_ejecucion and not hay_corriendo:
+    if not cola_permite_apagar(
+        {
+            "estado": cola[3],
+            "tipo": cola[1],
+            "inicio_programa": cola[2],
+            "items": [
+                {"estado": it[4]} for it in items
+            ],
+        }
+    ):
         return {"ok": False, "msg": "No hay riego en curso. Use «Cancelar programa» si aún no arrancó."}
     return _abortar_cola_activa(
         conn,
