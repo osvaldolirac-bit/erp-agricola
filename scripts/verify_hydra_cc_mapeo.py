@@ -14,17 +14,31 @@ LC_DB = os.environ.get("ERP_LC_DB", "/root/erp_concepcion_v6.db")
 
 
 def _centros_costo_lc(db_path: str) -> set[str]:
+    out: set[str] = set()
     try:
+        from demo_web.services.streamlit_mock import install_streamlit_mock
+
+        install_streamlit_mock()
         import app_concepcion as erp  # noqa: WPS433
 
         erp.NOMBRE_DB = db_path
-        return {
+        out = {
             str(c).strip().upper()
             for c in (getattr(erp, "CENTROS_COSTO", []) or [])
             if str(c).strip()
         }
     except Exception as exc:
-        print(f"No se pudo leer CENTROS_COSTO: {exc}")
+        print(f"CENTROS_COSTO vía app: {exc} — uso prorrateo_cc")
+    if out:
+        return out
+    try:
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT DISTINCT TRIM(centro_costo) FROM prorrateo_cc WHERE TRIM(centro_costo)<>''"
+        ).fetchall()
+        conn.close()
+        return {str(r[0]).strip().upper() for r in rows if r[0]}
+    except Exception:
         return set()
 
 
