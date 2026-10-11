@@ -64,9 +64,9 @@
         {{ hydra_api_msg }}
       </div>
       <p class="hydra-link-sync-explain mb-0">
-        Al <strong>iniciar</strong> o <strong>programar</strong>, el ERP coordina Hydrawise y, al terminar cada sector,
-        lo imputa solo (historial, CC y bodega). Al abrir Control o Estado se refresca la cola
-        (como máximo cada ~90&nbsp;s hacia Hydrawise).
+        Al <strong>iniciar</strong> o <strong>programar</strong>, declare fertirriego por sector (editable en cola).
+        Al terminar, el ERP imputa horas/m³ al historial; la bodega se descuenta al <strong>confirmar</strong> fert en Administración.
+        Al abrir Control o Estado se refresca la cola (como máximo cada ~90&nbsp;s hacia Hydrawise).
       </p>
     </section>
     {% endif %}
@@ -103,7 +103,7 @@
               </ul>
             </div>
             {% else %}
-            <p class="hydra-zone-program-line hydra-zone-program-line--muted"><span>Fertirriego</span> Sin receta en HYDRA</p>
+            <p class="hydra-zone-program-line hydra-zone-program-line--muted"><span>Fertirriego</span> Sin fert en cola</p>
             {% endif %}
           </div>
           {% endif %}
@@ -114,28 +114,35 @@
         {% endfor %}
       </div>
 
+      <script id="hydraSectorsJson" type="application/json">{{ hydra_sectores|tojson }}</script>
+      <script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
+
       <h2 class="hydra-link-section-title mt-4">Regar ahora</h2>
       <p class="hydra-link-hint">Un sector a la vez en el controlador. Agregue filas para secuencia.</p>
       <form method="post" id="formHydraRunNow" class="hydra-link-run-form">
         <input type="hidden" name="t" value="{{ token }}">
         <input type="hidden" name="action" value="hydra_regar_ahora">
         <input type="hidden" name="tab" value="control">
+        <input type="hidden" name="hw_lineas_json" value="">
         <div id="hydraLineasRun">
-          <div class="hydra-linea row g-2 align-items-center mb-2">
-            <div class="col-7">
-              <select name="hw_relay_id" class="form-select" required>
-                <option value="">Sector</option>
-                {% for s in hydra_sectores %}
-                <option value="{{ s.relay_id }}">{{ s.label }}</option>
-                {% endfor %}
-              </select>
+          <div class="hydra-linea mb-3 pb-2 border-bottom">
+            <div class="row g-2 align-items-center">
+              <div class="col-7">
+                <select name="hw_relay_id" class="form-select" required>
+                  <option value="">Sector</option>
+                  {% for s in hydra_sectores %}
+                  <option value="{{ s.relay_id }}">{{ s.label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-3">
+                <input type="number" name="hw_minutos" class="form-control" min="1" step="1" placeholder="min" value="30" required>
+              </div>
+              <div class="col-2">
+                <button type="button" class="btn btn-sm btn-link text-danger hydra-quitar p-0 d-none">✕</button>
+              </div>
             </div>
-            <div class="col-3">
-              <input type="number" name="hw_minutos" class="form-control" min="1" step="1" placeholder="min" value="30" required>
-            </div>
-            <div class="col-2">
-              <button type="button" class="btn btn-sm btn-link text-danger hydra-quitar p-0 d-none">✕</button>
-            </div>
+            {% include "registro_riego/_hydra_fert_en_linea.html" %}
           </div>
         </div>
         <button type="button" class="btn btn-sm hydra-btn-ghost mb-2" id="hydraAddLinea">+ Otro sector</button>
@@ -147,21 +154,25 @@
         <input type="hidden" name="t" value="{{ token }}">
         <input type="hidden" name="action" value="hydra_programar">
         <input type="hidden" name="tab" value="control">
+        <input type="hidden" name="hw_lineas_json" value="">
         <label class="form-label small">Hora de inicio</label>
         <input type="datetime-local" name="inicio_programa" class="form-control mb-3" required>
         <div id="hydraLineasProg">
-          <div class="hydra-linea row g-2 align-items-center mb-2">
-            <div class="col-7">
-              <select name="hw_relay_id" class="form-select" required>
-                <option value="">Sector</option>
-                {% for s in hydra_sectores %}
-                <option value="{{ s.relay_id }}">{{ s.label }}</option>
-                {% endfor %}
-              </select>
+          <div class="hydra-linea mb-3 pb-2 border-bottom">
+            <div class="row g-2 align-items-center">
+              <div class="col-7">
+                <select name="hw_relay_id" class="form-select" required>
+                  <option value="">Sector</option>
+                  {% for s in hydra_sectores %}
+                  <option value="{{ s.relay_id }}">{{ s.label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-5">
+                <input type="number" name="hw_minutos" class="form-control" min="1" step="1" placeholder="Minutos" value="30" required>
+              </div>
             </div>
-            <div class="col-5">
-              <input type="number" name="hw_minutos" class="form-control" min="1" step="1" placeholder="Minutos" value="30" required>
-            </div>
+            {% include "registro_riego/_hydra_fert_en_linea.html" %}
           </div>
         </div>
         <button type="button" class="btn btn-sm hydra-btn-ghost mb-2 hydra-add-prog">+ Otro sector</button>
@@ -171,7 +182,14 @@
 
     {% elif tab == 'registro' and not ok %}
     <section class="hydra-link-panel">
+      {% if hydra_cola_bloquea_registro %}
+      <div class="alert alert-info">
+        <strong>Cola HYDRA activa.</strong>
+        <p class="small mb-0 mt-1">Use <strong>Control</strong> para la cola en curso. El registro manual queda disponible cuando termine o cancele la cola (evita duplicar imputaciones).</p>
+      </div>
+      {% else %}
       {% include "registro_riego/_form_registro_body.html" %}
+      {% endif %}
     </section>
 
     {% elif tab == 'estado' %}
@@ -189,9 +207,59 @@
             <span>{{ it.label }}</span>
             <span>{{ it.minutos|int }} min</span>
             <span class="hydra-cola-item-state">{{ it.estado }}</span>
+            {% if it.con_fertilizacion %}<span class="small text-muted">· con fert</span>{% elif it.estado == 'pendiente' %}<span class="small text-muted">· sin fert</span>{% endif %}
             {% if it.codigo_riego %}<span class="hydra-cola-codigo">{{ it.codigo_riego }}</span>{% endif %}
             {% if it.error_msg %}<span class="text-danger small">{{ it.error_msg }}</span>{% endif %}
           </li>
+          {% if it.estado == 'pendiente' %}
+          <li class="list-unstyled ms-2 mb-3">
+            <form method="post" class="hydra-edit-fert-form border rounded p-2 bg-light">
+              <input type="hidden" name="t" value="{{ token }}">
+              <input type="hidden" name="action" value="hydra_editar_fert_item">
+              <input type="hidden" name="tab" value="estado">
+              <input type="hidden" name="cola_item_id" value="{{ it.id }}">
+              <p class="small fw-semibold mb-1">Editar fertirriego (pendiente)</p>
+              <label class="form-check mb-1">
+                <input type="checkbox" class="form-check-input" name="con_fertilizacion" value="1" {% if it.con_fertilizacion %}checked{% endif %}>
+                <span class="form-check-label small">Aplicar fertilizantes</span>
+              </label>
+              <div class="hydra-fert-block{% if not it.con_fertilizacion %} d-none{% endif %}">
+                <div class="hydra-fert-rows">
+                  {% for ln in it.fertilizantes %}
+                  <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
+                    <select name="fert_producto_id" class="form-select form-select-sm mb-1">
+                      <option value="">Producto</option>
+                      {% for f in fertilizantes %}
+                      <option value="{{ f.id }}" {% if f.id|string == ln.producto_id|string %}selected{% endif %}>{{ f.nombre }}</option>
+                      {% endfor %}
+                    </select>
+                    <div class="row g-1">
+                      <div class="col-6">
+                        <input type="number" name="fert_cantidad" class="form-control form-control-sm" value="{{ ln.cantidad }}" min="0" step="any">
+                      </div>
+                      <div class="col-6">
+                        <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" value="{{ ln.dosis_ha or '' }}" min="0" step="any" placeholder="Dosis/ha">
+                      </div>
+                    </div>
+                  </div>
+                  {% else %}
+                  <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
+                    <select name="fert_producto_id" class="form-select form-select-sm mb-1">
+                      <option value="">Producto</option>
+                      {% for f in fertilizantes %}
+                      <option value="{{ f.id }}">{{ f.nombre }}</option>
+                      {% endfor %}
+                    </select>
+                    <input type="number" name="fert_cantidad" class="form-control form-control-sm" min="0" step="any" placeholder="Cantidad">
+                  </div>
+                  {% endfor %}
+                </div>
+                <button type="button" class="btn btn-sm hydra-btn-ghost hydra-add-fert-row">+ Otro fertilizante</button>
+              </div>
+              <button type="submit" class="btn btn-sm hydra-btn-plan mt-2">Guardar fertirriego</button>
+            </form>
+          </li>
+          {% endif %}
           {% endfor %}
         </ol>
       </div>
@@ -252,30 +320,34 @@
     </footer>
   </main>
 
-  <script>
-  (function() {
-    function cloneLineas(containerId, addSel) {
-      var container = document.getElementById(containerId);
-      if (!container) return;
-      var tpl = container.querySelector('.hydra-linea');
-      document.querySelector(addSel)?.addEventListener('click', function() {
-        var row = tpl.cloneNode(true);
-        row.querySelectorAll('input').forEach(function(i) { if (i.name === 'hw_minutos') i.value = '30'; else if (i.type !== 'hidden') i.value = ''; });
-        var q = row.querySelector('.hydra-quitar');
-        if (q) q.classList.remove('d-none');
-        container.appendChild(row);
-      });
-      container.addEventListener('click', function(ev) {
-        if (ev.target.classList.contains('hydra-quitar')) {
-          var lines = container.querySelectorAll('.hydra-linea');
-          if (lines.length > 1) ev.target.closest('.hydra-linea').remove();
-        }
-      });
-    }
-    cloneLineas('hydraLineasRun', '#hydraAddLinea');
-    cloneLineas('hydraLineasProg', '.hydra-add-prog');
-  })();
-  </script>
+  {% if tab in ('control', 'estado') %}
+  <template id="hydraFertRowTpl">
+    <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
+      <select name="fert_producto_id" class="form-select form-select-sm mb-1">
+        <option value="">Producto</option>
+        {% for f in fertilizantes %}
+        <option value="{{ f.id }}">{{ f.nombre }}</option>
+        {% endfor %}
+      </select>
+      <div class="row g-1">
+        <div class="col-6">
+          <input type="number" name="fert_cantidad" class="form-control form-control-sm" min="0" step="any" placeholder="Cantidad">
+        </div>
+        <div class="col-5">
+          <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" min="0" step="any" placeholder="Dosis/ha">
+        </div>
+        <div class="col-1">
+          <button type="button" class="btn btn-sm btn-link text-danger hydra-quitar-fert p-0">✕</button>
+        </div>
+      </div>
+    </div>
+  </template>
+  {% if tab == 'estado' %}
+  <script id="hydraSectorsJson" type="application/json">[]</script>
+  <script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
+  {% endif %}
+  <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
+  {% endif %}
 
   {% if tab == 'registro' %}
   <script src="{{ url_for('static', filename='js/registro_riego_form.js') }}?v={{ static_version }}" defer></script>

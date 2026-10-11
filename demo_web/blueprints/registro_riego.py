@@ -77,15 +77,27 @@ def _handle_hydra_action(
     operador_nombre = str(operador.get("nombre") or usuario)
     if action == "hydra_refresh_estado":
         return hw.snapshot_live_zonas(conn)
+    if action == "hydra_editar_fert_item":
+        item_id = int(request.form.get("cola_item_id") or 0)
+        con_fert = request.form.get("con_fertilizacion") == "1"
+        fert = parse_fertilizantes_request(request.form) if con_fert else []
+        return hw.editar_fert_item_cola(
+            conn,
+            item_id,
+            con_fertilizacion=con_fert,
+            fertilizantes=fert,
+            usuario=usuario,
+        )
     if action == "hydra_regar_ahora":
         inicio = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
-        lineas = hw.parse_cola_lineas(request.form)
+        lineas = hw.parse_cola_lineas_form(request.form)
         result = hw.crear_cola(
             conn,
             tipo="run_now",
             inicio_programa=inicio,
             lineas=lineas,
             usuario=usuario,
+            regador_nombre=operador_nombre,
         )
         if result.get("ok"):
             sync = hw.sincronizar_hydrawise(conn, usuario, force=True)
@@ -98,13 +110,14 @@ def _handle_hydra_action(
         inicio = (request.form.get("inicio_programa") or "").strip().replace("T", " ")
         if len(inicio) == 16:
             inicio += ":00"
-        lineas = hw.parse_cola_lineas(request.form)
+        lineas = hw.parse_cola_lineas_form(request.form)
         result = hw.crear_cola(
             conn,
             tipo="programado",
             inicio_programa=inicio,
             lineas=lineas,
             usuario=usuario,
+            regador_nombre=operador_nombre,
         )
         if result.get("ok"):
             sync = hw.sincronizar_hydrawise(conn, usuario, force=True)
@@ -305,6 +318,8 @@ def formulario():
                     tab = "estado"
                 else:
                     tab = "control"
+                if action == "hydra_editar_fert_item" and hydra_ok:
+                    tab = "estado"
                 if action != "hydra_refresh_estado" and hydra_ok and action in (
                     "hydra_regar_ahora",
                     "hydra_programar",
@@ -401,6 +416,10 @@ def formulario():
             hydra_cola
             and str(hydra_cola.get("estado") or "") == "programado"
             and not hydra_mostrar_apagar
+        ),
+        hydra_cola_bloquea_registro=bool(
+            hydra_cola
+            and str(hydra_cola.get("estado") or "") in ("programado", "en_ejecucion")
         ),
         **form_state,
     )

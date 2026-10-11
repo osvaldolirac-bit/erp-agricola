@@ -125,6 +125,13 @@ def migrar_hydrawise(conn: sqlite3.Connection | None = None) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_hw_cola_item_cola ON hydrawise_cola_item(cola_id, orden)"
         )
+        item_cols = {
+            r[1] for r in conn.execute("PRAGMA table_info(hydrawise_cola_item)").fetchall()
+        }
+        if "fert_json" not in item_cols:
+            conn.execute(
+                "ALTER TABLE hydrawise_cola_item ADD COLUMN fert_json TEXT DEFAULT ''"
+            )
         cols = {r[1] for r in conn.execute("PRAGMA table_info(hydrawise_zona)").fetchall()}
         if "link_riego" not in cols:
             conn.execute(
@@ -485,27 +492,138 @@ def parse_cola_lineas(form) -> list[tuple[int, float]]:
     return out
 
 
+def _fert_json_serializa(lineas: list[dict[str, Any]] | None) -> str:
+    if lineas is None:
+        return ""
+    out: list[dict[str, Any]] = []
+    for ln in lineas:
+        if not isinstance(ln, dict):
+            continue
+        pid = int(ln.get("producto_id") or 0)
+        cant = float(ln.get("cantidad") or 0)
+        if pid <= 0 or cant <= 0:
+            continue
+        row: dict[str, Any] = {"producto_id": pid, "cantidad": cant}
+        dosis = ln.get("dosis_ha")
+        if dosis not in (None, ""):
+            try:
+                row["dosis_ha"] = float(dosis)
+            except (TypeError, ValueError):
+                pass
+        out.append(row)
+    return json.dumps(out, ensure_ascii=False)
+
+
+def _fert_lineas_desde_json(raw: str | None) -> list[dict[str, Any]] | None:
+    """None = sin columna / legacy (usar receta zona); [] = sin fertirriego explícito."""
+    if raw is None:
+        return None
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    try:
+        data = json.loads(s)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, list):
+        return []
+    return [
+        {
+            "producto_id": int(x.get("producto_id") or 0),
+            "cantidad": float(x.get("cantidad") or 0),
+            "dosis_ha": x.get("dosis_ha"),
+        }
+        for x in data
+        if isinstance(x, dict)
+    ]
+
+
+def parse_cola_lineas_form(form) -> list[dict[str, Any]]:
+    """Líneas de cola con fertirriego opcional (JSON del link o arrays legacy)."""
+    raw = (form.get("hw_lineas_json") or "").strip()
+    if raw:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, list):
+            out: list[dict[str, Any]] = []
+            for row in data:
+                if not isinstance(row, dict):
+                    continue
+                try:
+                    rid = int(row.get("relay_id") or 0)
+                    minutos = float(str(row.get("minutos") or "0").replace(",", "."))
+                except (TypeError, ValueError):
+                    continue
+                if rid <= 0 or minutos <= 0:
+                    continue
+                con = bool(row.get("con_fertilizacion"))
+                fert_raw = row.get("fertilizantes")
+                fert: list[dict[str, Any]] | None
+                if not con:
+                    fert = []
+                elif isinstance(fert_raw, list):
+                    fert = [
+                        {
+                            "producto_id": int(x.get("producto_id") or 0),
+                            "cantidad": float(x.get("cantidad") or 0),
+                            "dosis_ha": x.get("dosis_ha"),
+                        }
+                        for x in fert_raw
+                        if isinstance(x, dict)
+                    ]
+                else:
+                    fert = []
+                out.append(
+                    {"relay_id": rid, "minutos": minutos, "fertilizantes": fert}
+                )
+            if out:
+                return out
+    legacy = parse_cola_lineas(form)
+    return [
+        {"relay_id": rid, "minutos": mins, "fertilizantes": None} for rid, mins in legacy
+    ]
+
+
 def crear_cola(
     conn: sqlite3.Connection,
     *,
     tipo: str,
     inicio_programa: str,
-    lineas: list[tuple[int, float]],
+    lineas: list[dict[str, Any]] | list[tuple[int, float]],
     usuario: str,
+    regador_nombre: str = "",
 ) -> dict[str, Any]:
     from erp_solo_lectura import conn_en_solo_lectura
 
     if conn_en_solo_lectura(conn):
         return {"ok": False, "msg": "Solo lectura."}
-    if not lineas:
+    detalle: list[dict[str, Any]] = []
+    for ln in lineas:
+        if isinstance(ln, tuple):
+            detalle.append(
+                {"relay_id": int(ln[0]), "minutos": float(ln[1]), "fertilizantes": None}
+            )
+        else:
+            detalle.append(ln)
+    if not detalle:
         return {"ok": False, "msg": "Agregue al menos un sector con minutos."}
     migrar_hydrawise(conn)
-    for rid, _ in lineas:
+    from demo_web.services.registro_riego import _validar_lineas_fertilizantes
+
+    for ln in detalle:
+        rid = int(ln["relay_id"])
         z = zona_por_relay(conn, rid)
         if not z:
             return {"ok": False, "msg": f"Zona {rid} no importada."}
         if not (z.get("huerto_cc") or "").strip():
             return {"ok": False, "msg": f"Falta CC en zona {z.get('nombre_hw')}."}
+        fert_in = ln.get("fertilizantes")
+        if fert_in is not None and fert_in:
+            ok_f, msg_f, _ = _validar_lineas_fertilizantes(conn, fert_in)
+            if not ok_f:
+                return {"ok": False, "msg": msg_f}
 
     demo = get_demo_module()
     fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
@@ -516,15 +634,31 @@ def crear_cola(
         (tipo, inicio_programa, "programado", usuario, fh),
     )
     cola_id = int(cur.lastrowid)
-    for orden, (rid, minutos) in enumerate(lineas, start=1):
+    for orden, ln in enumerate(detalle, start=1):
+        rid = int(ln["relay_id"])
+        minutos = float(ln["minutos"])
+        fert_in = ln.get("fertilizantes")
+        if fert_in is None:
+            fert_save = _fert_json_serializa(_fert_lineas_desde_zona(conn, rid))
+        else:
+            fert_save = _fert_json_serializa(fert_in)
         conn.execute(
             """INSERT INTO hydrawise_cola_item
-               (cola_id, orden, relay_id, minutos, estado)
-               VALUES (?,?,?,?, 'pendiente')""",
-            (cola_id, orden, rid, float(minutos)),
+               (cola_id, orden, relay_id, minutos, estado, fert_json)
+               VALUES (?,?,?,?, 'pendiente', ?)""",
+            (cola_id, orden, rid, minutos, fert_save),
         )
     conn.commit()
-    return {"ok": True, "msg": f"Cola #{cola_id} creada ({len(lineas)} sector(es)).", "cola_id": cola_id}
+    from demo_web.services.registro_riego import enviar_alerta_hydra_cola_inicio
+
+    enviar_alerta_hydra_cola_inicio(
+        cola_id=cola_id,
+        tipo=tipo,
+        inicio_programa=inicio_programa,
+        regador=(regador_nombre or usuario or "Regador").strip(),
+        items=_resumen_items_cola_mail(conn, cola_id),
+    )
+    return {"ok": True, "msg": f"Cola #{cola_id} creada ({len(detalle)} sector(es)).", "cola_id": cola_id}
 
 
 def _cola_activa(conn: sqlite3.Connection) -> sqlite3.Row | None:
@@ -540,11 +674,92 @@ def _cola_activa(conn: sqlite3.Connection) -> sqlite3.Row | None:
 def _items_cola(conn: sqlite3.Connection, cola_id: int) -> list[sqlite3.Row]:
     return conn.execute(
         """SELECT id, orden, relay_id, minutos, estado, run_inicio, run_fin,
-                  codigo_riego, error_msg
+                  codigo_riego, error_msg, COALESCE(fert_json, '')
            FROM hydrawise_cola_item
            WHERE cola_id=? ORDER BY orden""",
         (cola_id,),
     ).fetchall()
+
+
+def _fert_lineas_item_cola(
+    conn: sqlite3.Connection, fert_json: str | None, relay_id: int
+) -> list[dict[str, Any]]:
+    parsed = _fert_lineas_desde_json(fert_json)
+    if parsed is not None:
+        return [ln for ln in parsed if float(ln.get("cantidad") or 0) > 0]
+    return _fert_lineas_desde_zona(conn, relay_id)
+
+
+def editar_fert_item_cola(
+    conn: sqlite3.Connection,
+    item_id: int,
+    *,
+    con_fertilizacion: bool,
+    fertilizantes: list[dict[str, Any]] | None,
+    usuario: str,
+) -> dict[str, Any]:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return {"ok": False, "msg": "Solo lectura."}
+    migrar_hydrawise(conn)
+    row = conn.execute(
+        """SELECT i.id, i.estado, i.relay_id, c.estado
+           FROM hydrawise_cola_item i
+           JOIN hydrawise_cola c ON c.id = i.cola_id
+           WHERE i.id=?""",
+        (int(item_id),),
+    ).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Ítem de cola no encontrado."}
+    if str(row[1] or "") != "pendiente":
+        return {"ok": False, "msg": "Solo puede editar fertirriego en sectores pendientes."}
+    if str(row[3] or "") not in ("programado", "en_ejecucion"):
+        return {"ok": False, "msg": "La cola ya no está activa."}
+    if not con_fertilizacion:
+        fert_save = "[]"
+    else:
+        from demo_web.services.registro_riego import _validar_lineas_fertilizantes
+
+        lineas = fertilizantes or []
+        ok_f, msg_f, val = _validar_lineas_fertilizantes(conn, lineas)
+        if not ok_f:
+            return {"ok": False, "msg": msg_f}
+        fert_save = _fert_json_serializa(val)
+    conn.execute(
+        "UPDATE hydrawise_cola_item SET fert_json=? WHERE id=?",
+        (fert_save, int(item_id)),
+    )
+    conn.commit()
+    return {"ok": True, "msg": "Fertirriego actualizado para el sector en cola."}
+
+
+def _resumen_items_cola_mail(conn: sqlite3.Connection, cola_id: int) -> list[dict[str, str]]:
+    labels = {
+        int(s["relay_id"]): s["label"]
+        for s in sectores_para_link_riego(conn)
+    }
+    nombres = _map_nombres_fertilizante(conn)
+    out: list[dict[str, str]] = []
+    for it in _items_cola(conn, cola_id):
+        rid = int(it[2])
+        fert_lines = _fert_lineas_item_cola(conn, str(it[9] or ""), rid)
+        fert_txt = "Sin fertirriego"
+        if fert_lines:
+            parts = []
+            for f in fert_lines:
+                pid = int(f.get("producto_id") or 0)
+                cant = float(f.get("cantidad") or 0)
+                parts.append(f"{nombres.get(pid, pid)} {cant:g}")
+            fert_txt = "; ".join(parts)
+        out.append(
+            {
+                "label": labels.get(rid) or f"Zona {rid}",
+                "minutos": _fmt_minutos_riego(float(it[3])),
+                "fert_txt": fert_txt,
+            }
+        )
+    return out
 
 
 def _alguna_zona_corriendo(status_data: dict[str, Any]) -> bool:
@@ -679,7 +894,12 @@ def _imputar_item_cola(
         return {"ok": False, "msg": "Sin tiempo de riego para imputar.", "codigo": ""}
     fecha = (run_fin or run_inicio or str(ahora.date()))[:10]
     regador = f"Hydrawise — {z.get('alias') or z.get('nombre_hw')}"
-    fert = _fert_lineas_desde_zona(conn, int(relay_id))
+    item_row = conn.execute(
+        "SELECT COALESCE(fert_json, '') FROM hydrawise_cola_item WHERE id=?",
+        (int(item_id),),
+    ).fetchone()
+    fert_json = str(item_row[0] or "") if item_row else ""
+    fert = _fert_lineas_item_cola(conn, fert_json, int(relay_id))
     res = registrar_desde_hydrawise(
         fecha,
         huerto,
@@ -689,6 +909,7 @@ def _imputar_item_cola(
         fertilizantes=fert if fert else None,
         modo_riego=z.get("modo_riego") or "horas",
         hydrawise_event_key=key,
+        defer_bodega_fert=bool(fert),
     )
     if not res.get("ok"):
         return res
@@ -724,6 +945,7 @@ def _imputar_item_cola(
             fert_txt=fert_txt,
             sector_label=_label_zona(conn, int(relay_id)),
             cola_id=cola_id,
+            fert_pendiente_confirmacion=bool(fert),
         )
     return {"ok": True, "msg": f"{cod} imputado ({huerto}).", "codigo": cod}
 
@@ -1325,9 +1547,11 @@ def programa_por_relay_en_cola(
         if str(it.get("estado") or "") != "pendiente":
             continue
         rid = int(it["relay_id"])
-        z = zona_por_relay(conn, rid)
+        fert_src = _fert_lineas_item_cola(
+            conn, str(it.get("fert_json") or ""), rid
+        )
         fert_lines: list[dict[str, Any]] = []
-        for f in (z or {}).get("fertilizantes") or []:
+        for f in fert_src:
             pid = int(f.get("producto_id") or 0)
             cant = float(f.get("cantidad") or 0)
             if pid <= 0 or cant <= 0:
@@ -1373,6 +1597,8 @@ def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:
     items = []
     for it in _items_cola(conn, cola_id):
         rid = int(it[2])
+        fert_json = str(it[9] or "")
+        fert_lineas = _fert_lineas_item_cola(conn, fert_json, rid)
         items.append(
             {
                 "id": int(it[0]),
@@ -1385,6 +1611,9 @@ def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:
                 "run_fin": it[6],
                 "codigo_riego": it[7],
                 "error_msg": it[8],
+                "fert_json": fert_json,
+                "con_fertilizacion": bool(fert_lineas),
+                "fertilizantes": fert_lineas,
             }
         )
     return {
@@ -1410,7 +1639,7 @@ def api_lista_para_link(conn: sqlite3.Connection) -> tuple[bool, str]:
 
 
 def crear_cola_desde_form(form, *, tipo: str, usuario: str, inicio_programa: str) -> dict[str, Any]:
-    lineas = parse_cola_lineas(form)
+    lineas = parse_cola_lineas_form(form)
     conn = _conn()
     try:
         return crear_cola(
@@ -1419,6 +1648,7 @@ def crear_cola_desde_form(form, *, tipo: str, usuario: str, inicio_programa: str
             inicio_programa=inicio_programa,
             lineas=lineas,
             usuario=usuario,
+            regador_nombre=usuario,
         )
     finally:
         conn.close()

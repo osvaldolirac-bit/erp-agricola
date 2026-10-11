@@ -60,6 +60,7 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         if sec == "historial":
             ctx["historial_rows"] = listar_historial(conn)
             ctx["npk_resumen"] = resumen_npk_por_huerto(conn)
+            ctx["bitacora_puede_autorizar"] = demo.es_admin() and not demo.es_solo_lectura()
         elif sec == "bitacora" and habilitado():
             es_demo = get_erp_app() == "demo"
             hydra_link_n = 0
@@ -212,6 +213,38 @@ def view(user_email: str, user_rol: str):
                 result = rechazar_registro(codigo, user_email, motivo=motivo)
                 flash(result["msg"], "success" if result["ok"] else "danger")
             return redirect_module("riego", sec="bitacora")
+
+        if action == "confirmar_fert_hydra":
+            if not demo.es_admin():
+                flash("Solo un administrador puede confirmar fertirriego HYDRA.", "danger")
+            else:
+                from demo_web.services.registro_riego import confirmar_fert_hydra
+
+                codigo = (request.form.get("codigo") or "").strip()
+                result = confirmar_fert_hydra(codigo, user_email)
+                flash(result["msg"], "success" if result["ok"] else "danger")
+            return redirect_module("riego", sec="historial")
+
+        if action == "modificar_fert_hydra":
+            if not demo.es_admin():
+                flash("Solo un administrador puede modificar fertirriego HYDRA.", "danger")
+            else:
+                from demo_web.services.registro_riego import (
+                    modificar_fert_hydra,
+                    parse_fertilizantes_request,
+                )
+
+                codigo = (request.form.get("codigo") or "").strip()
+                con_fert = request.form.get("con_fertilizacion") == "1"
+                fert = parse_fertilizantes_request(request.form) if con_fert else []
+                result = modificar_fert_hydra(
+                    codigo,
+                    user_email,
+                    fert,
+                    con_fertilizacion=con_fert,
+                )
+                flash(result["msg"], "success" if result["ok"] else "danger")
+            return redirect_module("riego", sec="historial")
 
         if is_concepcion_tenant() and action.startswith("hydra_"):
             if not demo.es_admin():
