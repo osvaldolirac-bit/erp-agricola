@@ -29,16 +29,44 @@ META_LAST_PROBE = "hydrawise_last_probe_v1"
 META_LAST_CONTACT = "hydrawise_controller_last_contact_v1"
 SYNC_COOLDOWN_SEC = 90
 PROBE_COOLDOWN_SEC = 90
-CONTACT_REFRESH_SEC = 300
+CONTACT_REFRESH_SEC = 600
+
+
+def _is_rate_limit_err(err: str | None) -> bool:
+    return "429" in str(err or "")
 
 
 def _fmt_api_err(err: str) -> str:
-    if "429" in str(err):
+    if _is_rate_limit_err(err):
         return (
             "Hydrawise limitó las consultas (HTTP 429). Espere 1–2 minutos "
-            "y use solo «Probar conexión» o «Sincronizar» (no recargue HYDRA en loop)."
+            "sin recargar HYDRA en loop; el testigo usa el último estado conocido."
         )
     return str(err)
+
+
+def _probe_desde_cache(conn: sqlite3.Connection, *, nota: str = "") -> dict[str, Any] | None:
+    cached = _read_probe_cache(conn)
+    if not cached:
+        return None
+    demo = get_demo_module()
+    try:
+        age = demo.hora_chile().timestamp() - float(cached.get("ts") or 0)
+    except (TypeError, ValueError):
+        age = 0
+    msg = str(cached.get("msg") or "")
+    if nota:
+        msg = f"{msg} · {nota}" if msg else nota
+    return {
+        "online": bool(cached.get("online")),
+        "ok": bool(cached.get("ok", True)),
+        "msg": msg,
+        "title": str(cached.get("title") or ""),
+        "zonas": {},
+        "cached": True,
+        "probe_age_sec": int(max(0, age)),
+        "rate_limited": True,
+    }
 
 
 def hydrawise_habilitado() -> bool:
@@ -242,11 +270,13 @@ def listar_equipos(conn: sqlite3.Connection) -> dict[str, Any]:
 
 def _resolver_controller_id(conn: sqlite3.Connection, key: str) -> tuple[int | None, str]:
     """Devuelve controller_id numérico API para statusschedule/setzone."""
+    ref = get_equipo_ref(conn)
+    if ref.isdigit():
+        return int(ref), ""
     resp = customer_details(key)
     if not resp.get("ok"):
         return None, _fmt_api_err(resp.get("error") or "Error")
     equipos = list_controllers(resp.get("data") or {})
-    ref = get_equipo_ref(conn)
     if ref:
         api_id = _api_id_desde_ref(ref, equipos)
         if api_id is not None:
@@ -1262,6 +1292,8 @@ def sincronizar_hydrawise(
     if need_status_api and (cola or force):
         cid, cid_err = _resolver_controller_id(conn, key)
         if cid_err:
+            if _is_rate_limit_err(cid_err):
+                return {"ok": True, "msg": ""}
             _write_probe_cache(
                 conn, {"online": False, "ok": False, "msg": cid_err, "zonas": {}}
             )
@@ -1269,8 +1301,11 @@ def sincronizar_hydrawise(
         st_resp = status_schedule(key, cid)
         status_data = st_resp.get("data") if st_resp.get("ok") else {}
         probe_out = _probe_resultado_desde_status(conn, st_resp, cid)
-        _write_probe_cache(conn, probe_out)
+        if not probe_out.get("rate_limited"):
+            _write_probe_cache(conn, probe_out)
         if not st_resp.get("ok") and st_resp.get("error"):
+            if _is_rate_limit_err(str(st_resp.get("error"))):
+                return {"ok": True, "msg": ""}
             return {"ok": False, "msg": _fmt_api_err(st_resp.get("error"))}
         _mark_api_sync(conn, ahora)
     elif cola and running_item and cooldown > 0 and not force:
@@ -1576,7 +1611,15 @@ def _probe_resultado_desde_status(
     cid: int | None,
 ) -> dict[str, Any]:
     if not st_resp.get("ok"):
-        msg = _fmt_api_err(st_resp.get("error") or "Sin respuesta del controlador")
+        err = st_resp.get("error") or "Sin respuesta del controlador"
+        if _is_rate_limit_err(str(err)):
+            fallback = _probe_desde_cache(
+                conn,
+                nota="consulta en pausa (límite Hydrawise)",
+            )
+            if fallback:
+                return fallback
+        msg = _fmt_api_err(str(err))
         return {
             "online": False,
             "ok": False,
@@ -1710,13 +1753,22 @@ def estado_conexion_controlador(
 
     cid, err = _resolver_controller_id(conn, key)
     if err:
+        if _is_rate_limit_err(err):
+            fallback = _probe_desde_cache(
+                conn,
+                nota="consulta en pausa (límite Hydrawise)",
+            )
+            if fallback:
+                return fallback
         out = {"online": False, "ok": False, "msg": err, "zonas": {}}
-        _write_probe_cache(conn, out)
+        if not _is_rate_limit_err(err):
+            _write_probe_cache(conn, out)
         return out
 
     st_resp = status_schedule(key, cid)
     out = _probe_resultado_desde_status(conn, st_resp, cid)
-    _write_probe_cache(conn, out)
+    if not out.get("rate_limited"):
+        _write_probe_cache(conn, out)
     out["cached"] = False
     out["probe_age_sec"] = 0
     if not out.get("title"):
@@ -1877,11 +1929,12 @@ def contexto_control_hydra_ui(
 
     hydra_msg = ""
     hydra_ok = True
-    if auto_sync and hydra_sectores:
-        auto = sincronizar_hydrawise(conn, usuario, force=False)
-        if auto.get("msg"):
-            hydra_msg = str(auto.get("msg"))
-            hydra_ok = bool(auto.get("ok", True))
+    if auto_sync and hydra_sectores and hydra_cola and hydra_sync_cooldown <= 0:
+            auto = sincronizar_hydrawise(conn, usuario, force=False)
+            msg = str(auto.get("msg") or "").strip()
+            if msg and "429" not in msg and not msg.startswith("Cola activa — próxima"):
+                hydra_msg = msg
+                hydra_ok = bool(auto.get("ok", True))
 
     probe = estado_conexion_controlador(conn, force=False)
     live_zonas = probe.get("zonas") or {}

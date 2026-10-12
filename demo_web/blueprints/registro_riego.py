@@ -357,15 +357,22 @@ def formulario():
         try:
             from demo_web.services import hydrawise_riego as hw
 
-            if request.method == "GET" and acceso_personal and not hydra_msg:
+            hydra_sync_cooldown = hw.cooldown_restante_segundos(conn)
+            hydra_cola = hw.cola_activa_en_link(conn)
+            if (
+                request.method == "GET"
+                and acceso_personal
+                and not hydra_msg
+                and hydra_cola
+                and hydra_sync_cooldown <= 0
+            ):
                 auto = hw.sincronizar_hydrawise(
                     conn, _usuario_operador(operador), force=False
                 )
-                if auto.get("msg"):
-                    hydra_msg = str(auto.get("msg"))
+                msg = str(auto.get("msg") or "").strip()
+                if msg and "429" not in msg and not msg.startswith("Cola activa — próxima"):
+                    hydra_msg = msg
                     hydra_ok = bool(auto.get("ok", True))
-            hydra_sync_cooldown = hw.cooldown_restante_segundos(conn)
-            hydra_cola = hw.cola_activa_en_link(conn)
             hydra_colas = hw.listar_colas_recientes(conn, limite=4)
             programa_por_relay = hw.programa_por_relay_en_cola(conn, hydra_cola)
             hydra_mostrar_apagar = hw.cola_permite_apagar(hydra_cola)
