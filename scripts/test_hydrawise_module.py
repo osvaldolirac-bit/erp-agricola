@@ -10,7 +10,12 @@ sys.path.insert(0, str(ROOT))
 
 
 def main() -> int:
-    from demo_web.services.hydrawise_client import flatten_relays, relay_status_map
+    from demo_web.services.hydrawise_client import (
+        assess_field_connectivity,
+        flatten_relays,
+        parse_last_contact_ts,
+        relay_status_map,
+    )
 
     sample = {
         "controllers": [
@@ -28,6 +33,19 @@ def main() -> int:
     st = {"relays": [{"relay_id": 10, "running": 1}]}
     mp = relay_status_map(st)
     assert mp[10]["running"] is True
+
+    assert parse_last_contact_ts("1685384004") == 1685384004.0
+    base = 1685384004.0
+    on = assess_field_connectivity(
+        {"last_contact": "1685384004", "status": "Online"},
+        now_ts=base + 900,
+    )
+    assert on["equipment_online"] is True
+    off = assess_field_connectivity(
+        {"last_contact": "1685384004", "status": "Online"},
+        now_ts=base + 2000,
+    )
+    assert off["equipment_online"] is False
 
     for name in (
         "demo_web/services/hydrawise_riego.py",

@@ -14,7 +14,7 @@ from flask import (
 from demo_web.auth.decorators import login_required
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.erp_loader import bind_tenant_context
-from demo_web.services.hydrawise_riego import lc_contexto_hydra
+from demo_web.services.hydrawise_riego import _cola_turnos, lc_contexto_hydra
 from demo_web.services.registro_riego import (
     aplicar_cookie_operador,
     config_riego_cc_para_formulario,
@@ -344,6 +344,7 @@ def formulario():
     hydra_colas: list = []
     hydra_conn_online = False
     hydra_conn_msg = ""
+    hydra_conn_title = ""
     hydra_conn_cached = False
     hydra_probe_age_sec = 0
     hydra_sync_cooldown = 0
@@ -372,6 +373,7 @@ def formulario():
                 probe = hw.estado_conexion_controlador(conn, force=False)
                 hydra_conn_online = bool(probe.get("online"))
                 hydra_conn_msg = str(probe.get("msg") or "")
+                hydra_conn_title = str(probe.get("title") or "")
                 hydra_conn_cached = bool(probe.get("cached"))
                 hydra_probe_age_sec = int(probe.get("probe_age_sec") or 0)
                 if probe.get("zonas"):
@@ -380,13 +382,12 @@ def formulario():
                 ok_cfg, msg_cfg = hw.api_lista_para_link(conn)
                 hydra_conn_online = ok_cfg
                 hydra_conn_msg = msg_cfg
+                hydra_conn_title = "Hydrawise configurado" if ok_cfg else "Hydrawise sin configurar"
         finally:
             conn.close()
         if hydra_cola:
             cola_est = str(hydra_cola.get("estado") or "")
             cola_viva = cola_est in ("programado", "en_ejecucion")
-            from demo_web.services.hydrawise_riego import _cola_turnos
-
             for it in _cola_turnos(hydra_cola):
                 rid = int(it["relay_id"])
                 item_est = str(it.get("estado") or "")
@@ -418,6 +419,7 @@ def formulario():
         hydra_colas=hydra_colas,
         hydra_conn_online=hydra_conn_online,
         hydra_conn_msg=hydra_conn_msg,
+        hydra_conn_title=hydra_conn_title,
         hydra_conn_cached=hydra_conn_cached,
         hydra_probe_age_sec=hydra_probe_age_sec,
         hydra_sync_cooldown=hydra_sync_cooldown,

@@ -8,9 +8,12 @@ from typing import Any
 
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.hydrawise_client import (
+    assess_field_connectivity,
     customer_details,
     flatten_relays,
     flatten_relays_from_status,
+    fmt_edad_contacto,
+    last_contact_from_customer,
     list_controllers,
     relay_status_map,
     set_zone_run,
@@ -1498,17 +1501,78 @@ def _probe_resultado_desde_status(
 ) -> dict[str, Any]:
     if not st_resp.get("ok"):
         msg = _fmt_api_err(st_resp.get("error") or "Sin respuesta del controlador")
-        return {"online": False, "ok": False, "msg": msg, "zonas": {}}
-    mp = relay_status_map(st_resp.get("data") or {})
+        return {
+            "online": False,
+            "ok": False,
+            "api_ok": False,
+            "msg": msg,
+            "title": "Sin conexión a Hydrawise",
+            "zonas": {},
+        }
+    data = st_resp.get("data") or {}
+    mp = relay_status_map(data)
     ref = get_equipo_ref(conn) or str(cid or "")
     n_z = len(mp)
     n_run = sum(1 for v in mp.values() if v.get("running"))
     extra = f" · {n_run} regando" if n_run else ""
+
+    demo = get_demo_module()
+    now_ts = demo.hora_chile().timestamp()
+    field = assess_field_connectivity(data, controller_id=cid, now_ts=now_ts)
+    if field.get("equipment_online") is None and cid:
+        key = get_api_key(conn)
+        if key:
+            cd = customer_details(key)
+            if cd.get("ok"):
+                lc = last_contact_from_customer(cd.get("data") or {}, int(cid))
+                if lc is not None:
+                    field = assess_field_connectivity(
+                        {"last_contact": lc, "status": field.get("status_text") or ""},
+                        controller_id=cid,
+                        now_ts=now_ts,
+                    )
+
+    age_sec = field.get("last_contact_age_sec")
+    edad = fmt_edad_contacto(age_sec)
+    api_ok = True
+
+    if field.get("equipment_online") is False:
+        st_hint = str(field.get("status_text") or "").strip()
+        st_part = f" · estado «{st_hint}»" if st_hint else ""
+        return {
+            "online": False,
+            "ok": True,
+            "api_ok": api_ok,
+            "title": "Equipo sin contacto",
+            "msg": (
+                f"Nube Hydrawise responde, pero el controlador no está en línea · "
+                f"último contacto {edad}{st_part} · {ref}"
+            ),
+            "zonas": mp,
+            "last_contact_age_sec": age_sec,
+        }
+
+    if field.get("equipment_online") is None:
+        return {
+            "online": True,
+            "ok": True,
+            "api_ok": api_ok,
+            "title": "Nube Hydrawise OK",
+            "msg": (
+                f"API en línea · {ref} · {n_z} zona(s){extra} "
+                f"(sin dato de último contacto del equipo)"
+            ),
+            "zonas": mp,
+        }
+
     return {
         "online": True,
         "ok": True,
-        "msg": f"En línea · {ref} · {n_z} zona(s){extra}",
+        "api_ok": api_ok,
+        "title": "Controlador en línea",
+        "msg": f"Equipo en línea · último contacto {edad} · {ref} · {n_z} zona(s){extra}",
         "zonas": mp,
+        "last_contact_age_sec": age_sec,
     }
 
 
@@ -1523,6 +1587,7 @@ def _write_probe_cache(conn: sqlite3.Connection, payload: dict[str, Any]) -> Non
         "online": bool(payload.get("online")),
         "ok": bool(payload.get("ok")),
         "msg": str(payload.get("msg") or ""),
+        "title": str(payload.get("title") or ""),
         "ts": ts,
     }
     conn.execute(
@@ -1560,6 +1625,7 @@ def estado_conexion_controlador(
                 "online": bool(cached.get("online")),
                 "ok": bool(cached.get("ok")),
                 "msg": str(cached.get("msg") or ""),
+                "title": str(cached.get("title") or ""),
                 "zonas": {},
                 "cached": True,
                 "probe_age_sec": int(age),
@@ -1576,6 +1642,10 @@ def estado_conexion_controlador(
     _write_probe_cache(conn, out)
     out["cached"] = False
     out["probe_age_sec"] = 0
+    if not out.get("title"):
+        out["title"] = (
+            "Controlador en línea" if out.get("online") else "Sin conexión a Hydrawise"
+        )
     return out
 
 
@@ -1740,6 +1810,7 @@ def contexto_control_hydra_ui(
     live_zonas = probe.get("zonas") or {}
     hydra_conn_online = bool(probe.get("online"))
     hydra_conn_msg = str(probe.get("msg") or "")
+    hydra_conn_title = str(probe.get("title") or "")
     hydra_conn_cached = bool(probe.get("cached"))
     hydra_probe_age_sec = int(probe.get("probe_age_sec") or 0)
 
@@ -1779,6 +1850,7 @@ def contexto_control_hydra_ui(
         "hydra_ok": hydra_ok,
         "hydra_conn_online": hydra_conn_online,
         "hydra_conn_msg": hydra_conn_msg,
+        "hydra_conn_title": hydra_conn_title,
         "hydra_conn_cached": hydra_conn_cached,
         "hydra_probe_age_sec": hydra_probe_age_sec,
         "running_relay_ids": sorted(running_relay_ids),

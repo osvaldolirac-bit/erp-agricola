@@ -153,6 +153,120 @@ def flatten_relays(customer_payload: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+# Si last_contact es más viejo que esto, el equipo se considera offline (≈ app Hydrawise).
+CONTROLLER_STALE_SEC = 18 * 60
+
+
+def _as_controller_list(root: dict[str, Any]) -> list[dict[str, Any]]:
+    controllers = root.get("controllers") or root.get("controller") or []
+    if isinstance(controllers, dict):
+        return [controllers]
+    return [c for c in controllers if isinstance(c, dict)]
+
+
+def parse_last_contact_ts(raw: Any) -> float | None:
+    """Unix segundos desde last_contact Hydrawise (string o número)."""
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, (int, float)):
+        ts = float(raw)
+        if ts > 1e12:
+            ts /= 1000.0
+        return ts if ts > 1e8 else None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        ts = float(s)
+        if ts > 1e12:
+            ts /= 1000.0
+        return ts if ts > 1e8 else None
+    except ValueError:
+        return None
+
+
+def fmt_edad_contacto(seg: int | None) -> str:
+    if seg is None:
+        return "sin dato"
+    s = max(0, int(seg))
+    if s < 90:
+        return f"hace {s} s"
+    if s < 3600:
+        return f"hace {s // 60} min"
+    if s < 86400:
+        h = s // 3600
+        m = (s % 3600) // 60
+        return f"hace {h} h {m} min" if m else f"hace {h} h"
+    d = s // 86400
+    return f"hace {d} día(s)"
+
+
+def assess_field_connectivity(
+    status_payload: dict[str, Any],
+    *,
+    controller_id: int | None = None,
+    now_ts: float,
+    stale_sec: int = CONTROLLER_STALE_SEC,
+) -> dict[str, Any]:
+    """¿El controlador en campo está en línea según last_contact / status?"""
+    root = status_payload if isinstance(status_payload, dict) else {}
+    last_ts = parse_last_contact_ts(root.get("last_contact"))
+    status_txt = str(root.get("status") or "").strip()
+    ctrl_name = str(root.get("name") or root.get("current_controller") or "").strip()
+
+    for ctrl in _as_controller_list(root):
+        cid = int(ctrl.get("controller_id") or ctrl.get("id") or 0)
+        if controller_id and cid and cid != int(controller_id):
+            continue
+        if last_ts is None:
+            last_ts = parse_last_contact_ts(ctrl.get("last_contact"))
+        st = str(ctrl.get("status") or "").strip()
+        if st:
+            status_txt = st
+        if not ctrl_name:
+            ctrl_name = str(ctrl.get("name") or "").strip()
+
+    age_sec: int | None = None
+    if last_ts is not None:
+        age_sec = int(max(0, now_ts - last_ts))
+
+    status_low = status_txt.lower()
+    status_offline = bool(
+        status_txt
+        and any(
+            k in status_low
+            for k in ("offline", "disconnected", "no contact", "not connected", "sin contact")
+        )
+    )
+
+    if last_ts is None:
+        equipment_online = None
+    elif status_offline or (age_sec is not None and age_sec > stale_sec):
+        equipment_online = False
+    else:
+        equipment_online = True
+
+    return {
+        "equipment_online": equipment_online,
+        "last_contact_ts": last_ts,
+        "last_contact_age_sec": age_sec,
+        "status_text": status_txt,
+        "controller_name": ctrl_name,
+    }
+
+
+def last_contact_from_customer(
+    customer_payload: dict[str, Any],
+    controller_id: int,
+) -> float | None:
+    root = customer_payload if isinstance(customer_payload, dict) else {}
+    for ctrl in _as_controller_list(root):
+        cid = int(ctrl.get("controller_id") or ctrl.get("id") or 0)
+        if cid == int(controller_id):
+            return parse_last_contact_ts(ctrl.get("last_contact"))
+    return None
+
+
 def relay_status_map(status_payload: dict[str, Any]) -> dict[int, dict[str, Any]]:
     """relay_id → {running, name, ...} desde statusschedule."""
     mp: dict[int, dict[str, Any]] = {}

@@ -17,9 +17,9 @@
 <div class="hydra-conn-witness hydra-conn-witness--{{ 'ok' if hydra_conn_online else 'fail' }}" role="status">
   <span class="hydra-conn-dot" aria-hidden="true"></span>
   <div class="hydra-conn-text">
-    <strong class="hydra-conn-title">{{ 'Controlador conectado' if hydra_conn_online else 'Sin conexión' }}</strong>
-    <span class="hydra-conn-detail">{{ hydra_conn_msg or '—' }}{% if hydra_conn_cached and hydra_probe_age_sec %} · actualizado hace {{ hydra_probe_age_sec }} s{% endif %}</span>
-    <span class="hydra-conn-auto small text-muted">Se revisa al abrir{% if hydra_ui_scope|default('link') == 'module' %} o sincronizar{% endif %} y al avanzar la cola (≈90&nbsp;s).</span>
+    <strong class="hydra-conn-title">{{ hydra_conn_title|default('Controlador conectado' if hydra_conn_online else 'Sin conexión') }}</strong>
+    <span class="hydra-conn-detail">{{ hydra_conn_msg or '—' }}{% if hydra_conn_cached and hydra_probe_age_sec %} · testigo hace {{ hydra_probe_age_sec }} s{% endif %}</span>
+    <span class="hydra-conn-auto small text-muted">Verde = equipo visto por Hydrawise (último contacto &lt; ~18&nbsp;min). Se revisa al abrir{% if hydra_ui_scope|default('link') == 'module' %} o sincronizar{% endif %} y al avanzar la cola.</span>
   </div>
 </div>
 <p class="hydra-link-sync-explain mb-3">
