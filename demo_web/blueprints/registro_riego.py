@@ -315,7 +315,7 @@ def formulario():
                     conn.close()
                 hydra_msg = str(result.get("msg") or "")
                 hydra_ok = bool(result.get("ok"))
-                if action == "hydra_refresh_estado" and result.get("zonas") is not None:
+                if action == "hydra_refresh_estado" and result.get("zonas"):
                     live_zonas = result.get("zonas") or {}
                 tab = "control"
         else:

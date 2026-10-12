@@ -2354,15 +2354,11 @@ body.erp-ios .erp-pdf-viewer-object {
   color: #546e7a;
 }
 
-.hydra-conn-reverify-btn {
-  font-size: 0.72rem;
-  font-weight: 600;
-  border-radius: 999px;
-  padding: 0.25rem 0.65rem;
-  white-space: nowrap;
-  border: 1px solid rgba(0, 131, 143, 0.35);
-  background: rgba(255, 255, 255, 0.85);
-  color: #006064;
+.hydra-conn-auto {
+  display: block;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  margin-top: 0.15rem;
 }
 
 .hydra-link-block .hydra-link-hint:last-child {

@@ -1235,9 +1235,14 @@ def sincronizar_hydrawise(
     if need_status_api and (cola or force):
         cid, cid_err = _resolver_controller_id(conn, key)
         if cid_err:
+            _write_probe_cache(
+                conn, {"online": False, "ok": False, "msg": cid_err, "zonas": {}}
+            )
             return {"ok": False, "msg": cid_err}
         st_resp = status_schedule(key, cid)
         status_data = st_resp.get("data") if st_resp.get("ok") else {}
+        probe_out = _probe_resultado_desde_status(conn, st_resp, cid)
+        _write_probe_cache(conn, probe_out)
         if not st_resp.get("ok") and st_resp.get("error"):
             return {"ok": False, "msg": _fmt_api_err(st_resp.get("error"))}
         _mark_api_sync(conn, ahora)
@@ -1464,6 +1469,27 @@ def _read_probe_cache(conn: sqlite3.Connection) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _probe_resultado_desde_status(
+    conn: sqlite3.Connection,
+    st_resp: dict[str, Any],
+    cid: int | None,
+) -> dict[str, Any]:
+    if not st_resp.get("ok"):
+        msg = _fmt_api_err(st_resp.get("error") or "Sin respuesta del controlador")
+        return {"online": False, "ok": False, "msg": msg, "zonas": {}}
+    mp = relay_status_map(st_resp.get("data") or {})
+    ref = get_equipo_ref(conn) or str(cid or "")
+    n_z = len(mp)
+    n_run = sum(1 for v in mp.values() if v.get("running"))
+    extra = f" · {n_run} regando" if n_run else ""
+    return {
+        "online": True,
+        "ok": True,
+        "msg": f"En línea · {ref} · {n_z} zona(s){extra}",
+        "zonas": mp,
+    }
+
+
 def _write_probe_cache(conn: sqlite3.Connection, payload: dict[str, Any]) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -1524,31 +1550,15 @@ def estado_conexion_controlador(
         return out
 
     st_resp = status_schedule(key, cid)
-    if not st_resp.get("ok"):
-        msg = _fmt_api_err(st_resp.get("error") or "Sin respuesta del controlador")
-        out = {"online": False, "ok": False, "msg": msg, "zonas": {}}
-        _write_probe_cache(conn, out)
-        return out
-
-    mp = relay_status_map(st_resp.get("data") or {})
-    ref = get_equipo_ref(conn) or str(cid)
-    n_z = len(mp)
-    n_run = sum(1 for v in mp.values() if v.get("running"))
-    extra = f" · {n_run} regando" if n_run else ""
-    out = {
-        "online": True,
-        "ok": True,
-        "msg": f"En línea · {ref} · {n_z} zona(s){extra}",
-        "zonas": mp,
-        "cached": False,
-        "probe_age_sec": 0,
-    }
+    out = _probe_resultado_desde_status(conn, st_resp, cid)
     _write_probe_cache(conn, out)
+    out["cached"] = False
+    out["probe_age_sec"] = 0
     return out
 
 
 def snapshot_live_zonas(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Fuerza consulta en vivo (statusschedule) para reverificar testigo."""
+    """Consulta statusschedule (p. ej. acciones legacy); actualiza testigo."""
     probe = estado_conexion_controlador(conn, force=True)
     return {
         "ok": probe.get("ok", False),
