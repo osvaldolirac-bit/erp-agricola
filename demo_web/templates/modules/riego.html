@@ -21,9 +21,31 @@
   {% endif %}
 
   {% if sec_activa == 'manual' %}
+  {% if hydra_control_activo|default(false) %}
+  <div class="panel-card hydra-module-control mb-3">
+    <h2 class="h6">Control HYDRA (oficina)</h2>
+    <p class="small text-muted mb-3">
+      Misma operación que el <strong>link del regador</strong>: sectores Hydrawise, cola, regar ahora / programar y fertirriego por sector.
+      En celular use <a href="{{ url_for('modules.riego', sec='bitacora') }}">Link riego</a>.
+    </p>
+    {% if not hydra_puede_operar %}
+    <div class="alert alert-warning py-2 small">Solo administradores pueden iniciar o programar riego desde aquí.</div>
+    {% endif %}
+    {% include 'registro_riego/_hydra_control_ui.html' %}
+  </div>
+  <details class="panel-card mb-3">
+    <summary class="h6 mb-0" style="cursor:pointer">Registro directo por huerto (legacy)</summary>
+    <p class="small text-muted mt-2 mb-2">Sin Hydrawise — imputa horas/m³ al CC manualmente.</p>
+  {% else %}
   <div class="panel-card">
     <h2 class="h6">Registro manual</h2>
+    {% if not hydra_control_activo|default(false) and hydra_ui_scope is defined %}
+    <div class="alert alert-secondary py-2 small">
+      Configure sectores en <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a> (activo + CC + en link) para usar control como el celular.
+    </div>
+    {% endif %}
     <p class="small text-muted">Imputa directamente al huerto (CC). Fertilización opcional desde bodega (familia FERTILIZANTE).</p>
+  {% endif %}
     <form method="post" class="row g-2" id="formManualRiego">
       <input type="hidden" name="action" value="registrar_manual">
       <input type="hidden" name="sec" value="manual">
@@ -247,8 +269,12 @@
       }
     })();
     </script>
-    {% endif %}
+  {% if hydra_control_activo|default(false) %}
+  </details>
+  <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
+  {% else %}
   </div>
+  {% endif %}
 
   {% elif sec_activa == 'bitacora' %}
   <div class="panel-card">

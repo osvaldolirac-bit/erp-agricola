@@ -88,6 +88,18 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             )
         elif sec == "manual":
             ctx["form_fecha"] = hoy_demo(demo).isoformat()
+            if is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import contexto_control_hydra_ui
+
+                puede = demo.es_admin() and not demo.es_solo_lectura()
+                ctx.update(
+                    contexto_control_hydra_ui(
+                        conn, user_email or "admin", auto_sync=True
+                    )
+                )
+                ctx["hydra_puede_operar"] = puede
+                ctx["hydra_ui_scope"] = "module"
+                ctx["hydra_ui_sec"] = "manual"
         elif sec == "hydra" and is_concepcion_tenant():
             import json
 
@@ -247,12 +259,16 @@ def view(user_email: str, user_rol: str):
             return redirect_module("riego", sec="historial")
 
         if is_concepcion_tenant() and action.startswith("hydra_"):
+            sec_hydra = (request.form.get("sec") or "hydra").strip()
+            if sec_hydra not in ("manual", "hydra"):
+                sec_hydra = "hydra"
             if not demo.es_admin():
                 flash("Solo administradores pueden operar Hydra.", "danger")
-                return redirect_module("riego", sec="hydra")
+                return redirect_module("riego", sec=sec_hydra)
             conn = demo.conectar_db()
             try:
                 from demo_web.services import hydrawise_riego as hw
+                from demo_web.services.registro_riego import parse_fertilizantes_request
 
                 result = {"ok": False, "msg": "Acción no reconocida."}
                 if action == "hydra_sync":
@@ -270,14 +286,28 @@ def view(user_email: str, user_rol: str):
                         link_riego=request.form.get("link_riego") == "1",
                         fert_json=request.form.get("fert_json") or "[]",
                     )
+                elif action == "hydra_editar_fert_item":
+                    item_id = int(request.form.get("cola_item_id") or 0)
+                    con_fert = request.form.get("con_fertilizacion") == "1"
+                    fert = parse_fertilizantes_request(request.form) if con_fert else []
+                    result = hw.editar_fert_item_cola(
+                        conn,
+                        item_id,
+                        con_fertilizacion=con_fert,
+                        fertilizantes=fert,
+                        usuario=user_email,
+                    )
                 elif action == "hydra_regar_ahora":
                     demo_mod = get_demo_module()
                     inicio = demo_mod.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
-                    result = hw.crear_cola_desde_form(
-                        request.form,
+                    lineas = hw.parse_cola_lineas_form(request.form)
+                    result = hw.crear_cola(
+                        conn,
                         tipo="run_now",
-                        usuario=user_email,
                         inicio_programa=inicio,
+                        lineas=lineas,
+                        usuario=user_email,
+                        regador_nombre=user_email,
                     )
                     if result.get("ok"):
                         sync = hw.sincronizar_hydrawise(conn, user_email, force=True)
@@ -289,12 +319,21 @@ def view(user_email: str, user_rol: str):
                     inicio = (request.form.get("inicio_programa") or "").strip().replace("T", " ")
                     if len(inicio) == 16:
                         inicio += ":00"
-                    result = hw.crear_cola_desde_form(
-                        request.form,
+                    lineas = hw.parse_cola_lineas_form(request.form)
+                    result = hw.crear_cola(
+                        conn,
                         tipo="programado",
-                        usuario=user_email,
                         inicio_programa=inicio,
+                        lineas=lineas,
+                        usuario=user_email,
+                        regador_nombre=user_email,
                     )
+                    if result.get("ok"):
+                        sync = hw.sincronizar_hydrawise(conn, user_email, force=True)
+                        result = {
+                            "ok": sync.get("ok", True),
+                            "msg": result.get("msg", "") + " " + sync.get("msg", ""),
+                        }
                 elif action == "hydra_parar":
                     result = hw.parar_riego_manual(conn, user_email, user_email)
                 elif action == "hydra_cancelar_cola":
@@ -302,7 +341,7 @@ def view(user_email: str, user_rol: str):
             finally:
                 conn.close()
             flash(result.get("msg", ""), "success" if result.get("ok") else "danger")
-            return redirect_module("riego", sec="hydra")
+            return redirect_module("riego", sec=sec_hydra)
 
     ctx = gather_riego(user_email, user_rol)
     return render_template(

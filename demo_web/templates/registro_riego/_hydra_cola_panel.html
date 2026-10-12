@@ -20,9 +20,8 @@
       {% if it.estado == 'pendiente' %}
       <li class="list-unstyled ms-2 mb-3">
         <form method="post" class="hydra-edit-fert-form border rounded p-2 bg-light">
-          <input type="hidden" name="t" value="{{ token }}">
+          {% include "registro_riego/_hydra_scope_fields.html" %}
           <input type="hidden" name="action" value="hydra_editar_fert_item">
-          <input type="hidden" name="tab" value="control">
           <input type="hidden" name="cola_item_id" value="{{ it.id }}">
           <p class="small fw-semibold mb-1">Editar fertirriego (pendiente)</p>
           <label class="hydra-fert-toggle mb-2 d-block">
