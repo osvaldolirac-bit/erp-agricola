@@ -8,7 +8,7 @@
     </div>
     <p class="small text-muted mb-2">Inicio {{ hydra_cola.inicio_programa[:16] }} · {{ hydra_cola.tipo }}</p>
     <ol class="hydra-cola-list mb-0">
-      {% for it in hydra_cola.items %}
+      {% for it in hydra_cola['items'] %}
       <li class="hydra-cola-item hydra-cola-item--{{ it.estado }}">
         <span>{{ it.label }}</span>
         <span>{{ it.minutos|int }} min</span>
@@ -81,7 +81,7 @@
   <details class="hydra-cola-history mb-2">
     <summary>#{{ c.id }} · {{ c.estado }} · {{ c.inicio_programa[:16] }}</summary>
     <ul class="small mb-0 ps-3">
-      {% for it in c.items %}
+      {% for it in c['items'] %}
       <li>{{ it.orden }}. Zona {{ it.relay_id }} — {{ it.minutos }} min — {{ it.estado }}{% if it.codigo_riego %} → {{ it.codigo_riego }}{% endif %}</li>
       {% endfor %}
     </ul>
