@@ -67,25 +67,27 @@ def _ticket_detalle(conn, ticket_id: int) -> dict | None:
 
 
 def _crear_ticket(demo, conn, user_email: str) -> dict:
+    from demo_web.services.tenant_scope import nombre_erp
     from erp_soporte import enviar_correo_ticket_nuevo, generar_codigo_ticket, migrar_tickets_soporte
 
+    marca = nombre_erp(demo)
     migrar_tickets_soporte(conn, solo_lectura=demo.es_solo_lectura())
     txt = (request.form.get("descripcion") or "").strip()
     if len(txt) < 10:
         return {"ok": False, "msg": "Describa el problema con al menos 10 caracteres."}
 
     f_h = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
-    codigo = generar_codigo_ticket(conn, demo.NOMBRE_ERP, demo.hora_chile())
+    codigo = generar_codigo_ticket(conn, marca, demo.hora_chile())
     conn.execute(
         """INSERT INTO tickets_soporte
            (codigo_ticket, usuario, descripcion, status, erp_origen, fecha_creacion, fecha_actualizacion, leido_admin)
            VALUES (?,?,?,?,?,?,?,0)""",
-        (codigo, user_email, txt, "Abierto", demo.NOMBRE_ERP, f_h, f_h),
+        (codigo, user_email, txt, "Abierto", marca, f_h, f_h),
     )
     conn.commit()
 
     mail_ok = enviar_correo_ticket_nuevo(
-        demo.NOMBRE_ERP,
+        marca,
         codigo,
         user_email,
         txt,
@@ -102,6 +104,7 @@ def _crear_ticket(demo, conn, user_email: str) -> dict:
 
 
 def gather_soporte(user_email: str, user_rol: str) -> dict:
+    from demo_web.services.tenant_scope import nombre_erp
     from erp_soporte import migrar_tickets_soporte
 
     demo = get_demo_module()
@@ -139,7 +142,7 @@ def gather_soporte(user_email: str, user_rol: str) -> dict:
             "mis_tickets": mis,
             "ticket_detalle": detalle,
             "ticket_sel": request.args.get("ticket_id", str(mis[0]["id"]) if mis else ""),
-            "nombre_erp": demo.NOMBRE_ERP,
+            "nombre_erp": nombre_erp(demo),
         }
     finally:
         conn.close()
