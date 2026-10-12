@@ -611,6 +611,15 @@ def crear_cola(
             detalle.append(ln)
     if not detalle:
         return {"ok": False, "msg": "Agregue al menos un sector con minutos."}
+    vistos: set[int] = set()
+    for ln in detalle:
+        rid = int(ln["relay_id"])
+        if rid in vistos:
+            return {
+                "ok": False,
+                "msg": "No repita el mismo sector en una sola acción (regar ahora o programar).",
+            }
+        vistos.add(rid)
     migrar_hydrawise(conn)
     from demo_web.services.registro_riego import _validar_lineas_fertilizantes
 

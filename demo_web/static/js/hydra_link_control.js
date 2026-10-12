@@ -26,6 +26,54 @@
     return null;
   }
 
+  function lineasContainer(lineOrContainer) {
+    if (lineOrContainer && lineOrContainer.querySelectorAll) {
+      return lineOrContainer.id && String(lineOrContainer.id).indexOf("hydraLineas") === 0
+        ? lineOrContainer
+        : null;
+    }
+    var el = lineOrContainer && lineOrContainer.closest
+      ? lineOrContainer.closest('[id^="hydraLineas"]')
+      : null;
+    return el;
+  }
+
+  function takenRelayIds(container, exceptSelect) {
+    var ids = [];
+    if (!container) return ids;
+    container.querySelectorAll('[name="hw_relay_id"]').forEach(function (sel) {
+      if (exceptSelect && sel === exceptSelect) return;
+      var v = parseInt(sel.value, 10);
+      if (v) ids.push(v);
+    });
+    return ids;
+  }
+
+  function syncSectorOptions(container) {
+    if (!container) return;
+    container.querySelectorAll('[name="hw_relay_id"]').forEach(function (sel) {
+      var taken = takenRelayIds(container, sel);
+      sel.querySelectorAll("option").forEach(function (opt) {
+        var ov = parseInt(opt.value, 10);
+        if (!ov) return;
+        opt.disabled = taken.indexOf(ov) >= 0;
+      });
+    });
+  }
+
+  function hasDuplicateSectors(container) {
+    if (!container) return false;
+    var seen = {};
+    var dup = false;
+    container.querySelectorAll(".hydra-linea").forEach(function (line) {
+      var rid = parseInt(line.querySelector('[name="hw_relay_id"]')?.value, 10);
+      if (!rid) return;
+      if (seen[rid]) dup = true;
+      seen[rid] = true;
+    });
+    return dup;
+  }
+
   function makeFertRow(line, data) {
     var tpl = document.getElementById("hydraFertRowTpl");
     if (!tpl) return null;
@@ -75,6 +123,7 @@
     if (selSector) {
       selSector.addEventListener("change", function () {
         prefillLineFert(line);
+        syncSectorOptions(lineasContainer(line));
       });
     }
     var cb = line.querySelector(".hydra-con-fert");
@@ -146,6 +195,11 @@
           alert("Agregue al menos un sector con minutos.");
           return;
         }
+        if (hasDuplicateSectors(container)) {
+          ev.preventDefault();
+          alert("No repita el mismo sector en esta acción.");
+          return;
+        }
         hidden.value = JSON.stringify(data);
       } catch (err) {
         if (err && err.message === "fert") {
@@ -172,13 +226,18 @@
       if (q) q.classList.remove("d-none");
       container.appendChild(row);
       wireLine(row);
+      syncSectorOptions(container);
     });
     container.addEventListener("click", function (ev) {
       if (ev.target.classList.contains("hydra-quitar")) {
         var lines = container.querySelectorAll(".hydra-linea");
-        if (lines.length > 1) ev.target.closest(".hydra-linea").remove();
+        if (lines.length > 1) {
+          ev.target.closest(".hydra-linea").remove();
+          syncSectorOptions(container);
+        }
       }
     });
+    syncSectorOptions(container);
   }
 
   cloneLineas("hydraLineasRun", "#hydraAddLinea");

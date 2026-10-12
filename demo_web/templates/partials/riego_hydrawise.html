@@ -161,25 +161,78 @@
 
 <script>
 (function() {
+  function takenRelayIds(container, exceptSelect) {
+    var ids = [];
+    container.querySelectorAll('[name="hw_relay_id"]').forEach(function(sel) {
+      if (exceptSelect && sel === exceptSelect) return;
+      var v = parseInt(sel.value, 10);
+      if (v) ids.push(v);
+    });
+    return ids;
+  }
+  function syncSectorOptions(container) {
+    container.querySelectorAll('[name="hw_relay_id"]').forEach(function(sel) {
+      var taken = takenRelayIds(container, sel);
+      sel.querySelectorAll('option').forEach(function(opt) {
+        var ov = parseInt(opt.value, 10);
+        if (!ov) return;
+        opt.disabled = taken.indexOf(ov) >= 0;
+      });
+    });
+  }
+  function hasDuplicateSectors(container) {
+    var seen = {}, dup = false;
+    container.querySelectorAll('[name="hw_relay_id"]').forEach(function(sel) {
+      var v = sel.value;
+      if (!v) return;
+      if (seen[v]) dup = true;
+      seen[v] = true;
+    });
+    return dup;
+  }
   function cloneLineas(containerId, addBtnClass) {
     var container = document.getElementById(containerId);
     if (!container) return;
     var tpl = container.querySelector('.hydra-linea');
+    container.querySelectorAll('[name="hw_relay_id"]').forEach(function(sel) {
+      sel.addEventListener('change', function() { syncSectorOptions(container); });
+    });
     document.querySelector(addBtnClass || '#hydraAddLinea')?.addEventListener('click', function() {
       var row = tpl.cloneNode(true);
       row.querySelectorAll('input').forEach(function(i) { i.value = ''; });
       row.querySelector('.hydra-quitar') && (row.querySelector('.hydra-quitar').style.display = '');
       container.appendChild(row);
+      row.querySelector('[name="hw_relay_id"]')?.addEventListener('change', function() {
+        syncSectorOptions(container);
+      });
+      syncSectorOptions(container);
     });
     container.addEventListener('click', function(ev) {
       if (ev.target.classList.contains('hydra-quitar')) {
         var lines = container.querySelectorAll('.hydra-linea');
-        if (lines.length > 1) ev.target.closest('.hydra-linea').remove();
+        if (lines.length > 1) {
+          ev.target.closest('.hydra-linea').remove();
+          syncSectorOptions(container);
+        }
+      }
+    });
+    syncSectorOptions(container);
+  }
+  function bindDupSubmit(formId, containerId) {
+    var form = document.getElementById(formId);
+    var container = document.getElementById(containerId);
+    if (!form || !container) return;
+    form.addEventListener('submit', function(ev) {
+      if (hasDuplicateSectors(container)) {
+        ev.preventDefault();
+        alert('No repita el mismo sector en esta acción.');
       }
     });
   }
   cloneLineas('hydraLineasRun', '#hydraAddLinea');
   cloneLineas('hydraLineasProg', '.hydra-add-prog');
+  bindDupSubmit('formHydraRunNow', 'hydraLineasRun');
+  bindDupSubmit('formHydraProgramar', 'hydraLineasProg');
 })();
 </script>
 {% endif %}
