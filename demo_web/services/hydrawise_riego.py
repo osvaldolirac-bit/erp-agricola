@@ -1090,6 +1090,19 @@ def _abortar_cola_activa(
     return {"ok": True, "msg": msg}
 
 
+def _cola_turnos(cola: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Lista de ítems de cola (evita clave 'items' en plantillas Jinja)."""
+    if not cola:
+        return []
+    turnos = cola.get("turnos")
+    if turnos is not None:
+        return list(turnos)
+    legacy = cola.get("items")
+    if isinstance(legacy, list):
+        return legacy
+    return []
+
+
 def cola_permite_apagar(cola: dict[str, Any] | None) -> bool:
     """True si hay cola viva (no solo un programa futuro sin arrancar)."""
     if not cola:
@@ -1097,7 +1110,7 @@ def cola_permite_apagar(cola: dict[str, Any] | None) -> bool:
     est = str(cola.get("estado") or "")
     if est == "en_ejecucion":
         return True
-    items = list(cola.get("items") or [])
+    items = _cola_turnos(cola)
     if any(str(it.get("estado") or "") == "corriendo" for it in items):
         return True
     activos = ("pendiente", "corriendo")
@@ -1123,7 +1136,7 @@ def parar_riego_manual(conn: sqlite3.Connection, usuario: str, operador: str) ->
             "estado": cola[3],
             "tipo": cola[1],
             "inicio_programa": cola[2],
-            "items": [
+            "turnos": [
                 {"estado": it[4]} for it in items
             ],
         }
@@ -1407,7 +1420,7 @@ def listar_colas_recientes(conn: sqlite3.Connection, limite: int = 5) -> list[di
                 "estado": r[3],
                 "creado_por": r[4],
                 "creado_en": r[5],
-                "items": [
+                "turnos": [
                     {
                         "orden": it[1],
                         "relay_id": it[2],
@@ -1652,7 +1665,7 @@ def programa_por_relay_en_cola(
         return {}
     demo = get_demo_module()
     ahora = demo.hora_chile()
-    items = list(cola.get("items") or [])
+    items = _cola_turnos(cola)
     nombres = _map_nombres_fertilizante(conn)
     inicio_prog = _parse_dt_chile(cola.get("inicio_programa"))
     inicio_prog_fmt = inicio_prog.strftime("%d/%m/%Y %H:%M") if inicio_prog else "—"
@@ -1735,7 +1748,7 @@ def contexto_control_hydra_ui(
     if hydra_cola:
         cola_est = str(hydra_cola.get("estado") or "")
         cola_viva = cola_est in ("programado", "en_ejecucion")
-        for it in hydra_cola.get("items") or []:
+        for it in _cola_turnos(hydra_cola):
             rid = int(it["relay_id"])
             item_est = str(it.get("estado") or "")
             if item_est == "corriendo":
@@ -1812,7 +1825,7 @@ def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:
         "estado": row[3],
         "creado_por": row[4],
         "creado_en": row[5],
-        "items": items,
+        "turnos": items,
     }
 
 

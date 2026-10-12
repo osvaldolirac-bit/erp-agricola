@@ -385,7 +385,9 @@ def formulario():
         if hydra_cola:
             cola_est = str(hydra_cola.get("estado") or "")
             cola_viva = cola_est in ("programado", "en_ejecucion")
-            for it in hydra_cola.get("items") or []:
+            from demo_web.services.hydrawise_riego import _cola_turnos
+
+            for it in _cola_turnos(hydra_cola):
                 rid = int(it["relay_id"])
                 item_est = str(it.get("estado") or "")
                 if item_est == "corriendo":
