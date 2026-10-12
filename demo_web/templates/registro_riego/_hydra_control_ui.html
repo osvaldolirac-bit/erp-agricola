@@ -19,7 +19,7 @@
   <div class="hydra-conn-text">
     <strong class="hydra-conn-title">{{ hydra_conn_title|default('Controlador conectado' if hydra_conn_online else 'Sin conexión') }}</strong>
     <span class="hydra-conn-detail">{{ hydra_conn_msg or '—' }}{% if hydra_conn_cached and hydra_probe_age_sec %} · testigo hace {{ hydra_probe_age_sec }} s{% endif %}</span>
-    <span class="hydra-conn-auto small text-muted">Verde = equipo visto por Hydrawise (último contacto &lt; ~18&nbsp;min). Se revisa al abrir{% if hydra_ui_scope|default('link') == 'module' %} o sincronizar{% endif %} y al avanzar la cola.</span>
+    <span class="hydra-conn-auto small text-muted">Verde = nube Hydrawise responde (programa y zonas). Estado real del equipo en la app Hydrawise. Se revisa al abrir{% if hydra_ui_scope|default('link') == 'module' %} o sincronizar{% endif %} y al avanzar la cola.</span>
   </div>
 </div>
 <p class="hydra-link-sync-explain mb-3">

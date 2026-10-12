@@ -8,12 +8,9 @@ from typing import Any
 
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.hydrawise_client import (
-    assess_field_connectivity,
-    assess_relay_schedule_liveness,
     customer_details,
     flatten_relays,
     flatten_relays_from_status,
-    fmt_edad_contacto,
     last_contact_from_customer,
     list_controllers,
     relay_status_map,
@@ -1635,87 +1632,13 @@ def _probe_resultado_desde_status(
     n_z = len(mp)
     n_run = sum(1 for v in mp.values() if v.get("running"))
     extra = f" · {n_run} regando" if n_run else ""
-
-    demo = get_demo_module()
-    now_ts = demo.hora_chile().timestamp()
-    field = assess_field_connectivity(data, controller_id=cid, now_ts=now_ts)
-    if field.get("equipment_online") is None and cid:
-        key = get_api_key(conn)
-        if key:
-            lc = _ultimo_contacto_controlador(
-                conn, key, int(cid), now_ts=now_ts, allow_fetch=True
-            )
-            if lc is not None:
-                field = assess_field_connectivity(
-                    {"last_contact": lc, "status": field.get("status_text") or ""},
-                    controller_id=cid,
-                    now_ts=now_ts,
-                )
-
-    if field.get("equipment_online") is None:
-        live = assess_relay_schedule_liveness(data)
-        if live is False:
-            field = {
-                **field,
-                "equipment_online": False,
-                "status_text": field.get("status_text") or "Sin enlace en vivo",
-            }
-        elif live is True:
-            field = {
-                **field,
-                "equipment_online": True,
-                "status_text": field.get("status_text") or "Enlace en vivo",
-            }
-
-    age_sec = field.get("last_contact_age_sec")
-    edad = fmt_edad_contacto(age_sec)
-    api_ok = True
-
-    if field.get("equipment_online") is False:
-        st_hint = str(field.get("status_text") or "").strip()
-        st_part = f" · {st_hint}" if st_hint else ""
-        if age_sec is not None:
-            detalle = f"último contacto {edad}{st_part}"
-        else:
-            detalle = (
-                f"sin enlace en vivo con el controlador (revise red o alimentación){st_part}"
-            )
-        return {
-            "online": False,
-            "ok": True,
-            "api_ok": api_ok,
-            "title": "Equipo sin contacto",
-            "msg": f"Nube Hydrawise responde, pero el controlador no está en línea · {detalle} · {ref}",
-            "zonas": mp,
-            "last_contact_age_sec": age_sec,
-        }
-
-    if field.get("equipment_online") is None:
-        return {
-            "online": False,
-            "ok": True,
-            "api_ok": api_ok,
-            "title": "Sin confirmar equipo",
-            "msg": (
-                f"Nube Hydrawise responde · {ref} · {n_z} zona(s){extra}, "
-                f"pero no hay último contacto del controlador (espere y recargue, "
-                f"o revise en la app Hydrawise)."
-            ),
-            "zonas": mp,
-        }
-
-    if age_sec is not None:
-        contacto_txt = f"último contacto {edad}"
-    else:
-        contacto_txt = "enlace en vivo (programa Hydrawise activo)"
     return {
         "online": True,
         "ok": True,
-        "api_ok": api_ok,
+        "api_ok": True,
         "title": "Controlador en línea",
-        "msg": f"Equipo en línea · {contacto_txt} · {ref} · {n_z} zona(s){extra}",
+        "msg": f"En línea · {ref} · {n_z} zona(s){extra}",
         "zonas": mp,
-        "last_contact_age_sec": age_sec,
     }
 
 
