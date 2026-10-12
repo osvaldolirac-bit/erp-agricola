@@ -26,8 +26,10 @@ META_KEY_API = "hydrawise_api_key_v1"
 META_KEY_CONTROLLER = "hydrawise_controller_id_v1"
 META_LAST_SYNC = "hydrawise_last_api_sync_v1"
 META_LAST_PROBE = "hydrawise_last_probe_v1"
+META_LAST_CONTACT = "hydrawise_controller_last_contact_v1"
 SYNC_COOLDOWN_SEC = 90
 PROBE_COOLDOWN_SEC = 90
+CONTACT_REFRESH_SEC = 300
 
 
 def _fmt_api_err(err: str) -> str:
@@ -1477,6 +1479,80 @@ def resolver_sector_link(conn: sqlite3.Connection, relay_id: int) -> dict[str, A
     return None
 
 
+def _read_contact_cache(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    migrar_hydrawise(conn)
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"""
+    )
+    row = conn.execute(
+        "SELECT valor FROM schema_meta WHERE clave=?", (META_LAST_CONTACT,)
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        data = json.loads(str(row[0] or ""))
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_contact_cache(
+    conn: sqlite3.Connection,
+    controller_id: int,
+    last_contact_ts: float,
+) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return
+    demo = get_demo_module()
+    payload = {
+        "controller_id": int(controller_id),
+        "last_contact_ts": float(last_contact_ts),
+        "fetched_ts": demo.hora_chile().timestamp(),
+    }
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, ?)",
+        (META_LAST_CONTACT, json.dumps(payload, ensure_ascii=False)),
+    )
+    conn.commit()
+
+
+def _ultimo_contacto_controlador(
+    conn: sqlite3.Connection,
+    key: str,
+    controller_id: int,
+    *,
+    now_ts: float,
+    allow_fetch: bool = True,
+) -> float | None:
+    """last_contact vía customerdetails (cache 5 min) — statusschedule LC no lo trae."""
+    cached = _read_contact_cache(conn)
+    cid = int(controller_id)
+    if cached and int(cached.get("controller_id") or 0) == cid:
+        lc = float(cached.get("last_contact_ts") or 0)
+        fetched = float(cached.get("fetched_ts") or 0)
+        if lc > 0 and (now_ts - fetched) < CONTACT_REFRESH_SEC:
+            return lc
+
+    if not allow_fetch:
+        if cached and int(cached.get("controller_id") or 0) == cid:
+            lc = float(cached.get("last_contact_ts") or 0)
+            return lc if lc > 0 else None
+        return None
+
+    cd = customer_details(key)
+    if cd.get("ok"):
+        lc = last_contact_from_customer(cd.get("data") or {}, cid)
+        if lc is not None:
+            _write_contact_cache(conn, cid, lc)
+            return lc
+    if cached and int(cached.get("controller_id") or 0) == cid:
+        lc = float(cached.get("last_contact_ts") or 0)
+        return lc if lc > 0 else None
+    return None
+
+
 def _read_probe_cache(conn: sqlite3.Connection) -> dict[str, Any] | None:
     migrar_hydrawise(conn)
     conn.execute(
@@ -1522,15 +1598,15 @@ def _probe_resultado_desde_status(
     if field.get("equipment_online") is None and cid:
         key = get_api_key(conn)
         if key:
-            cd = customer_details(key)
-            if cd.get("ok"):
-                lc = last_contact_from_customer(cd.get("data") or {}, int(cid))
-                if lc is not None:
-                    field = assess_field_connectivity(
-                        {"last_contact": lc, "status": field.get("status_text") or ""},
-                        controller_id=cid,
-                        now_ts=now_ts,
-                    )
+            lc = _ultimo_contacto_controlador(
+                conn, key, int(cid), now_ts=now_ts, allow_fetch=True
+            )
+            if lc is not None:
+                field = assess_field_connectivity(
+                    {"last_contact": lc, "status": field.get("status_text") or ""},
+                    controller_id=cid,
+                    now_ts=now_ts,
+                )
 
     age_sec = field.get("last_contact_age_sec")
     edad = fmt_edad_contacto(age_sec)
@@ -1554,13 +1630,14 @@ def _probe_resultado_desde_status(
 
     if field.get("equipment_online") is None:
         return {
-            "online": True,
+            "online": False,
             "ok": True,
             "api_ok": api_ok,
-            "title": "Nube Hydrawise OK",
+            "title": "Sin confirmar equipo",
             "msg": (
-                f"API en línea · {ref} · {n_z} zona(s){extra} "
-                f"(sin dato de último contacto del equipo)"
+                f"Nube Hydrawise responde · {ref} · {n_z} zona(s){extra}, "
+                f"pero no hay último contacto del controlador (espere y recargue, "
+                f"o revise en la app Hydrawise)."
             ),
             "zonas": mp,
         }
