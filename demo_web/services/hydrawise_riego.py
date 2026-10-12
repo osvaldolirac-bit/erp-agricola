@@ -1474,6 +1474,66 @@ def listar_colas_recientes(conn: sqlite3.Connection, limite: int = 5) -> list[di
     return out
 
 
+def listar_bitacora_operativa(
+    conn: sqlite3.Connection, limite: int = 40
+) -> list[dict[str, Any]]:
+    """Colas cerradas (cancelada, completada, etc.) — bitácora operativa HYDRA, no libro de riego."""
+    migrar_hydrawise(conn)
+    labels = {
+        int(s["relay_id"]): s["label"] for s in sectores_para_link_riego(conn)
+    }
+    rows = conn.execute(
+        """SELECT id, tipo, inicio_programa, estado, creado_por, creado_en
+           FROM hydrawise_cola
+           WHERE estado NOT IN ('programado', 'en_ejecucion')
+           ORDER BY id DESC LIMIT ?""",
+        (limite,),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        cid = int(r[0])
+        turnos: list[dict[str, Any]] = []
+        importados = cancelados = 0
+        for it in _items_cola(conn, cid):
+            est = str(it[4])
+            if est == "importado":
+                importados += 1
+            elif est == "cancelado":
+                cancelados += 1
+            rid = int(it[2])
+            turnos.append(
+                {
+                    "orden": int(it[1]),
+                    "relay_id": rid,
+                    "label": labels.get(rid) or f"Zona {rid}",
+                    "minutos": float(it[3]),
+                    "estado": est,
+                    "codigo_riego": it[7],
+                    "error_msg": it[8],
+                    "run_fin": it[6],
+                }
+            )
+        n = len(turnos)
+        partes: list[str] = [f"{n} sector(es)"]
+        if importados:
+            partes.append(f"{importados} al historial")
+        if cancelados:
+            partes.append(f"{cancelados} cancelado(s)")
+        out.append(
+            {
+                "id": cid,
+                "tipo": r[1],
+                "inicio_programa": r[2],
+                "estado": r[3],
+                "creado_por": r[4],
+                "creado_en": r[5],
+                "resumen": " · ".join(partes),
+                "turnos": turnos,
+            }
+        )
+    return out
+
+
 def sectores_para_link_riego(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Sectores importados de Hydrawise para Link riego (misma lista que HYDRA, con CC)."""
     if not lc_contexto_hydra():
@@ -1868,7 +1928,6 @@ def contexto_control_hydra_ui(
     """Contexto compartido link regador y módulo Riego → Registro manual (LC)."""
     hydra_sectores = sectores_para_link_riego(conn)
     hydra_cola = cola_activa_en_link(conn)
-    hydra_colas = listar_colas_recientes(conn, limite=4)
     programa_por_relay = programa_por_relay_en_cola(conn, hydra_cola)
     hydra_mostrar_apagar = cola_permite_apagar(hydra_cola)
     hydra_sync_cooldown = cooldown_restante_segundos(conn)
@@ -1913,7 +1972,6 @@ def contexto_control_hydra_ui(
         "hydra_control_activo": bool(hydra_sectores),
         "hydra_sectores": hydra_sectores,
         "hydra_cola": hydra_cola,
-        "hydra_colas": hydra_colas,
         "programa_por_relay": programa_por_relay,
         "hydra_mostrar_apagar": hydra_mostrar_apagar,
         "hydra_cola_programada": bool(

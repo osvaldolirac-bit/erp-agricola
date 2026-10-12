@@ -34,7 +34,7 @@ from demo_web.services.registro_riego import (
 bp = Blueprint("registro_riego", __name__)
 
 _HONEYPOT_FIELD = "sr_hp_x9f2"
-_HYDRA_TABS = frozenset({"control"})
+_HYDRA_TABS = frozenset({"control", "bitacora"})
 
 
 def _token_request() -> str | None:
@@ -341,7 +341,7 @@ def formulario():
         form_state["form_fert_lineas"] = [{"producto_id": "", "cantidad": "", "dosis_ha": ""}]
 
     hydra_cola = None
-    hydra_colas: list = []
+    hydra_bitacora: list = []
     hydra_conn_online = False
     hydra_conn_msg = ""
     hydra_conn_title = ""
@@ -373,7 +373,8 @@ def formulario():
                 if msg and "429" not in msg and not msg.startswith("Cola activa — próxima"):
                     hydra_msg = msg
                     hydra_ok = bool(auto.get("ok", True))
-            hydra_colas = hw.listar_colas_recientes(conn, limite=4)
+            if tab == "bitacora":
+                hydra_bitacora = hw.listar_bitacora_operativa(conn, limite=40)
             programa_por_relay = hw.programa_por_relay_en_cola(conn, hydra_cola)
             hydra_mostrar_apagar = hw.cola_permite_apagar(hydra_cola)
             if acceso_personal:
@@ -423,7 +424,7 @@ def formulario():
         hydra_msg=hydra_msg,
         hydra_ok=hydra_ok,
         hydra_cola=hydra_cola,
-        hydra_colas=hydra_colas,
+        hydra_bitacora=hydra_bitacora,
         hydra_conn_online=hydra_conn_online,
         hydra_conn_msg=hydra_conn_msg,
         hydra_conn_title=hydra_conn_title,

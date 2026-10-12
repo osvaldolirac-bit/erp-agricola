@@ -73,19 +73,3 @@
   </div>
 </section>
 {% endif %}
-
-{% if hydra_colas %}
-<section class="hydra-link-block hydra-link-block--history mb-3">
-  <h2 class="hydra-link-section-title">Colas recientes</h2>
-  {% for c in hydra_colas %}
-  <details class="hydra-cola-history mb-2">
-    <summary>#{{ c.id }} · {{ c.estado }} · {{ c.inicio_programa[:16] }}</summary>
-    <ul class="small mb-0 ps-3">
-      {% for it in c.turnos %}
-      <li>{{ it.orden }}. Zona {{ it.relay_id }} — {{ it.minutos }} min — {{ it.estado }}{% if it.codigo_riego %} → {{ it.codigo_riego }}{% endif %}</li>
-      {% endfor %}
-    </ul>
-  </details>
-  {% endfor %}
-</section>
-{% endif %}

@@ -23,6 +23,8 @@ FILES = [
     ("demo_web/templates/registro_riego/_hydra_fert_en_linea.html", "demo_web/templates/registro_riego/_hydra_fert_en_linea.html"),
     ("demo_web/templates/registro_riego/_hydra_cola_panel.html", "demo_web/templates/registro_riego/_hydra_cola_panel.html"),
     ("demo_web/templates/registro_riego/_hydra_control_ui.html", "demo_web/templates/registro_riego/_hydra_control_ui.html"),
+    ("demo_web/templates/registro_riego/_hydra_link_tabs.html", "demo_web/templates/registro_riego/_hydra_link_tabs.html"),
+    ("demo_web/templates/registro_riego/_hydra_bitacora_ui.html", "demo_web/templates/registro_riego/_hydra_bitacora_ui.html"),
     ("demo_web/templates/registro_riego/_hydra_scope_fields.html", "demo_web/templates/registro_riego/_hydra_scope_fields.html"),
     ("demo_web/static/css/erp.css", "demo_web/static/css/erp.css"),
     ("demo_web/static/js/registro_riego_form.js", "demo_web/static/js/registro_riego_form.js"),
