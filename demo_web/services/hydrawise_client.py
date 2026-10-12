@@ -168,6 +168,8 @@ def parse_last_contact_ts(raw: Any) -> float | None:
     """Unix segundos desde last_contact Hydrawise (string o número)."""
     if raw is None or raw == "":
         return None
+    if str(raw).strip().lower() in ("unknown", "—", "-", "n/a", "na"):
+        return None
     if isinstance(raw, (int, float)):
         ts = float(raw)
         if ts > 1e12:
@@ -199,6 +201,49 @@ def fmt_edad_contacto(seg: int | None) -> str:
         return f"hace {h} h {m} min" if m else f"hace {h} h"
     d = s // 86400
     return f"hace {d} día(s)"
+
+
+# Valor típico en statusschedule cuando el controlador no está enlazado en vivo.
+_RELAY_TIME_OFFLINE_SENTINEL = 1576800000
+
+
+def assess_relay_schedule_liveness(
+    status_payload: dict[str, Any],
+) -> bool | None:
+    """Inferir enlace vivo del controlador desde statusschedule (LC sin last_contact)."""
+    root = status_payload if isinstance(status_payload, dict) else {}
+    relays = root.get("relays") or root.get("relay") or []
+    if isinstance(relays, dict):
+        relays = [relays]
+    relays = [r for r in relays if isinstance(r, dict)]
+    if not relays:
+        return None
+
+    stale = 0
+    live = 0
+    for rel in relays:
+        running = rel.get("running")
+        if running in (True, 1, "1", "running", "Running"):
+            live += 1
+            continue
+        try:
+            run_sec = int(rel.get("run") or 0)
+        except (TypeError, ValueError):
+            run_sec = 0
+        try:
+            t = int(rel.get("time") or 0)
+        except (TypeError, ValueError):
+            t = 0
+        if t >= 1_000_000_000 or t == _RELAY_TIME_OFFLINE_SENTINEL:
+            stale += 1
+        elif run_sec > 0 or 0 < t < 86400 * 14:
+            live += 1
+
+    if stale == len(relays):
+        return False
+    if live > 0:
+        return True
+    return None
 
 
 def assess_field_connectivity(

@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 def main() -> int:
     from demo_web.services.hydrawise_client import (
         assess_field_connectivity,
+        assess_relay_schedule_liveness,
         flatten_relays,
         parse_last_contact_ts,
         relay_status_map,
@@ -46,6 +47,13 @@ def main() -> int:
         now_ts=base + 2000,
     )
     assert off["equipment_online"] is False
+
+    assert assess_relay_schedule_liveness(
+        {"relays": [{"time": 1576800000, "run": 0}] * 3}
+    ) is False
+    assert assess_relay_schedule_liveness(
+        {"relays": [{"time": 3600, "run": 0}, {"time": 120, "run": 0}]}
+    ) is True
 
     for name in (
         "demo_web/services/hydrawise_riego.py",
