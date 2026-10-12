@@ -34,7 +34,7 @@ from demo_web.services.registro_riego import (
 bp = Blueprint("registro_riego", __name__)
 
 _HONEYPOT_FIELD = "sr_hp_x9f2"
-_HYDRA_TABS = frozenset({"control", "estado"})
+_HYDRA_TABS = frozenset({"control"})
 
 
 def _token_request() -> str | None:
@@ -276,7 +276,7 @@ def formulario():
 
     use_hydra_ui = bool(lc_contexto_hydra() and hydra_sectores)
     tab = (request.args.get("tab") or request.form.get("tab") or "control").strip().lower()
-    if use_hydra_ui and tab == "registro":
+    if use_hydra_ui and tab in ("registro", "estado"):
         tab = "control"
     if tab not in _HYDRA_TABS:
         tab = "control"
@@ -317,22 +317,11 @@ def formulario():
                 hydra_ok = bool(result.get("ok"))
                 if action == "hydra_refresh_estado" and result.get("zonas") is not None:
                     live_zonas = result.get("zonas") or {}
-                    tab = "estado"
-                else:
-                    tab = "control"
-                if action == "hydra_editar_fert_item" and hydra_ok:
-                    tab = "estado"
-                if action != "hydra_refresh_estado" and hydra_ok and action in (
-                    "hydra_regar_ahora",
-                    "hydra_programar",
-                    "hydra_parar",
-                    "hydra_cancelar_cola",
-                ):
-                    tab = "estado"
+                tab = "control"
         else:
             if use_hydra_ui:
                 hydra_msg = (
-                    "El riego se registra desde HYDRA → Control o Estado. "
+                    "El riego se registra desde HYDRA → Control. "
                     "La pestaña Registro manual ya no está en el link."
                 )
                 hydra_ok = False
@@ -353,8 +342,10 @@ def formulario():
 
     hydra_cola = None
     hydra_colas: list = []
-    hydra_api_ok = False
-    hydra_api_msg = ""
+    hydra_conn_online = False
+    hydra_conn_msg = ""
+    hydra_conn_cached = False
+    hydra_probe_age_sec = 0
     hydra_sync_cooldown = 0
     programa_por_relay: dict = {}
     hydra_mostrar_apagar = False
@@ -375,9 +366,20 @@ def formulario():
             hydra_sync_cooldown = hw.cooldown_restante_segundos(conn)
             hydra_cola = hw.cola_activa_en_link(conn)
             hydra_colas = hw.listar_colas_recientes(conn, limite=4)
-            hydra_api_ok, hydra_api_msg = hw.api_lista_para_link(conn)
             programa_por_relay = hw.programa_por_relay_en_cola(conn, hydra_cola)
             hydra_mostrar_apagar = hw.cola_permite_apagar(hydra_cola)
+            if acceso_personal:
+                probe = hw.estado_conexion_controlador(conn, force=False)
+                hydra_conn_online = bool(probe.get("online"))
+                hydra_conn_msg = str(probe.get("msg") or "")
+                hydra_conn_cached = bool(probe.get("cached"))
+                hydra_probe_age_sec = int(probe.get("probe_age_sec") or 0)
+                if probe.get("zonas"):
+                    live_zonas = probe.get("zonas") or live_zonas
+            else:
+                ok_cfg, msg_cfg = hw.api_lista_para_link(conn)
+                hydra_conn_online = ok_cfg
+                hydra_conn_msg = msg_cfg
         finally:
             conn.close()
         if hydra_cola:
@@ -412,8 +414,10 @@ def formulario():
         hydra_ok=hydra_ok,
         hydra_cola=hydra_cola,
         hydra_colas=hydra_colas,
-        hydra_api_ok=hydra_api_ok,
-        hydra_api_msg=hydra_api_msg,
+        hydra_conn_online=hydra_conn_online,
+        hydra_conn_msg=hydra_conn_msg,
+        hydra_conn_cached=hydra_conn_cached,
+        hydra_probe_age_sec=hydra_probe_age_sec,
         hydra_sync_cooldown=hydra_sync_cooldown,
         live_zonas=live_zonas,
         running_relay_ids=sorted(running_relay_ids),

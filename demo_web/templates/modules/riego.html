@@ -260,8 +260,8 @@
     </div>
     {% if hydra_link_sectores|default(0) > 0 %}
     <div class="alert alert-success py-2 small mb-3">
-      <strong>Link HYDRA:</strong> en el celular el regador usa <strong>Control</strong> (iniciar/programar cola + fert)
-      y <strong>Estado</strong> (cola y fert pendiente). Imputación automática al historial —
+      <strong>Link HYDRA:</strong> en el celular el regador usa una sola pantalla <strong>Control</strong>
+      (testigo verde/rojo, sectores, cola, iniciar/programar + fert). Imputación automática al historial —
       <strong>{{ hydra_link_sectores }}</strong> sector(es) mapeados a CC en
       <a href="{{ url_for('modules.riego', sec='hydra') }}">Administración HYDRA</a>.
       Los registros manuales antiguos en la tabla de abajo siguen autorizándose aquí.

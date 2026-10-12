@@ -39,6 +39,7 @@ def main() -> int:
 
     hw = (ROOT / "demo_web/services/hydrawise_riego.py").read_text(encoding="utf-8")
     assert "fert_json" in hw and "parse_cola_lineas_form" in hw
+    assert "estado_conexion_controlador" in hw
     rr = (ROOT / "demo_web/services/registro_riego.py").read_text(encoding="utf-8")
     assert "confirmar_fert_hydra" in rr and "fert_estado" in rr
 

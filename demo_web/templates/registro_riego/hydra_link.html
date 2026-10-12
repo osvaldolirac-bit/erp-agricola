@@ -53,12 +53,6 @@
     </div>
     {% else %}
 
-    <nav class="hydra-link-tabs" aria-label="Secciones">
-      {% set link_base = url_for('registro_riego.formulario') ~ '?t=' ~ token ~ '&tenant=concepcion' ~ (operador and ('&op=' ~ operador.id) or '') %}
-      <a class="hydra-link-tab{% if tab == 'control' %} is-active{% endif %}" href="{{ link_base }}&tab=control">Control</a>
-      <a class="hydra-link-tab{% if tab == 'estado' %} is-active{% endif %}" href="{{ link_base }}&tab=estado">Estado</a>
-    </nav>
-
     {% if hydra_msg %}
     <div class="alert alert-{{ 'success' if hydra_ok else 'danger' }} hydra-link-alert py-2" role="status">{{ hydra_msg }}</div>
     {% endif %}
@@ -67,18 +61,24 @@
 
     {% include "registro_riego/_hydra_cola_actions.html" %}
 
-    {% if tab in ('control', 'estado') %}
-    <section class="hydra-link-panel hydra-link-panel--tools mb-3">
-      <div class="hydra-link-api-pill hydra-link-api-pill--{{ 'ok' if hydra_api_ok else 'warn' }}" title="Configuración hecha en Administración, no indica si hay riego en curso">
-        {{ hydra_api_msg }}
+    <div class="hydra-conn-witness hydra-conn-witness--{{ 'ok' if hydra_conn_online else 'fail' }}" role="status">
+      <span class="hydra-conn-dot" aria-hidden="true"></span>
+      <div class="hydra-conn-text">
+        <strong class="hydra-conn-title">{{ 'Controlador conectado' if hydra_conn_online else 'Sin conexión' }}</strong>
+        <span class="hydra-conn-detail">{{ hydra_conn_msg or '—' }}{% if hydra_conn_cached and hydra_probe_age_sec %} · hace {{ hydra_probe_age_sec }} s{% endif %}</span>
       </div>
-      <p class="hydra-link-sync-explain mb-0">
-        Al <strong>iniciar</strong> o <strong>programar</strong>, declare fertirriego por sector (editable en cola).
-        Al terminar, el ERP imputa horas/m³ al historial; la bodega se descuenta al <strong>confirmar</strong> fert en Administración.
-        Al abrir Control o Estado se refresca la cola (como máximo cada ~90&nbsp;s hacia Hydrawise).
-      </p>
-    </section>
-    {% endif %}
+      <form method="post" class="hydra-conn-reverify ms-auto">
+        <input type="hidden" name="t" value="{{ token }}">
+        <input type="hidden" name="action" value="hydra_refresh_estado">
+        <input type="hidden" name="tab" value="control">
+        <button type="submit" class="btn btn-sm hydra-conn-reverify-btn">Reverificar</button>
+      </form>
+    </div>
+    <p class="hydra-link-sync-explain mb-3">
+      Declare fertirriego al <strong>iniciar</strong> o <strong>programar</strong> (editable en cola).
+      Al terminar sector, imputación al historial; bodega al confirmar fert en administración.
+      La cola se sincroniza con Hydrawise al usar esta pantalla (máx. ~90&nbsp;s entre consultas).
+    </p>
 
     {% if tab == 'control' %}
     <section class="hydra-link-block hydra-link-block--sectores" aria-labelledby="hydraBlockSectores">
@@ -126,6 +126,8 @@
       <script id="hydraSectorsJson" type="application/json">{{ hydra_sectores|tojson }}</script>
       <script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
     </section>
+
+    {% include "registro_riego/_hydra_cola_panel.html" %}
 
     <section class="hydra-link-block hydra-link-block--run" aria-labelledby="hydraBlockRun">
       <h2 class="hydra-link-section-title" id="hydraBlockRun">Regar ahora</h2>
@@ -193,127 +195,6 @@
         <button type="submit" class="btn hydra-btn-plan w-100">Programar cola</button>
       </form>
     </section>
-
-    {% elif tab == 'estado' %}
-    <section class="hydra-link-panel">
-      {% if hydra_cola %}
-      <div class="hydra-cola-card mb-3">
-        <div class="hydra-cola-card-head">
-          <strong>Cola #{{ hydra_cola.id }}</strong>
-          <span class="hydra-cola-estado hydra-cola-estado--{{ hydra_cola.estado }}">{{ hydra_cola.estado }}</span>
-        </div>
-        <p class="small text-muted mb-2">Inicio {{ hydra_cola.inicio_programa[:16] }} · {{ hydra_cola.tipo }}</p>
-        <ol class="hydra-cola-list mb-0">
-          {% for it in hydra_cola.items %}
-          <li class="hydra-cola-item hydra-cola-item--{{ it.estado }}">
-            <span>{{ it.label }}</span>
-            <span>{{ it.minutos|int }} min</span>
-            <span class="hydra-cola-item-state">{{ it.estado }}</span>
-            {% if it.con_fertilizacion %}<span class="small text-muted">· con fert</span>{% elif it.estado == 'pendiente' %}<span class="small text-muted">· sin fert</span>{% endif %}
-            {% if it.codigo_riego %}<span class="hydra-cola-codigo">{{ it.codigo_riego }}</span>{% endif %}
-            {% if it.error_msg %}<span class="text-danger small">{{ it.error_msg }}</span>{% endif %}
-          </li>
-          {% if it.estado == 'pendiente' %}
-          <li class="list-unstyled ms-2 mb-3">
-            <form method="post" class="hydra-edit-fert-form border rounded p-2 bg-light">
-              <input type="hidden" name="t" value="{{ token }}">
-              <input type="hidden" name="action" value="hydra_editar_fert_item">
-              <input type="hidden" name="tab" value="estado">
-              <input type="hidden" name="cola_item_id" value="{{ it.id }}">
-              <p class="small fw-semibold mb-1">Editar fertirriego (pendiente)</p>
-              <label class="hydra-fert-toggle mb-2 d-block">
-                <input type="checkbox" class="form-check-input" name="con_fertilizacion" value="1" {% if it.con_fertilizacion %}checked{% endif %}>
-                <span class="hydra-fert-toggle-body">
-                  <span class="hydra-fert-toggle-title">Fertirriego en este sector</span>
-                  <span class="hydra-fert-toggle-hint">Desmarque si regará solo agua</span>
-                </span>
-              </label>
-              <div class="hydra-fert-block{% if not it.con_fertilizacion %} d-none{% endif %}">
-                <div class="hydra-fert-rows">
-                  {% for ln in it.fertilizantes %}
-                  <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
-                    <select name="fert_producto_id" class="form-select form-select-sm mb-1">
-                      <option value="">Producto</option>
-                      {% for f in fertilizantes %}
-                      <option value="{{ f.id }}" {% if f.id|string == ln.producto_id|string %}selected{% endif %}>{{ f.etiqueta|default(f.nombre) }}</option>
-                      {% endfor %}
-                    </select>
-                    <div class="row g-1">
-                      <div class="col-6">
-                        <input type="number" name="fert_cantidad" class="form-control form-control-sm" value="{{ ln.cantidad }}" min="0" step="any">
-                      </div>
-                      <div class="col-6">
-                        <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" value="{{ ln.dosis_ha or '' }}" min="0" step="any" placeholder="Dosis/ha">
-                      </div>
-                    </div>
-                  </div>
-                  {% else %}
-                  <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
-                    <select name="fert_producto_id" class="form-select form-select-sm mb-1">
-                      <option value="">Producto</option>
-                      {% for f in fertilizantes %}
-                      <option value="{{ f.id }}">{{ f.etiqueta|default(f.nombre) }}</option>
-                      {% endfor %}
-                    </select>
-                    <input type="number" name="fert_cantidad" class="form-control form-control-sm" min="0" step="any" placeholder="Cantidad">
-                  </div>
-                  {% endfor %}
-                </div>
-                <button type="button" class="btn btn-sm hydra-btn-add-fert hydra-add-fert-row">+ Fertilizante</button>
-              </div>
-              <button type="submit" class="btn btn-sm hydra-btn-plan mt-2">Guardar fertirriego</button>
-            </form>
-          </li>
-          {% endif %}
-          {% endfor %}
-        </ol>
-      </div>
-      {% else %}
-      <p class="hydra-link-hint">No hay cola activa. Use Control para regar o programar.</p>
-      {% endif %}
-
-      <p class="hydra-link-hint mb-2">
-        <strong>Actualizar en vivo</strong> (abajo) solo muestra qué zonas están regando en Hydrawise ahora;
-        no registra nada en el ERP ni enciende la cola. Para eso use <strong>Sincronizar con ERP</strong>.
-      </p>
-      <form method="post" class="mb-3">
-        <input type="hidden" name="t" value="{{ token }}">
-        <input type="hidden" name="action" value="hydra_refresh_estado">
-        <input type="hidden" name="tab" value="estado">
-        <button type="submit" class="btn hydra-btn-ghost w-100">Actualizar en vivo (Hydrawise)</button>
-      </form>
-
-      {% if live_zonas %}
-      <h2 class="hydra-link-section-title">En vivo</h2>
-      <ul class="list-group hydra-live-list mb-3">
-        {% for s in hydra_sectores %}
-        {% set st = live_zonas.get(s.relay_id) %}
-        <li class="list-group-item d-flex justify-content-between align-items-center hydra-live-row">
-          {{ s.label }}
-          {% if st and st.running %}
-          <span class="badge bg-success">Regando</span>
-          {% else %}
-          <span class="badge bg-secondary">Off</span>
-          {% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-      {% endif %}
-
-      {% if hydra_colas %}
-      <h2 class="hydra-link-section-title">Recientes</h2>
-      {% for c in hydra_colas %}
-      <details class="hydra-cola-history mb-2">
-        <summary>#{{ c.id }} · {{ c.estado }} · {{ c.inicio_programa[:16] }}</summary>
-        <ul class="small mb-0 ps-3">
-          {% for it in c.items %}
-          <li>{{ it.orden }}. Zona {{ it.relay_id }} — {{ it.minutos }} min — {{ it.estado }}{% if it.codigo_riego %} → {{ it.codigo_riego }}{% endif %}</li>
-          {% endfor %}
-        </ul>
-      </details>
-      {% endfor %}
-      {% endif %}
-    </section>
     {% endif %}
 
     {% endif %}
@@ -325,7 +206,7 @@
     </footer>
   </main>
 
-  {% if tab in ('control', 'estado') %}
+  {% if acceso_personal %}
   <template id="hydraFertRowTpl">
     <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
       <select name="fert_producto_id" class="form-select form-select-sm mb-1">
@@ -347,10 +228,6 @@
       </div>
     </div>
   </template>
-  {% if tab == 'estado' %}
-  <script id="hydraSectorsJson" type="application/json">[]</script>
-  <script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
-  {% endif %}
   <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
   {% endif %}
 

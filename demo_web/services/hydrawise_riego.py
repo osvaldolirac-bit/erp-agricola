@@ -22,7 +22,9 @@ from demo_web.services.tenant_scope import is_concepcion_tenant
 META_KEY_API = "hydrawise_api_key_v1"
 META_KEY_CONTROLLER = "hydrawise_controller_id_v1"
 META_LAST_SYNC = "hydrawise_last_api_sync_v1"
+META_LAST_PROBE = "hydrawise_last_probe_v1"
 SYNC_COOLDOWN_SEC = 90
+PROBE_COOLDOWN_SEC = 90
 
 
 def _fmt_api_err(err: str) -> str:
@@ -1445,23 +1447,114 @@ def resolver_sector_link(conn: sqlite3.Connection, relay_id: int) -> dict[str, A
     return None
 
 
-def snapshot_live_zonas(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Estado en vivo de zonas (una llamada statusschedule). Solo acciones explícitas del link."""
+def _read_probe_cache(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    migrar_hydrawise(conn)
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"""
+    )
+    row = conn.execute(
+        "SELECT valor FROM schema_meta WHERE clave=?", (META_LAST_PROBE,)
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        data = json.loads(str(row[0] or ""))
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_probe_cache(conn: sqlite3.Connection, payload: dict[str, Any]) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    if conn_en_solo_lectura(conn):
+        return
+    demo = get_demo_module()
+    ts = demo.hora_chile().timestamp()
+    slim = {
+        "online": bool(payload.get("online")),
+        "ok": bool(payload.get("ok")),
+        "msg": str(payload.get("msg") or ""),
+        "ts": ts,
+    }
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, ?)",
+        (META_LAST_PROBE, json.dumps(slim, ensure_ascii=False)),
+    )
+    conn.commit()
+
+
+def estado_conexion_controlador(
+    conn: sqlite3.Connection,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Testigo link móvil: statusschedule con cache (~90 s) anti-429."""
     key = get_api_key(conn)
     if not key:
-        return {"ok": False, "msg": "Configure API key en Administración.", "zonas": {}}
-    cid, err = _resolver_controller_id(conn, key)
-    if err:
-        return {"ok": False, "msg": err, "zonas": {}}
-    st_resp = status_schedule(key, cid)
-    if not st_resp.get("ok"):
         return {
+            "online": False,
             "ok": False,
-            "msg": _fmt_api_err(st_resp.get("error") or "Error"),
+            "msg": "Sin API Hydrawise — avise a administración.",
             "zonas": {},
         }
+
+    demo = get_demo_module()
+    ahora = demo.hora_chile()
+    cached = _read_probe_cache(conn)
+    if cached and not force:
+        try:
+            age = ahora.timestamp() - float(cached.get("ts") or 0)
+        except (TypeError, ValueError):
+            age = PROBE_COOLDOWN_SEC + 1
+        if age < PROBE_COOLDOWN_SEC:
+            return {
+                "online": bool(cached.get("online")),
+                "ok": bool(cached.get("ok")),
+                "msg": str(cached.get("msg") or ""),
+                "zonas": {},
+                "cached": True,
+                "probe_age_sec": int(age),
+            }
+
+    cid, err = _resolver_controller_id(conn, key)
+    if err:
+        out = {"online": False, "ok": False, "msg": err, "zonas": {}}
+        _write_probe_cache(conn, out)
+        return out
+
+    st_resp = status_schedule(key, cid)
+    if not st_resp.get("ok"):
+        msg = _fmt_api_err(st_resp.get("error") or "Sin respuesta del controlador")
+        out = {"online": False, "ok": False, "msg": msg, "zonas": {}}
+        _write_probe_cache(conn, out)
+        return out
+
     mp = relay_status_map(st_resp.get("data") or {})
-    return {"ok": True, "msg": "Estado actualizado.", "zonas": mp}
+    ref = get_equipo_ref(conn) or str(cid)
+    n_z = len(mp)
+    n_run = sum(1 for v in mp.values() if v.get("running"))
+    extra = f" · {n_run} regando" if n_run else ""
+    out = {
+        "online": True,
+        "ok": True,
+        "msg": f"En línea · {ref} · {n_z} zona(s){extra}",
+        "zonas": mp,
+        "cached": False,
+        "probe_age_sec": 0,
+    }
+    _write_probe_cache(conn, out)
+    return out
+
+
+def snapshot_live_zonas(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Fuerza consulta en vivo (statusschedule) para reverificar testigo."""
+    probe = estado_conexion_controlador(conn, force=True)
+    return {
+        "ok": probe.get("ok", False),
+        "msg": probe.get("msg") or ("Conexión verificada." if probe.get("online") else "Sin conexión."),
+        "zonas": probe.get("zonas") or {},
+    }
 
 
 def _parse_dt_chile(value: str | None) -> datetime | None:
