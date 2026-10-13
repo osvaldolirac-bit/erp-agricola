@@ -14,14 +14,13 @@
 
   {{ nav_modulo('modules.libro_campo', secciones, sec_activa) }}
 
-  {% if alerta_bodega %}
-  <div class="alert alert-warning">
-    <strong>Aplicación N° {{ '%05d'|format(alerta_bodega.n_app) }} archivada en Libro de Campo.</strong><br>
-    <strong>Rebajar bodega pendiente</strong> — El stock no se descontó automáticamente.<br>
-    Vaya a <strong>Bodega → Salida</strong> e impute al cuartel <strong>{{ alerta_bodega.huerto }}</strong>:
+  {% if rebaje_bodega_ok %}
+  <div class="alert alert-success">
+    <strong>Aplicación N° {{ '%05d'|format(rebaje_bodega_ok.n_app) }} guardada.</strong>
+    Bodega rebajada e imputada al cuartel <strong>{{ rebaje_bodega_ok.huerto }}</strong>:
     <ul class="mb-0 mt-1">
-      {% for p in alerta_bodega.productos %}
-      <li><strong>{{ p.producto }}</strong> — {{ p.cantidad }} {{ p.um }}</li>
+      {% for linea in rebaje_bodega_ok.rebajes %}
+      <li>{{ linea }}</li>
       {% endfor %}
     </ul>
   </div>

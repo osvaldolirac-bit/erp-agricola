@@ -177,22 +177,8 @@ def _redirect_lc(sec: str, **extra) -> redirect_module:
 
 def _pop_alertas() -> dict:
     out = {}
-    if "lc_alerta_bodega" in session:
-        al = session.pop("lc_alerta_bodega")
-        prods = []
-        for p in al.get("productos", []):
-            prods.append(
-                {
-                    "producto": p.get("producto", ""),
-                    "cantidad": p.get("gasto_total", 0),
-                    "um": p.get("um_gasto", "gr"),
-                }
-            )
-        out["alerta_bodega"] = {
-            "n_app": al.get("n_app"),
-            "huerto": al.get("huerto", ""),
-            "productos": prods,
-        }
+    if "lc_rebaje_bodega_ok" in session:
+        out["rebaje_bodega_ok"] = session.pop("lc_rebaje_bodega_ok")
     return out
 
 
@@ -647,6 +633,20 @@ def _post_guardar_evento(demo, conn) -> dict:
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
+    from demo_web.services.native.bodega import (
+        registrar_salida_bodega_lc,
+        validar_salida_bodega_lc,
+    )
+
+    for item in car:
+        cant = float(item.get("gasto_total") or 0)
+        prod = str(item.get("producto") or "")
+        ok, msg, _, _, _ = validar_salida_bodega_lc(
+            demo, conn, cant, producto_nombre=prod
+        )
+        if not ok:
+            return {"ok": False, "msg": msg or f"No hay stock para {prod}."}
+
     n_app = _siguiente_n_aplicacion(conn)
     # n_orden = correlativo de planilla GlobalGAP (por cuartel); independiente del N° APP.
     n_orden = _siguiente_n_orden(conn, huerto)
@@ -677,13 +677,31 @@ def _post_guardar_evento(demo, conn) -> dict:
         car,
         op_cert=op_cert,
     )
+
+    for item in car:
+        ok, msg = registrar_salida_bodega_lc(
+            demo,
+            conn,
+            float(item.get("gasto_total") or 0),
+            producto_nombre=str(item.get("producto") or ""),
+            centro_costo=huerto,
+            fecha=fe_app,
+        )
+        if not ok:
+            conn.rollback()
+            return {"ok": False, "msg": msg or "No se pudo rebajar bodega."}
+
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
     demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
-    session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
+    rebajes = [
+        f"{p['producto']} −{demo.f_cantidad(p.get('gasto_total', 0))} {p.get('um_gasto', '')} → {huerto}"
+        for p in car
+    ]
+    session["lc_rebaje_bodega_ok"] = {"n_app": n_app, "huerto": huerto, "rebajes": rebajes}
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
-    msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
+    msg = f"Aplicación N° {n_app:05d} guardada. Bodega rebajada e imputada a {huerto}."
     if wx:
         msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
     msg += " — visible en planilla GlobalGAP."
