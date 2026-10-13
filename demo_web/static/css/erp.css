@@ -16,11 +16,27 @@ body.demo-body {
 
 .demo-navbar {
   background: linear-gradient(90deg, var(--demo-green-dark), var(--demo-green));
+  overflow: visible;
+}
+
+.demo-navbar > .container-fluid {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .demo-navbar-brand {
   min-width: 0;
+  flex: 1 1 auto;
   line-height: 1.2;
+  overflow: hidden;
+}
+
+.demo-navbar-brand > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .demo-navbar-logo {
@@ -29,6 +45,68 @@ body.demo-body {
   max-width: 72px;
   object-fit: contain;
   flex-shrink: 0;
+}
+
+.demo-navbar-actions {
+  min-width: 0;
+  flex: 0 0 auto;
+  max-width: min(100%, 520px);
+}
+
+.demo-btn-logout {
+  white-space: nowrap;
+}
+
+.demo-user-email {
+  display: none;
+  max-width: 11rem;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+@media (min-width: 576px) {
+  .demo-user-email {
+    display: inline-block;
+  }
+}
+
+@media (min-width: 992px) {
+  .demo-user-email {
+    max-width: 16rem;
+  }
+}
+
+.demo-tenant-switch-btn {
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.demo-tenant-switch-menu {
+  min-width: 14rem;
+}
+
+.demo-tenant-switch-menu .dropdown-item {
+  width: 100%;
+  text-align: left;
+}
+
+.demo-offcanvas-account {
+  margin-top: auto;
+  padding: 0.85rem 1rem 1rem;
+  border-top: 1px solid rgba(13, 61, 86, 0.1);
+  background: #f8faf9;
+}
+
+.demo-offcanvas-account .demo-user-email {
+  display: block;
+  max-width: 100%;
+  margin-bottom: 0.65rem;
+}
+
+.demo-offcanvas-account .demo-tenant-switch-menu-static .btn {
+  width: 100%;
+  text-align: left;
 }
 
 .demo-main {
@@ -282,6 +360,43 @@ body.demo-body {
   font-weight: 700;
   border: 1px solid rgba(255, 193, 7, 0.55);
   letter-spacing: 0.04em;
+}
+
+.login-tenant-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.15rem;
+  pointer-events: auto;
+}
+
+.login-tenant-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(18, 32, 24, 0.45);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+
+.login-tenant-chip:hover {
+  background: rgba(31, 77, 58, 0.72);
+  transform: translateY(-1px);
+  color: #fff;
+}
+
+.login-tenant-chip.is-active {
+  background: rgba(46, 125, 50, 0.88);
+  border-color: rgba(200, 230, 201, 0.75);
+  box-shadow: 0 0 0 2px rgba(129, 199, 132, 0.35);
 }
 
 .login-hero-select {
@@ -1149,6 +1264,24 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   font-weight: 800;
   margin-bottom: 1rem;
 }
+
+/* Petróleo — contador estanque (mismo bloque grande que Salida Link) */
+.petroleo-estanque-hero.salida-petroleo-estanque {
+  margin-bottom: 0;
+  padding: 1.15rem 1.25rem 1rem;
+}
+
+.petroleo-estanque-hero .salida-petroleo-estanque-valor {
+  font-size: clamp(1.85rem, 4.5vw, 2.45rem);
+  line-height: 1.1;
+}
+
+.petroleo-estanque-hero .salida-petroleo-estanque-meta {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .banner-econ {
   background: linear-gradient(135deg, var(--azul-oscuro), var(--azul-accion));
   color: white;
@@ -1550,8 +1683,24 @@ body.demo-body .costos-matriz-table td.costos-saldo-neutro {
     margin-left: 0 !important;
   }
 
-  .demo-body {
+  .demo-main {
     overflow-x: hidden;
+  }
+
+  .demo-navbar-brand > span {
+    max-width: min(34vw, 8.5rem);
+  }
+
+  .demo-navbar-actions {
+    max-width: none;
+  }
+
+  .demo-tenant-switch--navbar {
+    display: none !important;
+  }
+
+  .demo-navbar .navbar-flag {
+    display: none;
   }
 
   .dashboard-page.container-fluid {

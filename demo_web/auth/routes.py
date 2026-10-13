@@ -14,9 +14,11 @@ from flask import (
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
+from demo_web.auth.decorators import login_required
 from demo_web.auth.login_next import default_landing_url, pop_login_next, safe_next, stash_login_next
+from demo_web.auth.tenant_access import list_accessible_tenants, tenant_access_option
 from demo_web.auth.user_db import fetch_bridge_user, fetch_login_row
-from demo_web.services.erp_loader import bind_tenant_context, get_erp_module_for
+from demo_web.services.erp_loader import bind_tenant_context, get_erp_module_for, invalidate_erp_module
 from demo_web.tenants import get_tenant, list_tenants
 
 bp = Blueprint("auth", __name__)
@@ -42,13 +44,17 @@ def _activate_session(
     rol: str,
     tenant_slug: str,
     from_master: bool = False,
+    accessible_tenants: list[dict] | None = None,
 ) -> None:
     bind_tenant_context(tenant_slug)
     erp = get_erp_module_for(tenant_slug)
+    preserved_tenants = accessible_tenants or session.get("accessible_tenants")
     session.clear()
+    invalidate_erp_module()
     session["email"] = email
     session["rol"] = erp.normalizar_rol_usuario(rol, email) if hasattr(erp, "normalizar_rol_usuario") else rol
     session["tenant_slug"] = tenant_slug
+    session["accessible_tenants"] = preserved_tenants or list_accessible_tenants(email)
     if from_master:
         session["from_master_console"] = True
     elif tenant_slug == "demo":
@@ -222,21 +228,27 @@ def login():
         elif len(matches) == 1:
             m = matches[0]
             _maybe_alert_login(email=email, exitoso=True, tenant_slug=m["slug"])
-            _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
+            _activate_session(
+                email=m["email"],
+                rol=m["rol"],
+                tenant_slug=m["slug"],
+                accessible_tenants=matches,
+            )
             return redirect(safe_next(pop_login_next()))
         else:
             # Varios tenants: selector
+            options = [
+                {
+                    "slug": m["slug"],
+                    "nombre": m["nombre"],
+                    "descripcion": m["descripcion"],
+                    "rol": m["rol"],
+                }
+                for m in matches
+            ]
             session["pending_login"] = {
                 "email": matches[0]["email"],
-                "options": [
-                    {
-                        "slug": m["slug"],
-                        "nombre": m["nombre"],
-                        "descripcion": m["descripcion"],
-                        "rol": m["rol"],
-                    }
-                    for m in matches
-                ],
+                "options": options,
             }
             return redirect(url_for("auth.elegir_empresa"))
 
@@ -263,7 +275,12 @@ def elegir_empresa():
         if not chosen or not get_tenant(slug):
             flash("Elige una empresa válida.", "warning")
             return redirect(url_for("auth.elegir_empresa"))
-        _activate_session(email=email, rol=chosen.get("rol") or "operador", tenant_slug=slug)
+        _activate_session(
+            email=email,
+            rol=chosen.get("rol") or "operador",
+            tenant_slug=slug,
+            accessible_tenants=options,
+        )
         session.pop("pending_login", None)
         return redirect(safe_next(pop_login_next()))
 
@@ -272,6 +289,54 @@ def elegir_empresa():
         email=email,
         options=options,
     )
+
+
+@bp.route("/auth/cambiar-empresa", methods=["POST"])
+@login_required
+def cambiar_empresa():
+    email = (session.get("email") or "").strip()
+    slug = (request.form.get("tenant_slug") or "").strip().lower()
+    current = (session.get("tenant_slug") or "").strip().lower()
+    if not email or not slug:
+        flash("No se pudo cambiar de empresa.", "warning")
+        return redirect(default_landing_url())
+    if slug == current:
+        return redirect(default_landing_url())
+
+    try:
+        from demo_web.services.mantenimiento import en_mantenimiento
+
+        if en_mantenimiento(slug):
+            flash("Ese ERP está en mantención. Intenta más tarde.", "warning")
+            return redirect(default_landing_url())
+    except Exception:
+        pass
+
+    chosen = tenant_access_option(email, slug)
+    if not chosen:
+        flash("No tienes acceso a esa empresa.", "danger")
+        return redirect(default_landing_url())
+
+    accessible = session.get("accessible_tenants") or list_accessible_tenants(email)
+    _activate_session(
+        email=email,
+        rol=chosen["rol"],
+        tenant_slug=slug,
+        accessible_tenants=accessible,
+    )
+    try:
+        from demo_web.services.mantenimiento import bitacora_erp_activa
+
+        if bitacora_erp_activa(slug):
+            erp = get_erp_module_for(slug)
+            erp.registrar_accion(
+                "CAMBIO EMPRESA",
+                f"{current or '—'} → {slug} ({email})",
+            )
+    except Exception:
+        pass
+    flash(f"Ahora estás en {chosen['nombre']}.", "info")
+    return redirect(url_for("modules.dashboard"))
 
 
 @bp.route("/logout", methods=["POST"])

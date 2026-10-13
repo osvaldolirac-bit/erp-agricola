@@ -123,12 +123,9 @@
       <input type="hidden" name="desde" value="{{ filtro_desde }}">
       <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
       <div class="col-md-3">
-        <label class="form-label small">Razón social</label>
-        <select name="razon_social" class="form-select form-select-sm" required>
-          {% for r in razones_sociales %}
-          <option value="{{ r }}" {% if r == factura_edit.razon_social %}selected{% endif %}>{{ r }}</option>
-          {% endfor %}
-        </select>
+        {% with label_class='small', selected=factura_edit.razon_social, required=true %}
+        {% include 'partials/razon_social_compras.html' %}
+        {% endwith %}
       </div>
       <div class="col-md-3">
         <label class="form-label small">Proveedor</label>
@@ -243,10 +240,7 @@
       <hr>
       <div class="row g-2">
         <div class="col-md-4">
-          <label class="form-label">Razón social</label>
-          <select name="razon_social" class="form-select form-select-sm">
-            {% for r in razones_sociales %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-          </select>
+          {% include 'partials/razon_social_compras.html' %}
         </div>
         <div class="col-md-4">
           <label class="form-label">Tipo de gasto (matriz CC)</label>
@@ -326,10 +320,7 @@
           <input type="number" name="litros" class="form-control form-control-sm" min="0" step="0.01" required>
         </div>
         <div class="col-md-3">
-          <label class="form-label">Razón social</label>
-          <select name="razon_social" class="form-select form-select-sm">
-            {% for r in razones_sociales %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-          </select>
+          {% include 'partials/razon_social_compras.html' %}
         </div>
         <div class="col-md-3">
           <label class="form-label">Total factura ($)</label>
@@ -450,9 +441,7 @@
               </select>
             </div>
             <div class="col-md-3">
-              <select name="razon_social" class="form-select form-select-sm">
-                {% for r in razones_sociales %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-              </select>
+              {% include 'partials/razon_social_compras.html' %}
             </div>
             <div class="col-md-2"><button type="submit" class="btn btn-primary btn-sm w-100">Guardar factura</button></div>
           </div>

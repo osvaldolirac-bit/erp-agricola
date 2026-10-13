@@ -1,15 +1,19 @@
-"""Bodega sector El Espino — stock por CC (EL ESPINO), sin alterar inventario global ni La Concepción."""
+"""Bodega sector El Espino — stock por CC (cuartel Cerezos), sin alterar inventario global ni La Concepción."""
 from __future__ import annotations
 
 import pandas as pd
 from flask import request, url_for
 
 from demo_web.services.module_runner import store_pdf
-from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.native._helpers import hoy_demo, ingrediente_activo_display
+from demo_web.services.tenant_scope import ESPINO_CC
 
-CC_ESPINO = "EL ESPINO"
+# Movimientos bodega Espino se imputan al cuartel operativo (Cerezos).
+CC_ESPINO = ESPINO_CC
+ETIQUETA_BODEGA = "EL ESPINO"
 
 PDF_STOCK_FILENAME = "STOCK_BODEGA_EL_ESPINO.pdf"
+PDF_STOCK_COLS = ["producto", "ING. ACTIVO", "familia", "stock", "UM"]
 
 # Catálogo fijo bodega El Espino.
 PRODUCTOS_BODEGA_ESPINO = (
@@ -45,13 +49,18 @@ def _es_producto_bodega_espino(nombre: str) -> bool:
     return False
 
 
+def _ingrediente_activo_display(demo, conn, producto: str, ia_inventario: str) -> str:
+    return ingrediente_activo_display(demo, conn, producto, ia_inventario)
+
+
 def _stock_cc_map(conn) -> dict[int, float]:
-    """Stock imputado solo a EL ESPINO (ingresos − salidas). No usa inventario.stock global."""
+    """Stock imputado al cuartel Espino (ingresos − salidas). No usa inventario.stock global."""
+    # Compatibilidad: movimientos históricos pueden estar bajo Cerezos o EL ESPINO.
     rows = conn.execute(
         """SELECT producto_id,
                   SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END) AS stock_cc
            FROM movimientos
-           WHERE centro_costo = ?
+           WHERE centro_costo IN (?, 'EL ESPINO')
            GROUP BY producto_id""",
         (CC_ESPINO,),
     ).fetchall()
@@ -61,13 +70,13 @@ def _stock_cc_map(conn) -> dict[int, float]:
 def _stock_cc(conn, producto_id: int) -> float:
     row = conn.execute(
         """SELECT SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END)
-           FROM movimientos WHERE centro_costo = ? AND producto_id = ?""",
+           FROM movimientos WHERE centro_costo IN (?, 'EL ESPINO') AND producto_id = ?""",
         (CC_ESPINO, producto_id),
     ).fetchone()
     return float(row[0] or 0) if row and row[0] is not None else 0.0
 
 
-def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> list[dict]:
+def _stock_rows(demo, conn, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> list[dict]:
     rows = []
     for _, r in dfs_view.iterrows():
         pid = int(r["id"])
@@ -75,7 +84,9 @@ def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> li
         rows.append(
             {
                 "producto": r["producto"],
-                "ing_activo": r.get("ingrediente_activo", ""),
+                "ing_activo": _ingrediente_activo_display(
+                    demo, conn, str(r["producto"]), str(r.get("ingrediente_activo") or "")
+                ),
                 "familia": r.get("familia", ""),
                 "stock": demo.f_cantidad(stock_cc),
                 "um": r.get("unidad_medida", "kg"),
@@ -109,14 +120,19 @@ def gather_bodega_stock(demo, conn) -> dict:
     dfs_pdf = dfs_view[dfs_view["stock_cc"].fillna(0) > 0].copy()
     if not dfs_pdf.empty:
         dfs_op = dfs_pdf.copy()
-        dfs_op["stock"] = dfs_op["stock_cc"]
-        dfs_op = dfs_op.drop(columns=["precio_medio", "id", "stock_cc"], errors="ignore").rename(
-            columns={"unidad_medida": "UM", "ingrediente_activo": "ING. ACTIVO"}
+        dfs_op["stock"] = dfs_op["stock_cc"].apply(lambda v: demo.f_cantidad(v))
+        dfs_op["ING. ACTIVO"] = dfs_op.apply(
+            lambda r: _ingrediente_activo_display(
+                demo, conn, str(r["producto"]), str(r.get("ingrediente_activo") or "")
+            ),
+            axis=1,
         )
+        dfs_op["UM"] = dfs_op["unidad_medida"]
+        dfs_op = dfs_op[PDF_STOCK_COLS]
         estilo = getattr(demo, "_pdf_estilo_stock_pppl", None)
         blob = demo.generar_pdf_blob(
             dfs_op,
-            f"STOCK BODEGA {CC_ESPINO} — CON STOCK (SIN PRECIOS)",
+            f"STOCK BODEGA {ETIQUETA_BODEGA} — CON STOCK (SIN PRECIOS)",
             incluir_precios=False,
             estilo_celda_fn=estilo,
         )
@@ -127,7 +143,7 @@ def gather_bodega_stock(demo, conn) -> dict:
             )
 
     return {
-        "stock_rows": _stock_rows(demo, dfs_view, stock_map),
+        "stock_rows": _stock_rows(demo, conn, dfs_view, stock_map),
         "stock_cols": ["producto", "ing_activo", "familia", "stock", "um", "pmp"],
         "filtro_q": q,
         "pdf_stock_url": pdf_url,
@@ -195,7 +211,7 @@ def gather_bodega(demo, conn, op_override: str | None = None) -> dict:
         "familias_prod": demo.listar_familias_producto(conn),
         "unidades_medida": demo.UNIDADES_MEDIDA_INSUMO,
         "um_default": demo.DEFAULT_UNIDAD_INSUMO,
-        "cc_espino": CC_ESPINO,
+        "cc_espino": ETIQUETA_BODEGA,
     }
     ctx.update(gather_bodega_stock(demo, conn))
     return ctx

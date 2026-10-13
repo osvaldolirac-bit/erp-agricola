@@ -6,6 +6,7 @@ from flask import render_template, send_file, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.flujo_excel import build_flujo_mensual_xlsx, filename_flujo_excel
 from demo_web.services.module_runner import store_pdf
+from demo_web.services.lc_excluir_espino import cuarteles_costos_lc, resumen_costos_para_flujo_lc
 from demo_web.services.native._helpers import (
     hoy_demo,
     df_to_records,
@@ -13,6 +14,7 @@ from demo_web.services.native._helpers import (
     flujo_th_class,
     temporada_sel,
 )
+from demo_web.services.tenant_scope import cuarteles_oficiales
 
 
 def gather_flujo(user_email: str, user_rol: str) -> dict:
@@ -33,14 +35,17 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         )
         from erp_flujo_financiero import _mes_label
 
-        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        resumen_costos = resumen_costos_para_flujo_lc(conn, demo, nombre, fi, ff)
+        cuarteles = cuarteles_costos_lc(cuarteles_oficiales(demo))
         df_flujo, df_cc, df_eg_cc, meta = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+            conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
         )
 
         flujo_rows = []
         flujo_cols = []
         kpis = {}
+        cuadre = {}
+        gastado_flujo_info = ""
         pdf_flujo_url = None
         excel_flujo_url = None
         flujo_detalle_rows = []
@@ -52,14 +57,53 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             tot_ing = float(df_flujo["INGRESOS"].sum())
             tot_eg_real = float(df_flujo["EGRESOS_REAL"].sum())
             tot_eg_proy = float(df_flujo["EGRESOS_PROY"].sum())
-            eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
+            tot_eg_total = float(df_flujo["EGRESOS_REAL"].sum() + df_flujo["EGRESOS_PROY"].sum())
+            tot_res = tot_ing - tot_eg_total
+            if "EN_EERR" in df_flujo.columns:
+                df_eerr = df_flujo[df_flujo["EN_EERR"].astype(bool)]
+                if not df_eerr.empty:
+                    ing_eerr = float(df_eerr["INGRESOS"].sum())
+                    eg_eerr = float(df_eerr["EGRESOS_TOTAL"].sum())
+                    eerr_final = float(df_eerr["EERR_ACUM"].iloc[-1])
+                    margen_eerr = ing_eerr - eg_eerr
+                else:
+                    ing_eerr = tot_ing
+                    eg_eerr = tot_eg_total
+                    eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
+                    margen_eerr = tot_res
+            else:
+                ing_eerr = tot_ing
+                eg_eerr = tot_eg_total
+                eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
+                margen_eerr = tot_res
+            total_gastado = float(meta.get("total_gastado", 0) or 0)
+            total_ppto = float(meta.get("total_ppto", 0) or 0)
+            saldo_ppto = float(meta.get("saldo_por_gastar_ppto", 0) or 0)
+            cxp_val = float(meta.get("teso_cxp_bruto") or meta.get("teso_cxp_total") or 0)
+            disponible_ppto = tot_ing - total_ppto
             kpis = {
                 "ingresos": demo.f_peso(tot_ing),
-                "gastado": demo.f_peso(meta.get("total_gastado", 0)),
-                "cxp": demo.f_peso(meta.get("teso_cxp_total", tot_eg_real)),
+                "egresos_total": demo.f_peso(tot_eg_total),
+                "egresos_real": demo.f_peso(tot_eg_real),
+                "gastado": demo.f_peso(total_gastado),
+                "presupuesto": demo.f_peso(total_ppto),
+                "saldo_ppto": demo.f_peso(saldo_ppto),
+                "cxp": demo.f_peso(cxp_val),
                 "egresos_proy": demo.f_peso(tot_eg_proy),
+                "margen": demo.f_peso(margen_eerr),
+                "disponible_ppto": demo.f_peso(disponible_ppto),
                 "eerr": demo.f_peso(eerr_final),
             }
+            cuadre = {
+                "flujo_ok": abs(margen_eerr - eerr_final) < 1.0,
+                "ppto_ok": abs(total_ppto - total_gastado - saldo_ppto) < 1.0,
+            }
+            gastado_flujo_info = ""
+            if meta.get("gastado_contable_en_flujo", 0) > 0.01 and meta.get("mes_gastado_contable"):
+                gastado_flujo_info = (
+                    f"Presup. consumido ({demo.f_peso(meta['gastado_contable_en_flujo'])}) "
+                    f"imputado como egreso real en {meta['mes_gastado_contable']}."
+                )
 
             display_cols = [
                 "MES", "INGRESOS", "RRHH SUELDOS", "TESO REAL", "TESO PROY",
@@ -128,13 +172,9 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
                 caja_info = f"{caja_info} {_extra}".strip() if caja_info else _extra
 
             meta_info = (
-                f"Presupuesto (Costos): {demo.f_peso(meta.get('total_ppto', 0))} · "
-                f"Gastado imputado: {demo.f_peso(meta.get('total_gastado', 0))} · "
-                f"Saldo por gastar (suma CC): {demo.f_peso(meta.get('saldo_por_gastar_ppto', 0))} · "
-                f"RRHH proy: {demo.f_peso(meta.get('rrhh_proy_asignado', 0))} · "
-                f"TESO PROY (resto del saldo, desde {meta.get('mes_inicio_teso_proy_auto', 'hoy+2')}): "
-                f"{demo.f_peso(meta.get('saldo_a_proyectar_teso_bruto', 0))} · "
-                f"CxP (TESO REAL): {demo.f_peso(meta.get('teso_cxp_total', 0))}."
+                f"Presupuesto (Costos): {demo.f_peso(total_ppto)} = "
+                f"consumido {demo.f_peso(total_gastado)} + por gastar {demo.f_peso(saldo_ppto)} · "
+                f"CxP: {demo.f_peso(cxp_val)} · Egresos proy.: {demo.f_peso(tot_eg_proy)}."
             )
 
         eg_cc_cols, eg_cc_rows = [], []
@@ -181,6 +221,8 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             "notas_rows": notas_rows,
             "meta_caption": meta_info,
             "caja_info": caja_info,
+            "cuadre": cuadre,
+            "gastado_flujo_info": gastado_flujo_info if kpis else "",
             "pdf_flujo_url": pdf_flujo_url,
             "excel_flujo_url": excel_flujo_url,
             "sin_datos": df_flujo is None or df_flujo.empty,
@@ -201,9 +243,10 @@ def export_flujo_excel(user_email: str, user_rol: str):
     try:
         from erp_flujo_financiero import armar_flujo_financiero
 
-        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        resumen_costos = resumen_costos_para_flujo_lc(conn, demo, nombre, fi, ff)
+        cuarteles = cuarteles_costos_lc(cuarteles_oficiales(demo))
         df_flujo, _, _, _ = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+            conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
         )
     finally:
         conn.close()
