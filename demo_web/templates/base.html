@@ -53,7 +53,7 @@
 </svg></span>
         <span class="demo-user-email text-white-50 small text-truncate" title="{{ current_user.email }}">{{ current_user.email }}</span>
         {% if tenant_switch_options %}
-        <div class="dropdown demo-tenant-switch flex-shrink-0">
+        <div class="dropdown demo-tenant-switch demo-tenant-switch--navbar flex-shrink-0">
           <button class="btn btn-sm btn-outline-light dropdown-toggle demo-tenant-switch-btn"
                   type="button" data-bs-toggle="dropdown" aria-expanded="false"
                   aria-label="Cambiar empresa">
@@ -76,7 +76,10 @@
         </div>
         {% endif %}
         <form method="post" action="{{ url_for('auth.logout') }}" class="m-0 flex-shrink-0">
-          <button class="btn btn-sm btn-outline-light">Salir</button>
+          <button type="submit" class="btn btn-sm btn-outline-light demo-btn-logout" aria-label="Salir">
+            <i class="bi bi-box-arrow-right d-sm-none" aria-hidden="true"></i>
+            <span class="demo-btn-logout-label">Salir</span>
+          </button>
         </form>
       </div>
     </div>
@@ -87,14 +90,14 @@
     <div class="offcanvas-header d-lg-none border-0 pb-0">
       <button type="button" class="btn-close ms-auto" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
     </div>
-    <div class="offcanvas-body p-0">
+    <div class="offcanvas-body p-0 d-flex flex-column">
       {% if logo_url %}
       <div class="demo-sidebar-logo text-center py-3 px-2">
         <img src="{{ logo_url }}" alt="{{ erp_title }}" class="logo-sidebar">
       </div>
       {% endif %}
       <div class="demo-sidebar-head">Menú</div>
-      <nav class="demo-menu" aria-label="Módulos">
+      <nav class="demo-menu flex-grow-1 overflow-auto" aria-label="Módulos">
         {% for item in (nav_ops if nav_ops is defined else nav_menu) %}
         <a href="{{ url_for(item.endpoint) }}"
            class="demo-nav-link {% if item.badge_count is defined and item.badge_count is not none %}nav-with-count{% endif %} {% if active_key == item.key %}active{% endif %}">
@@ -132,6 +135,26 @@
         </div>
         {% endif %}
       </nav>
+      <div class="demo-offcanvas-account d-lg-none">
+        <p class="demo-user-email text-muted small mb-2" title="{{ current_user.email }}">{{ current_user.email }}</p>
+        {% if tenant_switch_options %}
+        <p class="small fw-semibold mb-1">Empresa</p>
+        <p class="small text-muted mb-2">{{ tenant.nombre|default(current_user.tenant_nombre) }}</p>
+        <div class="demo-tenant-switch-menu-static d-grid gap-1 mb-3">
+          {% for t in tenant_switch_options %}
+          <form method="post" action="{{ url_for('auth.cambiar_empresa') }}" class="m-0">
+            <input type="hidden" name="tenant_slug" value="{{ t.slug }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">{{ t.nombre }}</button>
+          </form>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('auth.logout') }}" class="m-0">
+          <button type="submit" class="btn btn-outline-danger w-100 demo-btn-logout">
+            <i class="bi bi-box-arrow-right me-1" aria-hidden="true"></i> Salir
+          </button>
+        </form>
+      </div>
     </div>
   </div>
   {% endif %}
