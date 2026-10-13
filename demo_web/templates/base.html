@@ -125,16 +125,16 @@
         </a>
         {% endfor %}
         {% endif %}
-        {% if show_planes %}
-        <div class="demo-menu-foot">
-          <a href="{{ url_for('planes') }}"
-             class="demo-nav-link nav-planes {% if active_key == 'Planes' %}active{% endif %}">
-            <span class="nav-link-main"><i class="bi bi-tags-fill" aria-hidden="true"></i> <strong>Planes</strong></span>
-            <span class="nav-fee nav-fee-pack">REVISA TU PLAN</span>
-          </a>
-        </div>
-        {% endif %}
       </nav>
+      {% if show_planes %}
+      <div class="demo-menu-foot">
+        <a href="{{ url_for('planes') }}"
+           class="demo-nav-link nav-planes {% if active_key == 'Planes' %}active{% endif %}">
+          <span class="nav-link-main"><i class="bi bi-tags-fill" aria-hidden="true"></i> <strong>Planes</strong></span>
+          <span class="nav-fee nav-fee-pack">REVISA TU PLAN</span>
+        </a>
+      </div>
+      {% endif %}
       <div class="demo-offcanvas-account d-lg-none">
         <p class="demo-user-email text-muted small mb-2" title="{{ current_user.email }}">{{ current_user.email }}</p>
         {% if tenant_switch_options %}

@@ -92,7 +92,7 @@ body.demo-body {
 }
 
 .demo-offcanvas-account {
-  margin-top: auto;
+  flex-shrink: 0;
   padding: 0.85rem 1rem 1rem;
   border-top: 1px solid rgba(13, 61, 86, 0.1);
   background: #f8faf9;
@@ -761,7 +761,6 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
 }
 
 .demo-menu-foot {
-  margin-top: auto;
   flex-shrink: 0;
   padding: 0.75rem 0.5rem 0.25rem;
   border-top: 1px solid #dde5df;
@@ -968,6 +967,10 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
     flex: 1 1 auto;
     padding-bottom: 0.5rem;
     min-height: 0;
+  }
+  .demo-offcanvas .demo-menu-foot {
+    margin-top: auto;
+    flex-shrink: 0;
   }
   .demo-offcanvas .btn-close { display: none; }
 }
@@ -1703,6 +1706,44 @@ body.demo-body .costos-matriz-table td.costos-saldo-neutro {
     display: none;
   }
 
+  .demo-offcanvas .offcanvas-body {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .demo-offcanvas .demo-sidebar-logo,
+  .demo-offcanvas .demo-sidebar-head {
+    flex-shrink: 0;
+  }
+
+  .demo-offcanvas nav.demo-menu {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .demo-offcanvas .demo-menu-foot {
+    margin-top: 0;
+    flex-shrink: 0;
+  }
+
+  ul.demo-nav-seccion {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.15rem;
+    scrollbar-width: thin;
+  }
+
+  ul.demo-nav-seccion .nav-item {
+    flex-shrink: 0;
+  }
+
   .dashboard-page.container-fluid {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
@@ -2229,6 +2270,47 @@ body.erp-ios .erp-pdf-viewer-object {
 
 .riego-links-demo .btn {
   opacity: 0.45;
+}
+
+@media (max-width: 767.98px) {
+  .riego-personal-links-wrap table {
+    border: 0;
+  }
+
+  .riego-personal-links-wrap thead {
+    display: none;
+  }
+
+  .riego-personal-links-wrap tbody tr {
+    display: block;
+    margin-bottom: 0.75rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .riego-personal-links-wrap tbody td {
+    display: block;
+    border: 0;
+    padding: 0.25rem 0;
+  }
+
+  .riego-personal-links-wrap tbody td:first-child {
+    font-size: 1rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .riego-personal-links-wrap tbody td:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding-top: 0.45rem;
+  }
+
+  .riego-personal-links-wrap .js-link-personal {
+    font-size: 0.72rem;
+  }
 }
 
 /* Petróleo — salida manual (formulario ordenado) */
