@@ -5,7 +5,7 @@ from datetime import timedelta
 import pandas as pd
 from flask import flash, render_template, request, session, url_for
 
-from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.demo_loader import bind_user_session, get_demo_module, get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
 
@@ -51,8 +51,24 @@ def _pop_alertas() -> dict:
     return out
 
 
+def _bodega_kardex_habilitado(demo) -> bool:
+    """Cuenta corriente por producto (La Concepción, no certificación)."""
+    if demo.es_certificacion():
+        return False
+    return get_erp_app() == "concepcion"
+
+
+def _kardex_pid() -> int:
+    raw = (request.args.get("pid") or "0").strip()
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _stock_rows(demo, dfs_view: pd.DataFrame, con_precio: bool) -> list[dict]:
     rows = []
+    kardex = _bodega_kardex_habilitado(demo)
     for _, r in dfs_view.iterrows():
         row = {
             "producto": r["producto"],
@@ -65,6 +81,8 @@ def _stock_rows(demo, dfs_view: pd.DataFrame, con_precio: bool) -> list[dict]:
         }
         if con_precio:
             row["pmp"] = demo.f_peso(r.get("precio_medio") or 0)
+        if kardex:
+            row["id"] = int(r["id"])
         rows.append(row)
     return rows
 
@@ -736,8 +754,12 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
     secciones = _secciones(demo)
+    kardex_on = _bodega_kardex_habilitado(demo)
     sec = request.args.get("sec", secciones[0][0])
-    if sec not in {k for k, _ in secciones}:
+    valid_secs = {k for k, _ in secciones}
+    if kardex_on:
+        valid_secs.add("kardex")
+    if sec not in valid_secs:
         sec = secciones[0][0]
 
     conn = demo.conectar_db()
@@ -746,10 +768,20 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
             "secciones": secciones,
             "sec_activa": sec,
             "es_certificacion": demo.es_certificacion(),
+            "bodega_kardex": kardex_on,
             **_pop_alertas(),
         }
         if sec == "stock":
             ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
+        elif sec == "kardex" and kardex_on:
+            from demo_web.services import bodega_kardex
+
+            pid = _kardex_pid()
+            ctx["filtro_q"] = (request.args.get("q") or "").strip()
+            if pid:
+                ctx.update(bodega_kardex.gather_kardex_producto(demo, conn, pid))
+            else:
+                ctx["kardex_error"] = "Seleccione un producto desde el listado de stock."
         elif sec == "salida":
             ctx["productos_salida"] = _productos_salida(demo, conn)
             ctx["cuarteles"] = demo.CENTROS_COSTO
