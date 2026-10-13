@@ -1696,14 +1696,12 @@ body.demo-body .costos-matriz-table td.costos-saldo-neutro {
 
   .demo-navbar-actions {
     max-width: none;
+    gap: 0.25rem !important;
   }
 
-  .demo-tenant-switch--navbar {
-    display: none !important;
-  }
-
-  .demo-navbar .navbar-flag {
-    display: none;
+  .demo-tenant-switch-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
   }
 
   .demo-offcanvas .offcanvas-body {
