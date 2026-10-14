@@ -9,10 +9,52 @@ from flask import flash, render_template, request, url_for
 from demo_web.auth import user_db
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
+from demo_web.services.tenant_scope import is_concepcion_tenant
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
+from demo_web.services.tenant_scope import cuarteles_oficiales, is_espino_tenant
 
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
+
+
+def _cuarteles_metas_flujo(demo) -> list[str]:
+    """Cuarteles/CC en PPTO y flujo ingresos (Espino: variedades; LC: CUARTELES_OFICIALES)."""
+    return list(cuarteles_oficiales(demo) or [])
+
+
+def _ingresos_flujo_map(demo, ing: dict) -> dict[tuple[str, int, int], float]:
+    """Normaliza ingresos por CC; en Espino prorratea filas legacy (Cerezos) a variedades."""
+    centros = _cuarteles_metas_flujo(demo)
+    if is_espino_tenant():
+        ing_por_cc: dict[str, dict[tuple[int, int], float]] = {cc: {} for cc in centros}
+        for (cc, anio, mes), monto in (ing or {}).items():
+            cc_s = str(cc or "")
+            if cc_s in centros:
+                ing_por_cc[cc_s][(int(anio), int(mes))] = float(monto or 0)
+        from demo_web.services.espino_scope import fold_legacy_ingresos_flujo_en_variedades
+
+        fold_legacy_ingresos_flujo_en_variedades(ing, ing_por_cc, centros)
+        out: dict[tuple[str, int, int], float] = {}
+        for cc in centros:
+            for (anio, mes), monto in ing_por_cc.get(cc, {}).items():
+                out[(cc, anio, mes)] = float(monto or 0)
+        return out
+    out = {}
+    centros_set = set(centros)
+    for (cc, anio, mes), monto in (ing or {}).items():
+        if str(cc or "") in centros_set:
+            out[(str(cc), int(anio), int(mes))] = float(monto or 0)
+    return out
+
+
+def _notas_flujo_map(demo, notas: dict) -> dict[tuple[str, int, int], str]:
+    centros = set(_cuarteles_metas_flujo(demo))
+    return {
+        (str(cc), int(anio), int(mes)): str(txt or "")
+        for (cc, anio, mes), txt in (notas or {}).items()
+        if str(cc or "") in centros
+    }
+
 SECCION_DEFS = [
     ("bitacora", "📜 BITÁCORA", "super"),
     ("familias", "🏷️ FAMILIAS PRODUCTO", "all"),
@@ -21,6 +63,7 @@ SECCION_DEFS = [
     ("encargados", "💵 ENCARGADOS COMPRAS", "all"),
     ("ppto", "🍒 PPTO Y PRODUCCIÓN", "all"),
     ("flujo", "💰 INGRESOS FLUJO", "all"),
+    ("hydrawise", "💧 HYDRAWISE", "lc"),
 ]
 
 ACCIONES_MOVIDAS_A_MASTER = frozenset({
@@ -45,6 +88,10 @@ def _secciones_visibles(demo) -> list[tuple[str, str]]:
     es_super = demo.es_super_admin()
     out = []
     for key, label, scope in SECCION_DEFS:
+        if scope == "lc":
+            if is_concepcion_tenant():
+                out.append((key, label))
+            continue
         if scope == "all" or es_super:
             out.append((key, label))
     return out
@@ -347,7 +394,7 @@ def _gather_encargados(conn) -> dict:
 def _gather_ppto(demo, conn) -> dict:
     temp_nombre, fi, ff = temporada_sel(demo, "temp")
     cuarteles = []
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in _cuarteles_metas_flujo(demo):
         ppto = demo._obtener_ppto_temporada(conn, temp_nombre, cc)
         kg = demo._obtener_kg_estimado_temporada(conn, temp_nombre, cc)
         cuarteles.append(
@@ -379,14 +426,16 @@ def _gather_flujo(demo, conn) -> dict:
 
     temp_nombre, fi, ff = temporada_sel(demo, "temp")
     meses = list(iter_meses_rango(fi, ff))
-    ing = cargar_ingresos_cc(conn, temp_nombre)
-    notas = cargar_notas_ingresos_cc(conn, temp_nombre)
+    ing_raw = cargar_ingresos_cc(conn, temp_nombre)
+    ing = _ingresos_flujo_map(demo, ing_raw)
+    notas = _notas_flujo_map(demo, cargar_notas_ingresos_cc(conn, temp_nombre))
     caja_ini = cargar_saldo_caja_inicial(conn, temp_nombre)
     es_vigente = fi <= demo.hoy <= ff
 
     filas = []
     flujo_cuarteles = []
-    for cc in demo.CUARTELES_OFICIALES:
+    centros_flujo = _cuarteles_metas_flujo(demo)
+    for cc in centros_flujo:
         row = {"cuartel": cc.title()}
         total_cc = 0.0
         meses_edit = []
@@ -412,7 +461,7 @@ def _gather_flujo(demo, conn) -> dict:
     for anio, mes in meses:
         lbl = _mes_label(anio, mes)
         totales_mes[lbl] = demo.f_peso(
-            sum(ing.get((cc, anio, mes), 0.0) for cc in demo.CUARTELES_OFICIALES)
+            sum(ing.get((cc, anio, mes), 0.0) for cc in centros_flujo)
         )
 
     meses_txt = ", ".join(_mes_label(a, m) for a, m in meses)
@@ -445,7 +494,9 @@ def _gather_respaldo(demo, conn) -> dict:
 
     migrar_config_respaldo(conn)
     config = obtener_config_respaldo(conn)
-    spec_codigo = spec_respaldo_codigo_por_nombre(demo.NOMBRE_ERP)
+    from demo_web.services.tenant_scope import nombre_erp
+
+    spec_codigo = spec_respaldo_codigo_por_nombre(nombre_erp(demo))
     frecuencias = [
         {"key": f, "label": FRECUENCIAS_ETIQUETA.get(f, f)} for f in FRECUENCIAS_RESPALDO
     ]
@@ -537,6 +588,15 @@ def gather_admin(user_email: str, user_rol: str) -> dict:
             ctx.update(_gather_ppto(demo, conn))
         elif sec == "flujo":
             ctx.update(_gather_flujo(demo, conn))
+        elif sec == "hydrawise" and is_concepcion_tenant():
+            from demo_web.services.hydrawise_riego import get_api_key, get_controller_id
+
+            key = get_api_key(conn)
+            ctx["hydrawise_tiene_key"] = bool(key)
+            ctx["hydrawise_key_masked"] = (key[:4] + "…" + key[-4:]) if len(key) > 10 else ""
+            ctx["hydrawise_controller_id"] = get_controller_id(conn)
+            ctx["hydrawise_test"] = None
+            ctx["hydrawise_equipos"] = []
     finally:
         conn.close()
 
@@ -717,7 +777,8 @@ def _post_guardar_metas(demo, conn) -> dict:
     temp = request.form.get("temporada") or ""
     if not temp:
         return {"ok": False, "msg": "Temporada no válida."}
-    for cc in demo.CUARTELES_OFICIALES:
+    centros = _cuarteles_metas_flujo(demo)
+    for cc in centros:
         ppto_raw = request.form.get(f"ppto_{cc}") or "0"
         kg_raw = request.form.get(f"kg_{cc}") or "0"
         try:
@@ -727,7 +788,7 @@ def _post_guardar_metas(demo, conn) -> dict:
             return {"ok": False, "msg": f"Valores inválidos para {cc}."}
         demo._guardar_ppto_temporada(conn, temp, cc, ppto)
         demo._guardar_kg_estimado_temporada(conn, temp, cc, kg)
-    demo.registrar_accion("METAS COSTOS", f"{temp}: {len(demo.CUARTELES_OFICIALES)} cuarteles")
+    demo.registrar_accion("METAS COSTOS", f"{temp}: {len(centros)} cuarteles")
     return {"ok": True, "msg": f"Metas guardadas para temporada {temp}."}
 
 
@@ -1066,7 +1127,7 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
         return {"ok": False, "msg": "Saldo caja inicial inválido."}
     ing_cc = {}
     notas_cc = {}
-    for cc in demo.CUARTELES_OFICIALES:
+    for cc in _cuarteles_metas_flujo(demo):
         for anio, mes in meses:
             key = f"ing_{cc}_{anio}_{mes}"
             nota_key = f"nota_{cc}_{anio}_{mes}"
@@ -1111,17 +1172,19 @@ def _post_guardar_respaldo_config(demo, conn, user_email: str) -> dict:
 
 
 def _post_enviar_respaldo_datos(demo, conn, user_email: str) -> dict:
+    from demo_web.services.tenant_scope import nombre_erp
     from erp_respaldo import ejecutar_respaldo, normalizar_correos, obtener_config_respaldo
 
+    marca = nombre_erp(demo)
     config = obtener_config_respaldo(conn)
     if not normalizar_correos(config.get("email", "")):
         return {"ok": False, "msg": "Configure un correo destino antes de enviar."}
     res = ejecutar_respaldo(
-        conn, demo.NOMBRE_ERP, demo.NOMBRE_DB, demo.SECRETS_PATH, forzar=True, usuario=user_email,
+        conn, marca, demo.NOMBRE_DB, demo.SECRETS_PATH, forzar=True, usuario=user_email,
     )
     if res.get("ok"):
         dest = ", ".join(res.get("destinatarios", []))
-        return {"ok": True, "msg": f"Datos de {demo.NOMBRE_ERP} enviados a {dest}."}
+        return {"ok": True, "msg": f"Datos de {marca} enviados a {dest}."}
     motivo = res.get("motivo", "")
     if motivo == "smtp":
         return {"ok": False, "msg": f"No hay SMTP configurado: {res.get('error', '')}"}
@@ -1136,7 +1199,10 @@ def _post_enviar_respaldo_codigo(demo, conn, user_email: str) -> dict:
         spec_respaldo_codigo_por_nombre,
     )
 
-    spec = spec_respaldo_codigo_por_nombre(demo.NOMBRE_ERP)
+    from demo_web.services.tenant_scope import nombre_erp
+
+    marca = nombre_erp(demo)
+    spec = spec_respaldo_codigo_por_nombre(marca)
     if not spec:
         return {"ok": False, "msg": "No hay definición de respaldo de código para este ERP."}
     config = obtener_config_respaldo(conn)
@@ -1238,6 +1304,49 @@ def view(user_email: str, user_rol: str):
                 result = _post_guardar_ingresos_flujo(demo, conn)
             elif action == "reseed":
                 result = _post_reseed(demo, conn)
+            elif action == "guardar_hydrawise_key" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import set_api_key
+
+                key = (request.form.get("api_key") or "").strip()
+                if key:
+                    set_api_key(conn, key)
+                    result = {"ok": True, "msg": "API key Hydrawise guardada."}
+                else:
+                    result = {"ok": True, "msg": "Sin cambios (deje la key en blanco para mantener la actual)."}
+            elif action == "probar_hydrawise" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import probar_conexion
+
+                pr = probar_conexion(conn)
+                result = {
+                    "ok": bool(pr.get("ok")),
+                    "msg": pr.get("msg") or "Error",
+                }
+            elif action == "listar_hydrawise_equipos" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import listar_equipos
+
+                le = listar_equipos(conn)
+                eq = le.get("equipos") or []
+                det = " | ".join(
+                    f"{e.get('name')}: serial {e.get('serial_number') or '—'} → ID {e.get('controller_id')}"
+                    for e in eq
+                )
+                result = {
+                    "ok": bool(le.get("ok")),
+                    "msg": ((le.get("msg") or "") + (" — " + det if det else "")).strip(),
+                }
+            elif action == "guardar_hydrawise_controller" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import set_equipo_ref
+
+                raw = (request.form.get("controller_id") or "").strip()
+                if not raw:
+                    set_equipo_ref(conn, None)
+                    result = {"ok": True, "msg": "Equipo borrado (auto si hay uno solo)."}
+                else:
+                    set_equipo_ref(conn, raw)
+                    result = {
+                        "ok": True,
+                        "msg": f"Equipo Hydrawise guardado: {raw} (serial o ID API).",
+                    }
 
             if result:
                 flash(result["msg"], "success" if result["ok"] else "danger")

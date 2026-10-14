@@ -11,8 +11,12 @@ HOST = "root@45.7.230.70"
 PORT = "40484"
 REMOTE = "/root/demo-web"
 FILES = [
+    ("demo_web/services/espino_scope.py", "demo_web/services/espino_scope.py"),
+    ("demo_web/services/espino_compras_kardex.py", "demo_web/services/espino_compras_kardex.py"),
+    ("demo_web/services/espino_compras_guards.py", "demo_web/services/espino_compras_guards.py"),
     ("demo_web/services/native/espino.py", "demo_web/services/native/espino.py"),
     ("demo_web/services/native/espino_bodega.py", "demo_web/services/native/espino_bodega.py"),
+    ("demo_web/services/native/compras.py", "demo_web/services/native/compras.py"),
     ("demo_web/services/native/espino_maquinaria.py", "demo_web/services/native/espino_maquinaria.py"),
     ("demo_web/services/native/espino_libro_campo.py", "demo_web/services/native/espino_libro_campo.py"),
     ("demo_web/templates/modules/espino.html", "demo_web/templates/modules/espino.html"),

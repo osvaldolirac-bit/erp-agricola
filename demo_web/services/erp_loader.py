@@ -8,7 +8,7 @@ from typing import Any
 
 from demo_web.services.erp_compat import patch_erp_module
 from demo_web.services.streamlit_mock import bind_demo_session, clear_demo_session, install_streamlit_mock
-from demo_web.tenants import TENANTS, get_tenant, list_tenants
+from demo_web.tenants import TENANTS, get_tenant, list_tenants, tenant_nombre_erp
 
 _DEMO_WEB_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -86,6 +86,13 @@ def _wrap_registrar_accion(erp: Any) -> None:
     erp._bitacora_gate_wrapped = True
 
 
+def _apply_tenant_to_erp(erp: Any, t: dict[str, Any]) -> None:
+    """Sincroniza BD, secrets y marca ERP por tenant (app_concepcion es compartido Espino/LC)."""
+    erp.NOMBRE_DB = t["db"]
+    erp.SECRETS_PATH = t["secrets"]
+    erp.NOMBRE_ERP = tenant_nombre_erp(t, getattr(erp, "NOMBRE_ERP", None))
+
+
 def _load_module(erp_app: str) -> Any:
     install_streamlit_mock()
     if erp_app == "concepcion":
@@ -104,8 +111,7 @@ def get_erp_module() -> Any:
         _erp_modules[erp_app] = _load_module(erp_app)
     erp = _erp_modules[erp_app]
     if t:
-        erp.NOMBRE_DB = t["db"]
-        erp.SECRETS_PATH = t["secrets"]
+        _apply_tenant_to_erp(erp, t)
         os.environ["ERP_DB"] = t["db"]
         os.environ["ERP_DEMO_DB"] = t["db"]
         os.environ["ERP_SECRETS"] = t["secrets"]
@@ -129,8 +135,7 @@ def get_erp_module_for(slug: str) -> Any:
     if erp_app not in _erp_modules:
         _erp_modules[erp_app] = _load_module(erp_app)
     erp = _erp_modules[erp_app]
-    erp.NOMBRE_DB = t["db"]
-    erp.SECRETS_PATH = t["secrets"]
+    _apply_tenant_to_erp(erp, t)
     return erp
 
 
