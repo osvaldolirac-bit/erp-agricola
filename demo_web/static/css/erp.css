@@ -1550,8 +1550,60 @@ body.demo-body .costos-matriz-table td.costos-saldo-neutro {
     margin-left: 0 !important;
   }
 
-  .demo-body {
+  .demo-main {
     overflow-x: hidden;
+  }
+
+  .demo-navbar-brand > span {
+    max-width: min(34vw, 8.5rem);
+  }
+
+  .demo-navbar-actions {
+    max-width: none;
+    gap: 0.25rem !important;
+  }
+
+  .demo-tenant-switch-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+  }
+
+  .demo-offcanvas .offcanvas-body {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .demo-offcanvas .demo-sidebar-logo,
+  .demo-offcanvas .demo-sidebar-head {
+    flex-shrink: 0;
+  }
+
+  .demo-offcanvas nav.demo-menu {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .demo-offcanvas .demo-menu-foot {
+    margin-top: 0;
+    flex-shrink: 0;
+  }
+
+  ul.demo-nav-seccion {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.15rem;
+    scrollbar-width: thin;
+  }
+
+  ul.demo-nav-seccion .nav-item {
+    flex-shrink: 0;
   }
 
   .dashboard-page.container-fluid {
