@@ -576,15 +576,21 @@ def _post_save_agro(demo, conn) -> dict:
                 poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
         else:
             pid = int(i["id"])
-            cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
-            npmp = ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"]) if (cur[0] + i["c"]) > 0 else i["p"]
-            conn.execute(
-                "UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?",
-                (i["c"], npmp, pid),
-            )
-            registrar_ingreso_kardex_compra_espino(
-                demo, conn, pid, float(i["c"]), float(i["p"]), fe,
-            )
+            if is_espino_tenant():
+                registrar_ingreso_kardex_compra_espino(
+                    demo, conn, pid, float(i["c"]), float(i["p"]), fe,
+                )
+            else:
+                cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
+                npmp = (
+                    ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"])
+                    if (cur[0] + i["c"]) > 0
+                    else i["p"]
+                )
+                conn.execute(
+                    "UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?",
+                    (i["c"], npmp, pid),
+                )
     conn.commit()
     _clear_car()
     demo.registrar_accion("COMPRA", nro)

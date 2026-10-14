@@ -127,6 +127,27 @@ def _sync_inventario_stock(conn, producto_id: int) -> float:
     return esperado
 
 
+def _precio_medio_kardex(conn, producto_id: int) -> float | None:
+    """PMP neto desde ingresos pool bodega (valor imputado / cantidad)."""
+    ph, ccs = _cc_pool_bodega_sql()
+    if not ccs:
+        return None
+    row = conn.execute(
+        f"""SELECT COALESCE(SUM(cantidad), 0), COALESCE(SUM(valor_imputado), 0)
+            FROM movimientos
+            WHERE producto_id=? AND tipo IN ('Ingreso', 'Entrada')
+              AND UPPER(centro_costo) IN ({ph})""",
+        (int(producto_id), *ccs),
+    ).fetchone()
+    if not row:
+        return None
+    cant = float(row[0] or 0)
+    valor = float(row[1] or 0)
+    if cant <= 1e-9:
+        return None
+    return valor / cant
+
+
 def _stock_disponible_producto(conn, producto_id: int, *, inventario_stock: float | None = None) -> float:
     """Stock bodega: kardex (ing−sal) si hay ingresos pool; si no, inventario.stock."""
     if inventario_stock is None:
