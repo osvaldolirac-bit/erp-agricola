@@ -18,6 +18,13 @@ _LEGACY_LOGO_NAMES = (
     "logo_concepcion.svg",
 )
 
+_ESPINO_LOGO_NAMES = (
+    "logo_espino.png",
+    "logo_espino.jpg",
+    "logo_espino.jpeg",
+    "logo_espino.svg",
+)
+
 
 def _logo_dirs() -> list[Path]:
     dirs: list[Path] = []
@@ -60,6 +67,7 @@ def find_master_logo_path() -> Path | None:
 
 _TENANT_LOGO_NAMES: dict[str, tuple[str, ...]] = {
     "concepcion": _LEGACY_LOGO_NAMES,
+    "espino": _ESPINO_LOGO_NAMES,
 }
 
 

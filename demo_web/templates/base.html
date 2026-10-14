@@ -44,16 +44,39 @@
         {% endif %}
         <span>{{ erp_brand|default('ERP') }}</span>
       </a>
-      <div class="ms-auto d-flex align-items-center gap-2 gap-lg-3 order-2">
-        <span class="navbar-flag" title="Chile"><svg class="flag-cl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" aria-label="Chile" role="img" focusable="false">
+      <div class="ms-auto d-flex align-items-center gap-2 gap-md-3 order-2 demo-navbar-actions">
+        <span class="navbar-flag flex-shrink-0" title="Chile"><svg class="flag-cl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" aria-label="Chile" role="img" focusable="false">
   <rect width="24" height="16" rx="1.5" fill="#fff"/>
   <rect y="8" width="24" height="8" fill="#d52b1e"/>
   <rect width="8" height="8" fill="#0039a6"/>
   <polygon fill="#fff" points="4,1.6 4.65,3.55 6.8,3.55 5.05,4.75 5.7,6.7 4,5.5 2.3,6.7 2.95,4.75 1.2,3.55 3.35,3.55"/>
 </svg></span>
-        <span class="d-none d-lg-inline text-white-50 small">{{ current_user.email }}</span>
-        <form method="post" action="{{ url_for('auth.logout') }}" class="m-0">
-          <button class="btn btn-sm btn-outline-light">Salir</button>
+        <span class="demo-user-email text-white-50 small text-truncate" title="{{ current_user.email }}">{{ current_user.email }}</span>
+        {% if tenant_switch_options %}
+        <div class="dropdown demo-tenant-switch flex-shrink-0">
+          <button class="btn btn-sm btn-outline-light dropdown-toggle demo-tenant-switch-btn"
+                  type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                  aria-label="Cambiar empresa">
+            Cambiar empresa
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end demo-tenant-switch-menu">
+            <li><h6 class="dropdown-header">Empresa actual</h6></li>
+            <li><span class="dropdown-item-text fw-semibold">{{ tenant.nombre|default(current_user.tenant_nombre) }}</span></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><h6 class="dropdown-header">Ir a</h6></li>
+            {% for t in tenant_switch_options %}
+            <li>
+              <form method="post" action="{{ url_for('auth.cambiar_empresa') }}" class="m-0">
+                <input type="hidden" name="tenant_slug" value="{{ t.slug }}">
+                <button type="submit" class="dropdown-item">{{ t.nombre }}</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('auth.logout') }}" class="m-0 flex-shrink-0">
+          <button type="submit" class="btn btn-sm btn-outline-light">Salir</button>
         </form>
       </div>
     </div>
@@ -64,14 +87,14 @@
     <div class="offcanvas-header d-lg-none border-0 pb-0">
       <button type="button" class="btn-close ms-auto" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
     </div>
-    <div class="offcanvas-body p-0">
+    <div class="offcanvas-body p-0 d-flex flex-column">
       {% if logo_url %}
       <div class="demo-sidebar-logo text-center py-3 px-2">
         <img src="{{ logo_url }}" alt="{{ erp_title }}" class="logo-sidebar">
       </div>
       {% endif %}
       <div class="demo-sidebar-head">Menú</div>
-      <nav class="demo-menu" aria-label="Módulos">
+      <nav class="demo-menu flex-grow-1 overflow-auto" aria-label="Módulos">
         {% for item in (nav_ops if nav_ops is defined else nav_menu) %}
         <a href="{{ url_for(item.endpoint) }}"
            class="demo-nav-link {% if item.badge_count is defined and item.badge_count is not none %}nav-with-count{% endif %} {% if active_key == item.key %}active{% endif %}">
@@ -99,16 +122,16 @@
         </a>
         {% endfor %}
         {% endif %}
-        {% if show_planes %}
-        <div class="demo-menu-foot">
-          <a href="{{ url_for('planes') }}"
-             class="demo-nav-link nav-planes {% if active_key == 'Planes' %}active{% endif %}">
-            <span class="nav-link-main"><i class="bi bi-tags-fill" aria-hidden="true"></i> <strong>Planes</strong></span>
-            <span class="nav-fee nav-fee-pack">REVISA TU PLAN</span>
-          </a>
-        </div>
-        {% endif %}
       </nav>
+      {% if show_planes %}
+      <div class="demo-menu-foot">
+        <a href="{{ url_for('planes') }}"
+           class="demo-nav-link nav-planes {% if active_key == 'Planes' %}active{% endif %}">
+          <span class="nav-link-main"><i class="bi bi-tags-fill" aria-hidden="true"></i> <strong>Planes</strong></span>
+          <span class="nav-fee nav-fee-pack">REVISA TU PLAN</span>
+        </a>
+      </div>
+      {% endif %}
     </div>
   </div>
   {% endif %}

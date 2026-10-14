@@ -1,0 +1,11 @@
+{# Razón social en Compras: oculta selector si el tenant solo tiene una (El Espino). #}
+{% if razon_social_fija %}
+<input type="hidden" name="razon_social" value="{{ razon_social_fija }}">
+{% else %}
+<label class="form-label{% if label_class %} {{ label_class }}{% endif %}">Razón social</label>
+<select name="razon_social" class="form-select form-select-sm{% if select_class %} {{ select_class }}{% endif %}"{% if required %} required{% endif %}>
+  {% for r in razones_sociales %}
+  <option value="{{ r }}"{% if selected is defined and r == selected %} selected{% endif %}>{{ r }}</option>
+  {% endfor %}
+</select>
+{% endif %}

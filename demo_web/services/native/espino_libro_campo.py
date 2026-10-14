@@ -9,6 +9,7 @@ from flask import request, session, url_for
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.native.libro_campo import _especies_libro_campo
 
 CC_ESPINO = espino_bodega.CC_ESPINO
 CAR_KEY = "espino_lc_car"
@@ -130,8 +131,8 @@ def _leer_evento_meta(demo) -> dict:
     base = _evento_meta_defaults(demo)
     meta = session.get(META_KEY) or {}
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    if not out.get("especie") and _especies_libro_campo(demo):
+        out["especie"] = _especies_libro_campo(demo)[0]
     return out
 
 
@@ -194,7 +195,7 @@ def _ingreso(demo, conn) -> dict:
         "form_op_cert": bool(meta.get("op_cert")),
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_libro_campo(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -418,7 +419,8 @@ def post_guardar_evento(demo, conn) -> dict:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    especies = _especies_libro_campo(demo)
+    especie = request.form.get("especie") or (especies[0] if especies else "Cerezos")
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 

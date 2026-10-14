@@ -7,7 +7,8 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
+from demo_web.services.native._helpers import bodega_stock_pdf_columns, hoy_demo, ingrediente_activo_display, parse_date, parse_decimal_cl
+from demo_web.services.tenant_scope import centros_costo
 
 SECCIONES = [
     ("stock", "📊 STOCK ACTUAL"),
@@ -51,12 +52,14 @@ def _pop_alertas() -> dict:
     return out
 
 
-def _stock_rows(demo, dfs_view: pd.DataFrame, con_precio: bool) -> list[dict]:
+def _stock_rows(demo, conn, dfs_view: pd.DataFrame, con_precio: bool) -> list[dict]:
     rows = []
     for _, r in dfs_view.iterrows():
         row = {
             "producto": r["producto"],
-            "ing_activo": r.get("ingrediente_activo", ""),
+            "ing_activo": ingrediente_activo_display(
+                demo, conn, str(r["producto"]), str(r.get("ingrediente_activo") or "")
+            ),
             "familia": r.get("familia", ""),
             "stock": demo.f_cantidad(r["stock"]),
             "um": r.get("unidad_medida", "kg"),
@@ -91,9 +94,18 @@ def _stock(demo, conn, cert: bool = False) -> dict:
         dfs_op = dfs_view.drop(columns=["precio_medio", "id"], errors="ignore").rename(
             columns={"unidad_medida": "UM", "ingrediente_activo": "ING. ACTIVO"},
         )
+        if not dfs_op.empty:
+            dfs_op["ING. ACTIVO"] = dfs_view.apply(
+                lambda r: ingrediente_activo_display(
+                    demo, conn, str(r["producto"]), str(r.get("ingrediente_activo") or "")
+                ),
+                axis=1,
+            )
+            dfs_op["stock"] = dfs_view["stock"].apply(lambda v: demo.f_cantidad(v))
         if not dfs_op.empty and "pppl_aprobado" in dfs_op.columns:
-            dfs_op = dfs_op.rename(columns={"pppl_aprobado": "PPPL"})
+            dfs_op = dfs_op.rename(columns={"pppl_aprobado": "PPPL", "dias_carencia": "PHI"})
             dfs_op["PPPL"] = dfs_op["PPPL"].apply(lambda v: int(bool(v)))
+        dfs_op = bodega_stock_pdf_columns(dfs_op)
         blob = None
         if not dfs_op.empty:
             blob = demo.generar_pdf_blob(
@@ -128,7 +140,7 @@ def _stock(demo, conn, cert: bool = False) -> dict:
             }
 
     return {
-        "stock_rows": _stock_rows(demo, dfs_view, con_precio=not cert),
+        "stock_rows": _stock_rows(demo, conn, dfs_view, con_precio=not cert),
         "stock_cols": (
             ["producto", "ing_activo", "familia", "stock", "um", "pppl", "phi"]
             if cert
@@ -176,7 +188,7 @@ def _procesar_salida(demo, conn) -> dict:
     if ct is None:
         return {"ok": False, "msg": "Cantidad inválida. Use coma decimal (ej. 1,5)."}
 
-    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in demo.CENTROS_COSTO]
+    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in centros_costo(demo)]
     row = conn.execute(
         "SELECT producto, precio_medio, COALESCE(unidad_medida, ?), COALESCE(stock, 0) "
         "FROM inventario WHERE id=?",
@@ -304,9 +316,9 @@ def _pppl(demo, conn) -> dict:
 
 def _consulta_cuartel(demo, conn) -> dict:
     hoy = hoy_demo(demo)
-    ccq = request.args.get("cuartel", demo.CENTROS_COSTO[0])
-    if ccq not in demo.CENTROS_COSTO:
-        ccq = demo.CENTROS_COSTO[0]
+    ccq = request.args.get("cuartel", centros_costo(demo)[0])
+    if ccq not in centros_costo(demo):
+        ccq = centros_costo(demo)[0]
     fi = parse_date(request.args.get("desde"), hoy - timedelta(days=90))
     ff = parse_date(request.args.get("hasta"), hoy)
 
@@ -380,7 +392,7 @@ def _consulta_cuartel(demo, conn) -> dict:
         "mov_opts": mov_opts,
         "mov_edit": mov_edit,
         "filtro_cuartel": ccq,
-        "cuarteles": demo.CENTROS_COSTO,
+        "cuarteles": centros_costo(demo),
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "pdf_consulta_url": pdf_url,
@@ -675,7 +687,7 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
             ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
         elif sec == "salida":
             ctx["productos_salida"] = _productos_salida(demo, conn)
-            ctx["cuarteles"] = demo.CENTROS_COSTO
+            ctx["cuarteles"] = centros_costo(demo)
         elif sec == "pppl":
             ctx.update(_pppl(demo, conn))
         elif sec == "apertura":
