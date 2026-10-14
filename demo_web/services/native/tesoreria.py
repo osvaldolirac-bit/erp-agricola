@@ -330,7 +330,9 @@ def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, 
     n_docs = len(documentos)
     linea_banco = f"<p><b>🏦 Banco:</b> {html_esc(banco)}</p>" if banco else ""
     pagador = razones_sociales_desde_docs(documentos, razon_social) or ""
-    marca_erp = (getattr(demo, "NOMBRE_ERP", None) or "Agrícola La Concepción").strip()
+    from demo_web.services.tenant_scope import nombre_erp
+
+    marca_erp = nombre_erp(demo)
     linea_razon = (
         f"<p><b>🏛️ Razón social que paga:</b> {html_esc(pagador)}</p>"
         if pagador else ""
@@ -408,6 +410,7 @@ def _enriquecer_razon_social_lineas(conn, lineas: list) -> list:
 
 
 def _avisos_pago(demo, conn, proveedor, lineas, monto_total, metodo, fecha_pago, enviar_mail: bool, usuario: str, banco=""):
+    from demo_web.services.tenant_scope import nombre_erp
     from erp_proveedores import (
         enviar_correo_pago_proveedor_si_corresponde,
         mensaje_avisos_pago_proveedor,
@@ -429,7 +432,7 @@ def _avisos_pago(demo, conn, proveedor, lineas, monto_total, metodo, fecha_pago,
         monto_total,
         metodo,
         fecha_pago,
-        demo.NOMBRE_ERP,
+        nombre_erp(demo),
         demo._enviar_correo_html,
         registrar_accion=demo.registrar_accion,
         razon_social=razon,
@@ -441,7 +444,7 @@ def _avisos_pago(demo, conn, proveedor, lineas, monto_total, metodo, fecha_pago,
         monto_total,
         metodo,
         fecha_pago,
-        demo.NOMBRE_ERP,
+        nombre_erp(demo),
         secrets_path=demo.SECRETS_PATH,
         registrar_accion=demo.registrar_accion,
         razon_social=razon,
