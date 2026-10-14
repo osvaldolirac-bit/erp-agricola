@@ -34,7 +34,18 @@ from demo_web.services.registro_riego import (
 bp = Blueprint("registro_riego", __name__)
 
 _HONEYPOT_FIELD = "sr_hp_x9f2"
-_HYDRA_TABS = frozenset({"control", "bitacora"})
+_HYDRA_TABS = frozenset({"control", "regar", "programar", "bitacora"})
+
+
+def _tab_despues_hydra_action(action: str) -> str:
+    if action == "hydra_regar_ahora":
+        return "regar"
+    if action == "hydra_programar":
+        return "programar"
+    raw = (request.form.get("tab") or "control").strip().lower()
+    if raw in _HYDRA_TABS:
+        return raw
+    return "control"
 
 
 def _token_request() -> str | None:
@@ -317,7 +328,7 @@ def formulario():
                 hydra_ok = bool(result.get("ok"))
                 if action == "hydra_refresh_estado" and result.get("zonas"):
                     live_zonas = result.get("zonas") or {}
-                tab = "control"
+                tab = _tab_despues_hydra_action(action)
         else:
             if use_hydra_ui:
                 hydra_msg = (

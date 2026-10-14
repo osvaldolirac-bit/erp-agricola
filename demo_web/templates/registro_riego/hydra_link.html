@@ -61,10 +61,20 @@
 
     {% include "registro_riego/_hydra_link_tabs.html" %}
 
-    {% if tab == 'control' %}
     {% set hydra_ui_scope = 'link' %}
     {% set hydra_puede_operar = true %}
-    {% include "registro_riego/_hydra_control_ui.html" %}
+    {% if tab == 'control' %}
+    {% include "registro_riego/_hydra_panel_control.html" %}
+    {% elif tab == 'regar' %}
+    {% include "registro_riego/_hydra_panel_regar.html" %}
+    <script id="hydraSectorsJson" type="application/json">{{ hydra_sectores|tojson }}</script>
+    <script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
+    {% include "registro_riego/_hydra_fert_row_template.html" %}
+    {% elif tab == 'programar' %}
+    {% include "registro_riego/_hydra_panel_programar.html" %}
+    <script id="hydraSectorsJson" type="application/json">{{ hydra_sectores|tojson }}</script>
+    <script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
+    {% include "registro_riego/_hydra_fert_row_template.html" %}
     {% elif tab == 'bitacora' %}
     {% include "registro_riego/_hydra_bitacora_ui.html" %}
     {% endif %}
@@ -78,7 +88,7 @@
     </footer>
   </main>
 
-  {% if acceso_personal and tab == 'control' %}
+  {% if acceso_personal and tab in ('regar', 'programar') %}
   <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
   {% endif %}
 
