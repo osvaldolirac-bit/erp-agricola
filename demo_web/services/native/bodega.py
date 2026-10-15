@@ -776,10 +776,9 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
         if sec == "stock":
             ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
             if get_erp_app() == "concepcion" and not demo.es_certificacion():
-                ctx["link_stock_movil"] = url_for(
-                    "auth.login_stock_bodega",
-                    _external=True,
-                )
+                from demo_web.auth.public_urls import url_publica_login_stock_bodega
+
+                ctx["link_stock_movil"] = url_publica_login_stock_bodega()
         elif sec == "kardex" and kardex_on:
             from demo_web.services import bodega_kardex
 
