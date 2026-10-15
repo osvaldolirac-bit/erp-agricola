@@ -1,0 +1,32 @@
+<section class="hydra-link-block hydra-link-block--run" aria-labelledby="hydraBlockRun">
+  <h2 class="hydra-link-section-title" id="hydraBlockRun">Regar ahora</h2>
+  <p class="hydra-link-hint mb-2">Un sector a la vez en el controlador. Agregue filas para secuencia.</p>
+  <form method="post" id="formHydraRunNow" class="hydra-link-run-form">
+    {% include "registro_riego/_hydra_scope_fields.html" %}
+    <input type="hidden" name="action" value="hydra_regar_ahora">
+    <input type="hidden" name="hw_lineas_json" value="">
+    <div id="hydraLineasRun">
+      <div class="hydra-linea mb-3 pb-2 border-bottom">
+        <div class="row g-2 align-items-center">
+          <div class="col-md-7 col-7">
+            <select name="hw_relay_id" class="form-select" required {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>
+              <option value="">Sector</option>
+              {% for s in hydra_sectores %}
+              <option value="{{ s.relay_id }}">{{ s.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3 col-3">
+            <input type="number" name="hw_minutos" class="form-control" min="1" step="1" placeholder="min" value="30" required {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>
+          </div>
+          <div class="col-md-2 col-2">
+            <button type="button" class="btn btn-sm btn-link text-danger hydra-quitar p-0 d-none">✕</button>
+          </div>
+        </div>
+        {% include "registro_riego/_hydra_fert_en_linea.html" %}
+      </div>
+    </div>
+    <button type="button" class="btn btn-sm hydra-btn-add-sector mb-2" id="hydraAddLinea" {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>+ Otro sector</button>
+    <button type="submit" class="btn hydra-btn-run w-100" {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>Iniciar riego</button>
+  </form>
+</section>

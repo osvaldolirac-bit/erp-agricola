@@ -25,6 +25,41 @@
   {% endif %}
 
   {% if sec_activa == 'stock' %}
+  {% if erp_app == 'concepcion' and not es_certificacion %}
+  <div class="panel-card mb-3 border-success">
+    <h2 class="h6 mb-1">📱 Link stock + kardex (celular / WhatsApp)</h2>
+    <p class="small text-muted mb-2 mb-md-2">
+      Enlace público fijo <strong>{{ link_stock_movil }}</strong> (WhatsApp no pierde parámetros).
+      Tras login abre stock móvil + kardex LC; si ya hay sesión, entra directo.
+    </p>
+    <div class="input-group">
+      <input type="text" class="form-control form-control-sm font-monospace" id="lcLinkStockMovil" readonly value="{{ link_stock_movil }}">
+      <button type="button" class="btn btn-success btn-sm" id="lcCopyStockMovil">Copiar link</button>
+    </div>
+    <p class="small text-success mb-0 mt-2 d-none" id="lcCopyStockMovilOk">Copiado — puede pegarlo en WhatsApp.</p>
+  </div>
+  <script>
+  (function () {
+    var btn = document.getElementById('lcCopyStockMovil');
+    var inp = document.getElementById('lcLinkStockMovil');
+    var ok = document.getElementById('lcCopyStockMovilOk');
+    if (!btn || !inp) return;
+    btn.addEventListener('click', function () {
+      var t = inp.value || '';
+      function done() {
+        if (ok) { ok.classList.remove('d-none'); setTimeout(function () { ok.classList.add('d-none'); }, 3500); }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(t).then(done).catch(function () {
+          inp.select(); document.execCommand('copy'); done();
+        });
+      } else {
+        inp.select(); document.execCommand('copy'); done();
+      }
+    });
+  })();
+  </script>
+  {% endif %}
   <div class="panel-card mb-3">
     <form method="get" class="row g-2">
       <input type="hidden" name="sec" value="stock">

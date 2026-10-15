@@ -1,0 +1,78 @@
+{% set _colas_panel = hydra_colas if hydra_colas is defined and hydra_colas else ([hydra_cola] if hydra_cola else []) %}
+{% if _colas_panel %}
+<section class="hydra-link-block hydra-link-block--cola" aria-labelledby="hydraBlockCola">
+  <h2 class="hydra-link-section-title" id="hydraBlockCola">{% if _colas_panel|length > 1 %}Colas activas{% else %}Cola activa{% endif %}</h2>
+  {% for cola in _colas_panel %}
+  <div class="hydra-cola-card mb-3">
+    <div class="hydra-cola-card-head">
+      <strong>Cola #{{ cola.id }}</strong>
+      <span class="hydra-cola-estado hydra-cola-estado--{{ cola.estado }}">{{ cola.estado }}</span>
+    </div>
+    <p class="small text-muted mb-2">Inicio {{ cola.inicio_programa[:16] }} · {{ cola.tipo }}</p>
+    <ol class="hydra-cola-list mb-0">
+      {% for it in cola.turnos %}
+      <li class="hydra-cola-item hydra-cola-item--{{ it.estado }}">
+        <span>{{ it.label }}</span>
+        <span>{{ it.minutos|int }} min</span>
+        <span class="hydra-cola-item-state">{{ it.estado }}</span>
+        {% if it.con_fertilizacion %}<span class="small text-muted">· con fert</span>{% elif it.estado == 'pendiente' %}<span class="small text-muted">· sin fert</span>{% endif %}
+        {% if it.codigo_riego %}<span class="hydra-cola-codigo">{{ it.codigo_riego }}</span>{% endif %}
+        {% if it.error_msg %}<span class="text-danger small">{{ it.error_msg }}</span>{% endif %}
+      </li>
+      {% if it.estado == 'pendiente' %}
+      <li class="list-unstyled ms-2 mb-3">
+        <form method="post" class="hydra-edit-fert-form border rounded p-2 bg-light">
+          {% include "registro_riego/_hydra_scope_fields.html" %}
+          <input type="hidden" name="action" value="hydra_editar_fert_item">
+          <input type="hidden" name="cola_item_id" value="{{ it.id }}">
+          <p class="small fw-semibold mb-1">Editar fertirriego (pendiente)</p>
+          <label class="hydra-fert-toggle mb-2 d-block">
+            <input type="checkbox" class="form-check-input" name="con_fertilizacion" value="1" {% if it.con_fertilizacion %}checked{% endif %}>
+            <span class="hydra-fert-toggle-body">
+              <span class="hydra-fert-toggle-title">Fertirriego en este sector</span>
+              <span class="hydra-fert-toggle-hint">Desmarque si regará solo agua</span>
+            </span>
+          </label>
+          <div class="hydra-fert-block{% if not it.con_fertilizacion %} d-none{% endif %}">
+            <div class="hydra-fert-rows">
+              {% for ln in it.fertilizantes %}
+              <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
+                <select name="fert_producto_id" class="form-select form-select-sm mb-1">
+                  <option value="">Producto</option>
+                  {% for f in fertilizantes %}
+                  <option value="{{ f.id }}" {% if f.id|string == ln.producto_id|string %}selected{% endif %}>{{ f.etiqueta|default(f.nombre) }}</option>
+                  {% endfor %}
+                </select>
+                <div class="row g-1">
+                  <div class="col-6">
+                    <input type="number" name="fert_cantidad" class="form-control form-control-sm" value="{{ ln.cantidad }}" min="0" step="any">
+                  </div>
+                  <div class="col-6">
+                    <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" value="{{ ln.dosis_ha or '' }}" min="0" step="any" placeholder="Dosis/ha">
+                  </div>
+                </div>
+              </div>
+              {% else %}
+              <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
+                <select name="fert_producto_id" class="form-select form-select-sm mb-1">
+                  <option value="">Producto</option>
+                  {% for f in fertilizantes %}
+                  <option value="{{ f.id }}">{{ f.etiqueta|default(f.nombre) }}</option>
+                  {% endfor %}
+                </select>
+                <input type="number" name="fert_cantidad" class="form-control form-control-sm" min="0" step="any" placeholder="Cantidad">
+              </div>
+              {% endfor %}
+            </div>
+            <button type="button" class="btn btn-sm hydra-btn-add-fert hydra-add-fert-row">+ Fertilizante</button>
+          </div>
+          <button type="submit" class="btn btn-sm hydra-btn-plan mt-2">Guardar fertirriego</button>
+        </form>
+      </li>
+      {% endif %}
+      {% endfor %}
+    </ol>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
