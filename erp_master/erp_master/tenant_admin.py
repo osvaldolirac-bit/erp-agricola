@@ -705,7 +705,7 @@ _PRORRATEO_DEFAULTS: dict[str, dict[str, Any]] = {
             "NOGALES APARICION": 7.0,
             "NOGALES CRUZ DEL SUR": 4.0,
         },
-        "directos": ["EL ESPINO", "OTROS"],
+        "directos": ["EL ESPINO"],
     },
 }
 
