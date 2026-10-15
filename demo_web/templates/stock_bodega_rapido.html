@@ -26,49 +26,116 @@
       padding: 0.85rem 1rem;
       margin-bottom: 0.5rem;
       box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      color: inherit;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
     }
+    a.stock-row { text-decoration: none; }
+    a.stock-row:active { opacity: 0.85; }
+    .stock-row.activo { outline: 2px solid #1a5f2a; background: #f0faf2; }
     .stock-qty { font-size: 1.25rem; font-weight: 700; color: #1a5f2a; white-space: nowrap; }
     .stock-name { font-weight: 600; line-height: 1.25; }
     .familia-tag { font-size: 0.75rem; color: #6c757d; }
     .search-wrap input { border-radius: 999px; padding-left: 1rem; }
     .footer-link { font-size: 0.85rem; }
+    .kardex-panel {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,.08);
+    }
+    .mov-row {
+      border-left: 4px solid #ccc;
+      padding: 0.5rem 0 0.5rem 0.65rem;
+      margin-bottom: 0.35rem;
+      font-size: 0.9rem;
+    }
+    .mov-row.ing { border-color: #198754; background: #f8fff9; }
+    .mov-row.sal { border-color: #dc3545; background: #fff8f8; }
+    .mov-delta { font-weight: 700; }
+    .btn-back { color: #fff; border-color: rgba(255,255,255,.6); }
   </style>
 </head>
 <body>
   <header class="stock-header">
-    <h1 class="h5 mb-1">📦 Stock bodega</h1>
-    <p class="small mb-2 opacity-75">{{ erp_title }} · solo lectura · {{ actualizado }}</p>
+    {% if pid and kardex_producto %}
+    <a class="btn btn-sm btn-outline-light btn-back mb-2" href="{{ url_stock_list }}">← Stock</a>
+    <h1 class="h5 mb-1">{{ kardex_producto.nombre }}</h1>
+    <p class="small mb-0 opacity-75">
+      Stock {{ kardex_producto.stock }} {{ kardex_producto.um }}
+      · Ing {{ kardex_producto.ing_total }} · Sal {{ kardex_producto.sal_total }}
+    </p>
+    {% else %}
+    <h1 class="h5 mb-1">📦 Stock + kardex</h1>
+    <p class="small mb-2 opacity-75">{{ erp_title }} · toque un producto · {{ actualizado }}</p>
     <form method="get" class="search-wrap mb-2">
       <input type="search" name="q" class="form-control form-control-lg" value="{{ filtro_q }}"
              placeholder="Buscar producto o familia…" autocomplete="off" enterkeyhint="search">
     </form>
+    {% endif %}
   </header>
 
   <main class="container-fluid px-3 py-2">
-    {% if items %}
-    <p class="small text-muted mb-2">{{ items|length }} producto(s) con stock</p>
-    {% for row in items %}
-    <div class="stock-row d-flex justify-content-between align-items-center gap-2">
-      <div class="min-w-0">
-        <div class="stock-name text-truncate">{{ row.producto }}</div>
-        {% if row.familia %}<div class="familia-tag">{{ row.familia }}</div>{% endif %}
-      </div>
-      <div class="stock-qty text-end">{{ row.stock }} <span class="fs-6 fw-normal text-muted">{{ row.um }}</span></div>
-    </div>
-    {% endfor %}
-    {% else %}
-    <div class="alert alert-light border mt-2">
-      {% if filtro_q %}
-      Sin resultados para «{{ filtro_q }}».
-      {% else %}
-      No hay productos con stock en bodega.
+    {% if pid %}
+      {% if kardex_error %}
+      <div class="alert alert-warning">{{ kardex_error }}</div>
+      {% elif kardex_producto %}
+        {% if kardex_lc_pendientes %}
+        <div class="alert alert-warning small py-2">
+          LC sin par en bodega:
+          {% for lc in kardex_lc_pendientes %}
+          App {{ '%05d'|format(lc.n_app) }} · {{ lc.fecha }} · −{{ lc.gasto }}{% if not loop.last %} · {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if kardex_rows %}
+        <div class="kardex-panel">
+          <h2 class="h6 mb-2">Cuenta corriente</h2>
+          {% for m in kardex_rows %}
+          <div class="mov-row {% if m.tipo == 'Ingreso' %}ing{% else %}sal{% endif %}">
+            <div class="d-flex justify-content-between">
+              <span>{{ m.fecha }} · {{ m.tipo }}</span>
+              <span class="mov-delta">{{ m.delta_fmt }} {{ kardex_producto.um }}</span>
+            </div>
+            <div class="text-muted small">{{ m.cuartel }} · {{ m.origen }}</div>
+            <div class="small text-end">Saldo {{ m.saldo }} {{ kardex_producto.um }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-light border">Sin movimientos en bodega para este producto.</div>
+        {% endif %}
       {% endif %}
-    </div>
+    {% else %}
+      {% if items %}
+      <p class="small text-muted mb-2">{{ items|length }} con stock · toque para ver kardex</p>
+      {% for row in items %}
+      <a class="stock-row{% if row.activo %} activo{% endif %}"
+         href="{{ url_for('modules.stock_bodega_rapido', pid=row.id, q=filtro_q or none) }}">
+        <div class="min-w-0">
+          <div class="stock-name text-truncate">{{ row.producto }}</div>
+          {% if row.familia %}<div class="familia-tag">{{ row.familia }}</div>{% endif %}
+        </div>
+        <div class="stock-qty text-end">{{ row.stock }} <span class="fs-6 fw-normal text-muted">{{ row.um }}</span></div>
+      </a>
+      {% endfor %}
+      {% else %}
+      <div class="alert alert-light border mt-2">
+        {% if filtro_q %}
+        Sin resultados para «{{ filtro_q }}».
+        {% else %}
+        No hay productos con stock en bodega.
+        {% endif %}
+      </div>
+      {% endif %}
     {% endif %}
   </main>
 
   <footer class="text-center py-3 px-3">
-    <a class="footer-link link-secondary" href="{{ url_for('modules.bodega', sec='stock') }}">Abrir módulo Bodega completo</a>
+    <a class="footer-link link-secondary" href="{{ url_for('modules.bodega', sec='stock') }}">Bodega ERP completo</a>
   </footer>
 </body>
 </html>
