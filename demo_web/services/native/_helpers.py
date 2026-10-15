@@ -40,6 +40,24 @@ def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | No
         return default
 
 
+def parse_decimal_form(raw: str | None, default: float | None = 0.0) -> float | None:
+    """Coma chilena (parse_decimal_cl) o punto decimal de inputs HTML type=number."""
+    v = parse_decimal_cl(raw, None)
+    if v is not None:
+        return v
+    import re
+
+    s = (raw or "").strip().replace(" ", "").replace("$", "")
+    if not s:
+        return default
+    if re.fullmatch(r"\d+\.\d+", s):
+        try:
+            return float(s)
+        except ValueError:
+            return default
+    return default
+
+
 def temporada_sel(demo, param: str = "temp", temporadas=None) -> tuple[str, date, date]:
     from flask import request
 

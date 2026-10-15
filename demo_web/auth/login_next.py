@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from flask import current_app, request, session, url_for
 
+# Destino fijo post-login (link móvil; WhatsApp suele quitar ?next=)
+LOGIN_DEST_STOCK = "stock_bodega"
+
 
 def login_next_prefix() -> str:
     return (
@@ -22,9 +25,14 @@ def parse_next(raw: str | None) -> str | None:
         or nxt.startswith("/riomaipo")
         or nxt.startswith("/laconcepcion")
         or nxt.startswith("/demo")
-        or (prefix and not (nxt == prefix or nxt.startswith(prefix + "/")))
     ):
         return None
+    if prefix and not (nxt == prefix or nxt.startswith(prefix + "/")):
+        # Tras proxy móvil a veces llega /m/... sin SCRIPT_NAME; rearmar ruta rubro.
+        if nxt.startswith("/m/") or nxt.startswith("/api/"):
+            nxt = prefix.rstrip("/") + nxt
+        else:
+            return None
     return nxt
 
 

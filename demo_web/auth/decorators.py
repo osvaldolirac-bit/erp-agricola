@@ -83,7 +83,19 @@ def login_required(view: Callable):
                     return redirect(acceso_login_path(current_app))
             except Exception:
                 pass
-            stash_login_next(request_path())
+            from demo_web.auth.login_next import parse_next
+
+            if request.endpoint == "modules.stock_bodega_rapido":
+                from demo_web.auth.login_next import LOGIN_DEST_STOCK
+
+                session["login_dest"] = LOGIN_DEST_STOCK
+                return redirect(url_for("auth.login_stock_bodega"))
+
+            path = request_path()
+            stash_login_next(path)
+            nxt = parse_next(path) or parse_next(session.get("login_next"))
+            if nxt:
+                return redirect(url_for("auth.login", next=nxt))
             return redirect(url_for("auth.login"))
         demo = get_demo_module()
         conn = demo.conectar_db()
@@ -143,12 +155,16 @@ def module_required(module_key: str):
 
 
 def request_path() -> str:
-    from flask import request
+    from flask import current_app, request
 
-    prefix = request.script_root or ""
-    path = request.full_path if request.query_string else request.path
+    prefix = (request.script_root or "").rstrip("/")
+    if not prefix:
+        prefix = (current_app.config.get("APPLICATION_ROOT") or "").rstrip("/")
+    path = request.path
+    if request.query_string:
+        path = f"{path}?{request.query_string.decode()}"
     if prefix and not path.startswith(prefix):
-        return prefix + path
+        path = f"{prefix}{path}" if path.startswith("/") else f"{prefix}/{path}"
     return path
 
 

@@ -1,0 +1,86 @@
+<style>
+  .hydra-zone-timer {
+    margin-top: 0.35rem;
+    font-size: 1.05rem;
+    color: #0d6efd;
+  }
+  .hydra-zone-timer-value {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.35rem;
+    letter-spacing: 0.02em;
+  }
+  .hydra-zone-card.is-running .hydra-zone-timer {
+    color: #198754;
+  }
+  .hydra-zone-timer--done .hydra-zone-timer-value {
+    color: #6c757d;
+  }
+  button.hydra-zone-card--tappable {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    font: inherit;
+    cursor: pointer;
+  }
+  button.hydra-zone-card--tappable:focus-visible {
+    outline: 2px solid #198754;
+    outline-offset: 2px;
+  }
+  .hydra-zone-tap-hint {
+    margin-top: 0.35rem;
+    opacity: 0.85;
+  }
+  .hydra-run-detail-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+  .hydra-run-detail-backdrop[hidden] {
+    display: none !important;
+  }
+  body.hydra-run-detail-open {
+    overflow: hidden;
+  }
+  .hydra-run-detail-sheet {
+    background: #fff;
+    width: 100%;
+    max-width: 480px;
+    max-height: 88vh;
+    overflow: auto;
+    border-radius: 16px 16px 0 0;
+    padding: 1rem 1.1rem 1.25rem;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
+  }
+  .hydra-run-detail-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .hydra-run-detail-title {
+    font-size: 1.15rem;
+    margin: 0;
+  }
+  .hydra-run-detail-dl div {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    gap: 0.35rem 0.75rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.92rem;
+  }
+  .hydra-run-detail-dl dt {
+    margin: 0;
+    color: #6c757d;
+    font-weight: 500;
+  }
+  .hydra-run-detail-dl dd {
+    margin: 0;
+  }
+</style>

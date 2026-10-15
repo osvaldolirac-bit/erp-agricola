@@ -19,6 +19,21 @@ SECCIONES_BASE = [
     ("prog_ciruelos", "🟣 PROGRAMA CIRUELOS"),
 ]
 
+
+def _especies_libro_campo(demo) -> list[str]:
+    """Especies agrícolas LC (Cerezos, Ciruelos, Nogales) — no confundir con GAP_ESPECIES / razón social."""
+    try:
+        from demo_web.services.tenant_scope import libro_campo_especies
+
+        return list(libro_campo_especies(demo))
+    except ImportError:
+        pass
+    especies = getattr(demo, "LIBRO_CAMPO_ESPECIES", None)
+    if especies:
+        return list(especies)
+    return list(getattr(demo, "GAP_ESPECIES", []) or [])
+
+
 FITOSANITARIO_PROGRAMAS = {
     "cerezos": {
         "titulo": "Programa Fitosanitario Cerezas",
@@ -177,22 +192,8 @@ def _redirect_lc(sec: str, **extra) -> redirect_module:
 
 def _pop_alertas() -> dict:
     out = {}
-    if "lc_alerta_bodega" in session:
-        al = session.pop("lc_alerta_bodega")
-        prods = []
-        for p in al.get("productos", []):
-            prods.append(
-                {
-                    "producto": p.get("producto", ""),
-                    "cantidad": p.get("gasto_total", 0),
-                    "um": p.get("um_gasto", "gr"),
-                }
-            )
-        out["alerta_bodega"] = {
-            "n_app": al.get("n_app"),
-            "huerto": al.get("huerto", ""),
-            "productos": prods,
-        }
+    if "lc_rebaje_bodega_ok" in session:
+        out["rebaje_bodega_ok"] = session.pop("lc_rebaje_bodega_ok")
     return out
 
 
@@ -257,8 +258,9 @@ def _leer_evento_meta(demo) -> dict:
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
     if not out.get("cuartel") and getattr(demo, "CENTROS_COSTO", None):
         out["cuartel"] = demo.CENTROS_COSTO[0]
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    especies = _especies_libro_campo(demo)
+    if not out.get("especie") and especies:
+        out["especie"] = especies[0]
     return out
 
 # Histórico importado (planillas antiguas) vive en n_aplicacion >= 10000
@@ -330,7 +332,7 @@ def _ingreso(demo, conn) -> dict:
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
         "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_libro_campo(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -559,7 +561,7 @@ def _modificar(demo, conn) -> dict:
         "mod_edit": edit_linea,
         "mod_app_sel": edit_app,
         "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "especies": _especies_libro_campo(demo),
         "unidades_dosis": UNIDADES_DOSIS,
         "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
@@ -643,9 +645,24 @@ def _post_guardar_evento(demo, conn) -> dict:
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
     huerto = request.form.get("cuartel") or demo.CENTROS_COSTO[0]
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    especies = _especies_libro_campo(demo)
+    especie = request.form.get("especie") or (especies[0] if especies else "")
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
+
+    from demo_web.services.native.bodega import (
+        registrar_salida_bodega_lc,
+        validar_salida_bodega_lc,
+    )
+
+    for item in car:
+        cant = float(item.get("gasto_total") or 0)
+        prod = str(item.get("producto") or "")
+        ok, msg, _, _, _ = validar_salida_bodega_lc(
+            demo, conn, cant, producto_nombre=prod
+        )
+        if not ok:
+            return {"ok": False, "msg": msg or f"No hay stock para {prod}."}
 
     n_app = _siguiente_n_aplicacion(conn)
     # n_orden = correlativo de planilla GlobalGAP (por cuartel); independiente del N° APP.
@@ -677,13 +694,31 @@ def _post_guardar_evento(demo, conn) -> dict:
         car,
         op_cert=op_cert,
     )
+
+    for item in car:
+        ok, msg = registrar_salida_bodega_lc(
+            demo,
+            conn,
+            float(item.get("gasto_total") or 0),
+            producto_nombre=str(item.get("producto") or ""),
+            centro_costo=huerto,
+            fecha=fe_app,
+        )
+        if not ok:
+            conn.rollback()
+            return {"ok": False, "msg": msg or "No se pudo rebajar bodega."}
+
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
     demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
-    session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
+    rebajes = [
+        f"{p['producto']} −{demo.f_cantidad(p.get('gasto_total', 0))} {p.get('um_gasto', '')} → {huerto}"
+        for p in car
+    ]
+    session["lc_rebaje_bodega_ok"] = {"n_app": n_app, "huerto": huerto, "rebajes": rebajes}
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
-    msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
+    msg = f"Aplicación N° {n_app:05d} guardada. Bodega rebajada e imputada a {huerto}."
     if wx:
         msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
     msg += " — visible en planilla GlobalGAP."

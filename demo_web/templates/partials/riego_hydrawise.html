@@ -1,0 +1,122 @@
+{% if sec_activa == 'hydra' %}
+<nav class="nav nav-tabs mb-3" aria-label="Subsecciones HYDRA">
+  <a class="nav-link{% if hydra_tab|default('parametros') == 'parametros' %} active{% endif %}"
+     href="{{ url_for('modules.riego', sec='hydra', hydra_tab='parametros') }}">Parámetros</a>
+  <a class="nav-link{% if hydra_tab|default('parametros') == 'control' %} active{% endif %}"
+     href="{{ url_for('modules.riego', sec='hydra', hydra_tab='control') }}">Control Hydra</a>
+</nav>
+
+{% if hydra_tab|default('parametros') == 'parametros' %}
+<div class="panel-card mb-3">
+  <h2 class="h6">Hydrawise (Hydra)</h2>
+  <p class="small text-muted mb-2">
+    Control oficial vía Hydrawise — La Aparición. API key en Administración → Hydrawise.
+    Tras regar en campo, use <strong>Sincronizar ahora</strong> para historial, CC y bodega.
+  </p>
+  <div class="alert alert-{{ 'info' if hydra_api_ok else 'warning' }} py-2 small">{{ hydra_api_msg|default('Configure API key en Administración.') }}{% if hydra_controller_id %} · Equipo {{ hydra_controller_id }}{% endif %}</div>
+
+  <form method="post" class="mb-3">
+    <input type="hidden" name="sec" value="hydra">
+    <input type="hidden" name="hydra_tab" value="parametros">
+    <button type="submit" name="action" value="hydra_sync" class="btn btn-primary btn-sm">Sincronizar ahora</button>
+    {% if hydra_puede_editar %}
+    <button type="submit" name="action" value="hydra_import_zonas" class="btn btn-outline-secondary btn-sm">Importar sectores desde Hydrawise</button>
+    {% endif %}
+  </form>
+</div>
+
+{% if hydra_puede_editar %}
+<div class="panel-card mb-3">
+  <h3 class="h6">Sectores (mapeo CC + fertirriego)</h3>
+  {% if hydra_zonas %}
+  {% for z in hydra_zonas %}
+  <form method="post" class="border rounded p-2 mb-2 bg-light">
+    <input type="hidden" name="sec" value="hydra">
+    <input type="hidden" name="hydra_tab" value="parametros">
+    <input type="hidden" name="action" value="hydra_guardar_zona">
+    <input type="hidden" name="relay_id" value="{{ z.relay_id }}">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small mb-0">Hydrawise</label>
+        <div class="small fw-semibold">{{ z.nombre_hw }} <span class="text-muted">(#{{ z.relay_id }})</span></div>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Alias</label>
+        <input type="text" name="alias" class="form-control form-control-sm" value="{{ z.alias }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Huerto (CC)</label>
+        <select name="huerto_cc" class="form-select form-select-sm">
+          <option value="">—</option>
+          {% for h in huertos %}
+          <option value="{{ h }}" {% if z.huerto_cc == h %}selected{% endif %}>{{ h }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Modo</label>
+        <select name="modo_riego" class="form-select form-select-sm">
+          <option value="horas" {% if z.modo_riego != 'surcos' %}selected{% endif %}>Tecnificado</option>
+          <option value="surcos" {% if z.modo_riego == 'surcos' %}selected{% endif %}>Surcos</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="activo" value="1" id="act{{ z.relay_id }}" {% if z.activo %}checked{% endif %}>
+          <label class="form-check-label small" for="act{{ z.relay_id }}">Activo</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="link_riego" value="1" id="lnk{{ z.relay_id }}" {% if z.link_riego %}checked{% endif %}>
+          <label class="form-check-label small" for="lnk{{ z.relay_id }}">En link regador</label>
+        </div>
+        <p class="small text-muted mb-0">Nombre Hydrawise: {{ z.nombre_hw }}</p>
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Receta fertirriego (JSON producto_id, cantidad, dosis_ha opcional)</label>
+        <textarea name="fert_json" class="form-control form-control-sm font-monospace" rows="2">{{ z.fert_json }}</textarea>
+        <p class="small text-muted mb-0">Ej: [{"producto_id":12,"cantidad":25.5}] — se aplica al importar cada riego.</p>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Guardar sector</button>
+      </div>
+    </div>
+  </form>
+  {% endfor %}
+  {% else %}
+  <p class="text-muted small mb-0">Importe sectores desde Hydrawise para configurar mapeo.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+{% include 'partials/_hydra_control_panel_styles.html' %}
+<div class="panel-card hydra-module-control mb-3">
+  <h2 class="h6">Control HYDRA (oficina)</h2>
+  <p class="small text-muted mb-3">
+    Igual que el <strong>link del regador</strong>, en tres pasos:
+    <strong>En ejecución</strong> (sectores, cola, lo que está regando),
+    <strong>Regar ahora</strong> y <strong>Programar</strong>.
+    En celular: <a href="{{ url_for('modules.riego', sec='bitacora') }}">Link riego</a>.
+  </p>
+  {% if not hydra_puede_operar|default(false) %}
+  <div class="alert alert-warning py-2 small">Solo administradores pueden iniciar o programar riego desde aquí.</div>
+  {% endif %}
+  {% if hydra_control_activo|default(false) %}
+  {% include 'registro_riego/_hydra_control_ui.html' %}
+  {% else %}
+  <div class="alert alert-secondary py-2 small mb-0">
+    Configure sectores en la pestaña <a href="{{ url_for('modules.riego', sec='hydra', hydra_tab='parametros') }}">Parámetros</a>
+    (activo + CC + en link) para habilitar el control como en el celular.
+  </div>
+  {% endif %}
+</div>
+{% set hct = hydra_control_tab|default('control') %}
+{% if hct in ('regar', 'programar') %}
+<script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
+{% endif %}
+{% if hct == 'control' %}
+<script src="{{ url_for('static', filename='js/hydra_link_timer.js') }}?v={{ static_version }}" defer></script>
+<script src="{{ url_for('static', filename='js/hydra_link_running_detail.js') }}?v={{ static_version }}" defer></script>
+{% endif %}
+{% endif %}
+{% endif %}
