@@ -93,8 +93,10 @@
 <div class="panel-card hydra-module-control mb-3">
   <h2 class="h6">Control HYDRA (oficina)</h2>
   <p class="small text-muted mb-3">
-    Misma operación que el <strong>link del regador</strong>: sectores Hydrawise, cola, regar ahora / programar y fertirriego por sector.
-    En celular use <a href="{{ url_for('modules.riego', sec='bitacora') }}">Link riego</a>.
+    Igual que el <strong>link del regador</strong>, en tres pasos:
+    <strong>En ejecución</strong> (sectores, cola, lo que está regando),
+    <strong>Regar ahora</strong> y <strong>Programar</strong>.
+    En celular: <a href="{{ url_for('modules.riego', sec='bitacora') }}">Link riego</a>.
   </p>
   {% if not hydra_puede_operar|default(false) %}
   <div class="alert alert-warning py-2 small">Solo administradores pueden iniciar o programar riego desde aquí.</div>
@@ -108,8 +110,13 @@
   </div>
   {% endif %}
 </div>
+{% set hct = hydra_control_tab|default('control') %}
+{% if hct in ('regar', 'programar') %}
 <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
+{% endif %}
+{% if hct == 'control' %}
 <script src="{{ url_for('static', filename='js/hydra_link_timer.js') }}?v={{ static_version }}" defer></script>
 <script src="{{ url_for('static', filename='js/hydra_link_running_detail.js') }}?v={{ static_version }}" defer></script>
+{% endif %}
 {% endif %}
 {% endif %}

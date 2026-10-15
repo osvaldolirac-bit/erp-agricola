@@ -15,6 +15,7 @@ SECCIONES = [
 ]
 SECCION_HYDRA = ("hydra", "🌐 HYDRA")
 HYDRA_TABS = ("parametros", "control")
+HYDRA_CONTROL_TABS = ("control", "regar", "programar")
 HYDRA_ACTION_TAB = {
     "hydra_sync": "parametros",
     "hydra_import_zonas": "parametros",
@@ -25,6 +26,14 @@ HYDRA_ACTION_TAB = {
     "hydra_cancelar_cola": "control",
     "hydra_editar_fert_item": "control",
 }
+HYDRA_ACTION_CONTROL_TAB = {
+    "hydra_regar_ahora": "control",
+    "hydra_programar": "control",
+    "hydra_parar": "control",
+    "hydra_cancelar_cola": "control",
+    "hydra_editar_fert_item": "control",
+    "hydra_sync": "control",
+}
 
 
 def _hydra_tab_from_request() -> str:
@@ -32,6 +41,23 @@ def _hydra_tab_from_request() -> str:
     if tab not in HYDRA_TABS:
         tab = "parametros"
     return tab
+
+
+def _hydra_control_tab_from_request() -> str:
+    tab = (request.values.get("hydra_control_tab") or "control").strip().lower()
+    if tab not in HYDRA_CONTROL_TABS:
+        tab = "control"
+    return tab
+
+
+def _hydra_redirect(**kwargs: str):
+    """Redirect módulo riego conservando sec/hydra_tab/hydra_control_tab."""
+    params = {"sec": kwargs.get("sec", "hydra")}
+    if kwargs.get("hydra_tab"):
+        params["hydra_tab"] = kwargs["hydra_tab"]
+    if kwargs.get("hydra_control_tab"):
+        params["hydra_control_tab"] = kwargs["hydra_control_tab"]
+    return redirect_module("riego", **params)
 
 
 def gather_riego(user_email: str, user_rol: str) -> dict:
@@ -109,6 +135,7 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         elif sec == "hydra" and is_concepcion_tenant():
             hydra_tab = _hydra_tab_from_request()
             ctx["hydra_tab"] = hydra_tab
+            ctx["hydra_control_tab"] = _hydra_control_tab_from_request()
             import json
 
             from demo_web.services.hydrawise_riego import (
@@ -164,6 +191,7 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
                 ctx["hydra_ui_scope"] = "module"
                 ctx["hydra_ui_sec"] = "hydra"
                 ctx["hydra_ui_tab"] = "control"
+                ctx["hydra_ui_control_tab"] = ctx["hydra_control_tab"]
 
         return ctx
     finally:
@@ -280,11 +308,16 @@ def view(user_email: str, user_rol: str):
 
         if is_concepcion_tenant() and action.startswith("hydra_"):
             hydra_tab = (request.form.get("hydra_tab") or "").strip().lower()
+            hydra_control_tab = (request.form.get("hydra_control_tab") or "").strip().lower()
             if hydra_tab not in HYDRA_TABS:
                 hydra_tab = HYDRA_ACTION_TAB.get(action, "parametros")
+            if action == "hydra_sync" and (request.form.get("hydra_tab") or "").strip().lower() == "control":
+                hydra_tab = "control"
+            if hydra_control_tab not in HYDRA_CONTROL_TABS:
+                hydra_control_tab = HYDRA_ACTION_CONTROL_TAB.get(action, "control")
             if not demo.es_admin():
                 flash("Solo administradores pueden operar Hydra.", "danger")
-                return redirect_module("riego", sec="hydra", hydra_tab=hydra_tab)
+                return _hydra_redirect(hydra_tab=hydra_tab, hydra_control_tab=hydra_control_tab)
             conn = demo.conectar_db()
             try:
                 from demo_web.services import hydrawise_riego as hw
@@ -361,7 +394,7 @@ def view(user_email: str, user_rol: str):
             finally:
                 conn.close()
             flash(result.get("msg", ""), "success" if result.get("ok") else "danger")
-            return redirect_module("riego", sec="hydra", hydra_tab=hydra_tab)
+            return _hydra_redirect(hydra_tab=hydra_tab, hydra_control_tab=hydra_control_tab)
 
     ctx = gather_riego(user_email, user_rol)
     return render_template(
