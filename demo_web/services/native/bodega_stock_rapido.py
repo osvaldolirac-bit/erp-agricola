@@ -31,7 +31,9 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
         if pid:
             from demo_web.services import bodega_kardex
 
-            kardex_ctx = bodega_kardex.gather_kardex_producto(demo, conn, pid)
+            kardex_ctx = bodega_kardex.gather_kardex_producto(
+                demo, conn, pid, include_pdf=False
+            )
     finally:
         conn.close()
 

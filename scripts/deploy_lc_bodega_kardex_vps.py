@@ -20,6 +20,7 @@ FILES = [
     "demo_web/blueprints/stock_bodega_link.py",
     "demo_web/templates/login.html",
     "demo_web/services/bodega_kardex.py",
+    "demo_web/blueprints/stock_bodega_link.py",
     "demo_web/services/espino_compras_kardex.py",
     "demo_web/services/native/bodega.py",
     "demo_web/services/native/_helpers.py",

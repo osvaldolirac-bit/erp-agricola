@@ -227,7 +227,9 @@ def _pdf_kardex_producto(demo, prod: dict, rows: list[dict]) -> tuple[str | None
     return url_for("modules.pdf_download", token=store_pdf(blob, fname)), fname
 
 
-def gather_kardex_producto(demo, conn, producto_id: int) -> dict:
+def gather_kardex_producto(
+    demo, conn, producto_id: int, *, include_pdf: bool = True
+) -> dict:
     """Libro mayor bodega LC: movimientos + saldo acumulado + enlace LC."""
     row = conn.execute(
         """SELECT id, producto, familia, COALESCE(unidad_medida, ?), COALESCE(stock, 0),
@@ -274,7 +276,14 @@ def gather_kardex_producto(demo, conn, producto_id: int) -> dict:
         "ing_total": demo.f_cantidad(ing_total),
         "sal_total": demo.f_cantidad(sal_total),
     }
-    pdf_kardex_url, pdf_kardex_filename = _pdf_kardex_producto(demo, kardex_producto, kardex_rows)
+    pdf_kardex_url, pdf_kardex_filename = (None, None)
+    if include_pdf:
+        try:
+            pdf_kardex_url, pdf_kardex_filename = _pdf_kardex_producto(
+                demo, kardex_producto, kardex_rows
+            )
+        except Exception:
+            pdf_kardex_url, pdf_kardex_filename = None, None
 
     return {
         "kardex_producto": kardex_producto,
