@@ -10,8 +10,12 @@
   </div>
 </div>
 <p class="hydra-link-sync-explain mb-3">
+  {% if hydra_ui_scope|default('link') == 'module' %}
+  Arme la cola en las pestañas <strong>Regar ahora</strong> o <strong>Programar</strong>. Aquí ve sectores, cola y lo que está regando.
+  {% else %}
   Use <strong>Regar ahora</strong> o <strong>Programar</strong> para armar la cola. Fertirriego se declara al iniciar o programar (editable en cola).
   Tras <strong>cancelar</strong> o <strong>apagar</strong>, la pantalla se actualiza sola; también puede <strong>deslizar hacia abajo</strong> para refrescar.
+  {% endif %}
 </p>
 
 <section class="hydra-link-block hydra-link-block--sectores" aria-labelledby="hydraBlockSectores">
