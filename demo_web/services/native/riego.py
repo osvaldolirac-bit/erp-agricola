@@ -37,9 +37,9 @@ HYDRA_ACTION_CONTROL_TAB = {
 
 
 def _hydra_tab_from_request() -> str:
-    tab = (request.values.get("hydra_tab") or "parametros").strip().lower()
+    tab = (request.values.get("hydra_tab") or "control").strip().lower()
     if tab not in HYDRA_TABS:
-        tab = "parametros"
+        tab = "control"
     return tab
 
 

@@ -1,12 +1,12 @@
 {% if sec_activa == 'hydra' %}
 <nav class="nav nav-tabs mb-3" aria-label="Subsecciones HYDRA">
-  <a class="nav-link{% if hydra_tab|default('parametros') == 'parametros' %} active{% endif %}"
-     href="{{ url_for('modules.riego', sec='hydra', hydra_tab='parametros') }}">Parámetros</a>
-  <a class="nav-link{% if hydra_tab|default('parametros') == 'control' %} active{% endif %}"
+  <a class="nav-link fw-semibold{% if hydra_tab|default('control') == 'control' %} active{% endif %}"
      href="{{ url_for('modules.riego', sec='hydra', hydra_tab='control') }}">Control Hydra</a>
+  <a class="nav-link{% if hydra_tab|default('control') == 'parametros' %} active{% endif %}"
+     href="{{ url_for('modules.riego', sec='hydra', hydra_tab='parametros') }}">Parámetros</a>
 </nav>
 
-{% if hydra_tab|default('parametros') == 'parametros' %}
+{% if hydra_tab|default('control') == 'parametros' %}
 <div class="panel-card mb-3">
   <h2 class="h6">Hydrawise (Hydra)</h2>
   <p class="small text-muted mb-2">
