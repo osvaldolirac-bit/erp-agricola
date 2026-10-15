@@ -19,6 +19,7 @@ FILES = [
     "demo_web/blueprints/registro_riego.py",
     "demo_web/templates/modules/riego.html",
     "demo_web/templates/partials/riego_hydrawise.html",
+    "demo_web/templates/partials/_hydra_control_panel_styles.html",
     "demo_web/templates/registro_riego/hydra_link.html",
     "demo_web/templates/registro_riego/_hydra_scope_fields.html",
     "demo_web/templates/registro_riego/_hydra_control_ui.html",

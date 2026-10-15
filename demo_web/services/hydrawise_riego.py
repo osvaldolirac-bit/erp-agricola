@@ -63,12 +63,15 @@ def _probe_desde_cache(conn: sqlite3.Connection, *, nota: str = "") -> dict[str,
     msg = str(cached.get("msg") or "")
     if nota:
         msg = f"{msg} · {nota}" if msg else nota
+    zonas = cached.get("zonas")
+    if not isinstance(zonas, dict):
+        zonas = {}
     return {
         "online": bool(cached.get("online")),
         "ok": bool(cached.get("ok", True)),
         "msg": msg,
         "title": str(cached.get("title") or ""),
-        "zonas": {},
+        "zonas": zonas,
         "cached": True,
         "probe_age_sec": int(max(0, age)),
         "rate_limited": True,
@@ -1731,12 +1734,16 @@ def _write_probe_cache(conn: sqlite3.Connection, payload: dict[str, Any]) -> Non
         return
     demo = get_demo_module()
     ts = _wall_clock_chile().timestamp()
+    zonas = payload.get("zonas")
+    if not isinstance(zonas, dict):
+        zonas = {}
     slim = {
         "online": bool(payload.get("online")),
         "ok": bool(payload.get("ok")),
         "msg": str(payload.get("msg") or ""),
         "title": str(payload.get("title") or ""),
         "ts": ts,
+        "zonas": zonas,
     }
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, ?)",
@@ -1769,12 +1776,15 @@ def estado_conexion_controlador(
         except (TypeError, ValueError):
             age = PROBE_COOLDOWN_SEC + 1
         if age < PROBE_COOLDOWN_SEC:
+            zonas = cached.get("zonas")
+            if not isinstance(zonas, dict):
+                zonas = {}
             return {
                 "online": bool(cached.get("online")),
                 "ok": bool(cached.get("ok")),
                 "msg": str(cached.get("msg") or ""),
                 "title": str(cached.get("title") or ""),
-                "zonas": {},
+                "zonas": zonas,
                 "cached": True,
                 "probe_age_sec": int(age),
             }
@@ -2110,13 +2120,18 @@ def riego_ejecucion_por_relay(
         rid_i = int(rid)
         if rid_i in out:
             continue
-        sec = st.get("remaining_sec") or st.get("time_left_sec")
-        if sec is None:
-            continue
-        try:
-            rem = max(0, int(sec))
-        except (TypeError, ValueError):
-            continue
+        sec = (
+            st.get("remaining_sec")
+            or st.get("time_left_sec")
+            or st.get("time_left")
+            or st.get("remaining")
+        )
+        rem = 0
+        if sec is not None:
+            try:
+                rem = max(0, int(sec))
+            except (TypeError, ValueError):
+                rem = 0
         sec_meta = sectores.get(rid_i) or {}
         out[rid_i] = {
             "relay_id": rid_i,

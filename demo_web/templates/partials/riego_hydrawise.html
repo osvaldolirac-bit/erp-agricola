@@ -89,6 +89,7 @@
 {% endif %}
 
 {% else %}
+{% include 'partials/_hydra_control_panel_styles.html' %}
 <div class="panel-card hydra-module-control mb-3">
   <h2 class="h6">Control HYDRA (oficina)</h2>
   <p class="small text-muted mb-3">
@@ -108,5 +109,7 @@
   {% endif %}
 </div>
 <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
+<script src="{{ url_for('static', filename='js/hydra_link_timer.js') }}?v={{ static_version }}" defer></script>
+<script src="{{ url_for('static', filename='js/hydra_link_running_detail.js') }}?v={{ static_version }}" defer></script>
 {% endif %}
 {% endif %}

@@ -16,13 +16,14 @@
 
 <section class="hydra-link-block hydra-link-block--sectores" aria-labelledby="hydraBlockSectores">
   <h2 class="hydra-link-section-title" id="hydraBlockSectores">Sectores de riego</h2>
-  {% if riego_ejecucion_por_relay is defined and riego_ejecucion_por_relay %}
+  {% if riego_ejecucion_por_relay is defined %}
   <script type="application/json" id="hydraEjecucionJson">{{ riego_ejecucion_por_relay|tojson }}</script>
   {% endif %}
   <div class="hydra-zone-grid">
     {% for s in hydra_sectores %}
     {% set ej = riego_ejecucion_por_relay.get(s.relay_id) if riego_ejecucion_por_relay is defined else none %}
-    {% set can_tap = s.relay_id in running_relay_ids and ej %}
+    {% set tm = ej or (riego_timer_por_relay.get(s.relay_id) if riego_timer_por_relay is defined else none) %}
+    {% set can_tap = s.relay_id in running_relay_ids and tm %}
     {% if can_tap %}
     <button type="button" class="hydra-zone-card hydra-zone-card--tappable is-running" data-relay="{{ s.relay_id }}">
     {% else %}
@@ -35,7 +36,6 @@
       <p class="hydra-zone-cc">{{ s.huerto_cc }}</p>
       {% if s.relay_id in running_relay_ids %}
       <span class="hydra-zone-status">Regando</span>
-      {% set tm = ej or (riego_timer_por_relay.get(s.relay_id) if riego_timer_por_relay is defined else none) %}
       {% if tm %}
       <p class="hydra-zone-timer mb-0" data-remaining-sec="{{ tm.remaining_sec }}" aria-live="polite">
         Restante <strong class="hydra-zone-timer-value">{{ tm.remaining_fmt }}</strong>
