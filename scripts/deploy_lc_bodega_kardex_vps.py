@@ -16,6 +16,8 @@ FILES = [
     "demo_web/app.py",
     "demo_web/auth/public_urls.py",
     "demo_web/auth/routes.py",
+    "demo_web/services/stock_bodega_link.py",
+    "demo_web/blueprints/stock_bodega_link.py",
     "demo_web/templates/login.html",
     "demo_web/services/bodega_kardex.py",
     "demo_web/services/espino_compras_kardex.py",

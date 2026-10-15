@@ -1,4 +1,4 @@
-"""Vista móvil: stock bodega LC + kardex por producto (acceso directo / pantalla inicio)."""
+"""Vista móvil: stock bodega LC + kardex por producto (ERP o link con token)."""
 from __future__ import annotations
 
 from flask import abort, render_template, request, url_for
@@ -14,17 +14,7 @@ def _parse_pid() -> int:
         return 0
 
 
-def view(user_email: str, user_rol: str):
-    if get_erp_app() != "concepcion":
-        abort(404)
-    demo = get_demo_module()
-    bind_user_session(user_email, user_rol)
-    if demo.es_certificacion():
-        abort(404)
-
-    q = (request.args.get("q") or "").strip()
-    pid = _parse_pid()
-
+def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
     conn = demo.conectar_db()
     try:
         rows = conn.execute(
@@ -70,17 +60,53 @@ def view(user_email: str, user_rol: str):
     if kardex_ctx.get("kardex_producto"):
         page_title = kardex_ctx["kardex_producto"]["nombre"]
 
-    return render_template(
-        "stock_bodega_rapido.html",
-        page_title=page_title,
-        items=items,
-        filtro_q=q,
-        pid=pid,
-        kardex_error=kardex_ctx.get("kardex_error"),
-        kardex_producto=kardex_ctx.get("kardex_producto"),
-        kardex_rows=kardex_ctx.get("kardex_rows") or [],
-        kardex_lc_pendientes=kardex_ctx.get("kardex_lc_pendientes") or [],
-        url_stock_list=url_for("modules.stock_bodega_rapido", q=q or None),
-        actualizado=demo.hora_chile().strftime("%d-%m-%Y %H:%M"),
-        erp_title=getattr(demo, "NOMBRE_ERP", "La Concepción"),
-    )
+    if link_tok:
+        url_stock_list = url_for(
+            "stock_bodega_link.formulario",
+            t=link_tok,
+            q=q or None,
+        )
+        link_mode = True
+    else:
+        url_stock_list = url_for("modules.stock_bodega_rapido", q=q or None)
+        link_mode = False
+
+    return {
+        "page_title": page_title,
+        "items": items,
+        "filtro_q": q,
+        "pid": pid,
+        "kardex_error": kardex_ctx.get("kardex_error"),
+        "kardex_producto": kardex_ctx.get("kardex_producto"),
+        "kardex_rows": kardex_ctx.get("kardex_rows") or [],
+        "kardex_lc_pendientes": kardex_ctx.get("kardex_lc_pendientes") or [],
+        "url_stock_list": url_stock_list,
+        "link_tok": link_tok,
+        "link_mode": link_mode,
+        "actualizado": demo.hora_chile().strftime("%d-%m-%Y %H:%M"),
+        "erp_title": getattr(demo, "NOMBRE_ERP", "La Concepción"),
+    }
+
+
+def render_public(link_tok: str):
+    demo = get_demo_module()
+    if demo.es_certificacion():
+        abort(404)
+    q = (request.args.get("q") or "").strip()
+    pid = _parse_pid()
+    ctx = _build_context(demo, link_tok=link_tok, q=q, pid=pid)
+    return render_template("stock_bodega_rapido.html", **ctx)
+
+
+def view(user_email: str, user_rol: str):
+    if get_erp_app() != "concepcion":
+        abort(404)
+    demo = get_demo_module()
+    bind_user_session(user_email, user_rol)
+    if demo.es_certificacion():
+        abort(404)
+
+    q = (request.args.get("q") or "").strip()
+    pid = _parse_pid()
+    ctx = _build_context(demo, link_tok=None, q=q, pid=pid)
+    return render_template("stock_bodega_rapido.html", **ctx)

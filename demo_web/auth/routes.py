@@ -273,34 +273,14 @@ def _process_login_post():
 
 @bp.route("/login/stock-bodega", methods=["GET", "POST"])
 def login_stock_bodega():
-    """Entrada móvil/WhatsApp: ruta fija (WhatsApp suele borrar ?next=)."""
-    session["login_dest"] = LOGIN_DEST_STOCK
-    if request.method == "GET" and session.get("email") and session.get("tenant_slug"):
-        return redirect(url_for("modules.stock_bodega_rapido"))
+    """Compat: redirige al link con token (sin pantalla login ERP)."""
+    from demo_web.services.erp_loader import bind_tenant_context
+    from demo_web.services.stock_bodega_link import habilitado, url_publica
 
-    if request.method == "POST":
-        result, error, _done = _process_login_post()
-        if result is not None:
-            return result
-        return render_template(
-            "login.html",
-            error=error,
-            open_panel=True,
-            remember_key=_remember_storage_key(),
-            acceso_pref="",
-            login_next=_login_next_field(),
-            login_dest=LOGIN_DEST_STOCK,
-        )
-
-    return render_template(
-        "login.html",
-        error=None,
-        open_panel=True,
-        remember_key=_remember_storage_key(),
-        acceso_pref="",
-        login_next=url_for("modules.stock_bodega_rapido"),
-        login_dest=LOGIN_DEST_STOCK,
-    )
+    bind_tenant_context("concepcion")
+    if habilitado():
+        return redirect(url_publica())
+    return redirect(url_for("auth.login"))
 
 
 @bp.route("/login", methods=["GET", "POST"])

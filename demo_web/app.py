@@ -49,6 +49,10 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(registro_riego_bp)
     app.register_blueprint(salida_petroleo_bp)
 
+    from demo_web.blueprints.stock_bodega_link import bp as stock_bodega_link_bp
+
+    app.register_blueprint(stock_bodega_link_bp)
+
     from demo_web.services.mantenimiento import register_mantenimiento
 
     register_mantenimiento(app)
@@ -535,6 +539,7 @@ def create_app(config_class=Config) -> Flask:
         from demo_web.services.demo_loader import init_demo_db
         from demo_web.services.registro_riego import migrar_tabla as migrar_riego
         from demo_web.services.salida_petroleo import migrar_tabla as migrar_petroleo
+        from demo_web.services.stock_bodega_link import migrar_tabla as migrar_stock_bodega_link
 
         init_demo_db()
         for t in list_tenants():
@@ -542,6 +547,7 @@ def create_app(config_class=Config) -> Flask:
             try:
                 migrar_petroleo()
                 migrar_riego()
+                migrar_stock_bodega_link()
             except Exception:
                 pass
         bind_tenant_context(None)

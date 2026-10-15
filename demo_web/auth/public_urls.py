@@ -17,5 +17,7 @@ def rubro_public_base() -> str:
 
 
 def url_publica_login_stock_bodega() -> str:
-    """Ruta fija post-login → /m/stock-bodega (La Concepción)."""
-    return f"{rubro_public_base()}/login/stock-bodega"
+    """Link móvil LC con token (misma lógica que registro-riego / salida-petroleo)."""
+    from demo_web.services.stock_bodega_link import url_publica
+
+    return url_publica()

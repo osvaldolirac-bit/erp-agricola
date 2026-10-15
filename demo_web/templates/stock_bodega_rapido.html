@@ -114,7 +114,7 @@
       <p class="small text-muted mb-2">{{ items|length }} con stock · toque para ver kardex</p>
       {% for row in items %}
       <a class="stock-row{% if row.activo %} activo{% endif %}"
-         href="{{ url_for('modules.stock_bodega_rapido', pid=row.id, q=filtro_q or none) }}">
+         href="{% if link_mode and link_tok %}{{ url_for('stock_bodega_link.formulario', t=link_tok, pid=row.id, q=filtro_q or none) }}{% else %}{{ url_for('modules.stock_bodega_rapido', pid=row.id, q=filtro_q or none) }}{% endif %}">
         <div class="min-w-0">
           <div class="stock-name text-truncate">{{ row.producto }}</div>
           {% if row.familia %}<div class="familia-tag">{{ row.familia }}</div>{% endif %}
@@ -134,8 +134,10 @@
     {% endif %}
   </main>
 
+  {% if not link_mode %}
   <footer class="text-center py-3 px-3">
     <a class="footer-link link-secondary" href="{{ url_for('modules.bodega', sec='stock') }}">Bodega ERP completo</a>
   </footer>
+  {% endif %}
 </body>
 </html>
