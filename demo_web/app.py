@@ -489,6 +489,13 @@ def create_app(config_class=Config) -> Flask:
             logo_url = url_for("logo_asset") if find_logo_path(prefer_master=True) else None
             erp_app = "agricola"
         pricing = pricing_context(tenant["slug"] if tenant else None)
+        stock_bodega_login_url = ""
+        try:
+            from demo_web.auth.public_urls import url_publica_login_stock_bodega
+
+            stock_bodega_login_url = url_publica_login_stock_bodega()
+        except Exception:
+            pass
         return {
             "current_user": user,
             "nav_menu": menu,
@@ -511,6 +518,7 @@ def create_app(config_class=Config) -> Flask:
             "session_idle_warn": int(app.config.get("SESSION_IDLE_WARN_SECONDS") or 120),
             "clp": format_clp,
             "solo_lectura": bool(session.get("solo_lectura")) or (session.get("rol") == "lector"),
+            "stock_bodega_login_url": stock_bodega_login_url,
             **pricing,
         }
 

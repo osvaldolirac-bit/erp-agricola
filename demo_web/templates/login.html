@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Acceso — {{ erp_title|default('ERP Agrícola', true) }}{% endblock %}
+{% block title %}{% if login_dest == 'stock_bodega' %}Stock bodega — acceso{% else %}Acceso — {{ erp_title|default('ERP Agrícola', true) }}{% endif %}{% endblock %}
 {% block content %}
 <section class="login-page login-page--industrial" aria-label="Acceso {{ erp_title|default('ERP Agrícola', true) }}">
   <div class="login-bg" aria-hidden="true">
@@ -41,9 +41,15 @@
   </div>
 
   <main class="login-hero">
+    {% if login_dest == 'stock_bodega' %}
+    <p class="login-brand">La Concepción</p>
+    <h1>STOCK BODEGA</h1>
+    <p>Ingrese su usuario ERP. Después verá stock y kardex en el celular.</p>
+    {% else %}
     <p class="login-brand">{{ erp_brand|default('ERP Master', true) }}</p>
     <h1>{{ erp_title|default('ERP Agrícola', true)|upper }}</h1>
     <p>{{ erp_login_subtitle|default('Vista operativa: sectores, riego y logística en un solo sistema', true) }}</p>
+    {% endif %}
   </main>
 </section>
 {% endblock %}

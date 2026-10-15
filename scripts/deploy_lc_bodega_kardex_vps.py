@@ -13,7 +13,10 @@ PORT = "40484"
 REMOTE = "/root/demo-web"
 SSH_TARGET = f"root@{HOST}"
 FILES = [
+    "demo_web/app.py",
     "demo_web/auth/public_urls.py",
+    "demo_web/auth/routes.py",
+    "demo_web/templates/login.html",
     "demo_web/services/bodega_kardex.py",
     "demo_web/services/espino_compras_kardex.py",
     "demo_web/services/native/bodega.py",

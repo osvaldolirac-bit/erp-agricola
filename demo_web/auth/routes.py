@@ -306,6 +306,10 @@ def login_stock_bodega():
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET" and request.args.get("next"):
+        raw_next = (request.args.get("next") or "").strip()
+        if "stock-bodega" in raw_next:
+            session["login_dest"] = LOGIN_DEST_STOCK
+            return redirect(url_for("auth.login_stock_bodega"))
         stash_login_next(request.args.get("next"))
         if session.get("email") and session.get("tenant_slug"):
             return redirect(safe_next(pop_login_next()))
