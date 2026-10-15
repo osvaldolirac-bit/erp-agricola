@@ -540,10 +540,17 @@ def _post_corregir_stock(demo, conn) -> dict:
         (nprod.upper(), iid),
     ).fetchone():
         return {"ok": False, "msg": "Ya existe otro producto con ese nombre."}
+    prev = conn.execute("SELECT producto FROM inventario WHERE id=?", (iid,)).fetchone()
+    old_prod = str(prev[0] or "").strip() if prev else ""
     conn.execute(
         "UPDATE inventario SET producto=?, familia=?, stock=?, unidad_medida=?, precio_medio=?, ingrediente_activo=? WHERE id=?",
         (nprod, nfam, nst, num_um, npmp, nia, iid),
     )
+    if old_prod and old_prod.upper() != nprod.upper():
+        conn.execute(
+            "UPDATE libro_campo SET producto=? WHERE UPPER(TRIM(producto))=?",
+            (nprod, old_prod.upper()),
+        )
     if demo.requiere_autorizacion_pppl(nfam) and nia:
         gap = conn.execute(
             "SELECT id FROM gap_pppl WHERE UPPER(TRIM(producto))=?",

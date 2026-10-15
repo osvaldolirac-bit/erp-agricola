@@ -14,11 +14,17 @@ FILES = [
     "demo_web/services/bodega_kardex.py",
     "demo_web/services/espino_compras_kardex.py",
     "demo_web/services/native/bodega.py",
+    "demo_web/services/native/_helpers.py",
     "demo_web/templates/modules/bodega.html",
+    "demo_web/templates/stock_bodega_rapido.html",
+    "demo_web/services/native/bodega_stock_rapido.py",
 ]
 
 
 def main() -> int:
+    verify = ROOT / "scripts/verify_bodega_kardex_ui.py"
+    if verify.is_file():
+        subprocess.check_call([sys.executable, str(verify)])
     for rel in FILES:
         local = ROOT / rel
         if not local.is_file():
