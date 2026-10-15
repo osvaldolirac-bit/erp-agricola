@@ -35,6 +35,16 @@ bp = Blueprint("registro_riego", __name__)
 
 _HONEYPOT_FIELD = "sr_hp_x9f2"
 _HYDRA_TABS = frozenset({"control", "regar", "programar", "bitacora"})
+_HYDRA_POST_REDIRECT = frozenset(
+    {
+        "hydra_refresh_estado",
+        "hydra_editar_fert_item",
+        "hydra_regar_ahora",
+        "hydra_programar",
+        "hydra_parar",
+        "hydra_cancelar_cola",
+    }
+)
 
 
 def _tab_despues_hydra_action(action: str) -> str:
@@ -62,6 +72,33 @@ def _bind_tenant_from_request() -> None:
 
 def _usuario_operador(operador: dict | None) -> str:
     return str((operador or {}).get("nombre") or "Regador link").strip()
+
+
+def _redirect_hydra_link(
+    tok: str | None,
+    tab: str,
+    operador: dict | None,
+    msg: str,
+    ok: bool,
+    *,
+    force_sync: bool = False,
+):
+    """POST/Redirect/GET: evita pantalla congelada tras cancelar, parar o programar."""
+    params: dict[str, str] = {"tab": tab, "tenant": "concepcion"}
+    if tok:
+        params["t"] = tok
+    if operador:
+        params["op"] = str(operador["id"])
+    text = (msg or "").strip()
+    if text:
+        params["hydra_msg"] = text[:480]
+        params["hydra_ok"] = "1" if ok else "0"
+    if force_sync:
+        params["hydra_sync"] = "1"
+    resp = redirect(url_for("registro_riego.formulario", **params))
+    if operador:
+        aplicar_cookie_operador(resp, operador["id"])
+    return resp
 
 
 def _cargar_hydra_sectores(demo) -> list[dict]:
@@ -294,6 +331,7 @@ def formulario():
 
     hydra_msg = (request.args.get("hydra_msg") or "").strip()
     hydra_ok = request.args.get("hydra_ok") == "1"
+    hydra_sync = request.args.get("hydra_sync") == "1"
     live_zonas: dict = {}
 
     form_state = {
@@ -326,9 +364,16 @@ def formulario():
                     conn.close()
                 hydra_msg = str(result.get("msg") or "")
                 hydra_ok = bool(result.get("ok"))
-                if action == "hydra_refresh_estado" and result.get("zonas"):
-                    live_zonas = result.get("zonas") or {}
                 tab = _tab_despues_hydra_action(action)
+                if action in _HYDRA_POST_REDIRECT:
+                    return _redirect_hydra_link(
+                        tok,
+                        tab,
+                        operador,
+                        hydra_msg,
+                        hydra_ok,
+                        force_sync=True,
+                    )
         else:
             if use_hydra_ui:
                 hydra_msg = (
@@ -372,38 +417,67 @@ def formulario():
             hydra_sync_cooldown = hw.cooldown_restante_segundos(conn)
             hydra_colas = hw.colas_vivas_en_link(conn)
             hydra_cola = hydra_colas[0] if hydra_colas else None
-            if (
-                request.method == "GET"
-                and acceso_personal
-                and not hydra_msg
-                and hydra_cola
-                and hydra_sync_cooldown <= 0
-            ):
-                auto = hw.sincronizar_hydrawise(
-                    conn, _usuario_operador(operador), force=False
+            if request.method == "GET" and acceso_personal:
+                debe_refrescar = hydra_sync or (
+                    hydra_msg and tab == "control"
                 )
-                msg = str(auto.get("msg") or "").strip()
-                if msg and "429" not in msg and not msg.startswith("Cola activa — próxima"):
-                    hydra_msg = msg
-                    hydra_ok = bool(auto.get("ok", True))
-                hydra_colas = hw.colas_vivas_en_link(conn)
-                hydra_cola = hydra_colas[0] if hydra_colas else None
+                if debe_refrescar:
+                    probe = hw.estado_conexion_controlador(conn, force=True)
+                    hydra_conn_online = bool(probe.get("online"))
+                    hydra_conn_msg = str(probe.get("msg") or "")
+                    hydra_conn_title = str(probe.get("title") or "")
+                    hydra_conn_cached = bool(probe.get("cached"))
+                    hydra_probe_age_sec = int(probe.get("probe_age_sec") or 0)
+                    if probe.get("zonas"):
+                        live_zonas = probe.get("zonas") or live_zonas
+                    auto = hw.sincronizar_hydrawise(
+                        conn,
+                        _usuario_operador(operador),
+                        force=hydra_sync or bool(hydra_msg),
+                    )
+                    msg = str(auto.get("msg") or "").strip()
+                    if hydra_sync and msg and "429" not in msg:
+                        if not hydra_msg or msg != hydra_msg:
+                            hydra_msg = (hydra_msg + " " + msg).strip() if hydra_msg else msg
+                        hydra_ok = hydra_ok and bool(auto.get("ok", True))
+                    hydra_colas = hw.colas_vivas_en_link(conn)
+                    hydra_cola = hydra_colas[0] if hydra_colas else None
+                elif (
+                    not hydra_msg
+                    and hydra_cola
+                    and hydra_sync_cooldown <= 0
+                ):
+                    auto = hw.sincronizar_hydrawise(
+                        conn, _usuario_operador(operador), force=False
+                    )
+                    msg = str(auto.get("msg") or "").strip()
+                    if msg and "429" not in msg and not msg.startswith("Cola activa — próxima"):
+                        hydra_msg = msg
+                        hydra_ok = bool(auto.get("ok", True))
+                    hydra_colas = hw.colas_vivas_en_link(conn)
+                    hydra_cola = hydra_colas[0] if hydra_colas else None
             if tab == "bitacora":
                 hydra_bitacora = hw.listar_bitacora_operativa(conn, limite=40)
             if acceso_personal:
-                probe = hw.estado_conexion_controlador(conn, force=False)
-                hydra_conn_online = bool(probe.get("online"))
-                hydra_conn_msg = str(probe.get("msg") or "")
-                hydra_conn_title = str(probe.get("title") or "")
-                hydra_conn_cached = bool(probe.get("cached"))
-                hydra_probe_age_sec = int(probe.get("probe_age_sec") or 0)
-                if probe.get("zonas"):
-                    live_zonas = probe.get("zonas") or live_zonas
+                if not (
+                    request.method == "GET"
+                    and (hydra_sync or (hydra_msg and tab == "control"))
+                ):
+                    probe = hw.estado_conexion_controlador(conn, force=False)
+                    hydra_conn_online = bool(probe.get("online"))
+                    hydra_conn_msg = str(probe.get("msg") or "")
+                    hydra_conn_title = str(probe.get("title") or "")
+                    hydra_conn_cached = bool(probe.get("cached"))
+                    hydra_probe_age_sec = int(probe.get("probe_age_sec") or 0)
+                    if probe.get("zonas"):
+                        live_zonas = probe.get("zonas") or live_zonas
             else:
                 ok_cfg, msg_cfg = hw.api_lista_para_link(conn)
                 hydra_conn_online = ok_cfg
                 hydra_conn_msg = msg_cfg
-                hydra_conn_title = "Hydrawise configurado" if ok_cfg else "Hydrawise sin configurar"
+                hydra_conn_title = (
+                    "Hydrawise configurado" if ok_cfg else "Hydrawise sin configurar"
+                )
             running_relay_ids, queued_relay_ids, programa_por_relay = (
                 hw.estado_sectores_colas_vivas(conn, live_zonas)
             )

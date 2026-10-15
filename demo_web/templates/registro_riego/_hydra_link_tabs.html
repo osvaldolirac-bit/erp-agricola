@@ -1,0 +1,12 @@
+{# Requiere: tab, token; opcional operador (link regador) #}
+<nav class="hydra-link-tabs" aria-label="Secciones HYDRA">
+  {% set op_qs = ('&op=' ~ operador.id) if operador else '' %}
+  <a class="hydra-link-tab{% if tab == 'control' %} is-active{% endif %}"
+     href="?t={{ token }}&tenant=concepcion&tab=control{{ op_qs }}"><span class="hydra-link-tab-label">Control</span></a>
+  <a class="hydra-link-tab hydra-link-tab--action{% if tab == 'regar' %} is-active{% endif %}"
+     href="?t={{ token }}&tenant=concepcion&tab=regar{{ op_qs }}"><span class="hydra-link-tab-label">Regar ahora</span></a>
+  <a class="hydra-link-tab hydra-link-tab--action{% if tab == 'programar' %} is-active{% endif %}"
+     href="?t={{ token }}&tenant=concepcion&tab=programar{{ op_qs }}"><span class="hydra-link-tab-label">Programar</span></a>
+  <a class="hydra-link-tab{% if tab == 'bitacora' %} is-active{% endif %}"
+     href="?t={{ token }}&tenant=concepcion&tab=bitacora{{ op_qs }}"><span class="hydra-link-tab-label">Bitácora</span></a>
+</nav>
