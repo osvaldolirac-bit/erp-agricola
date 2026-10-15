@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FILES = [
     ("demo_web/services/native/libro_campo.py", "demo_web/services/native/libro_campo.py"),
     ("demo_web/services/native/bodega.py", "demo_web/services/native/bodega.py"),
+    ("demo_web/services/bodega_kardex.py", "demo_web/services/bodega_kardex.py"),
     ("demo_web/services/libro_campo_gap.py", "demo_web/services/libro_campo_gap.py"),
     ("demo_web/templates/modules/libro_campo.html", "demo_web/templates/modules/libro_campo.html"),
 ]
