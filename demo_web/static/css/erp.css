@@ -1564,6 +1564,20 @@ body.demo-body .costos-matriz-table td.costos-saldo-neutro {
     max-height: 96px;
   }
 
+  .demo-navbar-brand > span {
+    max-width: min(34vw, 8.5rem);
+  }
+
+  .demo-navbar-actions {
+    max-width: none;
+    gap: 0.25rem !important;
+  }
+
+  .demo-tenant-switch-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+  }
+
   .dashboard-page .banner-econ {
     font-size: clamp(0.75rem, 3.2vw, 0.92rem);
     line-height: 1.45;
