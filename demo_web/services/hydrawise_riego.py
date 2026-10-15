@@ -2024,14 +2024,48 @@ def _fmt_countdown(sec: int) -> str:
     return f"{m}:{r:02d}"
 
 
-def riego_timer_por_relay(
+def _fert_lineas_display(
+    conn: sqlite3.Connection, fert_src: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    nombres = _map_nombres_fertilizante(conn)
+    lines: list[dict[str, Any]] = []
+    for f in fert_src:
+        pid = int(f.get("producto_id") or 0)
+        cant = float(f.get("cantidad") or 0)
+        if pid <= 0 or cant <= 0:
+            continue
+        um = str(f.get("unidad") or "kg")
+        dosis = f.get("dosis_ha")
+        line = {
+            "nombre": nombres.get(pid) or f"Producto #{pid}",
+            "cantidad_fmt": f"{cant:g} {um}",
+        }
+        if dosis not in (None, ""):
+            try:
+                line["dosis_fmt"] = f"{float(dosis):g} / ha"
+            except (TypeError, ValueError):
+                line["dosis_fmt"] = ""
+        lines.append(line)
+    return lines
+
+
+def riego_ejecucion_por_relay(
     conn: sqlite3.Connection,
     live_zonas: dict[str, Any] | None = None,
 ) -> dict[int, dict[str, Any]]:
-    """Segundos restantes por sector con ítem en estado corriendo (colas ERP)."""
+    """Detalle del riego en curso por sector (solo ítems corriendo en cola ERP)."""
     ahora = _wall_clock_chile()
+    sectores = {
+        int(s["relay_id"]): s for s in sectores_para_link_riego(conn)
+    }
     out: dict[int, dict[str, Any]] = {}
     for cola in colas_vivas_en_link(conn):
+        tipo = str(cola.get("tipo") or "")
+        tipo_label = "Programado" if tipo == "programado" else "Regar ahora"
+        inicio_prog = _parse_dt_chile(cola.get("inicio_programa"))
+        inicio_prog_fmt = (
+            inicio_prog.strftime("%d/%m/%Y %H:%M") if inicio_prog else "—"
+        )
         for it in _cola_turnos(cola):
             if str(it.get("estado") or "") != "corriendo":
                 continue
@@ -2043,15 +2077,33 @@ def riego_timer_por_relay(
             elapsed = max(0.0, (ahora - t0).total_seconds())
             total_sec = int(minutos * 60.0)
             rem = max(0, total_sec - int(elapsed))
+            fin_est = t0 + timedelta(minutes=minutos)
+            fert_src = _fert_lineas_item_cola(
+                conn, str(it.get("fert_json") or ""), rid
+            )
+            fert_lines = _fert_lineas_display(conn, fert_src)
+            sec = sectores.get(rid) or {}
+            entry = {
+                "relay_id": rid,
+                "label": str(it.get("label") or sec.get("label") or f"Zona {rid}"),
+                "huerto_cc": str(sec.get("huerto_cc") or ""),
+                "remaining_sec": rem,
+                "remaining_fmt": _fmt_countdown(rem),
+                "minutos": minutos,
+                "minutos_fmt": _fmt_minutos_riego(minutos),
+                "run_inicio": str(it.get("run_inicio") or ""),
+                "run_inicio_fmt": t0.strftime("%d/%m/%Y %H:%M"),
+                "fin_estimado_fmt": fin_est.strftime("%d/%m/%Y %H:%M"),
+                "cola_id": int(cola.get("id") or 0),
+                "tipo_label": tipo_label,
+                "inicio_programa_fmt": inicio_prog_fmt,
+                "creado_por": str(cola.get("creado_por") or "").strip(),
+                "tiene_fertirriego": bool(fert_lines),
+                "fertilizantes": fert_lines,
+            }
             prev = out.get(rid)
             if prev is None or rem < int(prev.get("remaining_sec") or 0):
-                out[rid] = {
-                    "remaining_sec": rem,
-                    "remaining_fmt": _fmt_countdown(rem),
-                    "minutos": minutos,
-                    "run_inicio": str(it.get("run_inicio") or ""),
-                    "cola_id": int(cola.get("id") or 0),
-                }
+                out[rid] = entry
     for rid, st in (live_zonas or {}).items():
         if not isinstance(st, dict) or not st.get("running"):
             continue
@@ -2059,20 +2111,40 @@ def riego_timer_por_relay(
         if rid_i in out:
             continue
         sec = st.get("remaining_sec") or st.get("time_left_sec")
-        if sec is not None:
-            try:
-                rem = max(0, int(sec))
-                out[rid_i] = {
-                    "remaining_sec": rem,
-                    "remaining_fmt": _fmt_countdown(rem),
-                    "minutos": 0,
-                    "run_inicio": "",
-                    "cola_id": 0,
-                    "from_live": True,
-                }
-            except (TypeError, ValueError):
-                pass
+        if sec is None:
+            continue
+        try:
+            rem = max(0, int(sec))
+        except (TypeError, ValueError):
+            continue
+        sec_meta = sectores.get(rid_i) or {}
+        out[rid_i] = {
+            "relay_id": rid_i,
+            "label": str(sec_meta.get("label") or f"Zona {rid_i}"),
+            "huerto_cc": str(sec_meta.get("huerto_cc") or ""),
+            "remaining_sec": rem,
+            "remaining_fmt": _fmt_countdown(rem),
+            "minutos": 0,
+            "minutos_fmt": "—",
+            "run_inicio_fmt": "—",
+            "fin_estimado_fmt": "—",
+            "cola_id": 0,
+            "tipo_label": "Hydrawise",
+            "inicio_programa_fmt": "—",
+            "creado_por": "",
+            "tiene_fertirriego": False,
+            "fertilizantes": [],
+            "from_live": True,
+        }
     return out
+
+
+def riego_timer_por_relay(
+    conn: sqlite3.Connection,
+    live_zonas: dict[str, Any] | None = None,
+) -> dict[int, dict[str, Any]]:
+    """Compat: cronómetro a partir del detalle de ejecución."""
+    return riego_ejecucion_por_relay(conn, live_zonas)
 
 
 def contexto_control_hydra_ui(
@@ -2109,7 +2181,7 @@ def contexto_control_hydra_ui(
     running_relay_ids, queued_relay_ids, programa_por_relay = estado_sectores_colas_vivas(
         conn, live_zonas
     )
-    riego_timer = riego_timer_por_relay(conn, live_zonas)
+    riego_ejecucion = riego_ejecucion_por_relay(conn, live_zonas)
     hydra_mostrar_apagar = any(cola_permite_apagar(c) for c in hydra_colas)
     hay_programada_espera = any(
         str(c.get("estado") or "") == "programado" and not cola_permite_apagar(c)
@@ -2136,7 +2208,8 @@ def contexto_control_hydra_ui(
         "hydra_probe_age_sec": hydra_probe_age_sec,
         "running_relay_ids": sorted(running_relay_ids),
         "queued_relay_ids": sorted(queued_relay_ids),
-        "riego_timer_por_relay": riego_timer,
+        "riego_timer_por_relay": riego_ejecucion,
+        "riego_ejecucion_por_relay": riego_ejecucion,
     }
 
 

@@ -410,6 +410,7 @@ def formulario():
     running_relay_ids: set[int] = set()
     queued_relay_ids: set[int] = set()
     riego_timer_por_relay: dict = {}
+    riego_ejecucion_por_relay: dict = {}
     if use_hydra_ui:
         conn = demo.conectar_db()
         try:
@@ -482,7 +483,8 @@ def formulario():
             running_relay_ids, queued_relay_ids, programa_por_relay = (
                 hw.estado_sectores_colas_vivas(conn, live_zonas)
             )
-            riego_timer_por_relay = hw.riego_timer_por_relay(conn, live_zonas)
+            riego_ejecucion_por_relay = hw.riego_ejecucion_por_relay(conn, live_zonas)
+            riego_timer_por_relay = riego_ejecucion_por_relay
             hydra_mostrar_apagar = any(hw.cola_permite_apagar(c) for c in hydra_colas)
         finally:
             conn.close()
@@ -514,6 +516,7 @@ def formulario():
         queued_relay_ids=sorted(queued_relay_ids),
         programa_por_relay=programa_por_relay,
         riego_timer_por_relay=riego_timer_por_relay,
+        riego_ejecucion_por_relay=riego_ejecucion_por_relay,
         hydra_tiene_corriendo=bool(running_relay_ids),
         hydra_mostrar_apagar=hydra_mostrar_apagar,
         hydra_cola_programada=bool(
