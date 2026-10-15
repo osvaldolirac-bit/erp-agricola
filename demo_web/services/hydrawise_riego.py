@@ -714,13 +714,27 @@ def crear_cola(
 
 
 def _cola_activa(conn: sqlite3.Connection) -> sqlite3.Row | None:
+    """Cola que debe gobernar sync/acciones: en ejecución antes que un programa futuro."""
     migrar_hydrawise(conn)
     return conn.execute(
         """SELECT id, tipo, inicio_programa, estado, creado_por, creado_en
            FROM hydrawise_cola
            WHERE estado IN ('programado', 'en_ejecucion')
-           ORDER BY id DESC LIMIT 1"""
+           ORDER BY CASE estado WHEN 'en_ejecucion' THEN 0 ELSE 1 END,
+                    id DESC
+           LIMIT 1"""
     ).fetchone()
+
+
+def _colas_vivas_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    migrar_hydrawise(conn)
+    return conn.execute(
+        """SELECT id, tipo, inicio_programa, estado, creado_por, creado_en
+           FROM hydrawise_cola
+           WHERE estado IN ('programado', 'en_ejecucion')
+           ORDER BY CASE estado WHEN 'en_ejecucion' THEN 0 ELSE 1 END,
+                    id DESC"""
+    ).fetchall()
 
 
 def _items_cola(conn: sqlite3.Connection, cola_id: int) -> list[sqlite3.Row]:
@@ -1927,84 +1941,7 @@ def programa_por_relay_en_cola(
     return out
 
 
-def contexto_control_hydra_ui(
-    conn: sqlite3.Connection,
-    usuario: str,
-    *,
-    auto_sync: bool = False,
-) -> dict[str, Any]:
-    """Contexto compartido link regador y módulo Riego → Registro manual (LC)."""
-    hydra_sectores = sectores_para_link_riego(conn)
-    hydra_cola = cola_activa_en_link(conn)
-    programa_por_relay = programa_por_relay_en_cola(conn, hydra_cola)
-    hydra_mostrar_apagar = cola_permite_apagar(hydra_cola)
-    hydra_sync_cooldown = cooldown_restante_segundos(conn)
-
-    hydra_msg = ""
-    hydra_ok = True
-    if auto_sync and hydra_sectores and hydra_cola and hydra_sync_cooldown <= 0:
-            auto = sincronizar_hydrawise(conn, usuario, force=False)
-            msg = str(auto.get("msg") or "").strip()
-            if msg and "429" not in msg and not msg.startswith("Cola activa — próxima"):
-                hydra_msg = msg
-                hydra_ok = bool(auto.get("ok", True))
-
-    probe = estado_conexion_controlador(conn, force=False)
-    live_zonas = probe.get("zonas") or {}
-    hydra_conn_online = bool(probe.get("online"))
-    hydra_conn_msg = str(probe.get("msg") or "")
-    hydra_conn_title = str(probe.get("title") or "")
-    hydra_conn_cached = bool(probe.get("cached"))
-    hydra_probe_age_sec = int(probe.get("probe_age_sec") or 0)
-
-    running_relay_ids: set[int] = set()
-    queued_relay_ids: set[int] = set()
-    if hydra_cola:
-        cola_est = str(hydra_cola.get("estado") or "")
-        cola_viva = cola_est in ("programado", "en_ejecucion")
-        for it in _cola_turnos(hydra_cola):
-            rid = int(it["relay_id"])
-            item_est = str(it.get("estado") or "")
-            if item_est == "corriendo":
-                running_relay_ids.add(rid)
-            elif cola_viva and item_est == "pendiente":
-                queued_relay_ids.add(rid)
-    queued_relay_ids -= running_relay_ids
-    for rid, st in live_zonas.items():
-        if isinstance(st, dict) and st.get("running"):
-            rid_i = int(rid)
-            running_relay_ids.add(rid_i)
-            queued_relay_ids.discard(rid_i)
-
-    return {
-        "hydra_control_activo": bool(hydra_sectores),
-        "hydra_sectores": hydra_sectores,
-        "hydra_cola": hydra_cola,
-        "programa_por_relay": programa_por_relay,
-        "hydra_mostrar_apagar": hydra_mostrar_apagar,
-        "hydra_cola_programada": bool(
-            hydra_cola
-            and str(hydra_cola.get("estado") or "") == "programado"
-            and not hydra_mostrar_apagar
-        ),
-        "hydra_sync_cooldown": hydra_sync_cooldown,
-        "hydra_msg": hydra_msg,
-        "hydra_ok": hydra_ok,
-        "hydra_conn_online": hydra_conn_online,
-        "hydra_conn_msg": hydra_conn_msg,
-        "hydra_conn_title": hydra_conn_title,
-        "hydra_conn_cached": hydra_conn_cached,
-        "hydra_probe_age_sec": hydra_probe_age_sec,
-        "running_relay_ids": sorted(running_relay_ids),
-        "queued_relay_ids": sorted(queued_relay_ids),
-    }
-
-
-def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:
-    """Cola programada o en ejecución, con ítems enriquecidos para el link regador."""
-    row = _cola_activa(conn)
-    if not row:
-        return None
+def _cola_dict_en_link(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
     cola_id = int(row[0])
     labels = {
         int(s["relay_id"]): s["label"]
@@ -2041,6 +1978,112 @@ def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:
         "creado_en": row[5],
         "turnos": items,
     }
+
+
+def colas_vivas_en_link(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Todas las colas programadas o en ejecución (p. ej. regar ahora + programado)."""
+    return [_cola_dict_en_link(conn, row) for row in _colas_vivas_rows(conn)]
+
+
+def estado_sectores_colas_vivas(
+    conn: sqlite3.Connection,
+    live_zonas: dict[str, Any] | None = None,
+) -> tuple[set[int], set[int], dict[int, dict[str, Any]]]:
+    """Regando / en cola / detalle programa agrupando todas las colas vivas."""
+    running_relay_ids: set[int] = set()
+    queued_relay_ids: set[int] = set()
+    programa_por_relay: dict[int, dict[str, Any]] = {}
+    for cola in colas_vivas_en_link(conn):
+        cola_est = str(cola.get("estado") or "")
+        cola_viva = cola_est in ("programado", "en_ejecucion")
+        for it in _cola_turnos(cola):
+            rid = int(it["relay_id"])
+            item_est = str(it.get("estado") or "")
+            if item_est == "corriendo":
+                running_relay_ids.add(rid)
+            elif cola_viva and item_est == "pendiente":
+                queued_relay_ids.add(rid)
+        for rid, info in programa_por_relay_en_cola(conn, cola).items():
+            if rid not in running_relay_ids:
+                programa_por_relay[rid] = info
+    queued_relay_ids -= running_relay_ids
+    for rid, st in (live_zonas or {}).items():
+        if isinstance(st, dict) and st.get("running"):
+            rid_i = int(rid)
+            running_relay_ids.add(rid_i)
+            queued_relay_ids.discard(rid_i)
+    return running_relay_ids, queued_relay_ids, programa_por_relay
+
+
+def contexto_control_hydra_ui(
+    conn: sqlite3.Connection,
+    usuario: str,
+    *,
+    auto_sync: bool = False,
+) -> dict[str, Any]:
+    """Contexto compartido link regador y módulo Riego → Registro manual (LC)."""
+    hydra_sectores = sectores_para_link_riego(conn)
+    hydra_colas = colas_vivas_en_link(conn)
+    hydra_cola = hydra_colas[0] if hydra_colas else None
+    hydra_sync_cooldown = cooldown_restante_segundos(conn)
+
+    hydra_msg = ""
+    hydra_ok = True
+    if auto_sync and hydra_sectores and hydra_cola and hydra_sync_cooldown <= 0:
+        auto = sincronizar_hydrawise(conn, usuario, force=False)
+        msg = str(auto.get("msg") or "").strip()
+        if msg and "429" not in msg and not msg.startswith("Cola activa — próxima"):
+            hydra_msg = msg
+            hydra_ok = bool(auto.get("ok", True))
+        hydra_colas = colas_vivas_en_link(conn)
+        hydra_cola = hydra_colas[0] if hydra_colas else None
+
+    probe = estado_conexion_controlador(conn, force=False)
+    live_zonas = probe.get("zonas") or {}
+    hydra_conn_online = bool(probe.get("online"))
+    hydra_conn_msg = str(probe.get("msg") or "")
+    hydra_conn_title = str(probe.get("title") or "")
+    hydra_conn_cached = bool(probe.get("cached"))
+    hydra_probe_age_sec = int(probe.get("probe_age_sec") or 0)
+
+    running_relay_ids, queued_relay_ids, programa_por_relay = estado_sectores_colas_vivas(
+        conn, live_zonas
+    )
+    hydra_mostrar_apagar = any(cola_permite_apagar(c) for c in hydra_colas)
+    hay_programada_espera = any(
+        str(c.get("estado") or "") == "programado" and not cola_permite_apagar(c)
+        for c in hydra_colas
+    )
+
+    return {
+        "hydra_control_activo": bool(hydra_sectores),
+        "hydra_sectores": hydra_sectores,
+        "hydra_cola": hydra_cola,
+        "hydra_colas": hydra_colas,
+        "programa_por_relay": programa_por_relay,
+        "hydra_mostrar_apagar": hydra_mostrar_apagar,
+        "hydra_cola_programada": bool(
+            hay_programada_espera and not hydra_mostrar_apagar
+        ),
+        "hydra_sync_cooldown": hydra_sync_cooldown,
+        "hydra_msg": hydra_msg,
+        "hydra_ok": hydra_ok,
+        "hydra_conn_online": hydra_conn_online,
+        "hydra_conn_msg": hydra_conn_msg,
+        "hydra_conn_title": hydra_conn_title,
+        "hydra_conn_cached": hydra_conn_cached,
+        "hydra_probe_age_sec": hydra_probe_age_sec,
+        "running_relay_ids": sorted(running_relay_ids),
+        "queued_relay_ids": sorted(queued_relay_ids),
+    }
+
+
+def cola_activa_en_link(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    """Cola prioritaria (en ejecución) para acciones de sync."""
+    row = _cola_activa(conn)
+    if not row:
+        return None
+    return _cola_dict_en_link(conn, row)
 
 
 def api_lista_para_link(conn: sqlite3.Connection) -> tuple[bool, str]:
