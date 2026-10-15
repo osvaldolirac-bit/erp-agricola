@@ -143,12 +143,16 @@ def module_required(module_key: str):
 
 
 def request_path() -> str:
-    from flask import request
+    from flask import current_app, request
 
-    prefix = request.script_root or ""
-    path = request.full_path if request.query_string else request.path
+    prefix = (request.script_root or "").rstrip("/")
+    if not prefix:
+        prefix = (current_app.config.get("APPLICATION_ROOT") or "").rstrip("/")
+    path = request.path
+    if request.query_string:
+        path = f"{path}?{request.query_string.decode()}"
     if prefix and not path.startswith(prefix):
-        return prefix + path
+        path = f"{prefix}{path}" if path.startswith("/") else f"{prefix}/{path}"
     return path
 
 

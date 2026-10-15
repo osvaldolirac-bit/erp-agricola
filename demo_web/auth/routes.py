@@ -45,7 +45,10 @@ def _activate_session(
 ) -> None:
     bind_tenant_context(tenant_slug)
     erp = get_erp_module_for(tenant_slug)
+    login_next = session.get("login_next")
     session.clear()
+    if login_next:
+        session["login_next"] = login_next
     session["email"] = email
     session["rol"] = erp.normalizar_rol_usuario(rol, email) if hasattr(erp, "normalizar_rol_usuario") else rol
     session["tenant_slug"] = tenant_slug
@@ -185,13 +188,15 @@ def master_entry():
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
-    if session.get("email") and session.get("tenant_slug"):
-        return redirect(safe_next(pop_login_next()))
-
     # URL limpia: destino post-login en sesión, no en ?next=
     if request.method == "GET" and request.args.get("next"):
         stash_login_next(request.args.get("next"))
+        if session.get("email") and session.get("tenant_slug"):
+            return redirect(safe_next(pop_login_next()))
         return redirect(url_for("auth.login"))
+
+    if session.get("email") and session.get("tenant_slug"):
+        return redirect(safe_next(pop_login_next()))
 
     error = None
     open_panel = False
