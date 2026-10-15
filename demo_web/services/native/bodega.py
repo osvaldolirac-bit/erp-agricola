@@ -778,14 +778,8 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
             if kardex_on:
                 from flask import url_for
 
-                q = (ctx.get("filtro_q") or "").strip()
-                dest = url_for(
-                    "modules.stock_bodega_rapido",
-                    **({"q": q} if q else {}),
-                )
                 ctx["link_stock_movil"] = url_for(
-                    "auth.login",
-                    next=dest,
+                    "auth.login_stock_bodega",
                     _external=True,
                 )
         elif sec == "kardex" and kardex_on:

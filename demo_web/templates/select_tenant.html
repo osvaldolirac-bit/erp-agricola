@@ -22,6 +22,9 @@
       {% if login_next %}
       <input type="hidden" name="login_next" value="{{ login_next }}">
       {% endif %}
+      {% if login_dest %}
+      <input type="hidden" name="login_dest" value="{{ login_dest }}">
+      {% endif %}
       {% for o in options %}
       <button class="tenant-pick-item" type="submit" name="tenant_slug" value="{{ o.slug }}">
         <strong>{{ o.nombre }}</strong>

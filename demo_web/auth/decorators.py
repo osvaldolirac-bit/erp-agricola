@@ -85,6 +85,12 @@ def login_required(view: Callable):
                 pass
             from demo_web.auth.login_next import parse_next
 
+            if request.endpoint == "modules.stock_bodega_rapido":
+                from demo_web.auth.login_next import LOGIN_DEST_STOCK
+
+                session["login_dest"] = LOGIN_DEST_STOCK
+                return redirect(url_for("auth.login_stock_bodega"))
+
             path = request_path()
             stash_login_next(path)
             nxt = parse_next(path) or parse_next(session.get("login_next"))

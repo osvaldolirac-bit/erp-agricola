@@ -22,6 +22,9 @@
         {% if login_next %}
         <input type="hidden" name="login_next" value="{{ login_next }}">
         {% endif %}
+        {% if login_dest %}
+        <input type="hidden" name="login_dest" value="{{ login_dest }}">
+        {% endif %}
         <label for="email">Usuario</label>
         <input id="email" name="email" value="{{ acceso_pref or '' }}" type="email" autocomplete="username" required>
         <label for="password">Clave</label>

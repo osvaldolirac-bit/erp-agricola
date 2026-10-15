@@ -15,7 +15,13 @@ from flask import (
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from demo_web.auth.decorators import login_required
-from demo_web.auth.login_next import default_landing_url, pop_login_next, safe_next, stash_login_next
+from demo_web.auth.login_next import (
+    LOGIN_DEST_STOCK,
+    default_landing_url,
+    pop_login_next,
+    safe_next,
+    stash_login_next,
+)
 from demo_web.auth.tenant_access import list_accessible_tenants, tenant_access_option
 from demo_web.auth.user_db import fetch_bridge_user, fetch_login_row
 from demo_web.services.erp_loader import bind_tenant_context, get_erp_module_for
@@ -199,6 +205,104 @@ def _login_next_field() -> str:
     return ""
 
 
+def _login_dest_token() -> str:
+    pending = session.get("pending_login") or {}
+    return (
+        (request.form.get("login_dest") or "").strip()
+        or (session.get("login_dest") or "").strip()
+        or (pending.get("login_dest") or "").strip()
+    )
+
+
+def _redirect_after_login():
+    """Tras autenticar: stock móvil (sin depender de ?next= / cookies en WhatsApp)."""
+    dest = _login_dest_token()
+    session.pop("login_dest", None)
+    if dest == LOGIN_DEST_STOCK:
+        return redirect(url_for("modules.stock_bodega_rapido"))
+    return redirect(safe_next(pop_login_next()))
+
+
+def _process_login_post():
+    """POST login: None si debe renderizar de nuevo; si no, respuesta redirect."""
+    stash_login_next(request.form.get("login_next"))
+    ld = _login_dest_token()
+    if ld:
+        session["login_dest"] = ld
+
+    email = (request.form.get("email") or "").strip()
+    password = request.form.get("password") or ""
+    matches = _find_login_matches(email, password)
+    if not matches:
+        error = "Acceso denegado o periodo de prueba vencido."
+        flash(error, "danger")
+        try:
+            from demo_web.master_bitacora import log_master_bitacora
+
+            log_master_bitacora(
+                "demo",
+                email or "desconocido",
+                "INGRESO_FALLIDO",
+                "Intento de acceso rechazado",
+            )
+        except Exception:
+            pass
+        return None, error, True
+
+    if len(matches) == 1:
+        m = matches[0]
+        _maybe_alert_login(email=email, exitoso=True, tenant_slug=m["slug"])
+        _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
+        return _redirect_after_login(), None, True
+
+    session["pending_login"] = {
+        "email": matches[0]["email"],
+        "login_dest": ld,
+        "options": [
+            {
+                "slug": m["slug"],
+                "nombre": m["nombre"],
+                "descripcion": m["descripcion"],
+                "rol": m["rol"],
+            }
+            for m in matches
+        ],
+    }
+    return redirect(url_for("auth.elegir_empresa")), None, True
+
+
+@bp.route("/login/stock-bodega", methods=["GET", "POST"])
+def login_stock_bodega():
+    """Entrada móvil/WhatsApp: ruta fija (WhatsApp suele borrar ?next=)."""
+    session["login_dest"] = LOGIN_DEST_STOCK
+    if request.method == "GET" and session.get("email") and session.get("tenant_slug"):
+        return redirect(url_for("modules.stock_bodega_rapido"))
+
+    if request.method == "POST":
+        result, error, _done = _process_login_post()
+        if result is not None:
+            return result
+        return render_template(
+            "login.html",
+            error=error,
+            open_panel=True,
+            remember_key=_remember_storage_key(),
+            acceso_pref="",
+            login_next=_login_next_field(),
+            login_dest=LOGIN_DEST_STOCK,
+        )
+
+    return render_template(
+        "login.html",
+        error=None,
+        open_panel=True,
+        remember_key=_remember_storage_key(),
+        acceso_pref="",
+        login_next=url_for("modules.stock_bodega_rapido"),
+        login_dest=LOGIN_DEST_STOCK,
+    )
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET" and request.args.get("next"):
@@ -217,45 +321,11 @@ def login():
         open_panel = True
 
     if request.method == "POST":
-        stash_login_next(request.form.get("login_next"))
-        email = (request.form.get("email") or "").strip()
-        password = request.form.get("password") or ""
-        matches = _find_login_matches(email, password)
-        if not matches:
-            error = "Acceso denegado o periodo de prueba vencido."
-            open_panel = True
-            flash(error, "danger")
-            try:
-                from demo_web.master_bitacora import log_master_bitacora
-
-                log_master_bitacora(
-                    "demo",
-                    email or "desconocido",
-                    "INGRESO_FALLIDO",
-                    "Intento de acceso rechazado",
-                )
-            except Exception:
-                pass
-        elif len(matches) == 1:
-            m = matches[0]
-            _maybe_alert_login(email=email, exitoso=True, tenant_slug=m["slug"])
-            _activate_session(email=m["email"], rol=m["rol"], tenant_slug=m["slug"])
-            return redirect(safe_next(pop_login_next()))
-        else:
-            # Varios tenants: selector
-            session["pending_login"] = {
-                "email": matches[0]["email"],
-                "options": [
-                    {
-                        "slug": m["slug"],
-                        "nombre": m["nombre"],
-                        "descripcion": m["descripcion"],
-                        "rol": m["rol"],
-                    }
-                    for m in matches
-                ],
-            }
-            return redirect(url_for("auth.elegir_empresa"))
+        result, err, _done = _process_login_post()
+        if result is not None:
+            return result
+        error = err
+        open_panel = True
 
     return render_template(
         "login.html",
@@ -264,6 +334,7 @@ def login():
         remember_key=remember_key,
         acceso_pref=acceso_pref,
         login_next=_login_next_field(),
+        login_dest=_login_dest_token(),
     )
 
 
@@ -277,6 +348,9 @@ def elegir_empresa():
 
     if request.method == "POST":
         stash_login_next(request.form.get("login_next"))
+        ld = (request.form.get("login_dest") or pending.get("login_dest") or "").strip()
+        if ld:
+            session["login_dest"] = ld
         slug = (request.form.get("tenant_slug") or "").strip().lower()
         chosen = next((o for o in options if o.get("slug") == slug), None)
         if not chosen or not get_tenant(slug):
@@ -284,13 +358,14 @@ def elegir_empresa():
             return redirect(url_for("auth.elegir_empresa"))
         _activate_session(email=email, rol=chosen.get("rol") or "operador", tenant_slug=slug)
         session.pop("pending_login", None)
-        return redirect(safe_next(pop_login_next()))
+        return _redirect_after_login()
 
     return render_template(
         "select_tenant.html",
         email=email,
         options=options,
         login_next=_login_next_field(),
+        login_dest=(pending.get("login_dest") or session.get("login_dest") or ""),
     )
 
 

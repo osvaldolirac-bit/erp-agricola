@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from flask import current_app, request, session, url_for
 
+# Destino fijo post-login (link móvil; WhatsApp suele quitar ?next=)
+LOGIN_DEST_STOCK = "stock_bodega"
+
 
 def login_next_prefix() -> str:
     return (
