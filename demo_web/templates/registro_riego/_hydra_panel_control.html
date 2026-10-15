@@ -22,7 +22,7 @@
   <div class="hydra-zone-grid">
     {% for s in hydra_sectores %}
     {% set ej = riego_ejecucion_por_relay.get(s.relay_id) if riego_ejecucion_por_relay is defined else none %}
-    {% set can_tap = ej and not ej.get('from_live') %}
+    {% set can_tap = s.relay_id in running_relay_ids and ej %}
     {% if can_tap %}
     <button type="button" class="hydra-zone-card hydra-zone-card--tappable is-running" data-relay="{{ s.relay_id }}">
     {% else %}
