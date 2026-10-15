@@ -2,6 +2,7 @@
 """Despliega kardex/trazabilidad bodega LC en VPS (45.7.230.70)."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
