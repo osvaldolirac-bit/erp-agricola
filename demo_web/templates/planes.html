@@ -13,6 +13,7 @@
   'compras': 'bi-cart3',
   'bodega': 'bi-box-seam',
   'petroleo': 'bi-fuel-pump',
+  'riego': 'bi-droplet',
   'tesoreria': 'bi-bank',
   'rrhh': 'bi-people',
   'costos': 'bi-calculator',
@@ -35,7 +36,7 @@
     <p>
       Este ERP está enfocado en <strong>COSTOS</strong>: entender cuánto cuesta producir por centro de costo.
       Esa fue la idea original. Después, a medida que se desarrollaba, se fueron sumando módulos según los
-      dolores reales del campo, el patio y la oficina — labores, maquinaria, petróleo, bodega, RRHH…
+      dolores reales del campo, el patio y la oficina — labores, maquinaria, petróleo, riego, bodega, RRHH…
     </p>
     <p class="planes-story-foot">
       El <strong>Pack Oficina</strong> concentra ese eje: RRHH + Costos + Flujo. El resto de packs cubre
@@ -142,7 +143,7 @@
         <li class="ok"><i class="bi bi-check-lg"></i> {{ pack_oficina.flujo }}</li>
         <li class="ok"><i class="bi bi-check-lg"></i> Setup único {{ pack_oficina.setup_txt }}</li>
         <li class="ok"><i class="bi bi-check-lg"></i> Incluye Compras y Tesorería para pagar proveedores</li>
-        <li class="no"><i class="bi bi-x-lg"></i> Módulos de Campo y Patio (Bodega / Petróleo)</li>
+        <li class="no"><i class="bi bi-x-lg"></i> Módulos de Campo y Patio (Bodega / Petróleo / Riego)</li>
       </ul>
       <div class="plan-card-foot">
         <a class="plan-card-cta" href="{{ url_for('modules.soporte') }}">Consultar plan</a>

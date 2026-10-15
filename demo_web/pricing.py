@@ -12,7 +12,7 @@ Los packs no son un listado suelto: agrupan módulos que ya se conectan
 en la operación diaria.
 
 - Pack Campo: labores (Libro / Campo B) → GlobalGAP + Maquinaria
-- Pack Patio: Compra → Bodega / Petróleo → pago en Tesorería
+- Pack Patio: Compra → Bodega / Petróleo / Riego → pago en Tesorería
 - Pack Oficina: RRHH + Costos + Flujo + Compras + Tesorería
 - Pack Agrícola: unión de Campo + Patio + Oficina
 """
@@ -145,10 +145,12 @@ MODULOS_FEE: dict[str, dict[str, Any]] = {
         "fee_txt": _fee_txt(15_900),
         "pitch": "Riego y fertilización por huerto",
         "funciones": [
-            "Registro manual imputado a centro de costo",
+            "Registro manual imputado a centro de costo / huerto",
+            "Modos por horas o por surcos (m³ automático)",
             "Enlaces personales del regador (Registro Link)",
             "Fertilización opcional por registro",
             "Autorización admin antes de imputar al CC",
+            "Trazabilidad de agua aplicada a la operación",
         ],
     },
     "tesoreria": {
@@ -186,7 +188,7 @@ MODULOS_FEE: dict[str, dict[str, Any]] = {
             "Consolidación de gastos del campo",
             "Visión por cuartel / actividad",
             "Nació aquí la idea del ERP Agrícola",
-            "Se nutre de RRHH, compras, petróleo y campo",
+            "Se nutre de RRHH, compras, petróleo, riego y campo",
         ],
     },
     "flujo": {
@@ -346,11 +348,11 @@ PACK_CAMPO = {
 
 PACK_PATIO = {
     "nombre": "Pack Patio",
-    "fee": 53_900,
-    "fee_txt": _fee_txt(53_900),
+    "fee": 65_900,
+    "fee_txt": _fee_txt(65_900),
     "modulos": _pack_modulos(NUCLEO_PATIO),
     "nucleo": NUCLEO_PATIO,
-    "flujo": "Compra → Bodega / Petróleo → pago en Tesorería",
+    "flujo": "Compra → Bodega / Petróleo / Riego → pago en Tesorería",
     "ahorro_vs_suma": True,
     "setup_unico": 35_900,
     "setup_txt": _setup_txt(35_900),
@@ -359,7 +361,7 @@ PACK_PATIO = {
     "iva_incluido": True,
     "incluye_extra": [
         "Respaldo de datos permanente por seguridad",
-        "Flujo Compra → Bodega / Petróleo → pago en Tesorería",
+        "Flujo Compra → Bodega / Petróleo / Riego → pago en Tesorería",
         IVA_LABEL,
     ],
 }
@@ -390,8 +392,8 @@ PACK_OFICINA = {
 
 PACK = {
     "nombre": "Pack Agrícola",
-    "fee": 119_990,
-    "fee_txt": _fee_txt(119_990),
+    "fee": 129_990,
+    "fee_txt": _fee_txt(129_990),
     "modulos": _pack_modulos(NUCLEO_CAMPO, NUCLEO_PATIO, NUCLEO_OFICINA),
     "nucleo": NUCLEO_CAMPO + NUCLEO_PATIO + NUCLEO_OFICINA,
     "flujo": "Campo + Patio + Oficina (eje Costos) en un solo plan",
