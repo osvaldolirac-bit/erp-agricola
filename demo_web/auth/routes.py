@@ -188,14 +188,23 @@ def master_entry():
     return redirect(default_landing_url())
 
 
+def _login_next_field() -> str:
+    """Destino post-login (sesión, query o formulario)."""
+    from demo_web.auth.login_next import parse_next
+
+    for raw in (session.get("login_next"), request.args.get("next"), request.form.get("login_next")):
+        nxt = parse_next(raw)
+        if nxt:
+            return nxt
+    return ""
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
-    # URL limpia: destino post-login en sesión, no en ?next=
     if request.method == "GET" and request.args.get("next"):
         stash_login_next(request.args.get("next"))
         if session.get("email") and session.get("tenant_slug"):
             return redirect(safe_next(pop_login_next()))
-        return redirect(url_for("auth.login"))
 
     if session.get("email") and session.get("tenant_slug"):
         return redirect(safe_next(pop_login_next()))
@@ -208,6 +217,7 @@ def login():
         open_panel = True
 
     if request.method == "POST":
+        stash_login_next(request.form.get("login_next"))
         email = (request.form.get("email") or "").strip()
         password = request.form.get("password") or ""
         matches = _find_login_matches(email, password)
@@ -253,6 +263,7 @@ def login():
         open_panel=open_panel,
         remember_key=remember_key,
         acceso_pref=acceso_pref,
+        login_next=_login_next_field(),
     )
 
 
@@ -265,6 +276,7 @@ def elegir_empresa():
         return redirect(url_for("auth.login"))
 
     if request.method == "POST":
+        stash_login_next(request.form.get("login_next"))
         slug = (request.form.get("tenant_slug") or "").strip().lower()
         chosen = next((o for o in options if o.get("slug") == slug), None)
         if not chosen or not get_tenant(slug):
@@ -278,6 +290,7 @@ def elegir_empresa():
         "select_tenant.html",
         email=email,
         options=options,
+        login_next=_login_next_field(),
     )
 
 

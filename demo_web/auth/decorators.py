@@ -83,7 +83,13 @@ def login_required(view: Callable):
                     return redirect(acceso_login_path(current_app))
             except Exception:
                 pass
-            stash_login_next(request_path())
+            from demo_web.auth.login_next import parse_next
+
+            path = request_path()
+            stash_login_next(path)
+            nxt = parse_next(path) or parse_next(session.get("login_next"))
+            if nxt:
+                return redirect(url_for("auth.login", next=nxt))
             return redirect(url_for("auth.login"))
         demo = get_demo_module()
         conn = demo.conectar_db()
