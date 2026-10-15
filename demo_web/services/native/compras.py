@@ -63,6 +63,19 @@ def _es_documento_interno(nro_documento: str | None) -> bool:
     return doc.startswith("INT-") or doc.startswith("INT/")
 
 
+def _ensure_imputar_bruto_col(conn) -> None:
+    from erp_solo_lectura import conn_en_solo_lectura
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)").fetchall()}
+    if "imputar_bruto" not in cols:
+        if conn_en_solo_lectura(conn):
+            return
+        conn.execute(
+            "ALTER TABLE facturas ADD COLUMN imputar_bruto INTEGER DEFAULT 1"
+        )
+        conn.commit()
+
+
 def _ensure_folio_interno_col(conn) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -560,18 +573,34 @@ def _post_save_gastos(demo, conn) -> dict:
     if not selcc:
         return {"ok": False, "msg": "Seleccione al menos un centro de costo."}
 
+    _ensure_imputar_bruto_col(conn)
     ng = _folio_interno(conn, fe) if sin_doc else nro
     imp = mt if iva_bruto else mt / 1.19
+    ib = 1 if iva_bruto else 0
     conn.execute(
         """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-           tipo, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?)""",
-        (ng, prov, fe, fv, mt, "Gasto Operacional", concepto, razon, tipo_gasto),
+           tipo, concepto, razon_social, tipo_gasto, imputar_bruto) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (ng, prov, fe, fv, mt, "Gasto Operacional", concepto, razon, tipo_gasto, ib),
     )
     for c in selcc:
         conn.execute(
             """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
-               tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (ng + "_P", prov, fe, fv, 0, "Gasto Operacional", c.upper(), imp / len(selcc), concepto, razon, tipo_gasto),
+               tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto, imputar_bruto)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                ng + "_P",
+                prov,
+                fe,
+                fv,
+                0,
+                "Gasto Operacional",
+                c.upper(),
+                imp / len(selcc),
+                concepto,
+                razon,
+                tipo_gasto,
+                ib,
+            ),
         )
     conn.commit()
     demo.registrar_accion("GASTO", ng)
