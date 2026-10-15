@@ -5,6 +5,14 @@ import json
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
+
+_CHILE_TZ = ZoneInfo("America/Santiago")
+
+
+def _wall_clock_chile() -> datetime:
+    """Hora civil Chile (DST). Misma referencia que el usuario al programar riego."""
+    return datetime.now(_CHILE_TZ).replace(tzinfo=None)
 
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.hydrawise_client import (
@@ -49,7 +57,7 @@ def _probe_desde_cache(conn: sqlite3.Connection, *, nota: str = "") -> dict[str,
         return None
     demo = get_demo_module()
     try:
-        age = demo.hora_chile().timestamp() - float(cached.get("ts") or 0)
+        age = _wall_clock_chile().timestamp() - float(cached.get("ts") or 0)
     except (TypeError, ValueError):
         age = 0
     msg = str(cached.get("msg") or "")
@@ -670,7 +678,7 @@ def crear_cola(
                 return {"ok": False, "msg": msg_f}
 
     demo = get_demo_module()
-    fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+    fh = _wall_clock_chile().strftime("%Y-%m-%d %H:%M:%S")
     conn.execute("BEGIN IMMEDIATE")
     cur = conn.execute(
         """INSERT INTO hydrawise_cola (tipo, inicio_programa, estado, creado_por, creado_en)
@@ -866,7 +874,7 @@ def _mark_api_sync(conn: sqlite3.Connection, ahora: datetime) -> None:
 
 def cooldown_restante_segundos(conn: sqlite3.Connection, ahora: datetime | None = None) -> int:
     demo = get_demo_module()
-    t = ahora or demo.hora_chile()
+    t = ahora or _wall_clock_chile()
     rem = SYNC_COOLDOWN_SEC - (t.timestamp() - _last_api_sync_ts(conn))
     return max(0, int(rem + 0.999))
 
@@ -1023,7 +1031,7 @@ def _abortar_cola_activa(
         return {"ok": False, "msg": "No hay cola activa."}
     cola_id = int(cola[0])
     demo = get_demo_module()
-    ahora = demo.hora_chile()
+    ahora = _wall_clock_chile()
     fh = ahora.strftime("%Y-%m-%d %H:%M:%S")
     items = _items_cola(conn, cola_id)
     running = next((it for it in items if it[4] == "corriendo"), None)
@@ -1152,7 +1160,7 @@ def cola_permite_apagar(cola: dict[str, Any] | None) -> bool:
     if est == "programado":
         inicio = _parse_dt_chile(str(cola.get("inicio_programa") or ""))
         demo = get_demo_module()
-        ahora = demo.hora_chile()
+        ahora = _wall_clock_chile()
         if inicio and ahora >= inicio:
             return any(str(it.get("estado") or "") in activos for it in items)
     return False
@@ -1235,7 +1243,7 @@ def sincronizar_hydrawise(
 
     migrar_hydrawise(conn)
     demo = get_demo_module()
-    ahora = demo.hora_chile()
+    ahora = _wall_clock_chile()
     msgs: list[str] = []
     importados = 0
     cooldown = cooldown_restante_segundos(conn, ahora)
@@ -1602,7 +1610,7 @@ def _write_contact_cache(
     payload = {
         "controller_id": int(controller_id),
         "last_contact_ts": float(last_contact_ts),
-        "fetched_ts": demo.hora_chile().timestamp(),
+        "fetched_ts": _wall_clock_chile().timestamp(),
     }
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta (clave, valor) VALUES (?, ?)",
@@ -1708,7 +1716,7 @@ def _write_probe_cache(conn: sqlite3.Connection, payload: dict[str, Any]) -> Non
     if conn_en_solo_lectura(conn):
         return
     demo = get_demo_module()
-    ts = demo.hora_chile().timestamp()
+    ts = _wall_clock_chile().timestamp()
     slim = {
         "online": bool(payload.get("online")),
         "ok": bool(payload.get("ok")),
@@ -1739,7 +1747,7 @@ def estado_conexion_controlador(
         }
 
     demo = get_demo_module()
-    ahora = demo.hora_chile()
+    ahora = _wall_clock_chile()
     cached = _read_probe_cache(conn)
     if cached and not force:
         try:
@@ -1869,7 +1877,7 @@ def programa_por_relay_en_cola(
     if not cola:
         return {}
     demo = get_demo_module()
-    ahora = demo.hora_chile()
+    ahora = _wall_clock_chile()
     items = _cola_turnos(cola)
     nombres = _map_nombres_fertilizante(conn)
     inicio_prog = _parse_dt_chile(cola.get("inicio_programa"))
