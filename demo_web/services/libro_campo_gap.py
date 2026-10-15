@@ -38,6 +38,8 @@ def ensure_planilla_columns(conn) -> None:
         ("car_mayor", "INTEGER DEFAULT 0"),
         ("unidad_gasto", "TEXT DEFAULT ''"),
         ("n_orden", "TEXT DEFAULT ''"),
+        ("operador_certificado", "INTEGER DEFAULT 0"),
+        ("lote_producto", "TEXT DEFAULT ''"),
     ):
         if name not in cols:
             try:

@@ -148,6 +148,85 @@ def _stock(demo, conn, cert: bool = False) -> dict:
     }
 
 
+def validar_salida_bodega_lc(
+    demo,
+    conn,
+    cantidad: float,
+    *,
+    producto_nombre: str,
+) -> tuple[bool, str, int | None, str | None, str | None]:
+    """Valida salida LC sin escribir (Libro de Campo o ajuste manual)."""
+    if cantidad <= 0:
+        return False, "La cantidad debe ser mayor a cero.", None, None, None
+    nom = (producto_nombre or "").strip()
+    if not nom:
+        return False, "Producto no indicado.", None, None, None
+    row = conn.execute(
+        "SELECT id, producto, precio_medio, COALESCE(unidad_medida, ?), COALESCE(stock, 0) "
+        "FROM inventario WHERE UPPER(TRIM(producto))=UPPER(TRIM(?))",
+        (demo.DEFAULT_UNIDAD_INSUMO, nom),
+    ).fetchone()
+    if not row:
+        return False, f"Producto «{nom}» no encontrado en inventario.", None, None, None
+    iid = int(row[0])
+    prod_nombre = str(row[1])
+    um_sel = str(row[3])
+    stock_disp = float(row[4] or 0)
+    if stock_disp <= 0:
+        return False, f"Sin stock disponible de {prod_nombre}.", None, None, None
+    if cantidad > stock_disp + 1e-9:
+        return False, (
+            f"Stock insuficiente de {prod_nombre}: solicitó {demo.f_cantidad(cantidad)} {um_sel}, "
+            f"disponible {demo.f_cantidad(stock_disp)} {um_sel}."
+        ), None, None, None
+    return True, "", iid, str(prod_nombre), str(um_sel)
+
+
+def registrar_salida_bodega_lc(
+    demo,
+    conn,
+    cantidad: float,
+    *,
+    producto_nombre: str,
+    centro_costo: str,
+    fecha=None,
+) -> tuple[bool, str]:
+    """Salida a un cuartel (sin commit). Usado al guardar Libro de Campo LC."""
+    from demo_web.services.tenant_scope import centros_costo
+
+    cc_u = (centro_costo or "").strip().upper()
+    ccs = {c.upper() for c in centros_costo(demo)}
+    if cc_u not in ccs:
+        return False, f"Centro de costo no válido: {centro_costo}"
+    ok, msg, iid, prod_nombre, um_sel = validar_salida_bodega_lc(
+        demo, conn, cantidad, producto_nombre=producto_nombre
+    )
+    if not ok or iid is None:
+        return False, msg or "No se pudo validar la salida."
+    row = conn.execute(
+        "SELECT precio_medio FROM inventario WHERE id=?",
+        (iid,),
+    ).fetchone()
+    pmp = float(row[0] or 0) if row else 0.0
+    fecha_mov = str(fecha or hoy_demo(demo))
+    conn.execute(
+        """INSERT INTO movimientos
+           (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+           VALUES (?,?,?,?,?,?,?)""",
+        (iid, "Salida", cantidad, fecha_mov, cc_u, cantidad * pmp, um_sel),
+    )
+    cur = conn.execute(
+        "UPDATE inventario SET stock = stock - ? WHERE id = ? AND stock >= ?",
+        (cantidad, iid, cantidad),
+    )
+    if cur.rowcount != 1:
+        return False, (
+            f"Stock insuficiente de {prod_nombre} al rebajar bodega "
+            f"(disponible insuficiente). No se permite saldo negativo."
+        )
+    return True, str(prod_nombre or producto_nombre)
+
+
 def _productos_salida(demo, conn) -> list[dict]:
     dfi = pd.read_sql_query(
         "SELECT id, producto, precio_medio, COALESCE(unidad_medida, 'kg') AS unidad_medida, stock "
