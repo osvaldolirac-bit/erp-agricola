@@ -775,6 +775,15 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
         }
         if sec == "stock":
             ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
+            if kardex_on:
+                from flask import url_for
+
+                q = (ctx.get("filtro_q") or "").strip()
+                ctx["link_stock_movil"] = url_for(
+                    "modules.stock_bodega_rapido",
+                    **({"q": q} if q else {}),
+                    _external=True,
+                )
         elif sec == "kardex" and kardex_on:
             from demo_web.services import bodega_kardex
 
