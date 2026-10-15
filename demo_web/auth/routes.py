@@ -14,7 +14,9 @@ from flask import (
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
+from demo_web.auth.decorators import login_required
 from demo_web.auth.login_next import default_landing_url, pop_login_next, safe_next, stash_login_next
+from demo_web.auth.tenant_access import list_accessible_tenants, tenant_access_option
 from demo_web.auth.user_db import fetch_bridge_user, fetch_login_row
 from demo_web.services.erp_loader import bind_tenant_context, get_erp_module_for
 from demo_web.tenants import get_tenant, list_tenants
@@ -277,6 +279,50 @@ def elegir_empresa():
         email=email,
         options=options,
     )
+
+
+@bp.route("/auth/cambiar-empresa", methods=["POST"])
+@login_required
+def cambiar_empresa():
+    email = (session.get("email") or "").strip()
+    slug = (request.form.get("tenant_slug") or "").strip().lower()
+    current = (session.get("tenant_slug") or "").strip().lower()
+    if not email or not slug:
+        flash("No se pudo cambiar de empresa.", "warning")
+        return redirect(default_landing_url())
+    if slug == current:
+        return redirect(default_landing_url())
+
+    try:
+        from demo_web.services.mantenimiento import en_mantenimiento
+
+        if en_mantenimiento(slug):
+            flash("Ese ERP está en mantención. Intenta más tarde.", "warning")
+            return redirect(default_landing_url())
+    except Exception:
+        pass
+
+    chosen = tenant_access_option(email, slug)
+    if not chosen:
+        flash("No tienes acceso a esa empresa.", "danger")
+        return redirect(default_landing_url())
+
+    _activate_session(email=email, rol=chosen["rol"], tenant_slug=slug)
+    accessible = session.get("accessible_tenants") or list_accessible_tenants(email)
+    session["accessible_tenants"] = accessible
+    try:
+        from demo_web.services.mantenimiento import bitacora_erp_activa
+
+        if bitacora_erp_activa(slug):
+            erp = get_erp_module_for(slug)
+            erp.registrar_accion(
+                "CAMBIO EMPRESA",
+                f"{current or '—'} → {slug} ({email})",
+            )
+    except Exception:
+        pass
+    flash(f"Ahora estás en {chosen['nombre']}.", "info")
+    return redirect(url_for("modules.dashboard"))
 
 
 @bp.route("/logout", methods=["POST"])
