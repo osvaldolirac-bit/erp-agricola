@@ -25,15 +25,16 @@
   {% endif %}
 
   {% if sec_activa == 'stock' %}
-  {% if link_stock_movil %}
+  {% if erp_app == 'concepcion' and not es_certificacion %}
+  {% set link_movil_whatsapp = link_stock_movil or url_for('auth.login_stock_bodega', _external=True) %}
   <div class="panel-card mb-3 border-success">
     <h2 class="h6 mb-1">📱 Link stock + kardex (celular / WhatsApp)</h2>
     <p class="small text-muted mb-2 mb-md-2">
-      Para WhatsApp/celular: abre login si hace falta y luego muestra stock + kardex (La Concepción).
+      Ruta fija <strong>/login/stock-bodega</strong> (WhatsApp no pierde parámetros). Tras login abre stock móvil + kardex LC.
       Si ya tiene sesión, entra directo al stock móvil.
     </p>
     <div class="input-group">
-      <input type="text" class="form-control form-control-sm font-monospace" id="lcLinkStockMovil" readonly value="{{ link_stock_movil }}">
+      <input type="text" class="form-control form-control-sm font-monospace" id="lcLinkStockMovil" readonly value="{{ link_movil_whatsapp }}">
       <button type="button" class="btn btn-success btn-sm" id="lcCopyStockMovil">Copiar link</button>
     </div>
     <p class="small text-success mb-0 mt-2 d-none" id="lcCopyStockMovilOk">Copiado — puede pegarlo en WhatsApp.</p>
