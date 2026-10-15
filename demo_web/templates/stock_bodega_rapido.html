@@ -71,7 +71,11 @@
     {% else %}
     <h1 class="h5 mb-1">📦 Stock + kardex</h1>
     <p class="small mb-2 opacity-75">{{ erp_title }} · toque un producto · {{ actualizado }}</p>
-    <form method="get" class="search-wrap mb-2">
+    <form method="get" class="search-wrap mb-2"
+          {% if link_mode and link_tok %}action="{{ url_for('stock_bodega_link.formulario') }}"{% endif %}>
+      {% if link_mode and link_tok %}
+      <input type="hidden" name="t" value="{{ link_tok }}">
+      {% endif %}
       <input type="search" name="q" class="form-control form-control-lg" value="{{ filtro_q }}"
              placeholder="Buscar producto o familia…" autocomplete="off" enterkeyhint="search">
     </form>
