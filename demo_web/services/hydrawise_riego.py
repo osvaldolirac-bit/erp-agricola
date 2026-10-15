@@ -2015,6 +2015,66 @@ def estado_sectores_colas_vivas(
     return running_relay_ids, queued_relay_ids, programa_por_relay
 
 
+def _fmt_countdown(sec: int) -> str:
+    s = max(0, int(sec))
+    m, r = divmod(s, 60)
+    if m >= 60:
+        h, m = divmod(m, 60)
+        return f"{h}:{m:02d}:{r:02d}"
+    return f"{m}:{r:02d}"
+
+
+def riego_timer_por_relay(
+    conn: sqlite3.Connection,
+    live_zonas: dict[str, Any] | None = None,
+) -> dict[int, dict[str, Any]]:
+    """Segundos restantes por sector con ítem en estado corriendo (colas ERP)."""
+    ahora = _wall_clock_chile()
+    out: dict[int, dict[str, Any]] = {}
+    for cola in colas_vivas_en_link(conn):
+        for it in _cola_turnos(cola):
+            if str(it.get("estado") or "") != "corriendo":
+                continue
+            rid = int(it["relay_id"])
+            minutos = float(it.get("minutos") or 0)
+            if minutos <= 0:
+                continue
+            t0 = _parse_dt_chile(str(it.get("run_inicio") or "")) or ahora
+            elapsed = max(0.0, (ahora - t0).total_seconds())
+            total_sec = int(minutos * 60.0)
+            rem = max(0, total_sec - int(elapsed))
+            prev = out.get(rid)
+            if prev is None or rem < int(prev.get("remaining_sec") or 0):
+                out[rid] = {
+                    "remaining_sec": rem,
+                    "remaining_fmt": _fmt_countdown(rem),
+                    "minutos": minutos,
+                    "run_inicio": str(it.get("run_inicio") or ""),
+                    "cola_id": int(cola.get("id") or 0),
+                }
+    for rid, st in (live_zonas or {}).items():
+        if not isinstance(st, dict) or not st.get("running"):
+            continue
+        rid_i = int(rid)
+        if rid_i in out:
+            continue
+        sec = st.get("remaining_sec") or st.get("time_left_sec")
+        if sec is not None:
+            try:
+                rem = max(0, int(sec))
+                out[rid_i] = {
+                    "remaining_sec": rem,
+                    "remaining_fmt": _fmt_countdown(rem),
+                    "minutos": 0,
+                    "run_inicio": "",
+                    "cola_id": 0,
+                    "from_live": True,
+                }
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
 def contexto_control_hydra_ui(
     conn: sqlite3.Connection,
     usuario: str,
@@ -2049,6 +2109,7 @@ def contexto_control_hydra_ui(
     running_relay_ids, queued_relay_ids, programa_por_relay = estado_sectores_colas_vivas(
         conn, live_zonas
     )
+    riego_timer = riego_timer_por_relay(conn, live_zonas)
     hydra_mostrar_apagar = any(cola_permite_apagar(c) for c in hydra_colas)
     hay_programada_espera = any(
         str(c.get("estado") or "") == "programado" and not cola_permite_apagar(c)
@@ -2075,6 +2136,7 @@ def contexto_control_hydra_ui(
         "hydra_probe_age_sec": hydra_probe_age_sec,
         "running_relay_ids": sorted(running_relay_ids),
         "queued_relay_ids": sorted(queued_relay_ids),
+        "riego_timer_por_relay": riego_timer,
     }
 
 

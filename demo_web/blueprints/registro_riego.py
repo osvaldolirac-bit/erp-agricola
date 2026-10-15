@@ -14,7 +14,7 @@ from flask import (
 from demo_web.auth.decorators import login_required
 from demo_web.services.demo_loader import get_demo_module
 from demo_web.services.erp_loader import bind_tenant_context
-from demo_web.services.hydrawise_riego import _cola_turnos, lc_contexto_hydra
+from demo_web.services.hydrawise_riego import lc_contexto_hydra
 from demo_web.services.registro_riego import (
     aplicar_cookie_operador,
     config_riego_cc_para_formulario,
@@ -409,6 +409,7 @@ def formulario():
     hydra_mostrar_apagar = False
     running_relay_ids: set[int] = set()
     queued_relay_ids: set[int] = set()
+    riego_timer_por_relay: dict = {}
     if use_hydra_ui:
         conn = demo.conectar_db()
         try:
@@ -481,6 +482,7 @@ def formulario():
             running_relay_ids, queued_relay_ids, programa_por_relay = (
                 hw.estado_sectores_colas_vivas(conn, live_zonas)
             )
+            riego_timer_por_relay = hw.riego_timer_por_relay(conn, live_zonas)
             hydra_mostrar_apagar = any(hw.cola_permite_apagar(c) for c in hydra_colas)
         finally:
             conn.close()
@@ -511,6 +513,7 @@ def formulario():
         running_relay_ids=sorted(running_relay_ids),
         queued_relay_ids=sorted(queued_relay_ids),
         programa_por_relay=programa_por_relay,
+        riego_timer_por_relay=riego_timer_por_relay,
         hydra_tiene_corriendo=bool(running_relay_ids),
         hydra_mostrar_apagar=hydra_mostrar_apagar,
         hydra_cola_programada=bool(

@@ -26,6 +26,12 @@
       <p class="hydra-zone-cc">{{ s.huerto_cc }}</p>
       {% if s.relay_id in running_relay_ids %}
       <span class="hydra-zone-status">Regando</span>
+      {% set tm = riego_timer_por_relay.get(s.relay_id) if riego_timer_por_relay is defined else none %}
+      {% if tm %}
+      <p class="hydra-zone-timer mb-0" data-remaining-sec="{{ tm.remaining_sec }}" aria-live="polite">
+        Restante <strong class="hydra-zone-timer-value">{{ tm.remaining_fmt }}</strong>
+      </p>
+      {% endif %}
       {% elif s.relay_id in queued_relay_ids %}
       <span class="hydra-zone-status hydra-zone-status--queued">En cola</span>
       {% set prog = programa_por_relay.get(s.relay_id) %}

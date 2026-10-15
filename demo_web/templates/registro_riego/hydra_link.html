@@ -29,6 +29,22 @@
     .hydra-link-body.hydra-ptr-active .hydra-ptr-indicator {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     }
+    .hydra-zone-timer {
+      margin-top: 0.35rem;
+      font-size: 1.05rem;
+      color: #0d6efd;
+    }
+    .hydra-zone-timer-value {
+      font-variant-numeric: tabular-nums;
+      font-size: 1.35rem;
+      letter-spacing: 0.02em;
+    }
+    .hydra-zone-card.is-running .hydra-zone-timer {
+      color: #198754;
+    }
+    .hydra-zone-timer--done .hydra-zone-timer-value {
+      color: #6c757d;
+    }
   </style>
 </head>
 <body class="hydra-link-body registro-riego-body">
@@ -121,6 +137,9 @@
   {% endif %}
   {% if acceso_personal %}
   <script src="{{ url_for('static', filename='js/hydra_link_refresh.js') }}?v={{ static_version }}" defer></script>
+  {% if tab == 'control' %}
+  <script src="{{ url_for('static', filename='js/hydra_link_timer.js') }}?v={{ static_version }}" defer></script>
+  {% endif %}
   {% endif %}
 
 </body>
