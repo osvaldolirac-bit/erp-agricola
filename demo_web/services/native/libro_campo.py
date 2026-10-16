@@ -11,6 +11,28 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 
+
+def _tenant_slug_lc(demo) -> str:
+    return (session.get("tenant_slug") or getattr(demo, "TENANT_SLUG", "") or "").strip().lower()
+
+
+def _libro_cuarteles(demo) -> list[str]:
+    if _tenant_slug_lc(demo) == "espino":
+        from demo_web.services.espino_scope import cuarteles_espino
+
+        return cuarteles_espino()
+    return list(demo.CENTROS_COSTO or [])
+
+
+def _libro_especies(demo) -> list[str]:
+    if _tenant_slug_lc(demo) == "espino":
+        from demo_web.services.espino_scope import especies_libro_campo_espino
+
+        return especies_libro_campo_espino()
+    especies = getattr(demo, "LIBRO_CAMPO_ESPECIES", None) or demo.GAP_ESPECIES
+    return list(especies or [])
+
+
 SECCIONES_BASE = [
     ("historial", "📜 HISTORIAL AUDITABLE"),
     ("ingreso", "📥 INGRESO APLICACIÓN"),
@@ -255,10 +277,12 @@ def _leer_evento_meta(demo) -> dict:
     base = _evento_meta_defaults(demo)
     meta = session.get(META_KEY) or {}
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
-    if not out.get("cuartel") and getattr(demo, "CENTROS_COSTO", None):
-        out["cuartel"] = demo.CENTROS_COSTO[0]
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    cuarteles = _libro_cuarteles(demo)
+    especies = _libro_especies(demo)
+    if not out.get("cuartel") and cuarteles:
+        out["cuartel"] = cuarteles[0]
+    if not out.get("especie") and especies:
+        out["especie"] = especies[0]
     return out
 
 # Histórico importado (planillas antiguas) vive en n_aplicacion >= 10000
@@ -329,8 +353,8 @@ def _ingreso(demo, conn) -> dict:
         "form_op_cert": bool(meta.get("op_cert")),
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
-        "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "cuarteles": _libro_cuarteles(demo),
+        "especies": _libro_especies(demo),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -393,7 +417,7 @@ def _historial(demo, conn) -> dict:
             "filtro_cuartel": cuartel,
             "filtro_q": q_prod,
             "filtro_n_app": q_app,
-            "cuarteles": ["TODOS"] + demo.CENTROS_COSTO,
+            "cuarteles": ["TODOS"] + _libro_cuarteles(demo),
             "pdf_historial_url": pdf_url,
             "pdf_historial_filename": pdf_filename,
         }
@@ -474,7 +498,7 @@ def _historial(demo, conn) -> dict:
         "filtro_cuartel": cuartel,
         "filtro_q": q_prod,
         "filtro_n_app": q_app,
-        "cuarteles": ["TODOS"] + demo.CENTROS_COSTO,
+        "cuarteles": ["TODOS"] + _libro_cuarteles(demo),
         "pdf_historial_url": pdf_url,
         "pdf_historial_filename": pdf_filename,
     }
@@ -558,8 +582,8 @@ def _modificar(demo, conn) -> dict:
         "mod_lineas": lineas,
         "mod_edit": edit_linea,
         "mod_app_sel": edit_app,
-        "cuarteles": demo.CENTROS_COSTO,
-        "especies": demo.GAP_ESPECIES,
+        "cuarteles": _libro_cuarteles(demo),
+        "especies": _libro_especies(demo),
         "unidades_dosis": UNIDADES_DOSIS,
         "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
@@ -642,8 +666,14 @@ def _post_guardar_evento(demo, conn) -> dict:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
-    huerto = request.form.get("cuartel") or demo.CENTROS_COSTO[0]
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    cuarteles = _libro_cuarteles(demo)
+    especies = _libro_especies(demo)
+    huerto = (request.form.get("cuartel") or "").strip() or (cuarteles[0] if cuarteles else "")
+    if _tenant_slug_lc(demo) == "espino":
+        allowed = {c.upper() for c in cuarteles}
+        if huerto.upper() not in allowed:
+            return {"ok": False, "msg": "Seleccione una variedad válida (sector)."}
+    especie = request.form.get("especie") or (especies[0] if especies else "")
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
