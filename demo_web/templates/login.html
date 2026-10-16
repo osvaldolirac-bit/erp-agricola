@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Acceso — {{ erp_title|default('ERP Agrícola', true) }}{% endblock %}
+{% block title %}{% if login_dest == 'stock_bodega' %}Stock bodega — acceso{% else %}Acceso — {{ erp_title|default('ERP Agrícola', true) }}{% endif %}{% endblock %}
 {% block content %}
 <section class="login-page login-page--industrial" aria-label="Acceso {{ erp_title|default('ERP Agrícola', true) }}">
   <div class="login-bg" aria-hidden="true">
@@ -19,6 +19,12 @@
     <button type="button" class="btn-acceso" id="btnAcceso" aria-expanded="false"{% if open_panel %} aria-expanded="true"{% endif %}>Acceso</button>
     <div class="login-panel{% if open_panel %} open{% endif %}" id="loginPanel" role="dialog" aria-label="Iniciar sesión">
       <form method="post" class="login-panel-form" autocomplete="off">
+        {% if login_next %}
+        <input type="hidden" name="login_next" value="{{ login_next }}">
+        {% endif %}
+        {% if login_dest %}
+        <input type="hidden" name="login_dest" value="{{ login_dest }}">
+        {% endif %}
         <label for="email">Usuario</label>
         <input id="email" name="email" value="{{ acceso_pref or '' }}" type="email" autocomplete="username" required>
         <label for="password">Clave</label>
@@ -35,9 +41,15 @@
   </div>
 
   <main class="login-hero">
+    {% if login_dest == 'stock_bodega' %}
+    <p class="login-brand">La Concepción</p>
+    <h1>STOCK BODEGA</h1>
+    <p>Ingrese su usuario ERP. Después verá stock y kardex en el celular.</p>
+    {% else %}
     <p class="login-brand">{{ erp_brand|default('ERP Master', true) }}</p>
     <h1>{{ erp_title|default('ERP Agrícola', true)|upper }}</h1>
     <p>{{ erp_login_subtitle|default('Vista operativa: sectores, riego y logística en un solo sistema', true) }}</p>
+    {% endif %}
   </main>
 </section>
 {% endblock %}
