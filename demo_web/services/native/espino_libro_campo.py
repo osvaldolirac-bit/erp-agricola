@@ -374,11 +374,15 @@ def _desfase(demo, conn) -> dict:
     dias_v = max(1, min(60, dias_v))
 
     df_lc_sin, df_bod_sin = demo._calcular_desfaces_lc_bodega(conn, fi, ff, dias_v)
-    cc_u = CC_ESPINO.upper()
+    sectores = _sectores_historial_espino()
     if not df_lc_sin.empty and "CUARTEL" in df_lc_sin.columns:
-        df_lc_sin = df_lc_sin[df_lc_sin["CUARTEL"].astype(str).str.upper() == cc_u]
+        df_lc_sin = df_lc_sin[
+            df_lc_sin["CUARTEL"].astype(str).str.upper().isin(sectores)
+        ]
     if not df_bod_sin.empty and "CUARTEL" in df_bod_sin.columns:
-        df_bod_sin = df_bod_sin[df_bod_sin["CUARTEL"].astype(str).str.upper() == cc_u]
+        df_bod_sin = df_bod_sin[
+            df_bod_sin["CUARTEL"].astype(str).str.upper().isin(sectores)
+        ]
 
     lc_rows = df_lc_sin.fillna("").to_dict(orient="records") if not df_lc_sin.empty else []
     bod_rows = df_bod_sin.fillna("").to_dict(orient="records") if not df_bod_sin.empty else []
@@ -489,6 +493,7 @@ def post_guardar_evento(demo, conn) -> dict:
             float(item.get("gasto_total") or 0),
             producto=str(item.get("producto") or ""),
             fecha=fe_app,
+            centro_costo=sector,
         )
         if not ok:
             return {"ok": False, "msg": msg}

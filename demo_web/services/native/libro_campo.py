@@ -696,6 +696,24 @@ def _post_guardar_evento(demo, conn) -> dict:
             tractor,
             n_orden=n_orden,
         )
+
+    rebaje_espino = _tenant_slug_lc(demo) == "espino"
+    if rebaje_espino:
+        from demo_web.services.native import espino_bodega
+
+        for item in car:
+            ok_bod, msg_bod = espino_bodega.registrar_salida_bodega(
+                demo,
+                conn,
+                float(item.get("gasto_total") or 0),
+                producto=str(item.get("producto") or ""),
+                fecha=fe_app,
+                centro_costo=huerto,
+            )
+            if not ok_bod:
+                conn.rollback()
+                return {"ok": False, "msg": msg_bod}
+
     from demo_web.services.libro_campo_gap import enriquecer_aplicacion_globalgap
 
     wx = enriquecer_aplicacion_globalgap(
@@ -709,14 +727,20 @@ def _post_guardar_evento(demo, conn) -> dict:
     )
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
-    demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
-    session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
+    if rebaje_espino:
+        demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {huerto} · {prods_txt}")
+    else:
+        demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
+        session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
     msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
+    if rebaje_espino:
+        msg += ". Bodega rebajada automáticamente."
     if wx:
         msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
-    msg += " — visible en planilla GlobalGAP."
+    if not rebaje_espino:
+        msg += " — visible en planilla GlobalGAP."
     return {"ok": True, "msg": msg}
 
 

@@ -5,6 +5,7 @@ import pandas as pd
 from flask import request, url_for
 
 from demo_web.services.module_runner import store_pdf
+from demo_web.services.espino_scope import normalizar_cuartel_espino
 from demo_web.services.native._helpers import hoy_demo
 
 CC_ESPINO = "EL ESPINO"
@@ -45,24 +46,38 @@ def _es_producto_bodega_espino(nombre: str) -> bool:
     return False
 
 
+_STOCK_INGRESO_CC = CC_ESPINO.upper()
+
+
 def _stock_cc_map(conn) -> dict[int, float]:
-    """Stock imputado solo a EL ESPINO (ingresos − salidas). No usa inventario.stock global."""
+    """Stock bodega: ingresos en EL ESPINO menos todas las salidas (CC = variedad o bodega)."""
     rows = conn.execute(
         """SELECT producto_id,
-                  SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END) AS stock_cc
+                  SUM(CASE
+                        WHEN tipo = 'Ingreso'
+                             AND UPPER(TRIM(centro_costo)) = ?
+                        THEN cantidad
+                        WHEN tipo = 'Salida' THEN -cantidad
+                        ELSE 0
+                      END) AS stock_cc
            FROM movimientos
-           WHERE centro_costo = ?
            GROUP BY producto_id""",
-        (CC_ESPINO,),
+        (_STOCK_INGRESO_CC,),
     ).fetchall()
     return {int(r[0]): float(r[1] or 0) for r in rows}
 
 
 def _stock_cc(conn, producto_id: int) -> float:
     row = conn.execute(
-        """SELECT SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END)
-           FROM movimientos WHERE centro_costo = ? AND producto_id = ?""",
-        (CC_ESPINO, producto_id),
+        """SELECT SUM(CASE
+                        WHEN tipo = 'Ingreso'
+                             AND UPPER(TRIM(centro_costo)) = ?
+                        THEN cantidad
+                        WHEN tipo = 'Salida' THEN -cantidad
+                        ELSE 0
+                      END)
+           FROM movimientos WHERE producto_id = ?""",
+        (_STOCK_INGRESO_CC, producto_id),
     ).fetchone()
     return float(row[0] or 0) if row and row[0] is not None else 0.0
 
@@ -246,6 +261,16 @@ def validar_salida_bodega(
     return True, "", iid, prod_nombre, um_sel
 
 
+def _normalizar_cc_salida(centro_costo: str | None) -> str:
+    cc = normalizar_cuartel_espino(centro_costo or "")
+    if cc:
+        return cc
+    raw = (centro_costo or "").strip()
+    if raw:
+        return raw
+    return CC_ESPINO
+
+
 def registrar_salida_bodega(
     demo,
     conn,
@@ -254,8 +279,9 @@ def registrar_salida_bodega(
     producto_id: int | None = None,
     producto: str | None = None,
     fecha=None,
+    centro_costo: str | None = None,
 ) -> tuple[bool, str]:
-    """Registra salida en bodega El Espino (sin commit). Usado por LC y formulario manual."""
+    """Registra salida en bodega El Espino (sin commit). Imputa al cuartel/variedad indicado."""
     ok, msg, iid, prod_nombre, _um = validar_salida_bodega(
         demo, conn, cantidad, producto_id=producto_id, producto=producto
     )
@@ -264,11 +290,12 @@ def registrar_salida_bodega(
     row = _producto_por_id(conn, demo, iid)
     pmp, um_sel = float(row[2] or 0), row[3]
     fecha_mov = str(fecha or hoy_demo(demo))
+    cc_imputacion = _normalizar_cc_salida(centro_costo)
     conn.execute(
         """INSERT INTO movimientos
            (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
            VALUES (?,?,?,?,?,?,?)""",
-        (iid, "Salida", cantidad, fecha_mov, CC_ESPINO, cantidad * pmp, um_sel),
+        (iid, "Salida", cantidad, fecha_mov, cc_imputacion, cantidad * pmp, um_sel),
     )
     return True, prod_nombre
 
