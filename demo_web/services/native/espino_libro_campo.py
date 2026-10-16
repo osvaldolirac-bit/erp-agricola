@@ -97,28 +97,11 @@ def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tupl
 
 
 def _productos_stock_espino(demo, conn) -> list[dict]:
-    stock_map = espino_bodega._stock_cc_map(conn)
-    dfi = pd.read_sql_query(
-        "SELECT id, producto, COALESCE(unidad_medida, ?) AS um FROM inventario ORDER BY producto",
-        conn,
-        params=(demo.DEFAULT_UNIDAD_INSUMO,),
+    from demo_web.services.espino_bodega_stock import productos_disponibles_libro_campo
+
+    return productos_disponibles_libro_campo(
+        conn, demo, es_bodega_fn=espino_bodega._es_producto_bodega_espino
     )
-    out = []
-    for _, r in dfi.iterrows():
-        pid = int(r["id"])
-        if not espino_bodega._es_producto_bodega_espino(str(r["producto"]), conn, producto_id=pid):
-            continue
-        stock = stock_map.get(pid, 0.0)
-        if stock <= 0:
-            continue
-        out.append(
-            {
-                "producto": r["producto"],
-                "stock_fmt": demo.f_cantidad(stock),
-                "um": r["um"],
-            }
-        )
-    return out
 
 
 def _evento_meta_defaults(demo) -> dict:

@@ -5,11 +5,16 @@ import pandas as pd
 from flask import request, url_for
 
 from demo_web.services.module_runner import store_pdf
+from demo_web.services.espino_bodega_stock import (
+    ids_productos_con_kardex_bodega,
+    sincronizar_inventario_desde_pool,
+    stock_pool,
+    stock_pool_map,
+)
 from demo_web.services.espino_scope import normalizar_cuartel_espino
 from demo_web.services.native._helpers import hoy_demo
 
 CC_ESPINO = "EL ESPINO"
-_STOCK_INGRESO_CC = CC_ESPINO.upper()
 
 PDF_STOCK_FILENAME = "STOCK_BODEGA_EL_ESPINO.pdf"
 
@@ -57,13 +62,7 @@ def _producto_id_por_nombre(conn, nombre: str) -> int | None:
 
 
 def _ids_con_movimientos_bodega(conn) -> set[int]:
-    rows = conn.execute(
-        """SELECT DISTINCT producto_id FROM movimientos
-           WHERE tipo = 'Salida'
-              OR (tipo = 'Ingreso' AND UPPER(TRIM(centro_costo)) = ?)""",
-        (_STOCK_INGRESO_CC,),
-    ).fetchall()
-    return {int(r[0]) for r in rows}
+    return ids_productos_con_kardex_bodega(conn)
 
 
 def _es_producto_bodega_espino(
@@ -80,49 +79,19 @@ def _es_producto_bodega_espino(
     pid = producto_id if producto_id is not None else _producto_id_por_nombre(conn, nombre)
     if pid is None:
         return False
-    mov = conn.execute(
-        """SELECT 1 FROM movimientos WHERE producto_id=?
-           AND (tipo = 'Salida'
-                OR (tipo = 'Ingreso' AND UPPER(TRIM(centro_costo)) = ?))
-           LIMIT 1""",
-        (pid, _STOCK_INGRESO_CC),
-    ).fetchone()
-    if mov:
+    from demo_web.services.espino_bodega_stock import tiene_movimientos_bodega
+
+    if tiene_movimientos_bodega(conn, pid):
         return True
-    return _stock_cc(conn, pid) > 1e-9
+    return stock_pool(conn, pid) > 1e-9
 
 
 def _stock_cc_map(conn) -> dict[int, float]:
-    """Stock bodega: ingresos en EL ESPINO menos todas las salidas (CC = variedad o bodega)."""
-    rows = conn.execute(
-        """SELECT producto_id,
-                  SUM(CASE
-                        WHEN tipo = 'Ingreso'
-                             AND UPPER(TRIM(centro_costo)) = ?
-                        THEN cantidad
-                        WHEN tipo = 'Salida' THEN -cantidad
-                        ELSE 0
-                      END) AS stock_cc
-           FROM movimientos
-           GROUP BY producto_id""",
-        (_STOCK_INGRESO_CC,),
-    ).fetchall()
-    return {int(r[0]): float(r[1] or 0) for r in rows}
+    return stock_pool_map(conn)
 
 
 def _stock_cc(conn, producto_id: int) -> float:
-    row = conn.execute(
-        """SELECT SUM(CASE
-                        WHEN tipo = 'Ingreso'
-                             AND UPPER(TRIM(centro_costo)) = ?
-                        THEN cantidad
-                        WHEN tipo = 'Salida' THEN -cantidad
-                        ELSE 0
-                      END)
-           FROM movimientos WHERE producto_id = ?""",
-        (_STOCK_INGRESO_CC, producto_id),
-    ).fetchone()
-    return float(row[0] or 0) if row and row[0] is not None else 0.0
+    return stock_pool(conn, producto_id)
 
 
 def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> list[dict]:
@@ -343,6 +312,7 @@ def registrar_salida_bodega(
            VALUES (?,?,?,?,?,?,?)""",
         (iid, "Salida", cantidad, fecha_mov, cc_imputacion, cantidad * pmp, um_sel),
     )
+    sincronizar_inventario_desde_pool(conn, iid)
     return True, prod_nombre
 
 
@@ -390,7 +360,7 @@ def post_ingreso_existente(demo, conn) -> dict:
     if not row:
         return {"ok": False, "msg": "Producto no encontrado."}
     prod_nombre, pmp, um_sel = row[0], float(row[1] or 0), row[2]
-    if not _es_producto_bodega_espino(prod_nombre):
+    if not _es_producto_bodega_espino(prod_nombre, conn, producto_id=iid):
         return {"ok": False, "msg": f"{prod_nombre} no pertenece a la bodega El Espino."}
     fecha = str(hoy_demo(demo))
     conn.execute(
@@ -399,6 +369,7 @@ def post_ingreso_existente(demo, conn) -> dict:
            VALUES (?,?,?,?,?,?,?)""",
         (iid, "Ingreso", ct, fecha, CC_ESPINO, ct * pmp, um_sel),
     )
+    sincronizar_inventario_desde_pool(conn, iid)
     conn.commit()
     demo.registrar_accion(CC_ESPINO, f"Ingreso bodega {prod_nombre} +{demo.f_cantidad(ct)} {um_sel}")
     return {
@@ -454,6 +425,7 @@ def post_ingreso_nuevo(demo, conn) -> dict:
                VALUES (?,?,?,?,?,?,?)""",
             (new_id, "Ingreso", ns, fecha, CC_ESPINO, ns * npr, nu),
         )
+        sincronizar_inventario_desde_pool(conn, int(new_id))
     conn.commit()
     demo.registrar_accion(CC_ESPINO, f"Apertura bodega {np} stock_espino={ns}")
     extra = {"op": "stock" if ns > 0 else "nuevo"}
