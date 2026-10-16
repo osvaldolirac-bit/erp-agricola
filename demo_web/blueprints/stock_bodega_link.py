@@ -76,10 +76,9 @@ def visor_pdf(token: str, download_name: str | None = None):
             "stock_bodega_link.formulario",
             t=tok,
             pid=pid,
-            q=q or None,
         )
     else:
-        back_url = url_for("stock_bodega_link.formulario", t=tok, q=q or None)
+        back_url = url_for("stock_bodega_link.formulario", t=tok)
 
     pdf_blob_url = url_for(
         "stock_bodega_link.kardex_pdf",

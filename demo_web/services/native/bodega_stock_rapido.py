@@ -181,14 +181,12 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
         page_title = kardex_ctx["kardex_producto"]["nombre"]
 
     if link_tok:
-        url_stock_list = url_for(
-            "stock_bodega_link.formulario",
-            t=link_tok,
-            q=q or None,
-        )
+        url_stock_list_all = url_for("stock_bodega_link.formulario", t=link_tok)
+        url_stock_list = url_stock_list_all
         link_mode = True
     else:
-        url_stock_list = url_for("modules.stock_bodega_rapido", q=q or None)
+        url_stock_list_all = url_for("modules.stock_bodega_rapido")
+        url_stock_list = url_stock_list_all
         link_mode = False
 
     return {
@@ -211,6 +209,7 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
             else "Ver PDF stock completo"
         ),
         "url_stock_list": url_stock_list,
+        "url_stock_list_all": url_stock_list_all,
         "link_tok": link_tok,
         "link_mode": link_mode,
         "actualizado": demo.hora_chile().strftime("%d-%m-%Y %H:%M"),

@@ -62,7 +62,7 @@
 <body>
   <header class="stock-header">
     {% if pid and kardex_producto %}
-    <a class="btn btn-sm btn-outline-light btn-back mb-2" href="{{ url_stock_list }}">← Stock</a>
+    <a class="btn btn-sm btn-outline-light btn-back mb-2" href="{{ url_stock_list_all|default(url_stock_list) }}">← Todos los productos</a>
     <h1 class="h5 mb-1">{{ kardex_producto.nombre }}</h1>
     <p class="small mb-2 opacity-75">
       Stock {{ kardex_producto.stock }} {{ kardex_producto.um }}
@@ -76,9 +76,21 @@
       {% if link_mode and link_tok %}
       <input type="hidden" name="t" value="{{ link_tok }}">
       {% endif %}
-      <input type="search" name="q" class="form-control form-control-lg" value="{{ filtro_q }}"
-             placeholder="Buscar producto o familia…" autocomplete="off" enterkeyhint="search">
+      <div class="input-group">
+        <input type="search" name="q" class="form-control form-control-lg" value="{{ filtro_q }}"
+               placeholder="Buscar producto o familia…" autocomplete="off" enterkeyhint="search">
+        {% if filtro_q %}
+        <a class="btn btn-outline-light btn-lg px-3" href="{{ url_stock_list_all|default(url_stock_list) }}"
+           title="Quitar filtro y ver todo" aria-label="Ver todos los productos">×</a>
+        {% endif %}
+      </div>
     </form>
+    {% if filtro_q %}
+    <p class="small mb-2 opacity-90">
+      Filtrando «{{ filtro_q }}» —
+      <a class="link-light fw-semibold" href="{{ url_stock_list_all|default(url_stock_list) }}">ver todos</a>
+    </p>
+    {% endif %}
     {% endif %}
     {% if pdf_url %}
     <a class="btn btn-sm btn-light fw-semibold" href="{{ pdf_url }}">{{ pdf_button_label|default('Ver PDF') }}</a>
@@ -121,7 +133,7 @@
       <p class="small text-muted mb-2">{{ items|length }} con stock · toque para ver kardex</p>
       {% for row in items %}
       <a class="stock-row{% if row.activo %} activo{% endif %}"
-         href="{% if link_mode and link_tok %}{{ url_for('stock_bodega_link.formulario', t=link_tok, pid=row.id, q=filtro_q or none) }}{% else %}{{ url_for('modules.stock_bodega_rapido', pid=row.id, q=filtro_q or none) }}{% endif %}">
+         href="{% if link_mode and link_tok %}{{ url_for('stock_bodega_link.formulario', t=link_tok, pid=row.id) }}{% else %}{{ url_for('modules.stock_bodega_rapido', pid=row.id) }}{% endif %}">
         <div class="min-w-0">
           <div class="stock-name text-truncate">{{ row.producto }}</div>
           {% if row.familia %}<div class="familia-tag">{{ row.familia }}</div>{% endif %}
