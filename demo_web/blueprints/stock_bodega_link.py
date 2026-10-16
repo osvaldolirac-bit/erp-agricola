@@ -81,25 +81,20 @@ def visor_pdf(token: str, download_name: str | None = None):
     else:
         back_url = url_for("stock_bodega_link.formulario", t=tok, q=q or None)
 
-    pdf_embed_url = url_for(
+    pdf_blob_url = url_for(
         "stock_bodega_link.kardex_pdf",
         token=token,
         download_name=fname,
         t=tok,
         inline=1,
     )
-    pdf_download_url = url_for(
-        "stock_bodega_link.kardex_pdf",
-        token=token,
-        download_name=fname,
-        t=tok,
-    )
+    pdf_title = (request.args.get("titulo") or "").strip() or fname.replace("_", " ")
     return render_template(
         "stock_bodega_pdf_view.html",
         filename=fname,
+        pdf_title=pdf_title,
         back_url=back_url,
-        pdf_embed_url=pdf_embed_url,
-        pdf_download_url=pdf_download_url,
+        pdf_blob_url=pdf_blob_url,
         erp_title="La Concepción",
     )
 
@@ -128,10 +123,8 @@ def formulario():
                 kardex_producto=None,
                 kardex_rows=[],
                 kardex_lc_pendientes=[],
-                pdf_kardex_url=None,
-                pdf_kardex_filename=None,
-                pdf_stock_url=None,
-                pdf_stock_filename=None,
+                pdf_url=None,
+                pdf_button_label="Ver PDF",
                 url_stock_list=url_for("stock_bodega_link.formulario", t=tok),
                 link_tok=tok,
                 link_mode=True,

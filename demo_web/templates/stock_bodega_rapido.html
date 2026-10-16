@@ -68,19 +68,9 @@
       Stock {{ kardex_producto.stock }} {{ kardex_producto.um }}
       · Ing {{ kardex_producto.ing_total }} · Sal {{ kardex_producto.sal_total }}
     </p>
-    {% if pdf_kardex_url %}
-    <a class="btn btn-sm btn-light fw-semibold" href="{{ pdf_kardex_url }}">
-      📥 PDF cuenta corriente
-    </a>
-    {% endif %}
     {% else %}
     <h1 class="h5 mb-1">📦 Stock + kardex</h1>
     <p class="small mb-2 opacity-75">{{ erp_title }} · toque un producto · {{ actualizado }}</p>
-    {% if pdf_stock_url %}
-    <a class="btn btn-sm btn-light fw-semibold mb-2" href="{{ pdf_stock_url }}">
-      📥 PDF stock (todos los productos)
-    </a>
-    {% endif %}
     <form method="get" class="search-wrap mb-2"
           {% if link_mode and link_tok %}action="{{ url_for('stock_bodega_link.formulario') }}"{% endif %}>
       {% if link_mode and link_tok %}
@@ -89,6 +79,9 @@
       <input type="search" name="q" class="form-control form-control-lg" value="{{ filtro_q }}"
              placeholder="Buscar producto o familia…" autocomplete="off" enterkeyhint="search">
     </form>
+    {% endif %}
+    {% if pdf_url %}
+    <a class="btn btn-sm btn-light fw-semibold" href="{{ pdf_url }}">{{ pdf_button_label|default('Ver PDF') }}</a>
     {% endif %}
   </header>
 

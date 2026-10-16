@@ -20,10 +20,9 @@ def _pdf_stock_operativo(
     demo,
     conn,
     *,
-    q: str,
     link_tok: str | None,
 ) -> tuple[str | None, str | None]:
-    """PDF listado stock (misma lógica que Bodega → Stock operativo)."""
+    """PDF listado stock completo (todos los productos con stock > 0)."""
     dfs = pd.read_sql_query(
         """SELECT producto, familia, stock, COALESCE(unidad_medida, 'kg') AS unidad_medida,
                   COALESCE(ingrediente_activo,'') AS ingrediente_activo, pppl_aprobado
@@ -32,15 +31,6 @@ def _pdf_stock_operativo(
            ORDER BY producto COLLATE NOCASE""",
         conn,
     )
-    if dfs.empty:
-        return None, None
-    if q:
-        ql = q.lower()
-        dfs = dfs[
-            dfs["producto"].astype(str).str.lower().str.contains(ql, na=False)
-            | dfs["familia"].astype(str).str.lower().str.contains(ql, na=False)
-            | dfs["ingrediente_activo"].astype(str).str.lower().str.contains(ql, na=False)
-        ]
     if dfs.empty:
         return None, None
 
@@ -54,7 +44,7 @@ def _pdf_stock_operativo(
     estilo = getattr(demo, "_pdf_estilo_stock_pppl", None)
     blob = demo.generar_pdf_blob(
         dfs_op,
-        "STOCK ACTUAL (SIN PRECIOS)",
+        f"STOCK ACTUAL COMPLETO — {len(dfs_op)} productos",
         incluir_precios=False,
         estilo_celda_fn=estilo,
     )
@@ -69,7 +59,7 @@ def _pdf_stock_operativo(
             token=token,
             download_name=fname,
             t=link_tok,
-            q=q or None,
+            titulo="Stock bodega completo",
         )
     else:
         back = url_for("modules.stock_bodega_rapido", q=q or None)
@@ -82,10 +72,17 @@ def _pdf_stock_operativo(
     return view_url, fname
 
 
-def _make_pdf_link_factory(*, link_tok: str | None, q: str, pid: int):
+def _make_pdf_link_factory(
+    *,
+    link_tok: str | None,
+    q: str,
+    pid: int,
+    product_name: str | None = None,
+):
     if link_tok:
 
         def _factory(token, fname):  # noqa: ANN001
+            titulo = (product_name or "").strip() or "Cuenta corriente bodega"
             return url_for(
                 "stock_bodega_link.visor_pdf",
                 token=token,
@@ -93,6 +90,7 @@ def _make_pdf_link_factory(*, link_tok: str | None, q: str, pid: int):
                 t=link_tok,
                 pid=pid or None,
                 q=q or None,
+                titulo=titulo,
             )
 
         return _factory
@@ -122,7 +120,20 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
             (demo.DEFAULT_UNIDAD_INSUMO,),
         ).fetchall()
 
-        pdf_link_factory = _make_pdf_link_factory(link_tok=link_tok, q=q, pid=pid)
+        product_name = None
+        if pid:
+            prow = conn.execute(
+                "SELECT producto FROM inventario WHERE id=?", (pid,)
+            ).fetchone()
+            if prow:
+                product_name = str(prow[0] or "")
+
+        pdf_link_factory = _make_pdf_link_factory(
+            link_tok=link_tok,
+            q=q,
+            pid=pid,
+            product_name=product_name,
+        )
 
         kardex_ctx: dict = {}
         if pid:
@@ -136,9 +147,11 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
                 pdf_link_factory=pdf_link_factory,
             )
 
-        pdf_stock_url, pdf_stock_filename = _pdf_stock_operativo(
-            demo, conn, q=q, link_tok=link_tok
-        )
+        pdf_stock_url, pdf_stock_filename = (None, None)
+        if not pid:
+            pdf_stock_url, pdf_stock_filename = _pdf_stock_operativo(
+                demo, conn, link_tok=link_tok
+            )
     finally:
         conn.close()
 
@@ -187,10 +200,16 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
         "kardex_producto": kardex_ctx.get("kardex_producto"),
         "kardex_rows": kardex_ctx.get("kardex_rows") or [],
         "kardex_lc_pendientes": kardex_ctx.get("kardex_lc_pendientes") or [],
-        "pdf_kardex_url": kardex_ctx.get("pdf_kardex_url"),
-        "pdf_kardex_filename": kardex_ctx.get("pdf_kardex_filename"),
-        "pdf_stock_url": pdf_stock_url,
-        "pdf_stock_filename": pdf_stock_filename,
+        "pdf_url": (
+            kardex_ctx.get("pdf_kardex_url")
+            if pid
+            else pdf_stock_url
+        ),
+        "pdf_button_label": (
+            "Ver PDF cuenta corriente"
+            if pid
+            else "Ver PDF stock completo"
+        ),
         "url_stock_list": url_stock_list,
         "link_tok": link_tok,
         "link_mode": link_mode,
