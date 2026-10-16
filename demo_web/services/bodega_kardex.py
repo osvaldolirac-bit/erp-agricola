@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 
-from flask import url_for
+from flask import has_request_context, request, url_for
 
 from demo_web.services.espino_compras_kardex import origen_compra_ingreso
 from demo_web.services.lc_bodega_desfase import (
@@ -296,6 +296,17 @@ def _pdf_kardex_producto(
     token = store_pdf(blob, fname)
     if pdf_link_factory:
         return pdf_link_factory(token, fname), fname
+    if has_request_context():
+        back = (request.url or "").strip() or None
+        return (
+            url_for(
+                "modules.pdf_view",
+                token=token,
+                download_name=fname,
+                back=back,
+            ),
+            fname,
+        )
     return url_for("modules.pdf_download", token=token), fname
 
 

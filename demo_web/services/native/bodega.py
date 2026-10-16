@@ -122,7 +122,12 @@ def _stock(demo, conn, cert: bool = False) -> dict:
             )
         if blob:
             token = store_pdf(blob, "stock_operativo.pdf")
-            pdf_url = url_for("modules.pdf_download", token=token)
+            pdf_url = url_for(
+                "modules.pdf_view",
+                token=token,
+                download_name="stock_operativo.pdf",
+                back=request.url,
+            )
 
     edit_id = request.args.get("edit_id")
     edit_item = None
