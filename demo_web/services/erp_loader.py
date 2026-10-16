@@ -72,7 +72,9 @@ def _apply_espino_tenant_overrides(erp: Any) -> None:
     erp.PRORRATEO_CC_DEFAULT = pcts
     erp.GAP_ESPECIES = ["EL ESPINO"]
     erp.GAP_ESPECIE_CUARTELES = {"EL ESPINO": list(variedades)}
-    erp.LIBRO_CAMPO_ESPECIES = list(variedades)
+    from demo_web.services.espino_scope import ESPECIE_LIBRO_CAMPO_ESPINO
+
+    erp.LIBRO_CAMPO_ESPECIES = [ESPECIE_LIBRO_CAMPO_ESPINO]
     erp.RAZONES_SOCIALES_COMPRAS = ["El Espino"]
     erp.TENANT_SLUG = "espino"
 

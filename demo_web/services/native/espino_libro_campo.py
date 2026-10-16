@@ -9,7 +9,12 @@ from flask import request, session, url_for
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
-from demo_web.services.espino_scope import LEGADO_SECTOR_LC_ESPINO, cuarteles_espino
+from demo_web.services.espino_scope import (
+    ESPECIE_LIBRO_CAMPO_ESPINO,
+    LEGADO_SECTOR_LC_ESPINO,
+    cuarteles_espino,
+    especies_libro_campo_espino,
+)
 
 CC_ESPINO = espino_bodega.CC_ESPINO
 
@@ -120,7 +125,7 @@ def _evento_meta_defaults(demo) -> dict:
     return {
         "fecha": hoy_demo(demo).isoformat(),
         "cuartel": variedades[0] if variedades else "",
-        "especie": "",
+        "especie": ESPECIE_LIBRO_CAMPO_ESPINO,
         "vol_agua": "",
         "aplicador": "",
         "op_cert": "",
@@ -149,8 +154,8 @@ def _leer_evento_meta(demo) -> dict:
     base = _evento_meta_defaults(demo)
     meta = session.get(META_KEY) or {}
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    if not out.get("especie"):
+        out["especie"] = ESPECIE_LIBRO_CAMPO_ESPINO
     return out
 
 
@@ -215,7 +220,7 @@ def _ingreso(demo, conn) -> dict:
         "form_op_cert": bool(meta.get("op_cert")),
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
-        "especies": demo.GAP_ESPECIES,
+        "especies": especies_libro_campo_espino(),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -444,7 +449,7 @@ def post_guardar_evento(demo, conn) -> dict:
     sector = _sector_valido(request.form.get("cuartel") or "")
     if not sector:
         return {"ok": False, "msg": "Seleccione la variedad (sector) de la aplicación."}
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    especie = (request.form.get("especie") or "").strip() or ESPECIE_LIBRO_CAMPO_ESPINO
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 

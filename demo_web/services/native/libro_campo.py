@@ -26,7 +26,9 @@ def _libro_cuarteles(demo) -> list[str]:
 
 def _libro_especies(demo) -> list[str]:
     if _tenant_slug_lc(demo) == "espino":
-        return list(getattr(demo, "GAP_ESPECIES", None) or ["EL ESPINO"])
+        from demo_web.services.espino_scope import especies_libro_campo_espino
+
+        return especies_libro_campo_espino()
     especies = getattr(demo, "LIBRO_CAMPO_ESPECIES", None) or demo.GAP_ESPECIES
     return list(especies or [])
 

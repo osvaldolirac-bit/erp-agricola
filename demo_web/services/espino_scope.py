@@ -20,6 +20,9 @@ BODEGA_CC_ESPINO = "EL ESPINO"
 # CC operativo en movimientos bodega (kardex imputado al huerto).
 CC_MOVIMIENTOS_BODEGA_ESPINO = "Cerezos"
 
+# Libro de Campo: especie fitosanitaria (variedad va en sector/cuartel).
+ESPECIE_LIBRO_CAMPO_ESPINO = "Cerezos"
+
 # Sector Libro de Campo antes del desglose por variedad (apps 1–5, etc.).
 LEGADO_SECTOR_LC_ESPINO = "CEREZOS"
 
@@ -83,6 +86,10 @@ def prorratear_monto_ingreso_flujo_espino(monto: float) -> dict[str, float]:
 
 def cuarteles_espino() -> list[str]:
     return list(VARIEDADES_ESPINO)
+
+
+def especies_libro_campo_espino() -> list[str]:
+    return [ESPECIE_LIBRO_CAMPO_ESPINO]
 
 
 def prorrateo_pct_espino() -> dict[str, float]:
