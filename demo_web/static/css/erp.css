@@ -31,6 +31,20 @@ body.demo-body {
   flex-shrink: 0;
 }
 
+.demo-navbar-actions {
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.demo-user-email {
+  max-width: min(28vw, 14rem);
+}
+
+.demo-tenant-switch-menu button.dropdown-item {
+  width: 100%;
+  text-align: left;
+}
+
 .demo-main {
   min-height: calc(100vh - 56px);
 }
@@ -1562,6 +1576,24 @@ body.demo-body .costos-matriz-table td.costos-saldo-neutro {
   .logo-sidebar {
     max-width: 200px;
     max-height: 96px;
+  }
+
+  .demo-navbar-brand > span {
+    max-width: min(34vw, 8.5rem);
+  }
+
+  .demo-navbar-actions {
+    max-width: none;
+    gap: 0.25rem !important;
+  }
+
+  .demo-tenant-switch-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+  }
+
+  .demo-user-email {
+    max-width: min(22vw, 6.5rem);
   }
 
   .dashboard-page .banner-econ {
