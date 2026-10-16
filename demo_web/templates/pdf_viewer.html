@@ -5,6 +5,7 @@
   <div class="erp-pdf-viewer-bar">
     <a class="btn btn-sm btn-outline-secondary erp-pdf-back-btn" href="{{ back_url }}">← Volver al ERP</a>
     <span class="erp-pdf-viewer-title text-truncate" title="{{ filename }}">{{ filename }}</span>
+    <button type="button" class="btn btn-sm btn-outline-primary" id="erpPdfPrintBtn">Imprimir</button>
     <button type="button" class="btn btn-sm btn-success erp-pdf-share-btn"
             data-pdf-url="{{ pdf_share_url }}"
             data-pdf-filename="{{ filename }}"
@@ -24,4 +25,21 @@
     Use el botón <strong>← Volver al ERP</strong>, el gesto <strong>atrás</strong> del iPhone o <strong>Compartir</strong> para guardar el archivo completo.
   </p>
 </div>
+<script>
+(function () {
+  var btn = document.getElementById('erpPdfPrintBtn');
+  var frame = document.querySelector('.erp-pdf-viewer-iframe');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    try {
+      if (frame && frame.contentWindow) {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+        return;
+      }
+    } catch (e) { /* ignore */ }
+    window.open('{{ pdf_embed_url }}', '_blank');
+  });
+})();
+</script>
 {% endblock %}
