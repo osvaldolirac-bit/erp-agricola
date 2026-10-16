@@ -1,9 +1,11 @@
 """Vista móvil: stock bodega LC + kardex por producto (ERP o link con token)."""
 from __future__ import annotations
 
+import pandas as pd
 from flask import abort, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module, get_erp_app
+from demo_web.services.module_runner import store_pdf
 
 
 def _parse_pid() -> int:
@@ -12,6 +14,99 @@ def _parse_pid() -> int:
         return max(0, int(raw))
     except (TypeError, ValueError):
         return 0
+
+
+def _pdf_stock_operativo(
+    demo,
+    conn,
+    *,
+    q: str,
+    link_tok: str | None,
+) -> tuple[str | None, str | None]:
+    """PDF listado stock (misma lógica que Bodega → Stock operativo)."""
+    dfs = pd.read_sql_query(
+        """SELECT producto, familia, stock, COALESCE(unidad_medida, 'kg') AS unidad_medida,
+                  COALESCE(ingrediente_activo,'') AS ingrediente_activo, pppl_aprobado
+           FROM inventario
+           WHERE COALESCE(stock, 0) > 0
+           ORDER BY producto COLLATE NOCASE""",
+        conn,
+    )
+    if dfs.empty:
+        return None, None
+    if q:
+        ql = q.lower()
+        dfs = dfs[
+            dfs["producto"].astype(str).str.lower().str.contains(ql, na=False)
+            | dfs["familia"].astype(str).str.lower().str.contains(ql, na=False)
+            | dfs["ingrediente_activo"].astype(str).str.lower().str.contains(ql, na=False)
+        ]
+    if dfs.empty:
+        return None, None
+
+    dfs_op = dfs.rename(
+        columns={"unidad_medida": "UM", "ingrediente_activo": "ING. ACTIVO"},
+    )
+    if "pppl_aprobado" in dfs_op.columns:
+        dfs_op = dfs_op.rename(columns={"pppl_aprobado": "PPPL"})
+        dfs_op["PPPL"] = dfs_op["PPPL"].apply(lambda v: int(bool(v)))
+
+    estilo = getattr(demo, "_pdf_estilo_stock_pppl", None)
+    blob = demo.generar_pdf_blob(
+        dfs_op,
+        "STOCK ACTUAL (SIN PRECIOS)",
+        incluir_precios=False,
+        estilo_celda_fn=estilo,
+    )
+    if not blob:
+        return None, None
+
+    fname = "STOCK_BODEGA_MOVIL.pdf"
+    token = store_pdf(blob, fname)
+    if link_tok:
+        view_url = url_for(
+            "stock_bodega_link.visor_pdf",
+            token=token,
+            download_name=fname,
+            t=link_tok,
+            q=q or None,
+        )
+    else:
+        back = url_for("modules.stock_bodega_rapido", q=q or None)
+        view_url = url_for(
+            "modules.pdf_view",
+            token=token,
+            download_name=fname,
+            back=back,
+        )
+    return view_url, fname
+
+
+def _make_pdf_link_factory(*, link_tok: str | None, q: str, pid: int):
+    if link_tok:
+
+        def _factory(token, fname):  # noqa: ANN001
+            return url_for(
+                "stock_bodega_link.visor_pdf",
+                token=token,
+                download_name=fname,
+                t=link_tok,
+                pid=pid or None,
+                q=q or None,
+            )
+
+        return _factory
+
+    def _factory(token, fname):  # noqa: ANN001
+        back = url_for("modules.stock_bodega_rapido", pid=pid or None, q=q or None)
+        return url_for(
+            "modules.pdf_view",
+            token=token,
+            download_name=fname,
+            back=back,
+        )
+
+    return _factory
 
 
 def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
@@ -27,18 +122,9 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
             (demo.DEFAULT_UNIDAD_INSUMO,),
         ).fetchall()
 
+        pdf_link_factory = _make_pdf_link_factory(link_tok=link_tok, q=q, pid=pid)
+
         kardex_ctx: dict = {}
-        pdf_link_factory = None
-        if link_tok:
-
-            def pdf_link_factory(token, fname):  # noqa: ARG001
-                return url_for(
-                    "stock_bodega_link.kardex_pdf",
-                    token=token,
-                    t=link_tok,
-                    download_name=fname,
-                )
-
         if pid:
             from demo_web.services import bodega_kardex
 
@@ -47,8 +133,12 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
                 conn,
                 pid,
                 include_pdf=True,
-                pdf_link_factory=pdf_link_factory if link_tok else None,
+                pdf_link_factory=pdf_link_factory,
             )
+
+        pdf_stock_url, pdf_stock_filename = _pdf_stock_operativo(
+            demo, conn, q=q, link_tok=link_tok
+        )
     finally:
         conn.close()
 
@@ -99,6 +189,8 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
         "kardex_lc_pendientes": kardex_ctx.get("kardex_lc_pendientes") or [],
         "pdf_kardex_url": kardex_ctx.get("pdf_kardex_url"),
         "pdf_kardex_filename": kardex_ctx.get("pdf_kardex_filename"),
+        "pdf_stock_url": pdf_stock_url,
+        "pdf_stock_filename": pdf_stock_filename,
         "url_stock_list": url_stock_list,
         "link_tok": link_tok,
         "link_mode": link_mode,
