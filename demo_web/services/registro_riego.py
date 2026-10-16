@@ -1161,17 +1161,20 @@ def token_valido(recibido: str | None) -> bool:
 def url_publica(token: str | None = None, op: str | None = None) -> str:
     from urllib.parse import quote
 
+    from demo_web.auth.public_urls import rubro_public_base
+
     tok = token or obtener_token()
-    base = (
-        os.environ.get("ERP_PUBLIC_BASE_URL")
-        or current_app.config.get("ERP_PUBLIC_BASE_URL")
-        or "https://erpmaster.cl"
-    ).rstrip("/")
-    prefix = (current_app.config.get("APPLICATION_ROOT") or "/agricola").rstrip("/")
-    url = f"{base}{prefix}/registro-riego?t={tok}"
+    url = f"{rubro_public_base()}/registro-riego?t={tok}"
     op_id = (op or "").strip()
     if op_id:
         url += f"&op={quote(op_id, safe='')}"
+    try:
+        from demo_web.services.tenant_scope import is_concepcion_tenant
+
+        if is_concepcion_tenant():
+            url += "&tenant=concepcion"
+    except Exception:
+        pass
     return url
 
 

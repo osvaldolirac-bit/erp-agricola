@@ -25,8 +25,8 @@ def _path_without_prefix(nxt: str) -> str:
 
 def post_login_next_blocked(raw: str | None) -> bool:
     """True si el destino es Administración / Manual / Soporte (home = dashboard)."""
-    nxt = parse_next(raw) if raw else None
-    if not nxt:
+    nxt = (raw or "").strip()
+    if not nxt or not nxt.startswith("/") or "://" in nxt:
         return False
     path = _path_without_prefix(nxt)
     for seg in _SISTEMA_MODULE_PATHS:
