@@ -49,6 +49,10 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(registro_riego_bp)
     app.register_blueprint(salida_petroleo_bp)
 
+    from demo_web.blueprints.stock_bodega_link import bp as stock_bodega_link_bp
+
+    app.register_blueprint(stock_bodega_link_bp)
+
     from demo_web.services.mantenimiento import register_mantenimiento
 
     register_mantenimiento(app)
@@ -489,6 +493,13 @@ def create_app(config_class=Config) -> Flask:
             logo_url = url_for("logo_asset") if find_logo_path(prefer_master=True) else None
             erp_app = "agricola"
         pricing = pricing_context(tenant["slug"] if tenant else None)
+        stock_bodega_login_url = ""
+        try:
+            from demo_web.auth.public_urls import url_publica_login_stock_bodega
+
+            stock_bodega_login_url = url_publica_login_stock_bodega()
+        except Exception:
+            pass
         return {
             "current_user": user,
             "nav_menu": menu,
@@ -511,6 +522,7 @@ def create_app(config_class=Config) -> Flask:
             "session_idle_warn": int(app.config.get("SESSION_IDLE_WARN_SECONDS") or 120),
             "clp": format_clp,
             "solo_lectura": bool(session.get("solo_lectura")) or (session.get("rol") == "lector"),
+            "stock_bodega_login_url": stock_bodega_login_url,
             **pricing,
         }
 
@@ -527,6 +539,7 @@ def create_app(config_class=Config) -> Flask:
         from demo_web.services.demo_loader import init_demo_db
         from demo_web.services.registro_riego import migrar_tabla as migrar_riego
         from demo_web.services.salida_petroleo import migrar_tabla as migrar_petroleo
+        from demo_web.services.stock_bodega_link import migrar_tabla as migrar_stock_bodega_link
 
         init_demo_db()
         for t in list_tenants():
@@ -534,6 +547,7 @@ def create_app(config_class=Config) -> Flask:
             try:
                 migrar_petroleo()
                 migrar_riego()
+                migrar_stock_bodega_link()
             except Exception:
                 pass
         bind_tenant_context(None)
