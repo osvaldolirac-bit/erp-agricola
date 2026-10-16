@@ -6,7 +6,7 @@ import pandas as pd
 from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
-from demo_web.services.erp_loader import get_erp_app
+from demo_web.services.erp_loader import current_tenant, get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
 
@@ -53,7 +53,10 @@ def _pop_alertas() -> dict:
 
 
 def _bodega_kardex_habilitado(demo) -> bool:
-    return get_erp_app() == "concepcion" and not demo.es_certificacion()
+    if demo.es_certificacion():
+        return False
+    slug = str((current_tenant() or {}).get("slug") or "").lower()
+    return get_erp_app() == "concepcion" or slug == "concepcion"
 
 
 def _parse_kardex_pid() -> int:
@@ -143,9 +146,34 @@ def _stock(demo, conn, cert: bool = False) -> dict:
             }
 
     kardex_on = _bodega_kardex_habilitado(demo) and not cert
+    kardex_pid = _parse_kardex_pid() if kardex_on else 0
+    if kardex_on and not kardex_pid and not dfs_view.empty:
+        kardex_pid = int(dfs_view.iloc[0]["id"])
+
+    kardex_pdf_ctx: dict = {}
+    if kardex_on and kardex_pid:
+        from demo_web.services import bodega_kardex
+
+        kardex_pdf_ctx = bodega_kardex.gather_kardex_producto(
+            demo, conn, kardex_pid, include_pdf=True
+        )
+
+    kardex_pdf_opts = []
+    if kardex_on and not dfs_view.empty:
+        kardex_pdf_opts = [
+            {
+                "id": int(r["id"]),
+                "label": str(r["producto"]),
+            }
+            for _, r in dfs_view.iterrows()
+        ]
+
     return {
         "stock_rows": _stock_rows(demo, dfs_view, con_precio=not cert, con_id=kardex_on),
         "bodega_kardex": kardex_on,
+        "kardex_pdf_pid": kardex_pid if kardex_on else 0,
+        "kardex_pdf_opts": kardex_pdf_opts,
+        **kardex_pdf_ctx,
         "stock_cols": (
             ["producto", "ing_activo", "familia", "stock", "um", "pppl", "phi"]
             if cert
