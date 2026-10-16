@@ -105,9 +105,10 @@ def _productos_stock_espino(demo, conn) -> list[dict]:
     )
     out = []
     for _, r in dfi.iterrows():
-        if not espino_bodega._es_producto_bodega_espino(str(r["producto"])):
+        pid = int(r["id"])
+        if not espino_bodega._es_producto_bodega_espino(str(r["producto"]), conn, producto_id=pid):
             continue
-        stock = stock_map.get(int(r["id"]), 0.0)
+        stock = stock_map.get(pid, 0.0)
         if stock <= 0:
             continue
         out.append(

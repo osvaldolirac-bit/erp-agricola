@@ -9,6 +9,7 @@ from demo_web.services.espino_scope import normalizar_cuartel_espino
 from demo_web.services.native._helpers import hoy_demo
 
 CC_ESPINO = "EL ESPINO"
+_STOCK_INGRESO_CC = CC_ESPINO.upper()
 
 PDF_STOCK_FILENAME = "STOCK_BODEGA_EL_ESPINO.pdf"
 
@@ -33,7 +34,8 @@ def bodega_secciones() -> list[tuple[str, str]]:
     return list(BODEGA_SECCIONES)
 
 
-def _es_producto_bodega_espino(nombre: str) -> bool:
+def _nombre_catalogo_legacy_bodega(nombre: str) -> bool:
+    """Productos históricos de la bodega física El Espino (antes del kardex ampliado)."""
     n = (nombre or "").upper().strip()
     if n in {p.upper() for p in PRODUCTOS_BODEGA_ESPINO}:
         return True
@@ -46,7 +48,48 @@ def _es_producto_bodega_espino(nombre: str) -> bool:
     return False
 
 
-_STOCK_INGRESO_CC = CC_ESPINO.upper()
+def _producto_id_por_nombre(conn, nombre: str) -> int | None:
+    row = conn.execute(
+        "SELECT id FROM inventario WHERE UPPER(TRIM(producto))=?",
+        ((nombre or "").upper().strip(),),
+    ).fetchone()
+    return int(row[0]) if row else None
+
+
+def _ids_con_movimientos_bodega(conn) -> set[int]:
+    rows = conn.execute(
+        """SELECT DISTINCT producto_id FROM movimientos
+           WHERE tipo = 'Salida'
+              OR (tipo = 'Ingreso' AND UPPER(TRIM(centro_costo)) = ?)""",
+        (_STOCK_INGRESO_CC,),
+    ).fetchall()
+    return {int(r[0]) for r in rows}
+
+
+def _es_producto_bodega_espino(
+    nombre: str,
+    conn=None,
+    *,
+    producto_id: int | None = None,
+) -> bool:
+    """Pertenece a bodega El Espino si está en catálogo legacy o tiene kardex/stock en pool."""
+    if _nombre_catalogo_legacy_bodega(nombre):
+        return True
+    if conn is None:
+        return False
+    pid = producto_id if producto_id is not None else _producto_id_por_nombre(conn, nombre)
+    if pid is None:
+        return False
+    mov = conn.execute(
+        """SELECT 1 FROM movimientos WHERE producto_id=?
+           AND (tipo = 'Salida'
+                OR (tipo = 'Ingreso' AND UPPER(TRIM(centro_costo)) = ?))
+           LIMIT 1""",
+        (pid, _STOCK_INGRESO_CC),
+    ).fetchone()
+    if mov:
+        return True
+    return _stock_cc(conn, pid) > 1e-9
 
 
 def _stock_cc_map(conn) -> dict[int, float]:
@@ -108,7 +151,10 @@ def gather_bodega_stock(demo, conn) -> dict:
            FROM inventario ORDER BY producto COLLATE NOCASE""",
         conn,
     )
-    dfs = dfs[dfs["producto"].astype(str).apply(_es_producto_bodega_espino)]
+    ids_bod = _ids_con_movimientos_bodega(conn)
+    mask_legacy = dfs["producto"].astype(str).apply(_nombre_catalogo_legacy_bodega)
+    mask_mov = dfs["id"].map(lambda i: int(i) in ids_bod)
+    dfs = dfs[mask_legacy | mask_mov]
     dfs["stock_cc"] = dfs["id"].map(lambda i: stock_map.get(int(i), 0.0))
     q = (request.args.get("q") or "").strip()
     dfs_view = dfs.copy()
@@ -158,7 +204,7 @@ def _productos_con_stock(demo, conn) -> list[dict]:
     )
     out = []
     for _, r in dfi.iterrows():
-        if not _es_producto_bodega_espino(str(r["producto"])):
+        if not _es_producto_bodega_espino(str(r["producto"]), conn, producto_id=int(r["id"])):
             continue
         pid = int(r["id"])
         stock = stock_map.get(pid, 0.0)
@@ -189,7 +235,7 @@ def _productos_todos(demo, conn) -> list[dict]:
             "stock_fmt": demo.f_cantidad(stock_map.get(int(r["id"]), 0.0)),
         }
         for _, r in dfi.iterrows()
-        if _es_producto_bodega_espino(str(r["producto"]))
+        if _es_producto_bodega_espino(str(r["producto"]), conn, producto_id=int(r["id"]))
     ]
 
 
@@ -250,7 +296,7 @@ def validar_salida_bodega(
     if not row:
         return False, "Producto no encontrado.", None, None, None
     iid, prod_nombre, _pmp, um_sel = int(row[0]), row[1], float(row[2] or 0), row[3]
-    if not _es_producto_bodega_espino(prod_nombre):
+    if not _es_producto_bodega_espino(prod_nombre, conn, producto_id=iid):
         return False, f"{prod_nombre} no pertenece a la bodega El Espino.", None, None, None
     stock = _stock_cc(conn, iid)
     if cantidad > stock + 1e-9:

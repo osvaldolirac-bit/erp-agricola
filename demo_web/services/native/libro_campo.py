@@ -229,6 +229,32 @@ def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tupl
 
 
 def _productos_stock(demo, conn) -> list[dict]:
+    if _tenant_slug_lc(demo) == "espino":
+        from demo_web.services.native import espino_bodega
+
+        stock_map = espino_bodega._stock_cc_map(conn)
+        df = pd.read_sql_query(
+            "SELECT id, producto, COALESCE(unidad_medida, ?) AS um FROM inventario ORDER BY producto",
+            conn,
+            params=(demo.DEFAULT_UNIDAD_INSUMO,),
+        )
+        out = []
+        for _, r in df.iterrows():
+            pid = int(r["id"])
+            if not espino_bodega._es_producto_bodega_espino(str(r["producto"]), conn, producto_id=pid):
+                continue
+            stock = stock_map.get(pid, 0.0)
+            if stock <= 0:
+                continue
+            out.append(
+                {
+                    "producto": r["producto"],
+                    "stock_fmt": demo.f_cantidad(stock),
+                    "um": r["um"],
+                }
+            )
+        return out
+
     df = pd.read_sql_query(
         "SELECT producto, stock, COALESCE(unidad_medida, ?) AS um FROM inventario WHERE stock > 0 ORDER BY producto",
         conn,
@@ -677,6 +703,20 @@ def _post_guardar_evento(demo, conn) -> dict:
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
+    rebaje_espino = _tenant_slug_lc(demo) == "espino"
+    if rebaje_espino:
+        from demo_web.services.native import espino_bodega
+
+        for item in car:
+            ok_bod, msg_bod, _, _, _ = espino_bodega.validar_salida_bodega(
+                demo,
+                conn,
+                float(item.get("gasto_total") or 0),
+                producto=str(item.get("producto") or ""),
+            )
+            if not ok_bod:
+                return {"ok": False, "msg": msg_bod}
+
     n_app = _siguiente_n_aplicacion(conn)
     # n_orden = correlativo de planilla GlobalGAP (por cuartel); independiente del N° APP.
     n_orden = _siguiente_n_orden(conn, huerto)
@@ -697,7 +737,6 @@ def _post_guardar_evento(demo, conn) -> dict:
             n_orden=n_orden,
         )
 
-    rebaje_espino = _tenant_slug_lc(demo) == "espino"
     if rebaje_espino:
         from demo_web.services.native import espino_bodega
 
