@@ -9,8 +9,25 @@ from flask import request, session, url_for
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.espino_scope import LEGADO_SECTOR_LC_ESPINO, cuarteles_espino
 
 CC_ESPINO = espino_bodega.CC_ESPINO
+
+
+def _variedades_libro() -> list[str]:
+    return cuarteles_espino()
+
+
+def _sectores_historial_espino() -> tuple[str, ...]:
+    return tuple({*(v.upper() for v in _variedades_libro()), CC_ESPINO.upper(), LEGADO_SECTOR_LC_ESPINO.upper()})
+
+
+def _sector_valido(raw: str) -> str | None:
+    u = (raw or "").strip().upper()
+    for v in _variedades_libro():
+        if v.upper() == u:
+            return v
+    return None
 CAR_KEY = "espino_lc_car"
 META_KEY = "espino_lc_evento_meta"
 
@@ -99,8 +116,10 @@ def _productos_stock_espino(demo, conn) -> list[dict]:
 
 
 def _evento_meta_defaults(demo) -> dict:
+    variedades = _variedades_libro()
     return {
         "fecha": hoy_demo(demo).isoformat(),
+        "cuartel": variedades[0] if variedades else "",
         "especie": "",
         "vol_agua": "",
         "aplicador": "",
@@ -114,7 +133,7 @@ def _guardar_evento_meta(demo, src=None) -> dict:
     """Guarda cabecera del evento en sesión (sobrevive a agregar producto / cambio de prod)."""
     src = src if src is not None else request.values
     meta = session.get(META_KEY) or _evento_meta_defaults(demo)
-    for key in ("fecha", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
+    for key in ("fecha", "cuartel", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
         if key not in src:
             continue
         val = (src.get(key) or "").strip()
@@ -139,9 +158,9 @@ def _siguiente_n_aplicacion(conn) -> int:
     """Correlativo propio El Espino (no hereda n° del Libro de Campo global)."""
     res = conn.execute(
         "SELECT MAX(CAST(n_aplicacion AS INTEGER)) FROM libro_campo "
-        "WHERE UPPER(sector)=? AND n_aplicacion GLOB '[0-9]*' "
+        "WHERE n_aplicacion GLOB '[0-9]*' "
         "AND CAST(n_aplicacion AS INTEGER) < ?",
-        (CC_ESPINO.upper(), _N_APP_HIST_MIN),
+        (_N_APP_HIST_MIN,),
     ).fetchone()[0]
     return int(res) + 1 if res is not None else 1
 
@@ -188,6 +207,8 @@ def _ingreso(demo, conn) -> dict:
         "siguiente_app": siguiente,
         "hoy": meta.get("fecha") or hoy_demo(demo).isoformat(),
         "form_fecha": meta.get("fecha") or hoy_demo(demo).isoformat(),
+        "form_cuartel": meta.get("cuartel") or (_variedades_libro()[0] if _variedades_libro() else ""),
+        "cuarteles": _variedades_libro(),
         "form_especie": meta.get("especie") or "",
         "form_vol_agua": meta.get("vol_agua") or "",
         "form_aplicador": meta.get("aplicador") or "",
@@ -217,8 +238,10 @@ def _historial(demo, conn) -> dict:
     q_prod = (request.args.get("q") or "").strip()
     q_app = (request.args.get("n_app") or "").strip()
 
-    filtros = ["fecha BETWEEN ? AND ?", "UPPER(sector)=?"]
-    params: list = [str(fi), str(ff), CC_ESPINO.upper()]
+    sectores = _sectores_historial_espino()
+    placeholders = ",".join("?" for _ in sectores)
+    filtros = ["fecha BETWEEN ? AND ?", f"UPPER(sector) IN ({placeholders})"]
+    params: list = [str(fi), str(ff), *sectores]
     if q_prod:
         filtros.append(
             "(UPPER(COALESCE(producto,'')) LIKE ? OR UPPER(COALESCE(ingrediente,'')) LIKE ?)"
@@ -418,6 +441,9 @@ def post_guardar_evento(demo, conn) -> dict:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
     fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    sector = _sector_valido(request.form.get("cuartel") or "")
+    if not sector:
+        return {"ok": False, "msg": "Seleccione la variedad (sector) de la aplicación."}
     especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
@@ -433,14 +459,14 @@ def post_guardar_evento(demo, conn) -> dict:
             return {"ok": False, "msg": msg}
 
     n_app = _siguiente_n_aplicacion(conn)
-    n_orden = _siguiente_n_orden(conn)
+    n_orden = _siguiente_n_orden(conn, sector)
 
     for item in car:
         demo._insertar_linea_libro_campo(
             conn,
             fe_app,
             n_app,
-            CC_ESPINO,
+            sector,
             especie,
             item,
             total_agua,
@@ -463,7 +489,7 @@ def post_guardar_evento(demo, conn) -> dict:
             return {"ok": False, "msg": msg}
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
-    demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {CC_ESPINO} · {prods_txt}")
+    demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {sector} · {prods_txt}")
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
     rebajes = [

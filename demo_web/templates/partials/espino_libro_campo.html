@@ -142,7 +142,7 @@
 {% else %}
 <div class="panel-card mb-3">
   <h2 class="h6">Nueva orden N° {{ '%05d'|format(siguiente_app) }}</h2>
-  <p class="small text-muted">Cuartel fijo <strong>{{ cc_espino|default('EL ESPINO') }}</strong> · un evento puede incluir varios productos fitosanitarios.</p>
+  <p class="small text-muted">Sector = <strong>variedad</strong> del huerto · un evento puede incluir varios productos fitosanitarios.</p>
   <form method="post" id="lcEventoForm">
     <input type="hidden" name="action" value="lc_guardar_evento">
     <input type="hidden" name="sec" value="libro_campo">
@@ -150,7 +150,9 @@
     <input type="hidden" name="temp" value="{{ temp_sel }}">
     <div class="row g-2 mb-3" id="lcCabeceraFields">
       <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
-      <div class="col-md-3"><label class="form-label small">Cuartel</label><input type="text" class="form-control form-control-sm" value="{{ cc_espino|default('EL ESPINO') }}" readonly disabled></div>
+      <div class="col-md-3"><label class="form-label small">Variedad (sector)</label>
+        <select name="cuartel" id="lcCuartel" class="form-select form-select-sm lc-cab" required>{% for c in cuarteles %}<option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+      </div>
       <div class="col-md-3"><label class="form-label small">Especie</label>
         <select name="especie" class="form-select form-select-sm lc-cab">{% for e in especies %}<option value="{{ e }}" {% if e == form_especie %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
       </div>
