@@ -246,6 +246,16 @@ def _build_kardex_rows(
     return rows
 
 
+def _fecha_para_pdf(fecha: str) -> str:
+    """generar_pdf_blob (LC) ordena por FECHA con to_datetime; '—' rompe el PDF."""
+    f = str(fecha or "").strip()
+    if f in ("—", "-", ""):
+        return "1900-01-01"
+    if parse_fecha_iso(f):
+        return f[:10]
+    return f[:10]
+
+
 def _pdf_kardex_producto(
     demo,
     prod: dict,
@@ -264,7 +274,7 @@ def _pdf_kardex_producto(
         df = pd.DataFrame(
             [
                 {
-                    "FECHA": r["fecha"],
+                    "FECHA": _fecha_para_pdf(r["fecha"]),
                     "TIPO": r["tipo"],
                     "CANTIDAD": r["cant_raw"] if r["tipo"] == "Ingreso" else -r["cant_raw"],
                     "UM": um,
