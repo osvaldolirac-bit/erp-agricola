@@ -14,7 +14,13 @@ from flask import (
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from demo_web.auth.login_next import default_landing_url, pop_login_next, safe_next, stash_login_next
+from demo_web.auth.login_next import (
+    default_landing_url,
+    pop_login_next,
+    post_login_next_blocked,
+    safe_next,
+    stash_login_next,
+)
 from demo_web.auth.user_db import fetch_bridge_user, fetch_login_row
 from demo_web.services.erp_loader import bind_tenant_context, get_erp_module_for
 from demo_web.tenants import get_tenant, list_tenants
@@ -45,7 +51,12 @@ def _activate_session(
 ) -> None:
     bind_tenant_context(tenant_slug)
     erp = get_erp_module_for(tenant_slug)
+    login_next = session.get("login_next")
+    if login_next and post_login_next_blocked(login_next):
+        login_next = None
     session.clear()
+    if login_next:
+        session["login_next"] = login_next
     session["email"] = email
     session["rol"] = erp.normalizar_rol_usuario(rol, email) if hasattr(erp, "normalizar_rol_usuario") else rol
     session["tenant_slug"] = tenant_slug
@@ -180,6 +191,7 @@ def master_entry():
         tenant_slug=token_slug,
         from_master=True,
     )
+    session.pop("login_next", None)
     return redirect(default_landing_url())
 
 
