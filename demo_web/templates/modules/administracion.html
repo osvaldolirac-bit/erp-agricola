@@ -367,14 +367,13 @@
   </p>
   {% if flujo_meses_txt %}<div class="alert alert-info small py-2 mb-3">Meses: {{ flujo_meses_txt }}</div>{% endif %}
   {% if flujo_cuarteles %}
-  <form method="post" action="{{ url_for('modules.admin', sec='flujo', temp=temp_sel) }}">
+  <form method="post">
     <input type="hidden" name="action" value="guardar_ingresos_flujo">
-    <input type="hidden" name="sec" value="flujo">
     <input type="hidden" name="temporada" value="{{ temp_sel }}">
     <div class="row g-2 mb-3">
       <div class="col-md-4">
         <label class="form-label small">Saldo caja inicial ($)</label>
-        <input type="number" name="caja_inicial" class="form-control form-control-sm" value="{{ caja_inicial|int }}" min="0" step="1">
+        <input type="number" name="caja_inicial" class="form-control form-control-sm" value="{{ caja_inicial|int }}" min="0" step="100000">
       </div>
     </div>
     {% for cc in flujo_cuarteles %}
@@ -387,7 +386,7 @@
             {% for m in cc.meses %}
             <tr>
               <td>{{ m.label }}</td>
-              <td><input type="number" name="ing_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.monto|int }}" min="0" step="1"></td>
+              <td><input type="number" name="ing_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.monto|int }}" min="0" step="100000"></td>
               <td><input type="text" name="nota_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.nota }}" placeholder="Nota…"></td>
             </tr>
             {% endfor %}
@@ -416,6 +415,47 @@
   <div class="alert alert-info">Sin meses en esta temporada.</div>
   {% endif %}
 
+  {% elif sec_activa == 'hydrawise' %}
+  <div class="panel-card">
+    <h2 class="h6">Hydrawise — La Concepción</h2>
+    <p class="small text-muted mb-2">
+      <strong>API key</strong> (Account Details → Generate API Key).
+      El <strong>serial alfanumérico</strong> del HCC (sticker) se vincula en la <strong>app Hydrawise</strong>.
+      En el ERP pegue ese <strong>mismo serial</strong> abajo (o el ID numérico que muestra «Listar equipos»).
+    </p>
+    <form method="post" class="row g-2 align-items-end mb-3">
+      <input type="hidden" name="sec" value="hydrawise">
+      <div class="col-md-6">
+        <label class="form-label small">API key</label>
+        <input type="password" name="api_key" class="form-control form-control-sm" placeholder="{% if hydrawise_tiene_key %}Dejar en blanco para mantener ({{ hydrawise_key_masked }}){% else %}Pegar key…{% endif %}" autocomplete="off">
+      </div>
+      <div class="col-auto">
+        <button type="submit" name="action" value="guardar_hydrawise_key" class="btn btn-primary btn-sm">Guardar key</button>
+      </div>
+      <div class="col-auto">
+        <button type="submit" name="action" value="probar_hydrawise" class="btn btn-outline-secondary btn-sm">Probar conexión</button>
+      </div>
+      <div class="col-auto">
+        <button type="submit" name="action" value="listar_hydrawise_equipos" class="btn btn-outline-secondary btn-sm">Listar equipos</button>
+      </div>
+    </form>
+    <form method="post" class="row g-2 align-items-end mb-3">
+      <input type="hidden" name="sec" value="hydrawise">
+      <div class="col-md-4">
+        <label class="form-label small">Serial o ID equipo (La Aparición)</label>
+        <input type="text" name="controller_id" class="form-control form-control-sm" value="{{ hydrawise_controller_id or '' }}" placeholder="Serial alfanumérico del sticker" autocomplete="off">
+      </div>
+      <div class="col-auto">
+        <button type="submit" name="action" value="guardar_hydrawise_controller" class="btn btn-primary btn-sm">Guardar equipo</button>
+      </div>
+      <div class="col-12">
+        <p class="small text-muted mb-0">Serial suele ser alfanumérico (ej. en el sticker del HCC). Si solo hay un equipo, al probar conexión el ERP puede guardarlo solo.</p>
+      </div>
+    </form>
+    {% if hydrawise_test %}
+    <div class="alert alert-{{ 'success' if hydrawise_test.ok else 'danger' }} py-2 small mb-0">{{ hydrawise_test.msg }}</div>
+    {% endif %}
+  </div>
 
   {% endif %}
 </div>

@@ -1,0 +1,16 @@
+{# Sub-pestañas Control Hydra (módulo oficina). Requiere hydra_control_tab. #}
+{% set ct = hydra_control_tab|default('control') %}
+<nav class="nav nav-tabs nav-tabs-sm mb-3 flex-nowrap hydra-module-op-tabs" aria-label="Operación HYDRA">
+  <a class="nav-link{% if ct == 'control' %} active{% endif %}"
+     href="{{ url_for('modules.riego', sec='hydra', hydra_tab='control', hydra_control_tab='control') }}">
+    En ejecución
+  </a>
+  <a class="nav-link{% if ct == 'regar' %} active{% endif %}"
+     href="{{ url_for('modules.riego', sec='hydra', hydra_tab='control', hydra_control_tab='regar') }}">
+    Regar ahora
+  </a>
+  <a class="nav-link{% if ct == 'programar' %} active{% endif %}"
+     href="{{ url_for('modules.riego', sec='hydra', hydra_tab='control', hydra_control_tab='programar') }}">
+    Programar
+  </a>
+</nav>

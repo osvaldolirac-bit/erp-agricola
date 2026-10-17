@@ -21,6 +21,10 @@ def tenant_slug_from_query() -> str:
 
 def tenant_slug_for_request(endpoint: str | None = None) -> str | None:
     ep = endpoint if endpoint is not None else (request.endpoint or "")
+    if ep == "registro_riego.formulario":
+        # HYDRA / link riego vive solo en La Concepción (token y sectores en esa DB).
+        q = tenant_slug_from_query()
+        return "demo" if q == "demo" else "concepcion"
     if ep in _PUBLIC_LINK_ENDPOINTS:
         q = tenant_slug_from_query()
         if q:

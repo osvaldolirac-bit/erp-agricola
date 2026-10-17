@@ -1,0 +1,19 @@
+{# ERP módulo Riego: vista completa. Link regador usa paneles por pestaña. #}
+{% if hydra_msg %}
+<div class="alert alert-{{ 'success' if hydra_ok else 'danger' }} hydra-link-alert py-2" role="status">{{ hydra_msg }}</div>
+{% endif %}
+
+{% if hydra_ui_scope|default('link') == 'module' and hydra_puede_operar %}
+<form method="post" class="d-flex flex-wrap gap-2 mb-3">
+  {% include "registro_riego/_hydra_scope_fields.html" %}
+  <button type="submit" name="action" value="hydra_sync" class="btn btn-primary btn-sm">Sincronizar cola</button>
+</form>
+{% endif %}
+
+{% include "registro_riego/_hydra_panel_control.html" %}
+{% include "registro_riego/_hydra_panel_regar.html" %}
+{% include "registro_riego/_hydra_panel_programar.html" %}
+
+<script id="hydraSectorsJson" type="application/json">{{ hydra_sectores|tojson }}</script>
+<script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
+{% include "registro_riego/_hydra_fert_row_template.html" %}

@@ -1,0 +1,59 @@
+{# Testigos conexión + sectores + cola (pestaña Control) #}
+{% include "registro_riego/_hydra_cola_actions.html" %}
+
+<div class="hydra-conn-witness hydra-conn-witness--{{ 'ok' if hydra_conn_online else 'fail' }}" role="status">
+  <span class="hydra-conn-dot" aria-hidden="true"></span>
+  <div class="hydra-conn-text">
+    <strong class="hydra-conn-title">{{ hydra_conn_title|default('Controlador conectado' if hydra_conn_online else 'Sin conexión') }}</strong>
+    <span class="hydra-conn-detail">{{ hydra_conn_msg or '—' }}{% if hydra_conn_cached and hydra_probe_age_sec %} · testigo hace {{ hydra_probe_age_sec }} s{% endif %}</span>
+    <span class="hydra-conn-auto small text-muted">Verde = nube Hydrawise responde (programa y zonas). Estado real del equipo en la app Hydrawise. Se revisa al abrir{% if hydra_ui_scope|default('link') == 'module' %} o sincronizar{% endif %} y al avanzar la cola.</span>
+  </div>
+</div>
+<p class="hydra-link-sync-explain mb-3">
+  Use <strong>Regar ahora</strong> o <strong>Programar</strong> para armar la cola. Fertirriego se declara al iniciar o programar (editable en cola).
+</p>
+
+<section class="hydra-link-block hydra-link-block--sectores" aria-labelledby="hydraBlockSectores">
+  <h2 class="hydra-link-section-title" id="hydraBlockSectores">Sectores de riego</h2>
+  <div class="hydra-zone-grid">
+    {% for s in hydra_sectores %}
+    <article class="hydra-zone-card{% if s.relay_id in running_relay_ids %} is-running{% elif s.relay_id in queued_relay_ids %} is-queued{% endif %}" data-relay="{{ s.relay_id }}">
+      <div class="hydra-zone-card-top">
+        <span class="hydra-zone-dot" aria-hidden="true"></span>
+        <h3>{{ s.label }}</h3>
+      </div>
+      <p class="hydra-zone-cc">{{ s.huerto_cc }}</p>
+      {% if s.relay_id in running_relay_ids %}
+      <span class="hydra-zone-status">Regando</span>
+      {% elif s.relay_id in queued_relay_ids %}
+      <span class="hydra-zone-status hydra-zone-status--queued">En cola</span>
+      {% set prog = programa_por_relay.get(s.relay_id) %}
+      {% if prog %}
+      <div class="hydra-zone-program">
+        <p class="hydra-zone-program-line"><span>Modo</span> {{ prog.tipo_label }} · turno #{{ prog.orden }}</p>
+        <p class="hydra-zone-program-line"><span>Inicio programa</span> {{ prog.inicio_programa_fmt }}</p>
+        <p class="hydra-zone-program-line"><span>Inicio estimado</span> ~{{ prog.inicio_estimado_fmt }}</p>
+        <p class="hydra-zone-program-line"><span>Riego</span> {{ prog.minutos_fmt }}</p>
+        {% if prog.tiene_fertirriego %}
+        <div class="hydra-zone-fert">
+          <span class="hydra-zone-fert-kicker">Fertirriego</span>
+          <ul class="hydra-zone-fert-list mb-0">
+            {% for f in prog.fertilizantes %}
+            <li>{{ f.nombre }} — {{ f.cantidad_fmt }}{% if f.dosis_fmt %} · {{ f.dosis_fmt }}{% endif %}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <p class="hydra-zone-program-line hydra-zone-program-line--muted"><span>Fertirriego</span> Sin fert en cola</p>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% else %}
+      <span class="hydra-zone-status hydra-zone-status--idle">En reposo</span>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+{% include "registro_riego/_hydra_cola_panel.html" %}
