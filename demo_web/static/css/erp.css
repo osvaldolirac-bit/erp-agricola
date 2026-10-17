@@ -2202,32 +2202,33 @@ body.erp-ios .erp-pdf-viewer-object {
 }
 
 .hydra-link-tabs {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 0.35rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  width: 100%;
   margin-bottom: 1rem;
   background: rgba(255, 255, 255, 0.72);
   border-radius: 14px;
   padding: 0.4rem;
   border: 1px solid rgba(13, 61, 86, 0.1);
   box-shadow: 0 2px 12px rgba(13, 61, 86, 0.06);
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  box-sizing: border-box;
 }
 
 .hydra-link-tab {
-  flex: 1 0 auto;
-  min-width: 4.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 2.75rem;
   text-align: center;
   text-decoration: none;
   color: #37474f;
-  padding: 0.55rem 0.5rem;
+  padding: 0.55rem 0.45rem;
   border-radius: 10px;
   border: 1px solid transparent;
   transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .hydra-link-tab-label {
@@ -2245,8 +2246,8 @@ body.erp-ios .erp-pdf-viewer-object {
 
 @media (min-width: 400px) {
   .hydra-link-tab {
-    min-width: 5.25rem;
-    padding: 0.6rem 0.55rem;
+    min-height: 3rem;
+    padding: 0.6rem 0.5rem;
   }
 
   .hydra-link-tab-label {
