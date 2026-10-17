@@ -7,11 +7,14 @@ from flask import (
     redirect,
     render_template,
     request,
+    session,
     url_for,
 )
 
 from demo_web.auth.decorators import login_required
 from demo_web.services.demo_loader import get_demo_module
+from demo_web.services.erp_loader import bind_tenant_context
+from demo_web.services.public_link_tenant import tenant_slug_from_query
 from demo_web.services.registro_riego import (
     aplicar_cookie_operador,
     config_riego_cc_para_formulario,
@@ -35,8 +38,17 @@ def _token_request() -> str | None:
     return (request.args.get("t") or request.form.get("t") or "").strip() or None
 
 
+def _bind_tenant_from_request() -> None:
+    slug = tenant_slug_from_query() or (session.get("tenant_slug") or "").strip().lower()
+    if slug in ("concepcion", "demo", "espino", "globalgap"):
+        bind_tenant_context(slug)
+    elif habilitado():
+        bind_tenant_context("concepcion")
+
+
 @bp.route("/registro-riego", methods=["GET", "POST"])
 def formulario():
+    _bind_tenant_from_request()
     if not habilitado():
         abort(404)
     tok = _token_request()

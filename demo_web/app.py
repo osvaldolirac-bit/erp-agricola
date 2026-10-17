@@ -63,7 +63,9 @@ def create_app(config_class=Config) -> Flask:
 
     @app.before_request
     def _bind_tenant():
-        slug = session.get("tenant_slug")
+        from demo_web.services.public_link_tenant import tenant_slug_for_request
+
+        slug = tenant_slug_for_request()
         bind_tenant_context(slug if slug else None)
 
 
