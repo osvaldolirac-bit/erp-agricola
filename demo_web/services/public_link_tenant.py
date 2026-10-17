@@ -25,5 +25,7 @@ def tenant_slug_for_request(endpoint: str | None = None) -> str | None:
         q = tenant_slug_from_query()
         if q:
             return q
+        # Links WhatsApp antiguos sin ?tenant=: no heredar sesión web (p. ej. Espino).
+        return "concepcion"
     slug = session.get("tenant_slug")
     return str(slug).strip().lower() if slug else None

@@ -1168,13 +1168,7 @@ def url_publica(token: str | None = None, op: str | None = None) -> str:
     op_id = (op or "").strip()
     if op_id:
         url += f"&op={quote(op_id, safe='')}"
-    try:
-        from demo_web.services.tenant_scope import is_concepcion_tenant
-
-        if is_concepcion_tenant():
-            url += "&tenant=concepcion"
-    except Exception:
-        pass
+    url += "&tenant=concepcion"
     return url
 
 
