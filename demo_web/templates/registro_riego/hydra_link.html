@@ -6,8 +6,117 @@
   <title>Riego HYDRA — La Concepción</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/erp.css') }}?v={{ static_version }}" rel="stylesheet">
+  <style>
+    .hydra-ptr-indicator {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1200;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: translateY(-100%);
+      transition: transform 0.15s ease-out;
+      background: rgba(255, 255, 255, 0.96);
+      border-bottom: 1px solid rgba(25, 135, 84, 0.25);
+      color: #198754;
+      font-size: 0.85rem;
+      font-weight: 600;
+      pointer-events: none;
+    }
+    .hydra-link-body.hydra-ptr-active .hydra-ptr-indicator {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+    .hydra-zone-timer {
+      margin-top: 0.35rem;
+      font-size: 1.05rem;
+      color: #0d6efd;
+    }
+    .hydra-zone-timer-value {
+      font-variant-numeric: tabular-nums;
+      font-size: 1.35rem;
+      letter-spacing: 0.02em;
+    }
+    .hydra-zone-card.is-running .hydra-zone-timer {
+      color: #198754;
+    }
+    .hydra-zone-timer--done .hydra-zone-timer-value {
+      color: #6c757d;
+    }
+    button.hydra-zone-card--tappable {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: none;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.hydra-zone-card--tappable:focus-visible {
+      outline: 2px solid #198754;
+      outline-offset: 2px;
+    }
+    .hydra-zone-tap-hint {
+      margin-top: 0.35rem;
+      opacity: 0.85;
+    }
+    .hydra-run-detail-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1300;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 0;
+    }
+    .hydra-run-detail-backdrop[hidden] {
+      display: none !important;
+    }
+    body.hydra-run-detail-open {
+      overflow: hidden;
+    }
+    .hydra-run-detail-sheet {
+      background: #fff;
+      width: 100%;
+      max-width: 480px;
+      max-height: 88vh;
+      overflow: auto;
+      border-radius: 16px 16px 0 0;
+      padding: 1rem 1.1rem 1.25rem;
+      box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
+    }
+    .hydra-run-detail-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .hydra-run-detail-title {
+      font-size: 1.15rem;
+      margin: 0;
+    }
+    .hydra-run-detail-dl div {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      gap: 0.35rem 0.75rem;
+      margin-bottom: 0.35rem;
+      font-size: 0.92rem;
+    }
+    .hydra-run-detail-dl dt {
+      margin: 0;
+      color: #6c757d;
+      font-weight: 500;
+    }
+    .hydra-run-detail-dl dd {
+      margin: 0;
+    }
+  </style>
 </head>
 <body class="hydra-link-body registro-riego-body">
+  <div id="hydraPtrIndicator" class="hydra-ptr-indicator" aria-hidden="true">Deslice hacia abajo para actualizar…</div>
   <main class="hydra-link-page">
     <header class="hydra-link-header">
       <div class="hydra-link-brand">
@@ -90,6 +199,14 @@
 
   {% if acceso_personal and tab in ('regar', 'programar') %}
   <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
+  {% endif %}
+  {% if acceso_personal %}
+  <script src="{{ url_for('static', filename='js/hydra_link_refresh.js') }}?v={{ static_version }}" defer></script>
+  {% if tab == 'control' %}
+  <script src="{{ url_for('static', filename='js/hydra_link_timer.js') }}?v={{ static_version }}" defer></script>
+  <script src="{{ url_for('static', filename='js/hydra_link_running_detail.js') }}?v={{ static_version }}" defer></script>
+  {% include "registro_riego/_hydra_running_detail_modal.html" %}
+  {% endif %}
   {% endif %}
 
 </body>
