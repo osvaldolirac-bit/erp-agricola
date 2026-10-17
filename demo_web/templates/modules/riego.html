@@ -21,9 +21,31 @@
   {% endif %}
 
   {% if sec_activa == 'manual' %}
+  {% if hydra_control_activo|default(false) %}
+  <div class="panel-card hydra-module-control mb-3">
+    <h2 class="h6">Control HYDRA (oficina)</h2>
+    <p class="small text-muted mb-3">
+      Misma operación que el <strong>link del regador</strong>: sectores Hydrawise, cola, regar ahora / programar y fertirriego por sector.
+      En celular use <a href="{{ url_for('modules.riego', sec='bitacora') }}">Link riego</a>.
+    </p>
+    {% if not hydra_puede_operar %}
+    <div class="alert alert-warning py-2 small">Solo administradores pueden iniciar o programar riego desde aquí.</div>
+    {% endif %}
+    {% include 'registro_riego/_hydra_control_ui.html' %}
+  </div>
+  <details class="panel-card mb-3">
+    <summary class="h6 mb-0" style="cursor:pointer">Registro directo por huerto (legacy)</summary>
+    <p class="small text-muted mt-2 mb-2">Sin Hydrawise — imputa horas/m³ al CC manualmente.</p>
+  {% else %}
   <div class="panel-card">
     <h2 class="h6">Registro manual</h2>
+    {% if not hydra_control_activo|default(false) and hydra_ui_scope is defined %}
+    <div class="alert alert-secondary py-2 small">
+      Configure sectores en <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a> (activo + CC + en link) para usar control como el celular.
+    </div>
+    {% endif %}
     <p class="small text-muted">Imputa directamente al huerto (CC). Fertilización opcional desde bodega (familia FERTILIZANTE).</p>
+  {% endif %}
     <form method="post" class="row g-2" id="formManualRiego">
       <input type="hidden" name="action" value="registrar_manual">
       <input type="hidden" name="sec" value="manual">
@@ -248,7 +270,12 @@
     })();
     </script>
     {% endif %}
+  {% if hydra_control_activo|default(false) %}
+  </details>
+  <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}" defer></script>
+  {% else %}
   </div>
+  {% endif %}
 
   {% elif sec_activa == 'bitacora' %}
   <div class="panel-card">
@@ -258,6 +285,20 @@
       se imputa el riego al huerto (CC) y, si traen fertilizantes, se descuenta stock de bodega
       e imputa el valor al mismo centro de costo.
     </div>
+    {% if hydra_link_sectores|default(0) > 0 %}
+    <div class="alert alert-success py-2 small mb-3">
+      <strong>Link HYDRA:</strong> en el celular el regador usa una sola pantalla <strong>Control</strong>
+      (testigo verde/rojo, sectores, cola, iniciar/programar + fert). Imputación automática al historial —
+      <strong>{{ hydra_link_sectores }}</strong> sector(es) mapeados a CC en
+      <a href="{{ url_for('modules.riego', sec='hydra') }}">Administración HYDRA</a>.
+      Los registros manuales antiguos en la tabla de abajo siguen autorizándose aquí.
+    </div>
+    {% elif hydra_link_sectores is defined %}
+    <div class="alert alert-secondary py-2 small mb-3">
+      Importe sectores en <a href="{{ url_for('modules.riego', sec='hydra') }}">HYDRA</a> y asigne CC a cada uno;
+      el link del regador copia esa lista de Hydrawise.
+    </div>
+    {% endif %}
     {% if bitacora_admin_links %}
     <div class="mb-3{% if bitacora_links_demo %} riego-links-demo{% endif %}">
       <h3 class="h6">Enlaces personales regador</h3>
@@ -331,7 +372,7 @@
       <table class="table table-sm table-bordered align-middle demo-datatable w-100">
         <thead>
           <tr>
-            <th>N°</th><th>Fecha</th><th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
+            <th>N°</th><th>Fecha</th>{% if hydra_link_sectores|default(0) %}<th>Sector Hydra</th>{% endif %}<th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
             <th>Fertilización</th><th>Regador</th><th>Estado</th><th>Recibido</th><th></th>
           </tr>
         </thead>
@@ -340,6 +381,7 @@
           <tr class="{% if r.pendiente %}table-warning{% elif r.rechazado %}table-secondary{% endif %}">
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha }}</td>
+            {% if hydra_link_sectores|default(0) %}<td class="small">{{ r.hydra_sector or '—' }}</td>{% endif %}
             <td>{{ r.huerto }}</td>
             <td class="small">{{ r.modo_txt|default('Tecnificado') }}</td>
             <td>{{ r.horas }}</td>
@@ -459,12 +501,12 @@
             <th class="text-end riego-npk-th-p">P kg/ha</th>
             <th class="text-end riego-npk-th-k">K₂O (kg)</th>
             <th class="text-end riego-npk-th-k">K kg/ha</th>
-            <th>Regador</th><th>Origen</th><th>Registrado</th>
+            <th>Regador</th><th>Origen</th><th>Registrado</th><th></th>
           </tr>
         </thead>
         <tbody>
           {% for r in historial_rows %}
-          <tr class="{% if r.sin_ha %}table-warning{% endif %}">
+          <tr class="{% if r.sin_ha %}table-warning{% elif r.fert_pendiente_hydra %}table-info{% endif %}">
             <td>{{ r.num }}</td>
             <td><strong>{{ r.codigo }}</strong></td>
             <td>{{ r.fecha }}</td>
@@ -473,7 +515,7 @@
             <td class="small">{{ r.modo_txt|default('Tecnificado') }}</td>
             <td>{{ r.horas }}</td>
             <td>{{ r.m3 }}</td>
-            <td class="small">{{ r.fert_txt }}</td>
+            <td class="small">{{ r.fert_txt }}{% if r.fert_pendiente_hydra %} <span class="badge bg-info text-dark">Fert pendiente</span>{% endif %}</td>
             <td class="text-end riego-npk-val-n">{{ r.n_kg_fmt|default('—') }}</td>
             <td class="text-end riego-npk-val-n">{{ r.n_ha_fmt|default('—') }}</td>
             <td class="text-end riego-npk-val-p">{{ r.p_kg_fmt|default('—') }}</td>
@@ -483,6 +525,45 @@
             <td>{{ r.regador }}</td>
             <td>{{ r.origen }}</td>
             <td class="small text-muted">{{ r.creado_en[:16] if r.creado_en else '—' }}</td>
+            <td class="text-nowrap">
+              {% if r.fert_pendiente_hydra and bitacora_puede_autorizar %}
+              <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="confirmar_fert_hydra">
+                <input type="hidden" name="sec" value="historial">
+                <input type="hidden" name="codigo" value="{{ r.codigo }}">
+                <button type="submit" class="btn btn-success btn-sm">Confirmar fert</button>
+              </form>
+              <details class="d-inline-block ms-1">
+                <summary class="btn btn-outline-secondary btn-sm">Modificar</summary>
+                <form method="post" class="border rounded p-2 mt-1" style="min-width:14rem;">
+                  <input type="hidden" name="action" value="modificar_fert_hydra">
+                  <input type="hidden" name="sec" value="historial">
+                  <input type="hidden" name="codigo" value="{{ r.codigo }}">
+                  <label class="form-check small mb-1">
+                    <input type="checkbox" class="form-check-input" name="con_fertilizacion" value="1" {% if r.fertilizantes_lineas %}checked{% endif %}>
+                    Con fertilizantes
+                  </label>
+                  {% for ln in r.fertilizantes_lineas %}
+                  <select name="fert_producto_id" class="form-select form-select-sm mb-1">
+                    {% for f in fertilizantes %}
+                    <option value="{{ f.id }}" {% if f.id == ln.producto_id %}selected{% endif %}>{{ f.nombre }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="number" name="fert_cantidad" class="form-control form-control-sm mb-1" value="{{ ln.cantidad }}" step="any">
+                  {% else %}
+                  <select name="fert_producto_id" class="form-select form-select-sm mb-1">
+                    <option value="">—</option>
+                    {% for f in fertilizantes %}
+                    <option value="{{ f.id }}">{{ f.nombre }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="number" name="fert_cantidad" class="form-control form-control-sm mb-1" step="any">
+                  {% endfor %}
+                  <button type="submit" class="btn btn-primary btn-sm w-100">Guardar</button>
+                </form>
+              </details>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -493,6 +574,8 @@
     {% endif %}
   </div>
   {% endif %}
+
+  {% include 'partials/riego_hydrawise.html' %}
 </div>
 {% if sec_activa == 'bitacora' %}
 <script>
