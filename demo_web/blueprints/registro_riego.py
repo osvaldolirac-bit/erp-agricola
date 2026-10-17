@@ -39,11 +39,11 @@ def _token_request() -> str | None:
 
 
 def _bind_tenant_from_request() -> None:
-    slug = tenant_slug_from_query() or (session.get("tenant_slug") or "").strip().lower()
-    if slug in ("concepcion", "demo", "espino", "globalgap"):
-        bind_tenant_context(slug)
-    elif habilitado():
-        bind_tenant_context("concepcion")
+    # Link Hydra / registro riego es de La Concepción — no usar sesión web de otro tenant.
+    slug = tenant_slug_from_query() or "concepcion"
+    if slug not in ("concepcion", "demo", "espino", "globalgap"):
+        slug = "concepcion"
+    bind_tenant_context(slug)
 
 
 @bp.route("/registro-riego", methods=["GET", "POST"])
