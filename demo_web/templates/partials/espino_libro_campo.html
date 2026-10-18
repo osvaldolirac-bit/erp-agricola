@@ -166,6 +166,28 @@
         <select name="tractor" class="form-select form-select-sm lc-cab">{% for cod, etiq in tractor_opts %}<option value="{{ cod }}" {% if cod == form_tractor %}selected{% endif %}>{{ etiq }}</option>{% endfor %}</select>
       </div>
     </div>
+    {% if lc_car_items %}
+    <h2 class="h6 mt-3">Productos en este evento</h2>
+    <p class="small text-muted">Puede corregir el <strong>total</strong> antes de guardar (máximo = stock kardex bodega).</p>
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-bordered">
+        <thead><tr><th>Producto</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total</th><th>UM</th><th>PHI días</th></tr></thead>
+        <tbody>{% for r in lc_car %}
+        <tr>
+          <td>{{ r.producto }}</td><td>{{ r.lote }}</td><td>{{ r.ingrediente }}</td><td>{{ r.dosis }}</td>
+          <td>{{ r.unidad_dosis }}</td>
+          <td style="min-width:5rem">
+            <input type="text" name="gasto_linea_{{ loop.index0 }}" class="form-control form-control-sm js-decimal-coma"
+                   inputmode="decimal" autocomplete="off" value="{{ lc_car_items[loop.index0].gasto_total }}" required>
+          </td>
+          <td>{{ r.um_gasto }}</td><td>{{ r.dias_car }}</td>
+        </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <button type="submit" class="btn btn-primary btn-sm">Validar y guardar evento completo</button>
+    </div>
+    {% endif %}
   </form>
 </div>
 
@@ -183,7 +205,7 @@
     </select>
   </form>
   {% if stock_info %}<p class="small text-muted">Stock disponible (kardex bodega): <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>{% endif %}
-  <p class="small text-muted mb-0">Para cambiar la cantidad de un producto ya agregado, use <strong>Quitar último</strong> y vuelva a <strong>Agregar producto</strong>.</p>
+  <p class="small text-muted mb-0">Después de agregar, puede ajustar el total en la tabla del evento (arriba) antes de guardar.</p>
   {% if prod_sel and not pppl_ok %}<div class="alert alert-warning small py-2">Producto no autorizado en PPPL. Revise en GlobalGAP → PPPL.</div>{% endif %}
   <form method="post" class="row g-2" id="lcAddProdForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
     <input type="hidden" name="action" value="lc_agregar_producto">
@@ -205,26 +227,13 @@
 
 {% if lc_car %}
 <div class="panel-card mb-3">
-  <h2 class="h6">Productos en este evento</h2>
-  <div class="table-responsive mb-2">
-    <table class="table table-sm table-bordered">
-      <thead><tr><th>Producto</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total</th><th>UM</th><th>PHI días</th></tr></thead>
-      <tbody>{% for r in lc_car %}<tr>
-        <td>{{ r.producto }}</td><td>{{ r.lote }}</td><td>{{ r.ingrediente }}</td><td>{{ r.dosis }}</td>
-        <td>{{ r.unidad_dosis }}</td><td>{{ r.gasto_total }}</td><td>{{ r.um_gasto }}</td><td>{{ r.dias_car }}</td>
-      </tr>{% endfor %}</tbody>
-    </table>
-  </div>
-  <div class="d-flex gap-2">
-    <form method="post" id="lcPopForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
-      <input type="hidden" name="action" value="lc_pop_producto">
-      <input type="hidden" name="sec" value="libro_campo">
-      <input type="hidden" name="op" value="ingreso">
-      <input type="hidden" name="temp" value="{{ temp_sel }}">
-      <button type="submit" class="btn btn-outline-secondary btn-sm">Quitar último</button>
-    </form>
-    <button type="submit" form="lcEventoForm" class="btn btn-primary btn-sm">Validar y guardar evento completo</button>
-  </div>
+  <form method="post" id="lcPopForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
+    <input type="hidden" name="action" value="lc_pop_producto">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="op" value="ingreso">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Quitar último producto</button>
+  </form>
 </div>
 {% else %}
 <div class="alert alert-info">Agregue uno o más productos al evento antes de guardar.</div>

@@ -8,7 +8,7 @@ from flask import request, session, url_for
 
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
-from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_form
 from demo_web.services.espino_scope import (
     ESPECIE_LIBRO_CAMPO_ESPINO,
     LEGADO_SECTOR_LC_ESPINO,
@@ -215,6 +215,7 @@ def _ingreso(demo, conn) -> dict:
         "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
         "lc_car": car_rows,
+        "lc_car_items": car,
     }
 
 
@@ -381,6 +382,20 @@ def _desfase(demo, conn) -> dict:
     }
 
 
+def _aplicar_cantidades_guardar(car: list[dict]) -> str | None:
+    """Lee gasto_linea_N del POST al validar/guardar (totales editables en tabla)."""
+    for i, item in enumerate(car):
+        raw = request.form.get(f"gasto_linea_{i}")
+        if raw is None or not str(raw).strip():
+            continue
+        qty = parse_decimal_form(str(raw), None)
+        if qty is None or qty < 0:
+            prod = item.get("producto") or f"línea {i + 1}"
+            return f"Cantidad inválida para {prod}."
+        item["gasto_total"] = float(qty)
+    return None
+
+
 def _totales_por_producto_en_car(car: list[dict]) -> dict[str, float]:
     acc: dict[str, float] = {}
     for item in car:
@@ -444,9 +459,13 @@ def post_agregar_producto(demo, conn) -> dict:
 
 
 def post_guardar_evento(demo, conn) -> dict:
-    car = session.get(CAR_KEY, [])
+    car = list(session.get(CAR_KEY, []))
     if not car:
         return {"ok": False, "msg": "Agregue al menos un producto al evento."}
+    err_qty = _aplicar_cantidades_guardar(car)
+    if err_qty:
+        return {"ok": False, "msg": err_qty}
+    session[CAR_KEY] = car
     maquinaria = (request.form.get("maquinaria") or "").strip()
     aplicador = (request.form.get("aplicador") or "").strip()
     try:
@@ -501,6 +520,7 @@ def post_guardar_evento(demo, conn) -> dict:
             centro_costo=sector,
         )
         if not ok:
+            conn.rollback()
             return {"ok": False, "msg": msg}
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
