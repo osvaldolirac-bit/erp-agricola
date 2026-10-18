@@ -10,6 +10,14 @@ from flask import flash, jsonify, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import is_concepcion_tenant
+from demo_web.services.lc_bodega_desfase import (
+    insertar_salida_desde_lc,
+    lc_dict_desde_item_libro,
+    lc_dict_desde_linea_libro,
+    mensaje_error_salida_lc,
+    revertir_salida_desde_lc,
+)
 
 
 def _tenant_slug_lc(demo) -> str:
@@ -446,6 +454,7 @@ def _ingreso(demo, conn) -> dict:
         "lc_car": car_rows,
         "lc_car_raw": car,
         "reabrir_n_app": _reabrir_n_app_ctx(demo, conn),
+        "rebaje_bodega_lc": is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino",
     }
 
 
@@ -758,6 +767,7 @@ def _post_guardar_evento(demo, conn) -> dict:
     tractor = (request.form.get("tractor") or "").strip()
 
     rebaje_espino = _tenant_slug_lc(demo) == "espino"
+    rebaje_lc = is_concepcion_tenant() and not rebaje_espino
     if rebaje_espino:
         from demo_web.services.native import espino_bodega
 
@@ -770,6 +780,12 @@ def _post_guardar_evento(demo, conn) -> dict:
             )
             if not ok_bod:
                 return {"ok": False, "msg": msg_bod}
+    elif rebaje_lc:
+        for item in car:
+            lc = lc_dict_desde_item_libro(item, fecha=fe_app, sector=huerto)
+            res = insertar_salida_desde_lc(conn, lc, dry_run=True)
+            if not res.get("ok"):
+                return {"ok": False, "msg": mensaje_error_salida_lc(demo, res)}
 
     n_app = _siguiente_n_aplicacion(conn)
     # n_orden = correlativo de planilla GlobalGAP (por cuartel); independiente del N° APP.
@@ -807,6 +823,14 @@ def _post_guardar_evento(demo, conn) -> dict:
                 conn.rollback()
                 return {"ok": False, "msg": msg_bod}
 
+    if rebaje_lc:
+        for item in car:
+            lc = lc_dict_desde_item_libro(item, fecha=fe_app, sector=huerto)
+            res = insertar_salida_desde_lc(conn, lc, dry_run=False)
+            if not res.get("ok"):
+                conn.rollback()
+                return {"ok": False, "msg": mensaje_error_salida_lc(demo, res)}
+
     from demo_web.services.libro_campo_gap import enriquecer_aplicacion_globalgap
 
     wx = enriquecer_aplicacion_globalgap(
@@ -824,12 +848,17 @@ def _post_guardar_evento(demo, conn) -> dict:
         demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {huerto} · {prods_txt}")
     else:
         demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
-        session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
+        if not rebaje_lc:
+            session["lc_alerta_bodega"] = {
+                "n_app": n_app,
+                "huerto": huerto,
+                "productos": list(car),
+            }
     session[UNDO_KEY] = n_app
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
     msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
-    if rebaje_espino:
+    if rebaje_espino or rebaje_lc:
         msg += ". Bodega rebajada automáticamente."
     if wx:
         msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
@@ -853,6 +882,9 @@ def _post_reabrir_aplicacion(demo, conn) -> dict:
     if not rows:
         return {"ok": False, "msg": "No hay líneas guardadas para esa aplicación."}
     car, meta = _car_y_meta_desde_lineas(rows)
+    if is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino":
+        for row in rows:
+            revertir_salida_desde_lc(conn, lc_dict_desde_linea_libro(row))
     conn.execute("DELETE FROM libro_campo WHERE n_aplicacion=?", (n_app,))
     conn.commit()
     session[CAR_KEY] = car

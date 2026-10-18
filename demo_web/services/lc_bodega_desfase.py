@@ -220,3 +220,79 @@ def insertar_salida_desde_lc(
         return {"ok": False, "reason": "stock_race", "lc": lc}
     mov_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
     return {"ok": True, "mov_id": mov_id, "producto_id": pid, "lc": lc}
+
+
+def lc_dict_desde_item_libro(
+    item: dict[str, Any],
+    *,
+    fecha,
+    sector: str,
+) -> dict[str, Any]:
+    fe = fecha.isoformat() if hasattr(fecha, "isoformat") else str(fecha or "")[:10]
+    return {
+        "producto": str(item.get("producto") or "").strip(),
+        "gasto": float(item.get("gasto_total") or 0),
+        "sector": str(sector or "").strip().upper(),
+        "fecha": fe,
+    }
+
+
+def lc_dict_desde_linea_libro(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "producto": str(row.get("producto") or "").strip(),
+        "gasto": float(row.get("gasto_total") or 0),
+        "sector": str(row.get("sector") or "").strip().upper(),
+        "fecha": str(row.get("fecha") or "")[:10],
+    }
+
+
+def mensaje_error_salida_lc(demo, res: dict[str, Any]) -> str:
+    reason = res.get("reason") or ""
+    lc = res.get("lc") or {}
+    prod = lc.get("producto") or "producto"
+    if reason == "sin_inventario":
+        return f"«{prod}» no está en inventario bodega LC."
+    if reason == "stock_insuficiente":
+        st = float(res.get("stock") or 0)
+        return (
+            f"Stock bodega insuficiente para «{prod}» "
+            f"(disponible {demo.f_cantidad(st)})."
+        )
+    if reason == "datos_invalidos":
+        return f"Cantidad o cuartel inválido para «{prod}»."
+    if reason == "stock_race":
+        return f"No se pudo descontar «{prod}» (stock cambió al guardar). Reintente."
+    return f"No se pudo rebajar bodega para «{prod}»."
+
+
+def revertir_salida_desde_lc(conn: sqlite3.Connection, lc: dict[str, Any]) -> dict[str, Any]:
+    """Devuelve stock si existe salida bodega emparejable (reabrir aplicación)."""
+    prod = str(lc.get("producto") or "").strip()
+    row = conn.execute(
+        "SELECT id FROM inventario WHERE UPPER(producto)=?",
+        (prod.upper(),),
+    ).fetchone()
+    if not row:
+        return {"ok": True, "skipped": True, "reason": "sin_inventario", "lc": lc}
+    pid = int(row[0])
+    cant = float(lc.get("gasto") or 0)
+    cc = str(lc.get("sector") or "").strip().upper()
+    fecha = str(lc.get("fecha") or "")[:10]
+    if cant <= 0:
+        return {"ok": True, "skipped": True, "reason": "datos_invalidos", "lc": lc}
+    mov = conn.execute(
+        """SELECT id FROM movimientos
+           WHERE producto_id=? AND tipo='Salida' AND centro_costo=? AND ABS(cantidad - ?) < ?
+             AND fecha BETWEEN date(?, '-14 day') AND date(?, '+14 day')
+           ORDER BY id DESC LIMIT 1""",
+        (pid, cc, cant, QTY_TOL, fecha, fecha),
+    ).fetchone()
+    if not mov:
+        return {"ok": True, "skipped": True, "reason": "sin_movimiento", "lc": lc}
+    mov_id = int(mov[0])
+    conn.execute("DELETE FROM movimientos WHERE id=?", (mov_id,))
+    conn.execute(
+        "UPDATE inventario SET stock = COALESCE(stock, 0) + ? WHERE id=?",
+        (cant, pid),
+    )
+    return {"ok": True, "mov_id": mov_id, "lc": lc}
