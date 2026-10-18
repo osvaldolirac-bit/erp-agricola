@@ -182,7 +182,8 @@
       {% endfor %}
     </select>
   </form>
-  {% if stock_info %}<p class="small text-muted">Stock disponible: <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>{% endif %}
+  {% if stock_info %}<p class="small text-muted">Stock disponible (kardex bodega): <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>{% endif %}
+  <p class="small text-muted mb-0">Para cambiar la cantidad de un producto ya agregado, use <strong>Quitar último</strong> y vuelva a <strong>Agregar producto</strong>.</p>
   {% if prod_sel and not pppl_ok %}<div class="alert alert-warning small py-2">Producto no autorizado en PPPL. Revise en GlobalGAP → PPPL.</div>{% endif %}
   <form method="post" class="row g-2" id="lcAddProdForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
     <input type="hidden" name="action" value="lc_agregar_producto">

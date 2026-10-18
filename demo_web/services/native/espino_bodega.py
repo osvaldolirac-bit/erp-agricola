@@ -269,10 +269,20 @@ def validar_salida_bodega(
         return False, f"{prod_nombre} no pertenece a la bodega El Espino.", None, None, None
     stock = _stock_cc(conn, iid)
     if cantidad > stock + 1e-9:
-        return False, (
+        inv = float(
+            conn.execute("SELECT COALESCE(stock, 0) FROM inventario WHERE id=?", (iid,)).fetchone()[0]
+            or 0
+        )
+        msg = (
             f"Stock insuficiente de {prod_nombre} "
-            f"(disponible: {demo.f_cantidad(stock)} {um_sel})."
-        ), None, None, None
+            f"(disponible kardex bodega: {demo.f_cantidad(stock)} {um_sel})."
+        )
+        if inv > stock + 1e-6:
+            msg += (
+                f" El inventario muestra {demo.f_cantidad(inv)} {um_sel}, pero Libro de Campo "
+                "solo rebaja según movimientos (entradas − salidas). Registre ingreso en Bodega o sincronice stock."
+            )
+        return False, msg, None, None, None
     return True, "", iid, prod_nombre, um_sel
 
 

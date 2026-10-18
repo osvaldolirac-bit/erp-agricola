@@ -381,6 +381,30 @@ def _desfase(demo, conn) -> dict:
     }
 
 
+def _totales_por_producto_en_car(car: list[dict]) -> dict[str, float]:
+    acc: dict[str, float] = {}
+    for item in car:
+        prod = str(item.get("producto") or "").strip()
+        if not prod:
+            continue
+        acc[prod] = acc.get(prod, 0.0) + float(item.get("gasto_total") or 0)
+    return acc
+
+
+def _msg_validacion_stock_car(demo, conn, car: list[dict]) -> str | None:
+    for prod, cant in _totales_por_producto_en_car(car).items():
+        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
+            demo, conn, cant, producto=prod
+        )
+        if not ok:
+            hint = (
+                " Si cambió el «Total producto» en el formulario, use «Quitar último» "
+                "y vuelva a «Agregar producto» (la tabla del evento guarda la cantidad al agregar)."
+            )
+            return (msg or "Stock insuficiente.") + hint
+    return None
+
+
 def post_agregar_producto(demo, conn) -> dict:
     _guardar_evento_meta(demo, request.form)
     prod = (request.form.get("producto") or "").strip()
@@ -398,7 +422,7 @@ def post_agregar_producto(demo, conn) -> dict:
     from erp_inventario_ia import resolver_ingrediente_activo
 
     um_prod = demo._um_producto_inventario(conn, prod)
-    car = session.get(CAR_KEY, [])
+    car = list(session.get(CAR_KEY, []))
     car.append(
         {
             "producto": prod,
@@ -412,6 +436,9 @@ def post_agregar_producto(demo, conn) -> dict:
             "dias_car": dias_car,
         }
     )
+    err = _msg_validacion_stock_car(demo, conn, car)
+    if err:
+        return {"ok": False, "msg": err}
     session[CAR_KEY] = car
     return {"ok": True, "msg": f"Producto {prod} agregado al evento.", "extra": {"op": "ingreso"}}
 
@@ -441,15 +468,9 @@ def post_guardar_evento(demo, conn) -> dict:
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
-    for item in car:
-        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
-            demo,
-            conn,
-            float(item.get("gasto_total") or 0),
-            producto=str(item.get("producto") or ""),
-        )
-        if not ok:
-            return {"ok": False, "msg": msg}
+    err = _msg_validacion_stock_car(demo, conn, car)
+    if err:
+        return {"ok": False, "msg": err}
 
     n_app = _siguiente_n_aplicacion(conn)
     n_orden = _siguiente_n_orden(conn, sector)
