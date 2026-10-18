@@ -515,19 +515,52 @@ def _post_save_agro(demo, conn) -> dict:
            VALUES (?,?,?,?,?,?,?,?)""",
         (nro, prov, fe, fv, total_bruto, concepto, razon, tipo_gasto),
     )
+    slug = (getattr(demo, "TENANT_SLUG", "") or "").strip().lower()
     for i in car:
         if i.get("nuevo") or i.get("id") is None:
             cur_ins = conn.execute(
                 "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
-                (i["n"], i.get("familia", "OTROS"), i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
+                (i["n"], i.get("familia", "OTROS"), 0 if slug == "espino" else i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
             )
             poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
+            pid = int(cur_ins.lastrowid)
+            if slug == "espino":
+                from demo_web.services.espino_bodega_stock import aplicar_compra_agro_en_bodega
+
+                aplicar_compra_agro_en_bodega(
+                    conn,
+                    producto_id=pid,
+                    cantidad=float(i["c"]),
+                    fecha=fe,
+                    precio_medio=float(i["p"]),
+                    unidad_medida=i.get("um", demo.DEFAULT_UNIDAD_INSUMO),
+                )
+            continue
+        pid = int(i["id"])
+        cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,)).fetchone()
+        if slug == "espino":
+            from demo_web.services.espino_bodega_stock import aplicar_compra_agro_en_bodega, stock_pool
+
+            base_stock = stock_pool(conn, pid)
+            npmp = (
+                ((base_stock * cur[1]) + (i["c"] * i["p"])) / (base_stock + i["c"])
+                if (base_stock + i["c"]) > 0
+                else i["p"]
+            )
+            conn.execute("UPDATE inventario SET precio_medio = ? WHERE id = ?", (npmp, pid))
+            aplicar_compra_agro_en_bodega(
+                conn,
+                producto_id=pid,
+                cantidad=float(i["c"]),
+                fecha=fe,
+                precio_medio=float(i["p"]),
+                unidad_medida=i.get("um", demo.DEFAULT_UNIDAD_INSUMO),
+            )
         else:
-            cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i["id"],)).fetchone()
             npmp = ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"]) if (cur[0] + i["c"]) > 0 else i["p"]
             conn.execute(
                 "UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?",
-                (i["c"], npmp, i["id"]),
+                (i["c"], npmp, pid),
             )
     conn.commit()
     _clear_car()

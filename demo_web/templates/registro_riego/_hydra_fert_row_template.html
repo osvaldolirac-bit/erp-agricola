@@ -1,0 +1,21 @@
+<template id="hydraFertRowTpl">
+  <div class="hydra-fert-row border rounded p-2 mb-2 bg-white">
+    <select name="fert_producto_id" class="form-select form-select-sm mb-1">
+      <option value="">Producto</option>
+      {% for f in fertilizantes %}
+      <option value="{{ f.id }}">{{ f.etiqueta|default(f.nombre) }}</option>
+      {% endfor %}
+    </select>
+    <div class="row g-1">
+      <div class="col-6">
+        <input type="number" name="fert_cantidad" class="form-control form-control-sm" min="0" step="any" placeholder="Cantidad">
+      </div>
+      <div class="col-5">
+        <input type="number" name="fert_dosis_ha" class="form-control form-control-sm" min="0" step="any" placeholder="Dosis/ha">
+      </div>
+      <div class="col-1">
+        <button type="button" class="btn btn-sm btn-link text-danger hydra-quitar-fert p-0">✕</button>
+      </div>
+    </div>
+  </div>
+</template>

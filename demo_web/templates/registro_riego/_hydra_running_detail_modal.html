@@ -1,0 +1,26 @@
+<div class="hydra-run-detail-backdrop" id="hydraRunDetailBackdrop" hidden aria-hidden="true">
+  <div class="hydra-run-detail-sheet" role="dialog" aria-modal="true" aria-labelledby="hydraRunDetailTitle">
+    <header class="hydra-run-detail-head">
+      <h3 class="hydra-run-detail-title" id="hydraRunDetailTitle">Riego en curso</h3>
+      <button type="button" class="hydra-run-detail-close btn-close" id="hydraRunDetailClose" aria-label="Cerrar"></button>
+    </header>
+    <div class="hydra-run-detail-body">
+      <p class="hydra-run-detail-cc text-muted mb-2" id="hydraRunDetailCc"></p>
+      <dl class="hydra-run-detail-dl mb-3">
+        <div><dt>Estado</dt><dd>Regando</dd></div>
+        <div><dt>Modo</dt><dd id="hydraRunDetailModo">—</dd></div>
+        <div><dt>Cola</dt><dd id="hydraRunDetailCola">—</dd></div>
+        <div><dt>Inicio riego</dt><dd id="hydraRunDetailInicio">—</dd></div>
+        <div><dt>Fin estimado</dt><dd id="hydraRunDetailFin">—</dd></div>
+        <div><dt>Duración</dt><dd id="hydraRunDetailDuracion">—</dd></div>
+        <div><dt>Restante</dt><dd><strong id="hydraRunDetailRestante" class="hydra-zone-timer-value">—</strong></dd></div>
+        <div id="hydraRunDetailRegadorRow"><dt>Regador / cola</dt><dd id="hydraRunDetailRegador">—</dd></div>
+      </dl>
+      <div id="hydraRunDetailFertBlock">
+        <h4 class="h6">Fertirriego</h4>
+        <ul class="hydra-zone-fert-list mb-0" id="hydraRunDetailFertList"></ul>
+        <p class="small text-muted mb-0 d-none" id="hydraRunDetailSinFert">Sin fertirriego en este turno.</p>
+      </div>
+    </div>
+  </div>
+</div>
