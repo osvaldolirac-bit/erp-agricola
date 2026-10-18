@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from flask import current_app, request, session, url_for
 
+# Módulos "Sistema": tras login normal siempre dashboard (no reabrir admin/manual/soporte).
+_SISTEMA_MODULE_PATHS = ("/m/admin", "/m/manual", "/m/soporte")
+
 
 def login_next_prefix() -> str:
     return (
@@ -9,6 +12,27 @@ def login_next_prefix() -> str:
         or (request.environ.get("SCRIPT_NAME") or "").rstrip("/")
         or (current_app.config.get("APPLICATION_ROOT") or "").rstrip("/")
     )
+
+
+def _path_without_prefix(nxt: str) -> str:
+    path = (nxt or "").split("?", 1)[0].rstrip("/").lower() or "/"
+    prefix = login_next_prefix().lower()
+    if prefix and path.startswith(prefix):
+        rest = path[len(prefix) :].rstrip("/") or "/"
+        return rest
+    return path
+
+
+def post_login_next_blocked(raw: str | None) -> bool:
+    """True si el destino es Administración / Manual / Soporte (home = dashboard)."""
+    nxt = (raw or "").strip()
+    if not nxt or not nxt.startswith("/") or "://" in nxt:
+        return False
+    path = _path_without_prefix(nxt)
+    for seg in _SISTEMA_MODULE_PATHS:
+        if path == seg or path.startswith(seg + "/"):
+            return True
+    return False
 
 
 def parse_next(raw: str | None) -> str | None:
@@ -22,8 +46,15 @@ def parse_next(raw: str | None) -> str | None:
         or nxt.startswith("/riomaipo")
         or nxt.startswith("/laconcepcion")
         or nxt.startswith("/demo")
-        or (prefix and not (nxt == prefix or nxt.startswith(prefix + "/")))
     ):
+        return None
+    if prefix and not (nxt == prefix or nxt.startswith(prefix + "/")):
+        # Tras proxy móvil a veces llega /m/... sin SCRIPT_NAME; rearmar ruta rubro.
+        if nxt.startswith("/m/") or nxt.startswith("/api/"):
+            nxt = prefix.rstrip("/") + nxt
+        else:
+            return None
+    if post_login_next_blocked(nxt):
         return None
     return nxt
 
@@ -52,6 +83,8 @@ def safe_next(raw: str | None) -> str:
         return default_landing_url()
     if (session.get("rol") or "").strip().lower() == "certificacion" and "/dashboard" in nxt:
         return url_for("modules.globalgap")
+    if post_login_next_blocked(nxt):
+        return default_landing_url()
     return nxt
 
 

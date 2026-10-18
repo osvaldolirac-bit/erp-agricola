@@ -1,0 +1,31 @@
+<section class="hydra-link-block hydra-link-block--plan" aria-labelledby="hydraBlockPlan">
+  <h2 class="hydra-link-section-title" id="hydraBlockPlan">Programar</h2>
+  <p class="hydra-link-hint mb-2">Cola con hora de inicio futura.</p>
+  <form method="post" id="formHydraProgramar" class="hydra-link-run-form">
+    {% include "registro_riego/_hydra_scope_fields.html" %}
+    <input type="hidden" name="action" value="hydra_programar">
+    <input type="hidden" name="hw_lineas_json" value="">
+    <label class="form-label small">Hora de inicio</label>
+    <input type="datetime-local" name="inicio_programa" class="form-control mb-3" required {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>
+    <div id="hydraLineasProg">
+      <div class="hydra-linea mb-3 pb-2 border-bottom">
+        <div class="row g-2 align-items-center">
+          <div class="col-md-7 col-7">
+            <select name="hw_relay_id" class="form-select" required {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>
+              <option value="">Sector</option>
+              {% for s in hydra_sectores %}
+              <option value="{{ s.relay_id }}">{{ s.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-5 col-5">
+            <input type="number" name="hw_minutos" class="form-control" min="1" step="1" placeholder="Minutos" value="30" required {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>
+          </div>
+        </div>
+        {% include "registro_riego/_hydra_fert_en_linea.html" %}
+      </div>
+    </div>
+    <button type="button" class="btn btn-sm hydra-btn-add-sector mb-2 hydra-add-prog" {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>+ Otro sector</button>
+    <button type="submit" class="btn hydra-btn-plan w-100" {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>Programar cola</button>
+  </form>
+</section>
