@@ -22,6 +22,60 @@ def _case_pool_sql(alias: str = "") -> str:
     END)"""
 
 
+def stock_inventario(conn: sqlite3.Connection, producto_id: int) -> float:
+    row = conn.execute(
+        "SELECT COALESCE(stock, 0) FROM inventario WHERE id=?",
+        (int(producto_id),),
+    ).fetchone()
+    return float(row[0] or 0) if row else 0.0
+
+
+def stock_disponible_bodega(conn: sqlite3.Connection, producto_id: int) -> float:
+    """Saldo usable en bodega Espino: kardex (pool) o inventario manual si es mayor."""
+    return max(stock_pool(conn, producto_id), stock_inventario(conn, producto_id))
+
+
+def stock_disponible_map(conn: sqlite3.Connection) -> dict[int, float]:
+    pool = stock_pool_map(conn)
+    out = dict(pool)
+    for pid, inv in conn.execute("SELECT id, COALESCE(stock, 0) FROM inventario"):
+        i = int(pid)
+        v = max(out.get(i, 0.0), float(inv or 0))
+        if v > 1e-12:
+            out[i] = v
+    return out
+
+
+def materializar_ajuste_manual_inventario(
+    conn: sqlite3.Connection,
+    producto_id: int,
+    *,
+    fecha: str,
+) -> float:
+    """Si inventario > pool, crea ingreso kardex por la diferencia (ajuste manual operativo)."""
+    pool = stock_pool(conn, producto_id)
+    inv = stock_inventario(conn, producto_id)
+    delta = inv - pool
+    if delta <= 1e-6:
+        return pool
+    row = conn.execute(
+        "SELECT COALESCE(precio_medio, 0), COALESCE(unidad_medida, ?) FROM inventario WHERE id=?",
+        ("kg", int(producto_id)),
+    ).fetchone()
+    pmp, um = (float(row[0] or 0), str(row[1] or "kg")) if row else (0.0, "kg")
+    registrar_movimiento_ingreso_bodega(
+        conn,
+        producto_id=int(producto_id),
+        cantidad=delta,
+        fecha=str(fecha)[:10],
+        precio_medio=pmp,
+        unidad_medida=um,
+        centro_costo=CC_INGRESO_CANONICO,
+    )
+    sincronizar_inventario_desde_pool(conn, producto_id)
+    return stock_pool(conn, producto_id)
+
+
 def stock_pool(conn: sqlite3.Connection, producto_id: int) -> float:
     """Disponible bodega = ingresos (EL ESPINO / Cerezos / CEREZOS) − todas las salidas."""
     sql = f"SELECT {_case_pool_sql()} FROM movimientos WHERE producto_id = ?"
@@ -144,7 +198,7 @@ def productos_disponibles_libro_campo(
         nombre = str(r[1])
         if not es_bodega_fn(nombre, conn, producto_id=pid):
             continue
-        stock = pool.get(pid, 0.0)
+        stock = stock_disponible_bodega(conn, pid)
         if stock <= 1e-9:
             continue
         out.append(

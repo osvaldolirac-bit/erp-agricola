@@ -7,9 +7,11 @@ from flask import request, url_for
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.espino_bodega_stock import (
     ids_productos_con_kardex_bodega,
+    materializar_ajuste_manual_inventario,
     sincronizar_inventario_desde_pool,
+    stock_disponible_bodega,
+    stock_disponible_map,
     stock_pool,
-    stock_pool_map,
 )
 from demo_web.services.espino_scope import normalizar_cuartel_espino
 from demo_web.services.native._helpers import hoy_demo
@@ -83,15 +85,15 @@ def _es_producto_bodega_espino(
 
     if tiene_movimientos_bodega(conn, pid):
         return True
-    return stock_pool(conn, pid) > 1e-9
+    return stock_disponible_bodega(conn, pid) > 1e-9
 
 
 def _stock_cc_map(conn) -> dict[int, float]:
-    return stock_pool_map(conn)
+    return stock_disponible_map(conn)
 
 
 def _stock_cc(conn, producto_id: int) -> float:
-    return stock_pool(conn, producto_id)
+    return stock_disponible_bodega(conn, producto_id)
 
 
 def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> list[dict]:
@@ -269,20 +271,16 @@ def validar_salida_bodega(
         return False, f"{prod_nombre} no pertenece a la bodega El Espino.", None, None, None
     stock = _stock_cc(conn, iid)
     if cantidad > stock + 1e-9:
-        inv = float(
-            conn.execute("SELECT COALESCE(stock, 0) FROM inventario WHERE id=?", (iid,)).fetchone()[0]
-            or 0
+        return (
+            False,
+            (
+                f"Stock insuficiente de {prod_nombre} "
+                f"(disponible: {demo.f_cantidad(stock)} {um_sel})."
+            ),
+            None,
+            None,
+            None,
         )
-        msg = (
-            f"Stock insuficiente de {prod_nombre} "
-            f"(disponible kardex bodega: {demo.f_cantidad(stock)} {um_sel})."
-        )
-        if inv > stock + 1e-6:
-            msg += (
-                f" El inventario muestra {demo.f_cantidad(inv)} {um_sel}, pero Libro de Campo "
-                "solo rebaja según movimientos (entradas − salidas). Registre ingreso en Bodega o sincronice stock."
-            )
-        return False, msg, None, None, None
     return True, "", iid, prod_nombre, um_sel
 
 
@@ -307,6 +305,14 @@ def registrar_salida_bodega(
     centro_costo: str | None = None,
 ) -> tuple[bool, str]:
     """Registra salida en bodega El Espino (sin commit). Imputa al cuartel/variedad indicado."""
+    iid_pre: int | None = producto_id
+    if iid_pre is None and producto:
+        row = _producto_por_nombre(conn, demo, producto)
+        iid_pre = int(row[0]) if row else None
+    if iid_pre:
+        materializar_ajuste_manual_inventario(
+            conn, iid_pre, fecha=str(fecha or hoy_demo(demo))[:10]
+        )
     ok, msg, iid, prod_nombre, _um = validar_salida_bodega(
         demo, conn, cantidad, producto_id=producto_id, producto=producto
     )

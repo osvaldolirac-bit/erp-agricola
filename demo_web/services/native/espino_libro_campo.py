@@ -88,8 +88,27 @@ def _pop_alertas() -> dict:
     return out
 
 
+def _materializar_ajustes_car(demo, conn, car: list[dict], fecha) -> None:
+    from demo_web.services.espino_bodega_stock import materializar_ajuste_manual_inventario
+
+    fe = str(fecha)[:10] if fecha else hoy_demo(demo).isoformat()
+    vistos: set[int] = set()
+    for prod in _totales_por_producto_en_car(car):
+        row = conn.execute(
+            "SELECT id FROM inventario WHERE UPPER(TRIM(producto))=?",
+            (prod.upper(),),
+        ).fetchone()
+        if not row:
+            continue
+        pid = int(row[0])
+        if pid in vistos:
+            continue
+        vistos.add(pid)
+        materializar_ajuste_manual_inventario(conn, pid, fecha=fe)
+
+
 def _kardex_por_producto_en_car(demo, conn, car: list[dict]) -> list[dict]:
-    from demo_web.services.espino_bodega_stock import stock_pool
+    from demo_web.services.espino_bodega_stock import stock_disponible_bodega, stock_inventario, stock_pool
 
     filas: list[dict] = []
     for item in car:
@@ -104,17 +123,18 @@ def _kardex_por_producto_en_car(demo, conn, car: list[dict]) -> list[dict]:
             continue
         pid, inv, um = int(row[0]), float(row[1] or 0), str(row[2])
         pool = stock_pool(conn, pid)
+        disp = stock_disponible_bodega(conn, pid)
         pedido = float(item.get("gasto_total") or 0)
         filas.append(
             {
                 "producto": prod,
                 "um": um,
-                "pool_fmt": demo.f_cantidad(pool),
-                "pool_raw": pool,
+                "pool_fmt": demo.f_cantidad(disp),
+                "pool_raw": disp,
                 "inventario_fmt": demo.f_cantidad(inv),
                 "pedido_fmt": demo.f_cantidad(pedido),
                 "desfase_manual": inv > pool + 1e-6,
-                "supera_kardex": pedido > pool + 1e-9,
+                "supera_kardex": pedido > disp + 1e-9,
             }
         )
     return filas
@@ -503,6 +523,8 @@ def post_guardar_evento(demo, conn) -> dict:
     if err_qty:
         return {"ok": False, "msg": err_qty}
     session[CAR_KEY] = car
+    fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    _materializar_ajustes_car(demo, conn, car, fe_app)
     maquinaria = (request.form.get("maquinaria") or "").strip()
     aplicador = (request.form.get("aplicador") or "").strip()
     try:
@@ -516,7 +538,6 @@ def post_guardar_evento(demo, conn) -> dict:
     if total_agua <= 0:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
-    fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
     sector = _sector_valido(request.form.get("cuartel") or "")
     if not sector:
         return {"ok": False, "msg": "Seleccione la variedad (sector) de la aplicación."}

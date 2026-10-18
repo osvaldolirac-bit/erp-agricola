@@ -137,15 +137,10 @@
   <strong>No se pudo guardar:</strong> {{ lc_stock_error }}
 </div>
 {% endif %}
-<div class="alert alert-warning small mb-3 border-warning">
-  <strong>Stock al guardar = solo movimientos reales (kardex bodega).</strong><br>
-  Se calcula: <em>ingresos registrados en Bodega</em> (compras, entradas EL ESPINO) <strong>menos</strong> <em>todas las salidas</em>
-  (Libro de Campo y salidas manuales).<br>
-  <strong>No se usa</strong> un stock cambiado “a mano” en pantalla si no hay un <strong>movimiento de ingreso</strong> en Bodega.
-  Para aumentar saldo: <a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock') }}">Bodega El Espino → Ingreso</a>.
-</div>
-<div class="alert alert-primary small mb-3">
-  Al guardar, Libro de Campo <strong>rebaja automáticamente</strong> el kardex bodega (no basta editar un número en inventario).
+<div class="alert alert-info small mb-3">
+  Si aumentó el <strong>stock manualmente</strong> en Bodega/inventario, al <strong>guardar</strong> la aplicación el sistema
+  registra un <strong>ingreso kardex</strong> por la diferencia y rebaja según ese saldo (hasta el stock que indicó).
+  También puede usar <a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock') }}">Bodega → Entrada manual</a>.
 </div>
 {% if not productos_stock %}
 <div class="alert alert-warning">No hay productos con stock en bodega El Espino (Piriproxifen, Bioil spray, Cobre).</div>
@@ -179,9 +174,9 @@
     {% if lc_car_items %}
     <h2 class="h6 mt-3">Productos en este evento</h2>
     {% for k in lc_car_kardex if k.desfase_manual %}
-    <div class="alert alert-danger py-2 small mb-2">
-      <strong>{{ k.producto }}:</strong> inventario muestra {{ k.inventario_fmt }} {{ k.um }}, pero el kardex real es
-      <strong>{{ k.pool_fmt }} {{ k.um }}</strong>. Libro de Campo solo permite hasta {{ k.pool_fmt }} {{ k.um }} hasta que registre un ingreso en Bodega.
+    <div class="alert alert-warning py-2 small mb-2">
+      <strong>{{ k.producto }}:</strong> stock manual {{ k.inventario_fmt }} {{ k.um }} — al guardar se creará ingreso kardex
+      hasta ese saldo (disponible para esta aplicación: <strong>{{ k.pool_fmt }} {{ k.um }}</strong>).
     </div>
     {% endfor %}
     {% for k in lc_car_kardex if k.supera_kardex and not k.desfase_manual %}
@@ -193,7 +188,7 @@
     <p class="small text-muted">Corrija el <strong>total</strong> (≤ máx. kardex) antes de guardar.</p>
     <div class="table-responsive mb-2">
       <table class="table table-sm table-bordered">
-        <thead><tr><th>Producto</th><th>Máx. kardex</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total a usar</th><th>UM</th><th>PHI</th></tr></thead>
+        <thead><tr><th>Producto</th><th>Máx. usable</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total a usar</th><th>UM</th><th>PHI</th></tr></thead>
         <tbody>{% for r in lc_car %}
         {% set k = lc_car_kardex[loop.index0] if lc_car_kardex|length > loop.index0 else none %}
         <tr class="{% if k and (k.supera_kardex or k.desfase_manual) %}table-danger{% endif %}">
@@ -229,7 +224,14 @@
       {% endfor %}
     </select>
   </form>
-  {% if stock_info %}<p class="small text-muted">Stock disponible (kardex bodega): <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>{% endif %}
+  {% if stock_info %}
+  <p class="small text-muted mb-0">Máximo usable en Libro de Campo (kardex): <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>
+  {% if lc_car_kardex %}
+    {% for k in lc_car_kardex if k.producto == prod_sel and k.desfase_manual %}
+  <p class="small text-muted mb-0">Disponible para esta aplicación: <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong> (incluye stock manual si lo subió).</p>
+    {% endfor %}
+  {% endif %}
+  {% endif %}
   <p class="small text-muted mb-0">Después de agregar, puede ajustar el total en la tabla del evento (arriba) antes de guardar.</p>
   {% if prod_sel and not pppl_ok %}<div class="alert alert-warning small py-2">Producto no autorizado en PPPL. Revise en GlobalGAP → PPPL.</div>{% endif %}
   <form method="post" class="row g-2" id="lcAddProdForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
