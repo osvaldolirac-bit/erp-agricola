@@ -6,8 +6,21 @@ from flask import request, url_for
 
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.tenant_scope import is_espino_tenant
 
 CC_ESPINO = "EL ESPINO"
+
+
+def _cc_bodega_tuple() -> tuple[str, ...]:
+    from demo_web.services.espino_scope import centros_costo_bodega_espino
+
+    return tuple(sorted(centros_costo_bodega_espino()))
+
+
+def _cc_bodega_in(col: str = "centro_costo") -> tuple[str, tuple[str, ...]]:
+    ccs = _cc_bodega_tuple()
+    ph = ",".join("?" * len(ccs))
+    return f"UPPER({col}) IN ({ph})", ccs
 
 PDF_STOCK_FILENAME = "STOCK_BODEGA_EL_ESPINO.pdf"
 
@@ -46,40 +59,44 @@ def _es_producto_bodega_espino(nombre: str) -> bool:
 
 
 def _stock_cc_map(conn) -> dict[int, float]:
-    """Stock imputado solo a EL ESPINO (ingresos − salidas). No usa inventario.stock global."""
+    """Stock bodega El Espino: kardex en CC canónico + legado Cerezos/CEREZOS."""
+    cc_sql, cc_params = _cc_bodega_in()
     rows = conn.execute(
-        """SELECT producto_id,
+        f"""SELECT producto_id,
                   SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END) AS stock_cc
            FROM movimientos
-           WHERE centro_costo = ?
+           WHERE {cc_sql}
            GROUP BY producto_id""",
-        (CC_ESPINO,),
+        cc_params,
     ).fetchall()
     return {int(r[0]): float(r[1] or 0) for r in rows}
 
 
 def _stock_cc(conn, producto_id: int) -> float:
+    cc_sql, cc_params = _cc_bodega_in()
     row = conn.execute(
-        """SELECT SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END)
-           FROM movimientos WHERE centro_costo = ? AND producto_id = ?""",
-        (CC_ESPINO, producto_id),
+        f"""SELECT SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END)
+           FROM movimientos WHERE {cc_sql} AND producto_id = ?""",
+        (*cc_params, int(producto_id)),
     ).fetchone()
     return float(row[0] or 0) if row and row[0] is not None else 0.0
 
 
 def _sync_inventario_stock(conn, producto_id: int) -> float:
-    """Refleja stock CC EL ESPINO en inventario.stock (catálogo compartido)."""
+    """Refleja kardex bodega Espino en inventario.stock (solo tenant espino)."""
     st = _stock_cc(conn, int(producto_id))
-    conn.execute("UPDATE inventario SET stock = ? WHERE id = ?", (st, int(producto_id)))
+    if is_espino_tenant():
+        conn.execute("UPDATE inventario SET stock = ? WHERE id = ?", (st, int(producto_id)))
     return st
 
 
 def _precio_medio_kardex(conn, producto_id: int) -> float | None:
+    cc_sql, cc_params = _cc_bodega_in()
     row = conn.execute(
-        """SELECT SUM(cantidad), SUM(valor_imputado)
+        f"""SELECT SUM(cantidad), SUM(valor_imputado)
            FROM movimientos
-           WHERE producto_id=? AND centro_costo=? AND tipo='Ingreso'""",
-        (int(producto_id), CC_ESPINO),
+           WHERE producto_id=? AND {cc_sql} AND tipo='Ingreso'""",
+        (int(producto_id), *cc_params),
     ).fetchone()
     if not row or not row[0]:
         return None

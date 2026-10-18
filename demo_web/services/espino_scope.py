@@ -92,6 +92,11 @@ def cuarteles_espino() -> list[str]:
     return list(VARIEDADES_ESPINO)
 
 
+def especies_libro_campo_espino() -> list[str]:
+    """Especie en planilla Libro (tenant El Espino)."""
+    return ["Cerezos"]
+
+
 def cuarteles_ingreso_libro_campo_espino() -> list[str]:
     """Variedades operativas en ingreso LC El Espino (nunca CEREZOS / legado)."""
     return cuarteles_espino()

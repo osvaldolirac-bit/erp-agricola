@@ -6,9 +6,12 @@ from typing import Any
 import sqlite3
 
 from demo_web.services.native import espino_bodega
-from demo_web.services.native.espino_bodega import CC_ESPINO
 
 QTY_TOL = 1e-4
+
+
+def _cc_bodega_in(col: str = "centro_costo") -> tuple[str, tuple[str, ...]]:
+    return espino_bodega._cc_bodega_in(col)
 
 
 def revertir_salida_linea_espino(
@@ -38,10 +41,11 @@ def revertir_salida_linea_espino(
         except (TypeError, ValueError):
             ligado = None
     excl = excluir_mov_ids or set()
+    cc_sql, cc_params = _cc_bodega_in()
     if ligado and ligado not in excl:
         ok = conn.execute(
-            "SELECT id FROM movimientos WHERE id=? AND tipo='Salida' AND producto_id=? AND centro_costo=?",
-            (ligado, pid, CC_ESPINO),
+            f"SELECT id FROM movimientos WHERE id=? AND tipo='Salida' AND producto_id=? AND {cc_sql}",
+            (ligado, pid, *cc_params),
         ).fetchone()
         if ok:
             mov_id = ligado
@@ -54,11 +58,11 @@ def revertir_salida_linea_espino(
             excl_params = sorted(excl)
         q = conn.execute(
             f"""SELECT id FROM movimientos
-               WHERE producto_id=? AND tipo='Salida' AND centro_costo=?
+               WHERE producto_id=? AND tipo='Salida' AND {cc_sql}
                  AND ABS(cantidad - ?) < ? AND fecha=?
                {excl_sql}
                ORDER BY id DESC LIMIT 1""",
-            [pid, CC_ESPINO, cant, QTY_TOL, fecha, *excl_params],
+            [pid, *cc_params, cant, QTY_TOL, fecha, *excl_params],
         ).fetchone()
         mov_id = int(q[0]) if q else None
 

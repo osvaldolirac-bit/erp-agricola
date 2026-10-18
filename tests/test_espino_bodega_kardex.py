@@ -1,8 +1,9 @@
-"""Bodega Espino: kardex CC EL ESPINO."""
+"""Bodega Espino: kardex CC EL ESPINO + legado Cerezos."""
 from __future__ import annotations
 
 import sqlite3
 import unittest
+from unittest.mock import patch
 
 from demo_web.services.native import espino_bodega
 
@@ -35,13 +36,22 @@ class TestEspinoBodegaKardex(unittest.TestCase):
             """INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
                VALUES (1,'Ingreso',100,'2026-01-01','EL ESPINO',1000,'L')"""
         )
-        espino_bodega._sync_inventario_stock(self.conn, 1)
+    def test_stock_incluye_movimientos_cerezos(self):
+        self.conn.execute(
+            """INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+               VALUES (1,'Ingreso',50,'2026-01-02','Cerezos',500,'L')"""
+        )
+        st = espino_bodega._stock_cc(self.conn, 1)
+        self.assertAlmostEqual(st, 150.0)
 
-    def test_sync_refleja_stock_cc(self):
+    @patch("demo_web.services.native.espino_bodega.is_espino_tenant", return_value=True)
+    def test_sync_refleja_stock_cc(self, _mock_espino):
+        espino_bodega._sync_inventario_stock(self.conn, 1)
         st = self.conn.execute("SELECT stock FROM inventario WHERE id=1").fetchone()[0]
         self.assertAlmostEqual(float(st), 100.0)
 
-    def test_salida_devuelve_mov_id_y_sync(self):
+    @patch("demo_web.services.native.espino_bodega.is_espino_tenant", return_value=True)
+    def test_salida_devuelve_mov_id_y_sync(self, _mock_espino):
         demo = DemoStub()
         ok, _name, mov_id = espino_bodega.registrar_salida_bodega(
             demo, self.conn, 5.0, producto="PIRIPROXIFEN", fecha="2026-02-01",
