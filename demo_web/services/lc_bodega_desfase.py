@@ -273,8 +273,52 @@ def mensaje_error_salida_lc(demo, res: dict[str, Any]) -> str:
     return f"No se pudo rebajar bodega para «{prod}»."
 
 
-def revertir_salida_desde_lc(conn: sqlite3.Connection, lc: dict[str, Any]) -> dict[str, Any]:
-    """Devuelve stock si existe salida bodega emparejable (reabrir aplicación)."""
+def _buscar_mov_salida_revertir(
+    conn: sqlite3.Connection,
+    pid: int,
+    cant: float,
+    cc: str,
+    fecha: str,
+    *,
+    excluir_mov_ids: set[int] | None = None,
+    ventana_dias: int = 14,
+) -> int | None:
+    excl = sorted(excluir_mov_ids or ())
+    excl_sql = ""
+    excl_params: list = []
+    if excl:
+        excl_sql = f" AND id NOT IN ({','.join('?' * len(excl))})"
+        excl_params = list(excl)
+
+    def _query(with_window: bool) -> int | None:
+        window_sql = ""
+        window_params: list = []
+        if with_window:
+            window_sql = " AND fecha BETWEEN date(?, ?) AND date(?, ?)"
+            window_params = [fecha, f"-{ventana_dias} day", fecha, f"+{ventana_dias} day"]
+        row = conn.execute(
+            f"""SELECT id FROM movimientos
+               WHERE producto_id=? AND tipo='Salida' AND centro_costo=? AND ABS(cantidad - ?) < ?
+               {window_sql}{excl_sql}
+               ORDER BY ABS(julianday(fecha) - julianday(?)) ASC, id DESC
+               LIMIT 1""",
+            [pid, cc, cant, QTY_TOL, *window_params, *excl_params, fecha],
+        ).fetchone()
+        return int(row[0]) if row else None
+
+    mov_id = _query(True)
+    if mov_id is None:
+        mov_id = _query(False)
+    return mov_id
+
+
+def revertir_salida_desde_lc(
+    conn: sqlite3.Connection,
+    lc: dict[str, Any],
+    *,
+    excluir_mov_ids: set[int] | None = None,
+) -> dict[str, Any]:
+    """Devuelve stock si existe salida bodega emparejable (reabrir / eliminar aplicación)."""
     prod = str(lc.get("producto") or "").strip()
     row = conn.execute(
         "SELECT id FROM inventario WHERE UPPER(producto)=?",
@@ -283,24 +327,35 @@ def revertir_salida_desde_lc(conn: sqlite3.Connection, lc: dict[str, Any]) -> di
     if not row:
         return {"ok": True, "skipped": True, "reason": "sin_inventario", "lc": lc}
     pid = int(row[0])
-    cant = float(lc.get("gasto") or 0)
+    cant = float(lc.get("gasto") or lc.get("gasto_total") or 0)
     cc = str(lc.get("sector") or "").strip().upper()
     fecha = str(lc.get("fecha") or "")[:10]
     if cant <= 0:
         return {"ok": True, "skipped": True, "reason": "datos_invalidos", "lc": lc}
-    mov = conn.execute(
-        """SELECT id FROM movimientos
-           WHERE producto_id=? AND tipo='Salida' AND centro_costo=? AND ABS(cantidad - ?) < ?
-             AND fecha BETWEEN date(?, '-14 day') AND date(?, '+14 day')
-           ORDER BY id DESC LIMIT 1""",
-        (pid, cc, cant, QTY_TOL, fecha, fecha),
-    ).fetchone()
-    if not mov:
+    mov_id = _buscar_mov_salida_revertir(
+        conn, pid, cant, cc, fecha, excluir_mov_ids=excluir_mov_ids
+    )
+    if not mov_id:
         return {"ok": True, "skipped": True, "reason": "sin_movimiento", "lc": lc}
-    mov_id = int(mov[0])
     conn.execute("DELETE FROM movimientos WHERE id=?", (mov_id,))
     conn.execute(
         "UPDATE inventario SET stock = COALESCE(stock, 0) + ? WHERE id=?",
         (cant, pid),
     )
     return {"ok": True, "mov_id": mov_id, "lc": lc}
+
+
+def revertir_salidas_lineas_libro(
+    conn: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Revierte salidas bodega para cada línea LC (1:1, sin reutilizar el mismo movimiento)."""
+    usados: set[int] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        lc = lc_dict_desde_linea_libro(row)
+        res = revertir_salida_desde_lc(conn, lc, excluir_mov_ids=usados)
+        if res.get("mov_id"):
+            usados.add(int(res["mov_id"]))
+        out.append(res)
+    return out

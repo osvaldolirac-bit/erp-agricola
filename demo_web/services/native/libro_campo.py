@@ -16,6 +16,7 @@ from demo_web.services.lc_bodega_desfase import (
     lc_dict_desde_item_libro,
     lc_dict_desde_linea_libro,
     mensaje_error_salida_lc,
+    revertir_salidas_lineas_libro,
     revertir_salida_desde_lc,
 )
 
@@ -944,23 +945,29 @@ def _post_reabrir_aplicacion(demo, conn) -> dict:
     if not rows:
         return {"ok": False, "msg": "No hay líneas guardadas para esa aplicación."}
     car, meta = _car_y_meta_desde_lineas(rows)
+    rev_info: list[dict] = []
     if is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino":
-        for row in rows:
-            revertir_salida_desde_lc(conn, lc_dict_desde_linea_libro(row))
+        rev_info = revertir_salidas_lineas_libro(conn, rows)
     conn.execute("DELETE FROM libro_campo WHERE n_aplicacion=?", (n_app,))
     conn.commit()
     session[CAR_KEY] = car
     session[META_KEY] = meta
     session.pop(UNDO_KEY, None)
     demo.registrar_accion("LIBRO CAMPO", f"Reabrir borrador App N°{n_app}")
-    return {
-        "ok": True,
-        "msg": (
-            f"Aplicación N° {n_app:05d} reabierta en ingreso. "
-            "Revise productos y use «Validar y guardar» solo cuando termine."
-        ),
-        "extra": {"sec": "ingreso"},
-    }
+    omitidas = [r for r in rev_info if r.get("skipped") and r.get("reason") == "sin_movimiento"]
+    msg = (
+        f"Aplicación N° {n_app:05d} reabierta en ingreso. "
+        "Revise productos y use «Validar y guardar» solo cuando termine."
+    )
+    if omitidas:
+        prods = ", ".join(
+            str((r.get("lc") or {}).get("producto") or "?") for r in omitidas
+        )
+        msg += (
+            f" Atención: no se encontró salida bodega para revertir ({prods}); "
+            "revise stock en Bodega si corresponde."
+        )
+    return {"ok": True, "msg": msg, "extra": {"sec": "ingreso"}}
 
 
 def _post_editar_linea(demo, conn) -> dict:
@@ -1018,10 +1025,43 @@ def _post_eliminar_linea(demo, conn) -> dict:
         n_app = int(request.form.get("n_app") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Línea inválida."}
+    row = conn.execute(
+        """SELECT producto, lote_producto, ingrediente, dosis, unidad_dosis,
+                  gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
+                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta
+           FROM libro_campo WHERE id=?""",
+        (lid,),
+    ).fetchone()
+    rev_msg = ""
+    if row and is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino":
+        cols = [
+            "producto",
+            "lote_producto",
+            "ingrediente",
+            "dosis",
+            "unidad_dosis",
+            "gasto_total",
+            "unidad_gasto",
+            "vol_total",
+            "fecha",
+            "sector",
+            "especie",
+            "aplicadores",
+            "operador_certificado",
+            "maquina",
+            "tractor",
+            "car_etiqueta",
+        ]
+        line = dict(zip(cols, row))
+        res = revertir_salida_desde_lc(conn, lc_dict_desde_linea_libro(line))
+        if res.get("mov_id"):
+            rev_msg = " Salida bodega revertida."
+        elif res.get("skipped") and res.get("reason") == "sin_movimiento":
+            rev_msg = f" Atención: no se encontró salida bodega para «{line.get('producto')}»."
     conn.execute("DELETE FROM libro_campo WHERE id = ?", (lid,))
     conn.commit()
     demo.registrar_accion("DELETE LIBRO LINEA", f"App N°{n_app} id {lid}")
-    return {"ok": True, "msg": "Línea eliminada.", "extra": {"n_app": n_app}}
+    return {"ok": True, "msg": f"Línea eliminada.{rev_msg}", "extra": {"n_app": n_app}}
 
 
 def _post_eliminar_evento(demo, conn) -> dict:
@@ -1033,10 +1073,21 @@ def _post_eliminar_evento(demo, conn) -> dict:
         n_app = int(request.form.get("n_app") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Evento inválido."}
+    rows = _lineas_aplicacion(conn, n_app)
+    rev_info: list[dict] = []
+    if is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino" and rows:
+        rev_info = revertir_salidas_lineas_libro(conn, rows)
     conn.execute("DELETE FROM libro_campo WHERE n_aplicacion = ?", (n_app,))
     conn.commit()
     demo.registrar_accion("DELETE LIBRO", f"App N°{n_app} completo")
-    return {"ok": True, "msg": f"Evento N° {n_app:05d} eliminado."}
+    msg = f"Evento N° {n_app:05d} eliminado."
+    omitidas = [r for r in rev_info if r.get("skipped") and r.get("reason") == "sin_movimiento"]
+    if rev_info and not omitidas:
+        msg += " Salidas de bodega revertidas."
+    elif omitidas:
+        prods = ", ".join(str((r.get("lc") or {}).get("producto") or "?") for r in omitidas)
+        msg += f" Atención: salida bodega no revertida para: {prods}."
+    return {"ok": True, "msg": msg}
 
 
 def gather_libro_campo(user_email: str, user_rol: str) -> dict:
