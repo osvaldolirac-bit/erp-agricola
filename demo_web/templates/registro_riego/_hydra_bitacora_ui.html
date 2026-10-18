@@ -1,0 +1,40 @@
+<section class="hydra-link-block hydra-link-block--bitacora" aria-labelledby="hydraBlockBitacora">
+  <h2 class="hydra-link-section-title" id="hydraBlockBitacora">Bitácora operativa</h2>
+  <p class="hydra-link-sync-explain mb-3">
+    Registro de <strong>colas HYDRA</strong> ya cerradas (completadas o canceladas).
+    No reemplaza el libro de riego ni el historial del ERP — solo ayuda a revisar qué pasó en campo.
+  </p>
+  {% if hydra_bitacora %}
+  <div class="hydra-bitacora-list">
+    {% for c in hydra_bitacora %}
+    <article class="hydra-bitacora-card hydra-bitacora-card--{{ c.estado }}">
+      <header class="hydra-bitacora-head">
+        <strong>Cola #{{ c.id }}</strong>
+        <span class="hydra-cola-estado hydra-cola-estado--{{ c.estado }}">{{ c.estado }}</span>
+      </header>
+      <p class="small text-muted mb-1">
+        {{ (c.creado_en or c.inicio_programa or '')[:16] }}
+        · {{ c.tipo|default('—') }}
+        {% if c.creado_por %} · {{ c.creado_por }}{% endif %}
+      </p>
+      <p class="small mb-2">{{ c.resumen }}</p>
+      <details class="hydra-bitacora-detail">
+        <summary class="small">Ver sectores</summary>
+        <ol class="hydra-cola-list hydra-cola-list--compact mb-0 mt-2">
+          {% for it in c.turnos %}
+          <li class="hydra-cola-item hydra-cola-item--{{ it.estado }}">
+            <span>{{ it.label }}</span>
+            <span>{{ it.minutos|int }} min</span>
+            <span class="hydra-cola-item-state">{{ it.estado }}</span>
+            {% if it.codigo_riego %}<span class="hydra-cola-codigo">{{ it.codigo_riego }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+      </details>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-muted small mb-0">Aún no hay colas cerradas registradas.</p>
+  {% endif %}
+</section>

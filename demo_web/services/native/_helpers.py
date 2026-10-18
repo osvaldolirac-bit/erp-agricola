@@ -19,6 +19,24 @@ def parse_date(val: str | None, default: date) -> date:
         return default
 
 
+def parse_decimal_form(raw: str | None, default: float | None = None) -> float | None:
+    """Decimal en formularios web: coma chilena o punto (inputs type=number / autofill)."""
+    import re
+
+    v = parse_decimal_cl(raw, None)
+    if v is not None:
+        return v
+    s = (raw or "").strip().replace(" ", "")
+    if not s:
+        return default
+    if re.fullmatch(r"\d+(\.\d+)?", s):
+        try:
+            return float(s)
+        except ValueError:
+            return default
+    return default
+
+
 def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | None:
     """Parsea cantidad/monto con decimal chileno: solo coma decimal (1,5).
 

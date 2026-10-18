@@ -6,8 +6,9 @@ import pandas as pd
 from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.erp_loader import current_tenant, get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl, parse_decimal_form
 
 SECCIONES = [
     ("stock", "📊 STOCK ACTUAL"),
@@ -51,7 +52,22 @@ def _pop_alertas() -> dict:
     return out
 
 
-def _stock_rows(demo, dfs_view: pd.DataFrame, con_precio: bool) -> list[dict]:
+def _bodega_kardex_habilitado(demo) -> bool:
+    if demo.es_certificacion():
+        return False
+    slug = str((current_tenant() or {}).get("slug") or "").lower()
+    return get_erp_app() == "concepcion" or slug == "concepcion"
+
+
+def _parse_kardex_pid() -> int:
+    raw = (request.args.get("pid") or "0").strip()
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _stock_rows(demo, dfs_view: pd.DataFrame, con_precio: bool, *, con_id: bool = False) -> list[dict]:
     rows = []
     for _, r in dfs_view.iterrows():
         row = {
@@ -63,6 +79,8 @@ def _stock_rows(demo, dfs_view: pd.DataFrame, con_precio: bool) -> list[dict]:
             "pppl": "Sí" if r.get("pppl_aprobado") else "No",
             "phi": int(r.get("dias_carencia") or 0),
         }
+        if con_id:
+            row["id"] = int(r["id"])
         if con_precio:
             row["pmp"] = demo.f_peso(r.get("precio_medio") or 0)
         rows.append(row)
@@ -104,7 +122,12 @@ def _stock(demo, conn, cert: bool = False) -> dict:
             )
         if blob:
             token = store_pdf(blob, "stock_operativo.pdf")
-            pdf_url = url_for("modules.pdf_download", token=token)
+            pdf_url = url_for(
+                "modules.pdf_view",
+                token=token,
+                download_name="stock_operativo.pdf",
+                back=request.url,
+            )
 
     edit_id = request.args.get("edit_id")
     edit_item = None
@@ -117,18 +140,50 @@ def _stock(demo, conn, cert: bool = False) -> dict:
         match = dfs_view[dfs_view["id"] == sel_id]
         if not match.empty:
             r = match.iloc[0]
+            st = float(r["stock"] or 0)
+            pmp = float(r["precio_medio"] or 0)
+            f_num = getattr(demo, "f_cantidad", demo.f_decimal)
             edit_item = {
                 "id": int(r["id"]),
                 "producto": r["producto"],
                 "familia": r["familia"] or "",
-                "stock": float(r["stock"] or 0),
+                "stock": st,
+                "stock_input": f_num(st),
                 "unidad_medida": r["unidad_medida"],
-                "precio_medio": float(r["precio_medio"] or 0),
+                "precio_medio": pmp,
+                "precio_medio_input": demo.f_decimal(pmp),
                 "ingrediente_activo": r.get("ingrediente_activo") or demo._ingrediente_pppl_producto(conn, r["producto"]),
             }
 
+    kardex_on = _bodega_kardex_habilitado(demo) and not cert
+    kardex_pid = _parse_kardex_pid() if kardex_on else 0
+    if kardex_on and not kardex_pid and not dfs_view.empty:
+        kardex_pid = int(dfs_view.iloc[0]["id"])
+
+    kardex_pdf_ctx: dict = {}
+    if kardex_on and kardex_pid:
+        from demo_web.services import bodega_kardex
+
+        kardex_pdf_ctx = bodega_kardex.gather_kardex_producto(
+            demo, conn, kardex_pid, include_pdf=True
+        )
+
+    kardex_pdf_opts = []
+    if kardex_on and not dfs_view.empty:
+        kardex_pdf_opts = [
+            {
+                "id": int(r["id"]),
+                "label": str(r["producto"]),
+            }
+            for _, r in dfs_view.iterrows()
+        ]
+
     return {
-        "stock_rows": _stock_rows(demo, dfs_view, con_precio=not cert),
+        "stock_rows": _stock_rows(demo, dfs_view, con_precio=not cert, con_id=kardex_on),
+        "bodega_kardex": kardex_on,
+        "kardex_pdf_pid": kardex_pid if kardex_on else 0,
+        "kardex_pdf_opts": kardex_pdf_opts,
+        **kardex_pdf_ctx,
         "stock_cols": (
             ["producto", "ing_activo", "familia", "stock", "um", "pppl", "phi"]
             if cert
@@ -426,10 +481,10 @@ def _post_corregir_stock(demo, conn) -> dict:
         iid = int(request.form.get("producto_id") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Valores inválidos."}
-    nst = parse_decimal_cl(request.form.get("stock"), None)
-    npmp = parse_decimal_cl(request.form.get("precio_medio"), None)
+    nst = parse_decimal_form(request.form.get("stock"), None)
+    npmp = parse_decimal_form(request.form.get("precio_medio"), None)
     if nst is None or npmp is None:
-        return {"ok": False, "msg": "Valores inválidos."}
+        return {"ok": False, "msg": "Valores inválidos (use coma decimal, ej. 9,8)."}
     if nst < 0:
         return {"ok": False, "msg": "El stock no puede ser negativo."}
     nprod = (request.form.get("nombre") or "").strip()
@@ -467,10 +522,10 @@ def _post_apertura(demo, conn) -> dict:
     nf = request.form.get("familia") or ""
     nu = request.form.get("unidad_medida") or demo.DEFAULT_UNIDAD_INSUMO
     nia = (request.form.get("ingrediente_activo") or "").strip()
-    ns = parse_decimal_cl(request.form.get("stock"), None)
-    npr = parse_decimal_cl(request.form.get("precio_medio"), None)
+    ns = parse_decimal_form(request.form.get("stock"), None)
+    npr = parse_decimal_form(request.form.get("precio_medio"), None)
     if ns is None or npr is None:
-        return {"ok": False, "msg": "Stock o PMP inválido."}
+        return {"ok": False, "msg": "Stock o PMP inválido (use coma decimal)."}
     if ns < 0:
         return {"ok": False, "msg": "El stock no puede ser negativo."}
     if not np:
@@ -660,18 +715,32 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
     bind_user_session(user_email, user_rol)
     secciones = _secciones(demo)
     sec = request.args.get("sec", secciones[0][0])
-    if sec not in {k for k, _ in secciones}:
+    allowed = {k for k, _ in secciones}
+    if sec not in allowed and sec != "kardex":
         sec = secciones[0][0]
 
     conn = demo.conectar_db()
     try:
+        kardex_on = _bodega_kardex_habilitado(demo)
         ctx: dict = {
             "secciones": secciones,
             "sec_activa": sec,
             "es_certificacion": demo.es_certificacion(),
+            "bodega_kardex": kardex_on,
+            "filtro_q": (request.args.get("q") or "").strip(),
             **_pop_alertas(),
         }
-        if sec == "stock":
+        if sec == "kardex" and kardex_on:
+            pid = _parse_kardex_pid()
+            if pid:
+                from demo_web.services import bodega_kardex
+
+                ctx.update(
+                    bodega_kardex.gather_kardex_producto(demo, conn, pid, include_pdf=True)
+                )
+            else:
+                ctx["kardex_error"] = "Seleccione un producto desde Stock actual."
+        elif sec == "stock":
             ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
         elif sec == "salida":
             ctx["productos_salida"] = _productos_salida(demo, conn)

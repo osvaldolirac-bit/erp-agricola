@@ -42,6 +42,18 @@ def index():
     return redirect(default_landing_url())
 
 
+@bp.route("/stock-bodega")
+@login_required
+@module_required("Bodega")
+def stock_bodega_rapido():
+    """Acceso rápido móvil: stock + kardex LC (logueado en ERP)."""
+    from flask import g
+
+    from demo_web.services.native import bodega_stock_rapido
+
+    return bodega_stock_rapido.view(g.user["email"], g.user["rol"])
+
+
 def _safe_back_url(raw: str | None) -> str:
     if not raw:
         return default_landing_url()
