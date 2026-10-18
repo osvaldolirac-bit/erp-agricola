@@ -315,14 +315,16 @@ def _ultima_n_aplicacion(conn) -> int | None:
     return n if n >= 1 else None
 
 
-def _lineas_aplicacion(conn, n_app: int) -> list:
-    return conn.execute(
+def _lineas_aplicacion(conn, n_app: int) -> list[dict]:
+    cur = conn.execute(
         """SELECT producto, lote_producto, ingrediente, dosis, unidad_dosis,
                   gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
                   aplicadores, operador_certificado, maquina, tractor, car_etiqueta
            FROM libro_campo WHERE n_aplicacion=? ORDER BY id""",
         (int(n_app),),
-    ).fetchall()
+    )
+    cols = [d[0] for d in cur.description or ()]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
 def _car_y_meta_desde_lineas(rows) -> tuple[list[dict], dict]:
