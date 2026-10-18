@@ -228,10 +228,22 @@
   {% if not productos_stock %}
   <div class="alert alert-warning">No hay productos con stock en bodega. Registre compras o apertura de stock antes de anotar aplicaciones.</div>
   {% else %}
+  {% if reabrir_n_app %}
+  <div class="alert alert-warning small mb-3">
+    <strong>¿Registró la aplicación N° {{ '%05d'|format(reabrir_n_app) }} por error?</strong>
+    Puede volver al paso de ingreso de productos (se borra el registro en Libro de Campo y recupera los productos en pantalla).
+    <form method="post" class="mt-2 d-inline" onsubmit="return confirm('¿Reabrir la aplicación N° {{ '%05d'|format(reabrir_n_app) }}? Se eliminará del historial y volverá al formulario de ingreso con los mismos productos.');">
+      <input type="hidden" name="action" value="reabrir_aplicacion">
+      <input type="hidden" name="sec" value="ingreso">
+      <input type="hidden" name="n_app" value="{{ reabrir_n_app }}">
+      <button type="submit" class="btn btn-outline-dark btn-sm">↩ Reabrir aplicación {{ '%05d'|format(reabrir_n_app) }}</button>
+    </form>
+  </div>
+  {% endif %}
   <div class="panel-card mb-3">
     <h2 class="h6">Nueva orden N° {{ '%05d'|format(siguiente_app) }}</h2>
     <p class="small text-muted">Un evento puede incluir varios productos fitosanitarios con el mismo N° de orden.</p>
-    <form method="post" id="lcEventoForm">
+    <form method="post" id="lcEventoForm" onsubmit="return window.lcConfirmGuardarEvento && window.lcConfirmGuardarEvento(this);">
       <input type="hidden" name="action" value="guardar_evento">
       <input type="hidden" name="sec" value="ingreso">
       <div class="row g-2 mb-3" id="lcCabeceraFields">
@@ -298,6 +310,10 @@
     </div>
     <div class="d-flex gap-2">
       <form method="post" id="lcPopForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)"><input type="hidden" name="action" value="pop_producto"><input type="hidden" name="sec" value="ingreso"><button type="submit" class="btn btn-outline-secondary btn-sm">Quitar último</button></form>
+      <p class="small text-muted mb-2">
+        Use <strong>Agregar producto</strong> para seguir cargando líneas. El botón verde abajo
+        <strong>registra la aplicación completa</strong> en el Libro de Campo (acción definitiva).
+      </p>
       <button type="submit" form="lcEventoForm" class="btn btn-primary btn-sm">Validar y guardar evento completo</button>
     </div>
   </div>
@@ -352,6 +368,14 @@
 {{ super() }}
 {% if sec_activa == 'ingreso' %}
 <script>
+window.lcConfirmGuardarEvento = function (form) {
+  if (window.lcSyncCabecera) window.lcSyncCabecera(form);
+  return confirm(
+    '¿Está seguro de registrar la aplicación completa en el Libro de Campo?\n\n' +
+    'Revise fecha, cuartel, productos y volúmenes. Para seguir agregando productos use «Agregar producto», no este paso.'
+  );
+};
+
 window.lcSyncCabecera = function (targetForm) {
   if (!targetForm) return true;
   var root = document.getElementById('lcCabeceraFields');

@@ -168,6 +168,7 @@ def _programa_ctx(especie_key: str) -> dict:
 
 CAR_KEY = "lc_car"
 META_KEY = "lc_evento_meta"
+UNDO_KEY = "lc_undo_registro"
 UNIDADES_DOSIS = [
     "Gramos (g)",
     "Centímetros Cúbicos (cc)",
@@ -309,6 +310,74 @@ def _siguiente_n_aplicacion(conn) -> int:
     return int(res) + 1 if res is not None else 1
 
 
+def _ultima_n_aplicacion(conn) -> int | None:
+    n = _siguiente_n_aplicacion(conn) - 1
+    return n if n >= 1 else None
+
+
+def _lineas_aplicacion(conn, n_app: int) -> list:
+    return conn.execute(
+        """SELECT producto, lote_producto, ingrediente, dosis, unidad_dosis,
+                  gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
+                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta
+           FROM libro_campo WHERE n_aplicacion=? ORDER BY id""",
+        (int(n_app),),
+    ).fetchall()
+
+
+def _car_y_meta_desde_lineas(rows) -> tuple[list[dict], dict]:
+    car: list[dict] = []
+    for r in rows:
+        try:
+            dias_car = int(r["car_etiqueta"] or 0)
+        except (TypeError, ValueError):
+            dias_car = 0
+        car.append(
+            {
+                "producto": r["producto"],
+                "lote_producto": r["lote_producto"] or "",
+                "ingrediente": r["ingrediente"] or "",
+                "dosis": float(r["dosis"] or 0),
+                "unidad_dosis": r["unidad_dosis"] or UNIDADES_DOSIS[0],
+                "gasto_total": float(r["gasto_total"] or 0),
+                "um_gasto": r["unidad_gasto"] or "",
+                "dias_car": dias_car,
+            }
+        )
+    r0 = rows[0]
+    meta = {
+        "fecha": str(r0["fecha"] or "")[:10],
+        "cuartel": (r0["sector"] or "").strip(),
+        "especie": (r0["especie"] or "").strip(),
+        "vol_agua": str(float(r0["vol_total"] or 0)),
+        "aplicador": (r0["aplicadores"] or "").strip(),
+        "op_cert": "1" if int(r0["operador_certificado"] or 0) else "",
+        "maquinaria": (r0["maquina"] or "").strip(),
+        "tractor": (r0["tractor"] or "").strip(),
+    }
+    return car, meta
+
+
+def _reabrir_n_app_ctx(demo, conn) -> int | None:
+    """Última app registrada que se puede volver a borrador (ingreso vacío o undo reciente)."""
+    ultima = _ultima_n_aplicacion(conn)
+    if not ultima:
+        return None
+    rows = _lineas_aplicacion(conn, ultima)
+    if not rows:
+        return None
+    car = session.get(CAR_KEY, [])
+    if car:
+        return None
+    undo_n = session.get(UNDO_KEY)
+    if undo_n is not None and int(undo_n) == ultima:
+        return ultima
+    fe = parse_date(str(rows[0]["fecha"]), hoy_demo(demo))
+    if (hoy_demo(demo) - fe).days <= 14:
+        return ultima
+    return None
+
+
 def _siguiente_n_orden(conn, sector: str) -> str:
     """Correlativo de planilla GlobalGAP por cuartel (mismo criterio que globalgap)."""
     res = conn.execute(
@@ -374,6 +443,7 @@ def _ingreso(demo, conn) -> dict:
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
         "lc_car": car_rows,
         "lc_car_raw": car,
+        "reabrir_n_app": _reabrir_n_app_ctx(demo, conn),
     }
 
 
@@ -753,6 +823,7 @@ def _post_guardar_evento(demo, conn) -> dict:
     else:
         demo.registrar_accion("LIBRO CAMPO", f"App N°{n_app} · {huerto} · {prods_txt}")
         session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
+    session[UNDO_KEY] = n_app
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
     msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
@@ -763,6 +834,37 @@ def _post_guardar_evento(demo, conn) -> dict:
     if not rebaje_espino:
         msg += " — visible en planilla GlobalGAP."
     return {"ok": True, "msg": msg}
+
+
+def _post_reabrir_aplicacion(demo, conn) -> dict:
+    try:
+        n_app = int(request.form.get("n_app") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "N° de aplicación inválido."}
+    ultima = _ultima_n_aplicacion(conn)
+    if not ultima or n_app != ultima:
+        return {
+            "ok": False,
+            "msg": "Solo puede reabrir la última aplicación registrada (mayor N° de orden).",
+        }
+    rows = _lineas_aplicacion(conn, n_app)
+    if not rows:
+        return {"ok": False, "msg": "No hay líneas guardadas para esa aplicación."}
+    car, meta = _car_y_meta_desde_lineas(rows)
+    conn.execute("DELETE FROM libro_campo WHERE n_aplicacion=?", (n_app,))
+    conn.commit()
+    session[CAR_KEY] = car
+    session[META_KEY] = meta
+    session.pop(UNDO_KEY, None)
+    demo.registrar_accion("LIBRO CAMPO", f"Reabrir borrador App N°{n_app}")
+    return {
+        "ok": True,
+        "msg": (
+            f"Aplicación N° {n_app:05d} reabierta en ingreso. "
+            "Revise productos y use «Validar y guardar» solo cuando termine."
+        ),
+        "extra": {"sec": "ingreso"},
+    }
 
 
 def _post_editar_linea(demo, conn) -> dict:
@@ -902,6 +1004,7 @@ def view(user_email: str, user_rol: str):
             handlers = {
                 "agregar_producto": _post_agregar_producto,
                 "guardar_evento": _post_guardar_evento,
+                "reabrir_aplicacion": _post_reabrir_aplicacion,
                 "editar_linea": _post_editar_linea,
                 "eliminar_linea": _post_eliminar_linea,
                 "eliminar_evento": _post_eliminar_evento,
