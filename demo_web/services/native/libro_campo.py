@@ -16,6 +16,7 @@ from demo_web.services.lc_aplicacion_service import (
     guardar_aplicacion_lc,
     reabrir_aplicacion_lc,
     eliminar_aplicacion_lc,
+    eliminar_linea_lc,
 )
 from demo_web.services.lc_bodega_desfase import (
     insertar_salida_desde_lc,
@@ -332,14 +333,30 @@ def _ultima_n_aplicacion(conn) -> int | None:
 
 def _lineas_aplicacion(conn, n_app: int) -> list[dict]:
     cur = conn.execute(
-        """SELECT producto, lote_producto, ingrediente, dosis, unidad_dosis,
+        """SELECT id, movimiento_id, producto, lote_producto, ingrediente, dosis, unidad_dosis,
                   gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
-                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta
+                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta,
+                  n_aplicacion
            FROM libro_campo WHERE n_aplicacion=? ORDER BY id""",
         (int(n_app),),
     )
     cols = [d[0] for d in cur.description or ()]
     return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def _linea_libro_por_id(conn, linea_id: int) -> dict | None:
+    cur = conn.execute(
+        """SELECT id, movimiento_id, n_aplicacion, producto, lote_producto, ingrediente, dosis,
+                  unidad_dosis, gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
+                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta
+           FROM libro_campo WHERE id=?""",
+        (int(linea_id),),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cols = [d[0] for d in cur.description or ()]
+    return dict(zip(cols, row))
 
 
 def _car_y_meta_desde_lineas(rows) -> tuple[list[dict], dict]:
@@ -1072,41 +1089,28 @@ def _post_eliminar_linea(demo, conn) -> dict:
         n_app = int(request.form.get("n_app") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Línea inválida."}
-    row = conn.execute(
-        """SELECT producto, lote_producto, ingrediente, dosis, unidad_dosis,
-                  gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
-                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta
-           FROM libro_campo WHERE id=?""",
-        (lid,),
-    ).fetchone()
+    slug = tenant_slug() or _tenant_slug_lc(demo)
     rev_msg = ""
-    if row and is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino":
-        cols = [
-            "producto",
-            "lote_producto",
-            "ingrediente",
-            "dosis",
-            "unidad_dosis",
-            "gasto_total",
-            "unidad_gasto",
-            "vol_total",
-            "fecha",
-            "sector",
-            "especie",
-            "aplicadores",
-            "operador_certificado",
-            "maquina",
-            "tractor",
-            "car_etiqueta",
-        ]
-        line = dict(zip(cols, row))
-        res = revertir_salida_desde_lc(conn, lc_dict_desde_linea_libro(line))
-        if res.get("mov_id"):
-            rev_msg = " Salida bodega revertida."
-        elif res.get("skipped") and res.get("reason") == "sin_movimiento":
-            rev_msg = f" Atención: no se encontró salida bodega para «{line.get('producto')}»."
-    conn.execute("DELETE FROM libro_campo WHERE id = ?", (lid,))
-    conn.commit()
+    if slug == "concepcion" and is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino":
+        try:
+            out = eliminar_linea_lc(
+                conn,
+                demo,
+                tenant_slug=slug,
+                linea_id=lid,
+                n_app=n_app,
+                fetch_linea_fn=_linea_libro_por_id,
+            )
+            res = out.get("revert") or {}
+            if res.get("mov_id"):
+                rev_msg = " Salida bodega revertida."
+            elif res.get("skipped") and res.get("reason") == "sin_movimiento":
+                rev_msg = f" Atención: no se encontró salida bodega para «{out.get('producto')}»."
+        except LcAplicacionError as exc:
+            return {"ok": False, "msg": exc.msg, "extra": {"n_app": n_app}}
+    else:
+        conn.execute("DELETE FROM libro_campo WHERE id = ?", (lid,))
+        conn.commit()
     demo.registrar_accion("DELETE LIBRO LINEA", f"App N°{n_app} id {lid}")
     return {"ok": True, "msg": f"Línea eliminada.{rev_msg}", "extra": {"n_app": n_app}}
 

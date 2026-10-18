@@ -9,6 +9,20 @@ import sqlite3
 QTY_TOL = 1e-4
 DEFAULT_VENTANA_DIAS = 14
 
+# Salidas ya ligadas a una línea LC no cuentan como duplicado de otra aplicación.
+_SQL_EXCL_MOV_VINCULADO = (
+    " AND id NOT IN (SELECT movimiento_id FROM libro_campo WHERE movimiento_id IS NOT NULL)"
+)
+
+
+def ensure_movimiento_id_column(conn: sqlite3.Connection) -> None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(libro_campo)").fetchall()}
+    if "movimiento_id" not in cols:
+        try:
+            conn.execute("ALTER TABLE libro_campo ADD COLUMN movimiento_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
+
 
 def parse_fecha_iso(raw: str | None) -> date | None:
     s = str(raw or "").strip()[:10]
@@ -191,9 +205,10 @@ def insertar_salida_desde_lc(
         return {"ok": False, "reason": "datos_invalidos", "lc": lc}
 
     dup = conn.execute(
-        """SELECT id FROM movimientos
+        f"""SELECT id FROM movimientos
            WHERE producto_id=? AND tipo='Salida' AND centro_costo=? AND ABS(cantidad - ?) < ?
-             AND fecha BETWEEN date(?, '-14 day') AND date(?, '+14 day')""",
+             AND fecha BETWEEN date(?, '-14 day') AND date(?, '+14 day')
+             {_SQL_EXCL_MOV_VINCULADO}""",
         (pid, cc, cant, QTY_TOL, fecha, fecha),
     ).fetchone()
     if dup:
@@ -201,8 +216,9 @@ def insertar_salida_desde_lc(
 
     if stock + QTY_TOL < cant:
         dup_prev = conn.execute(
-            """SELECT id FROM movimientos
+            f"""SELECT id FROM movimientos
                WHERE producto_id=? AND tipo='Salida' AND centro_costo=? AND ABS(cantidad - ?) < ?
+               {_SQL_EXCL_MOV_VINCULADO}
                ORDER BY id DESC LIMIT 1""",
             (pid, cc, cant, QTY_TOL),
         ).fetchone()
@@ -246,12 +262,26 @@ def lc_dict_desde_item_libro(
 
 
 def lc_dict_desde_linea_libro(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+    out = {
         "producto": str(row.get("producto") or "").strip(),
         "gasto": float(row.get("gasto_total") or 0),
         "sector": str(row.get("sector") or "").strip().upper(),
         "fecha": str(row.get("fecha") or "")[:10],
     }
+    if row.get("movimiento_id") is not None:
+        try:
+            out["movimiento_id"] = int(row["movimiento_id"])
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def vincular_movimiento_linea_libro(conn: sqlite3.Connection, linea_id: int, mov_id: int) -> None:
+    ensure_movimiento_id_column(conn)
+    conn.execute(
+        "UPDATE libro_campo SET movimiento_id=? WHERE id=?",
+        (int(mov_id), int(linea_id)),
+    )
 
 
 def mensaje_error_salida_lc(demo, res: dict[str, Any]) -> str:
@@ -332,9 +362,24 @@ def revertir_salida_desde_lc(
     fecha = str(lc.get("fecha") or "")[:10]
     if cant <= 0:
         return {"ok": True, "skipped": True, "reason": "datos_invalidos", "lc": lc}
-    mov_id = _buscar_mov_salida_revertir(
-        conn, pid, cant, cc, fecha, excluir_mov_ids=excluir_mov_ids
-    )
+    mov_id = None
+    ligado = lc.get("movimiento_id")
+    if ligado is not None:
+        try:
+            ligado = int(ligado)
+        except (TypeError, ValueError):
+            ligado = None
+    if ligado and ligado not in (excluir_mov_ids or ()):
+        ok_mov = conn.execute(
+            "SELECT id FROM movimientos WHERE id=? AND tipo='Salida' AND producto_id=?",
+            (ligado, pid),
+        ).fetchone()
+        if ok_mov:
+            mov_id = ligado
+    if not mov_id:
+        mov_id = _buscar_mov_salida_revertir(
+            conn, pid, cant, cc, fecha, excluir_mov_ids=excluir_mov_ids
+        )
     if not mov_id:
         return {"ok": True, "skipped": True, "reason": "sin_movimiento", "lc": lc}
     conn.execute("DELETE FROM movimientos WHERE id=?", (mov_id,))
