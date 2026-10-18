@@ -6,6 +6,10 @@ import pandas as pd
 from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.lc_query_scope import (
+    filtrar_df_facturas_espino_lc,
+    sql_and_excluir_razon_social_espino,
+)
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo
 
@@ -115,7 +119,8 @@ def _pdf_url(demo, blob, archivo: str) -> str | None:
 
 def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
     dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
-    if dfp.empty:
+    dfp = filtrar_df_facturas_espino_lc(dfp)
+    if dfp is None or dfp.empty:
         return None
     dfp_show = dfp.rename(columns={
         "nro_documento": "N° DOCUMENTO",
@@ -191,7 +196,8 @@ def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | 
 
 def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
     dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
-    if dfp.empty:
+    dfp = filtrar_df_facturas_espino_lc(dfp)
+    if dfp is None or dfp.empty:
         return [], demo.f_peso(0), 0
     total = demo.f_peso(dfp["saldo"].sum())
     rows = []
@@ -225,16 +231,17 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
     if not proveedores:
         return [], [], None, ""
     psel = proveedor if proveedor in proveedores else proveedores[0]
-    dfpr = pd.read_sql_query(
+    sql_deuda = (
         """SELECT id, nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado,
                   COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
-           ORDER BY fecha_vencimiento ASC""",
-        conn,
-        params=(psel,),
+           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0"""
+        + sql_and_excluir_razon_social_espino()
+        + " ORDER BY fecha_vencimiento ASC"
     )
+    dfpr = pd.read_sql_query(sql_deuda, conn, params=(psel,))
+    dfpr = filtrar_df_facturas_espino_lc(dfpr)
     dfpr["saldo"] = dfpr.apply(
         lambda r: demo._saldo_pendiente_factura(r["monto_total"], r["monto_pagado"]),  # noqa: SLF001
         axis=1,
