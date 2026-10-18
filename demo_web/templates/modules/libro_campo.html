@@ -70,11 +70,19 @@
     <strong>{{ historial_stats.eventos }}</strong> evento(s) · <strong>{{ historial_stats.productos }}</strong> producto(s)
   </p>
   {% for g in historial_grupos %}
-  <div class="lc-evento-banner mb-2">
-    <strong>N° {{ '%05d'|format(g.num) }}</strong> &nbsp;|&nbsp;
-    {{ g.fecha }} &nbsp;|&nbsp; {{ g.cuartel }} &nbsp;|&nbsp; {{ g.especie }} &nbsp;|&nbsp;
-    Agua: {{ g.vol_agua }} L &nbsp;|&nbsp; {{ g.maquinaria }} &nbsp;|&nbsp; {{ g.tractor }} &nbsp;|&nbsp;
-    {{ g.aplicador }} &nbsp;|&nbsp; Op.Cert: {{ g.op_cert }}
+  <div class="lc-evento-banner mb-2 d-flex flex-wrap align-items-center gap-2">
+    <span>
+      <strong>N° {{ '%05d'|format(g.num) }}</strong> &nbsp;|&nbsp;
+      {{ g.fecha }} &nbsp;|&nbsp; {{ g.cuartel }} &nbsp;|&nbsp; {{ g.especie }} &nbsp;|&nbsp;
+      Agua: {{ g.vol_agua }} L &nbsp;|&nbsp; {{ g.maquinaria }} &nbsp;|&nbsp; {{ g.tractor }} &nbsp;|&nbsp;
+      {{ g.aplicador }} &nbsp;|&nbsp; Op.Cert: {{ g.op_cert }}
+    </span>
+    <form method="post" class="ms-auto mb-0" onsubmit="return confirm('¿Copiar la aplicación N° {{ '%05d'|format(g.num) }} al ingreso? El registro en historial no se elimina; al guardar obtendrá un nuevo N° de orden.');">
+      <input type="hidden" name="action" value="copiar_aplicacion_ingreso">
+      <input type="hidden" name="sec" value="historial">
+      <input type="hidden" name="n_app" value="{{ g.num }}">
+      <button type="submit" class="btn btn-outline-primary btn-sm">📋 Copiar a ingreso</button>
+    </form>
   </div>
   <div class="panel-card mb-3">
     <div class="table-responsive">
@@ -225,6 +233,12 @@
     T°, HR y viento se completan desde <strong>Open-Meteo</strong> (La Aparición, Paine) si no los ingresa.
     <span id="lcClimaHint" class="d-block mt-1 text-muted"></span>
   </div>
+  {% if copiado_desde_n_app %}
+  <div class="alert alert-info small mb-3">
+    Está editando una <strong>copia</strong> de la aplicación N° {{ '%05d'|format(copiado_desde_n_app) }}.
+    La original sigue en el historial; al validar y guardar se creará la orden N° {{ '%05d'|format(siguiente_app) }}.
+  </div>
+  {% endif %}
   {% if not productos_stock %}
   <div class="alert alert-warning">No hay productos con stock en bodega. Registre compras o apertura de stock antes de anotar aplicaciones.</div>
   {% else %}

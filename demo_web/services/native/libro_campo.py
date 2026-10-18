@@ -277,6 +277,51 @@ def _siguiente_n_aplicacion(conn) -> int:
     return int(res) + 1 if res is not None else 1
 
 
+def _lineas_aplicacion(conn, n_app: int) -> list[dict]:
+    cur = conn.execute(
+        """SELECT producto, lote_producto, ingrediente, dosis, unidad_dosis,
+                  gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
+                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta
+           FROM libro_campo WHERE n_aplicacion=? ORDER BY id""",
+        (int(n_app),),
+    )
+    cols = [d[0] for d in cur.description or ()]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def _car_y_meta_desde_lineas(rows: list[dict]) -> tuple[list[dict], dict]:
+    car: list[dict] = []
+    for r in rows:
+        try:
+            dias_car = int(r["car_etiqueta"] or 0)
+        except (TypeError, ValueError):
+            dias_car = 0
+        car.append(
+            {
+                "producto": r["producto"],
+                "lote_producto": r["lote_producto"] or "",
+                "ingrediente": r["ingrediente"] or "",
+                "dosis": float(r["dosis"] or 0),
+                "unidad_dosis": r["unidad_dosis"] or UNIDADES_DOSIS[0],
+                "gasto_total": float(r["gasto_total"] or 0),
+                "um_gasto": r["unidad_gasto"] or "",
+                "dias_car": dias_car,
+            }
+        )
+    r0 = rows[0]
+    meta = {
+        "fecha": str(r0["fecha"] or "")[:10],
+        "cuartel": (r0["sector"] or "").strip(),
+        "especie": (r0["especie"] or "").strip(),
+        "vol_agua": str(float(r0["vol_total"] or 0)),
+        "aplicador": (r0["aplicadores"] or "").strip(),
+        "op_cert": "1" if int(r0["operador_certificado"] or 0) else "",
+        "maquinaria": (r0["maquina"] or "").strip(),
+        "tractor": (r0["tractor"] or "").strip(),
+    }
+    return car, meta
+
+
 def _siguiente_n_orden(conn, sector: str) -> str:
     """Correlativo de planilla GlobalGAP por cuartel (mismo criterio que globalgap)."""
     res = conn.execute(
@@ -342,6 +387,7 @@ def _ingreso(demo, conn) -> dict:
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
         "lc_car": car_rows,
         "lc_car_raw": car,
+        "copiado_desde_n_app": session.get("lc_copiado_desde_n_app"),
     }
 
 
@@ -683,11 +729,43 @@ def _post_guardar_evento(demo, conn) -> dict:
     session["lc_alerta_bodega"] = {"n_app": n_app, "huerto": huerto, "productos": list(car)}
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
+    session.pop("lc_copiado_desde_n_app", None)
     msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
     if wx:
         msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
     msg += " — visible en planilla GlobalGAP."
     return {"ok": True, "msg": msg}
+
+
+def _copiar_aplicacion_a_ingreso(demo, conn, n_app: int) -> dict:
+    rows = _lineas_aplicacion(conn, n_app)
+    if not rows:
+        return {"ok": False, "msg": "No hay líneas guardadas para esa aplicación."}
+    car, meta = _car_y_meta_desde_lineas(rows)
+    session[CAR_KEY] = car
+    session[META_KEY] = meta
+    session["lc_copiado_desde_n_app"] = int(n_app)
+    siguiente = _siguiente_n_aplicacion(conn)
+    demo.registrar_accion("LIBRO CAMPO", f"Copiar ingreso desde App N°{n_app}")
+    return {
+        "ok": True,
+        "msg": (
+            f"Aplicación N° {n_app:05d} copiada al ingreso "
+            f"(al guardar obtendrá N° {siguiente:05d}). "
+            "El registro original permanece en el historial."
+        ),
+        "extra": {"sec": "ingreso"},
+    }
+
+
+def _post_copiar_aplicacion_ingreso(demo, conn) -> dict:
+    try:
+        n_app = int(request.form.get("n_app") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "N° de aplicación inválido."}
+    if n_app < 1:
+        return {"ok": False, "msg": "Indique el N° de aplicación a copiar."}
+    return _copiar_aplicacion_a_ingreso(demo, conn, n_app)
 
 
 def _post_editar_linea(demo, conn) -> dict:
@@ -827,6 +905,7 @@ def view(user_email: str, user_rol: str):
             handlers = {
                 "agregar_producto": _post_agregar_producto,
                 "guardar_evento": _post_guardar_evento,
+                "copiar_aplicacion_ingreso": _post_copiar_aplicacion_ingreso,
                 "editar_linea": _post_editar_linea,
                 "eliminar_linea": _post_eliminar_linea,
                 "eliminar_evento": _post_eliminar_evento,
@@ -842,6 +921,23 @@ def view(user_email: str, user_rol: str):
                 return _redirect_lc(**extra)
         finally:
             conn.close()
+
+    if request.method == "GET":
+        copiar_raw = (request.args.get("copiar_app") or "").strip()
+        if copiar_raw and request.args.get("sec", "historial") == "ingreso":
+            try:
+                n_copiar = int(copiar_raw)
+            except (TypeError, ValueError):
+                flash("N° de aplicación inválido.", "danger")
+            else:
+                conn = demo.conectar_db()
+                try:
+                    result = _copiar_aplicacion_a_ingreso(demo, conn, n_copiar)
+                    flash(result["msg"], "success" if result["ok"] else "danger")
+                finally:
+                    conn.close()
+                if result.get("ok"):
+                    return _redirect_lc(sec="ingreso")
 
     ctx = gather_libro_campo(user_email, user_rol)
     return render_template(
