@@ -83,7 +83,41 @@ def _pop_alertas() -> dict:
     out: dict = {}
     if "espino_lc_rebaje_ok" in session:
         out["rebaje_bodega_ok"] = session.pop("espino_lc_rebaje_ok")
+    if "espino_lc_stock_error" in session:
+        out["lc_stock_error"] = session.pop("espino_lc_stock_error")
     return out
+
+
+def _kardex_por_producto_en_car(demo, conn, car: list[dict]) -> list[dict]:
+    from demo_web.services.espino_bodega_stock import stock_pool
+
+    filas: list[dict] = []
+    for item in car:
+        prod = str(item.get("producto") or "").strip()
+        if not prod:
+            continue
+        row = conn.execute(
+            "SELECT id, COALESCE(stock, 0), COALESCE(unidad_medida, ?) FROM inventario WHERE UPPER(TRIM(producto))=?",
+            (demo.DEFAULT_UNIDAD_INSUMO, prod.upper()),
+        ).fetchone()
+        if not row:
+            continue
+        pid, inv, um = int(row[0]), float(row[1] or 0), str(row[2])
+        pool = stock_pool(conn, pid)
+        pedido = float(item.get("gasto_total") or 0)
+        filas.append(
+            {
+                "producto": prod,
+                "um": um,
+                "pool_fmt": demo.f_cantidad(pool),
+                "pool_raw": pool,
+                "inventario_fmt": demo.f_cantidad(inv),
+                "pedido_fmt": demo.f_cantidad(pedido),
+                "desfase_manual": inv > pool + 1e-6,
+                "supera_kardex": pedido > pool + 1e-9,
+            }
+        )
+    return filas
 
 
 def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tuple[str, str]]:
@@ -216,6 +250,7 @@ def _ingreso(demo, conn) -> dict:
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
         "lc_car": car_rows,
         "lc_car_items": car,
+        "lc_car_kardex": _kardex_por_producto_en_car(demo, conn, car) if car else [],
     }
 
 
@@ -416,7 +451,9 @@ def _msg_validacion_stock_car(demo, conn, car: list[dict]) -> str | None:
                 " Si cambió el «Total producto» en el formulario, use «Quitar último» "
                 "y vuelva a «Agregar producto» (la tabla del evento guarda la cantidad al agregar)."
             )
-            return (msg or "Stock insuficiente.") + hint
+            full = (msg or "Stock insuficiente.") + hint
+            session["espino_lc_stock_error"] = full
+            return full
     return None
 
 
