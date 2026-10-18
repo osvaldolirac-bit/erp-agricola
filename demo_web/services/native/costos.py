@@ -4,7 +4,9 @@ import pandas as pd
 from flask import render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.lc_query_scope import cuarteles_costos_lc
 from demo_web.services.module_runner import store_pdf
+from demo_web.services.tenant_scope import cuarteles_oficiales
 from demo_web.services.native._helpers import (
     hoy_demo,
     avance_ppto_badge_tone,
@@ -152,7 +154,10 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     hoy = hoy_demo(demo)
     es_vigente = fi <= hoy <= ff
 
-    cuarteles = demo.CUARTELES_OFICIALES
+    cuarteles_full = list(cuarteles_oficiales(demo) or [])
+    cuarteles = cuarteles_costos_lc(cuarteles_full)
+    if not cuarteles:
+        cuarteles = cuarteles_full
     vistas = [("resumen", "📊 Resumen")] + [(c, c) for c in cuarteles]
     vista = request.args.get("vista", "resumen")
     if vista != "resumen" and vista not in cuarteles:

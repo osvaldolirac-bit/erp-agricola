@@ -4,8 +4,17 @@ import pandas as pd
 from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.lc_query_scope import (
+    filtrar_df_facturas_espino_lc,
+    sql_and_excluir_razon_social_espino,
+)
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import (
+    centros_costo,
+    razones_sociales_compras,
+    razon_social_compras_default,
+)
 
 SECCIONES = [
     ("historial", "HISTORIAL"),
@@ -162,8 +171,10 @@ def _historial(demo, conn) -> dict:
         )
         like = f"%{q}%"
         params.extend([like, like, like, like, like])
+    sql += sql_and_excluir_razon_social_espino()
     sql += " ORDER BY id DESC"
     df = pd.read_sql_query(sql, conn, params=params)
+    df = filtrar_df_facturas_espino_lc(df)
 
     siguientes_por_razon: dict[str, str] = {}
     rows = []
@@ -260,7 +271,7 @@ def _historial(demo, conn) -> dict:
         factura_edit = dict(factura_edit)
         factura_edit["tipo_gasto_sel"] = tg
 
-    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+    razones = list(razones_sociales_compras(demo))
     tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
     proveedores = _proveedores_options(conn) if es_admin else []
 
@@ -332,9 +343,9 @@ def _gather_ingreso(demo, conn) -> dict:
         "productos": productos,
         "familias": demo.listar_familias_producto(conn),
         "unidades": demo.UNIDADES_MEDIDA_INSUMO,
-        "razones_sociales": demo.RAZONES_SOCIALES_COMPRAS,
+        "razones_sociales": razones_sociales_compras(demo),
         "tipos_gasto": demo.TIPOS_GASTO_ALTA,
-        "centros_costo": demo.CENTROS_COSTO,
+        "centros_costo": centros_costo(demo),
         "car_rows": car_rows,
         "car_total_bruto": demo.f_peso(car_total * 1.19) if car else "",
         "car_count": len(car),
@@ -507,7 +518,7 @@ def _post_save_agro(demo, conn) -> dict:
     desglose = [f"{i['c']} {i.get('um', demo.DEFAULT_UNIDAD_INSUMO)} x {i['n']}" for i in car]
     concepto = "[" + ", ".join(desglose) + "]"
     total_bruto = sum(i["t"] for i in car) * 1.19
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = request.form.get("razon_social") or razon_social_compras_default(demo)
     tipo_gasto = (request.form.get("tipo_gasto") or "Agroquímicos").strip() or "Agroquímicos"
     conn.execute(
         """INSERT INTO facturas
@@ -541,7 +552,7 @@ def _post_save_gastos(demo, conn) -> dict:
     fv = request.form.get("fecha_vence") or str(hoy_demo(demo))
     sin_doc = request.form.get("sin_doc") == "1"
     nro = (request.form.get("nro_doc") or "").strip()
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = request.form.get("razon_social") or razon_social_compras_default(demo)
     concepto = (request.form.get("concepto") or "").strip()
     tipo_gasto = request.form.get("tipo_gasto") or demo.TIPOS_GASTO_ALTA[0]
     iva_bruto = request.form.get("iva_bruto") == "1"
@@ -584,7 +595,7 @@ def _post_save_petroleo(demo, conn) -> dict:
     fv = request.form.get("fecha_vence") or str(hoy_demo(demo))
     sin_doc = request.form.get("sin_doc") == "1"
     nro = (request.form.get("nro_doc") or "").strip()
-    razon = request.form.get("razon_social") or demo.RAZONES_SOCIALES_COMPRAS[0]
+    razon = request.form.get("razon_social") or razon_social_compras_default(demo)
     concepto = (request.form.get("concepto") or "").strip()
     try:
         litros = float(request.form.get("litros") or 0)
@@ -749,7 +760,7 @@ def _post_corregir_factura(demo, conn) -> dict:
     if nmonto <= 0:
         return {"ok": False, "msg": "El monto bruto debe ser superior a $0."}
 
-    razones = list(getattr(demo, "RAZONES_SOCIALES_COMPRAS", []) or [])
+    razones = list(razones_sociales_compras(demo))
     if nrazon not in razones and razones:
         nrazon = razones[0]
     tg_guardar = demo.tipo_gasto_canonico_contratista(ntipo_gasto)
