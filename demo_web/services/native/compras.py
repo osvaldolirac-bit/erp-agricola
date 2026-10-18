@@ -10,8 +10,15 @@ from demo_web.services.lc_query_scope import (
 )
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.espino_compras_guards import (
+    consolidar_ge_duplicado_al_ingresar,
+    registrar_ingreso_kardex_compra_espino,
+    validar_estado_pago_coherente,
+    validar_nueva_factura_compra,
+)
 from demo_web.services.tenant_scope import (
     centros_costo,
+    is_espino_tenant,
     razones_sociales_compras,
     razon_social_compras_default,
 )
@@ -346,6 +353,7 @@ def _gather_ingreso(demo, conn) -> dict:
         "razones_sociales": razones_sociales_compras(demo),
         "tipos_gasto": demo.TIPOS_GASTO_ALTA,
         "centros_costo": centros_costo(demo),
+        "is_espino_tenant": is_espino_tenant(),
         "car_rows": car_rows,
         "car_total_bruto": demo.f_peso(car_total * 1.19) if car else "",
         "car_count": len(car),
@@ -486,18 +494,22 @@ def _post_add_car(demo) -> dict:
         nom = (request.form.get("prod_nuevo") or "").strip()
         if not nom:
             return {"ok": False, "msg": "Ingrese el nombre del producto nuevo."}
-        car.append(
-            {
-                "id": None,
-                "n": nom,
-                "familia": request.form.get("familia") or "OTROS",
-                "c": cant,
-                "p": neto,
-                "t": cant * neto,
-                "nuevo": True,
-                "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
-            }
-        )
+        nia = (request.form.get("ingrediente_activo") or "").strip()
+        if is_espino_tenant() and not nia:
+            return {"ok": False, "msg": "Indique el ingrediente activo."}
+        item = {
+            "id": None,
+            "n": nom,
+            "familia": request.form.get("familia") or "OTROS",
+            "c": cant,
+            "p": neto,
+            "t": cant * neto,
+            "nuevo": True,
+            "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
+        }
+        if is_espino_tenant():
+            item["ingrediente_activo"] = nia
+        car.append(item)
     _set_car(car)
     return {"ok": True, "msg": "Ítem agregado al carro."}
 
@@ -520,27 +532,64 @@ def _post_save_agro(demo, conn) -> dict:
     total_bruto = sum(i["t"] for i in car) * 1.19
     razon = request.form.get("razon_social") or razon_social_compras_default(demo)
     tipo_gasto = (request.form.get("tipo_gasto") or "Agroquímicos").strip() or "Agroquímicos"
-    conn.execute(
-        """INSERT INTO facturas
-           (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, concepto, razon_social, tipo_gasto)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (nro, prov, fe, fv, total_bruto, concepto, razon, tipo_gasto),
+    ok_val, msg_val = validar_nueva_factura_compra(
+        conn, nro, prov, fecha_compra=fe, monto_total=total_bruto,
     )
-    for i in car:
-        if i.get("nuevo") or i.get("id") is None:
-            cur_ins = conn.execute(
-                "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
-                (i["n"], i.get("familia", "OTROS"), i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
-            )
-            poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
-        else:
-            cur = conn.execute("SELECT stock, precio_medio FROM inventario WHERE id=?", (i["id"],)).fetchone()
-            npmp = ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"]) if (cur[0] + i["c"]) > 0 else i["p"]
-            conn.execute(
-                "UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?",
-                (i["c"], npmp, i["id"]),
-            )
-    conn.commit()
+    if not ok_val:
+        return {"ok": False, "msg": msg_val}
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        consolidar_ge_duplicado_al_ingresar(conn, nro, prov, fe, total_bruto)
+        conn.execute(
+            """INSERT INTO facturas
+               (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total, concepto, razon_social, tipo_gasto)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (nro, prov, fe, fv, total_bruto, concepto, razon, tipo_gasto),
+        )
+        for i in car:
+            if i.get("nuevo") or i.get("id") is None:
+                nia = (i.get("ingrediente_activo") or "").strip()
+                nf = i.get("familia", "OTROS")
+                if is_espino_tenant():
+                    cur_ins = conn.execute(
+                        """INSERT INTO inventario
+                           (producto, familia, stock, precio_medio, unidad_medida, ingrediente_activo)
+                           VALUES (?,?,?,?,?,?)""",
+                        (i["n"], nf, 0, i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO), nia),
+                    )
+                    new_id = int(cur_ins.lastrowid)
+                    registrar_ingreso_kardex_compra_espino(
+                        demo, conn, new_id, float(i["c"]), float(i["p"]), fe,
+                    )
+                else:
+                    cur_ins = conn.execute(
+                        "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
+                        (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
+                    )
+                    poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
+            else:
+                pid = int(i["id"])
+                if is_espino_tenant():
+                    registrar_ingreso_kardex_compra_espino(
+                        demo, conn, pid, float(i["c"]), float(i["p"]), fe,
+                    )
+                else:
+                    cur = conn.execute(
+                        "SELECT stock, precio_medio FROM inventario WHERE id=?", (pid,),
+                    ).fetchone()
+                    npmp = (
+                        ((cur[0] * cur[1]) + (i["c"] * i["p"])) / (cur[0] + i["c"])
+                        if (cur[0] + i["c"]) > 0
+                        else i["p"]
+                    )
+                    conn.execute(
+                        "UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?",
+                        (i["c"], npmp, pid),
+                    )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        return {"ok": False, "msg": f"No se pudo guardar la compra: {exc}"}
     _clear_car()
     demo.registrar_accion("COMPRA", nro)
     return {"ok": True, "msg": f"Factura {nro} guardada. Stock y PMP actualizados."}

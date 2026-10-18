@@ -884,13 +884,12 @@ def _post_guardar_evento(demo, conn) -> dict:
         from demo_web.services.native import espino_bodega
 
         for item in car:
-            ok_bod, msg_bod = espino_bodega.registrar_salida_bodega(
+            ok_bod, msg_bod, _mid = espino_bodega.registrar_salida_bodega(
                 demo,
                 conn,
                 float(item.get("gasto_total") or 0),
                 producto=str(item.get("producto") or ""),
                 fecha=fe_app,
-                centro_costo=huerto,
             )
             if not ok_bod:
                 conn.rollback()

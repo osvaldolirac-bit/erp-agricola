@@ -1,0 +1,56 @@
+"""Vínculo Libro Espino ↔ movimientos bodega CC EL ESPINO."""
+from __future__ import annotations
+
+from typing import Any
+
+import sqlite3
+
+from demo_web.services.native.espino_bodega import CC_ESPINO
+
+QTY_TOL = 1e-4
+
+
+def revertir_salida_linea_espino(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any]:
+    prod = str(row.get("producto") or "").strip()
+    pid_row = conn.execute(
+        "SELECT id FROM inventario WHERE UPPER(producto)=?",
+        (prod.upper(),),
+    ).fetchone()
+    if not pid_row:
+        return {"ok": True, "skipped": True, "reason": "sin_inventario"}
+    pid = int(pid_row[0])
+    cant = float(row.get("gasto_total") or 0)
+    fecha = str(row.get("fecha") or "")[:10]
+    if cant <= 0:
+        return {"ok": True, "skipped": True, "reason": "datos_invalidos"}
+
+    mov_id = None
+    ligado = row.get("movimiento_id")
+    if ligado is not None:
+        try:
+            ligado = int(ligado)
+        except (TypeError, ValueError):
+            ligado = None
+    if ligado:
+        ok = conn.execute(
+            "SELECT id FROM movimientos WHERE id=? AND tipo='Salida' AND producto_id=? AND centro_costo=?",
+            (ligado, pid, CC_ESPINO),
+        ).fetchone()
+        if ok:
+            mov_id = ligado
+
+    if not mov_id:
+        q = conn.execute(
+            """SELECT id FROM movimientos
+               WHERE producto_id=? AND tipo='Salida' AND centro_costo=?
+                 AND ABS(cantidad - ?) < ? AND fecha=?
+               ORDER BY id DESC LIMIT 1""",
+            (pid, CC_ESPINO, cant, QTY_TOL, fecha),
+        ).fetchone()
+        mov_id = int(q[0]) if q else None
+
+    if not mov_id:
+        return {"ok": True, "skipped": True, "reason": "sin_movimiento", "producto": prod}
+
+    conn.execute("DELETE FROM movimientos WHERE id=?", (mov_id,))
+    return {"ok": True, "mov_id": mov_id, "producto": prod}

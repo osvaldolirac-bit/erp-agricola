@@ -6,9 +6,14 @@ from datetime import timedelta
 import pandas as pd
 from flask import request, session, url_for
 
+from demo_web.services.espino_aplicacion_service import (
+    EspinoAplicacionError,
+    guardar_aplicacion_espino,
+)
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import tenant_slug
 
 CC_ESPINO = espino_bodega.CC_ESPINO
 CAR_KEY = "espino_lc_car"
@@ -422,46 +427,26 @@ def post_guardar_evento(demo, conn) -> dict:
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
-    for item in car:
-        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
+    slug = tenant_slug() or "espino"
+    try:
+        saved = guardar_aplicacion_espino(
+            conn,
             demo,
-            conn,
-            float(item.get("gasto_total") or 0),
-            producto=str(item.get("producto") or ""),
+            tenant_slug=slug,
+            car=car,
+            fe_app=fe_app,
+            especie=especie,
+            total_agua=total_agua,
+            aplicador=aplicador,
+            op_cert=op_cert,
+            maquinaria=maquinaria,
+            tractor=tractor,
+            n_app_fn=_siguiente_n_aplicacion,
+            n_orden_fn=lambda c: _siguiente_n_orden(c),
         )
-        if not ok:
-            return {"ok": False, "msg": msg}
-
-    n_app = _siguiente_n_aplicacion(conn)
-    n_orden = _siguiente_n_orden(conn)
-
-    for item in car:
-        demo._insertar_linea_libro_campo(
-            conn,
-            fe_app,
-            n_app,
-            CC_ESPINO,
-            especie,
-            item,
-            total_agua,
-            aplicador,
-            op_cert,
-            maquinaria,
-            tractor,
-            n_orden=n_orden,
-        )
-
-    for item in car:
-        ok, msg = espino_bodega.registrar_salida_bodega(
-            demo,
-            conn,
-            float(item.get("gasto_total") or 0),
-            producto=str(item.get("producto") or ""),
-            fecha=fe_app,
-        )
-        if not ok:
-            return {"ok": False, "msg": msg}
-    conn.commit()
+    except EspinoAplicacionError as exc:
+        return {"ok": False, "msg": exc.msg}
+    n_app = saved.n_app
     prods_txt = ", ".join(i["producto"] for i in car)
     demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {CC_ESPINO} · {prods_txt}")
     session[CAR_KEY] = []

@@ -67,6 +67,28 @@ def _stock_cc(conn, producto_id: int) -> float:
     return float(row[0] or 0) if row and row[0] is not None else 0.0
 
 
+def _sync_inventario_stock(conn, producto_id: int) -> float:
+    """Refleja stock CC EL ESPINO en inventario.stock (catálogo compartido)."""
+    st = _stock_cc(conn, int(producto_id))
+    conn.execute("UPDATE inventario SET stock = ? WHERE id = ?", (st, int(producto_id)))
+    return st
+
+
+def _precio_medio_kardex(conn, producto_id: int) -> float | None:
+    row = conn.execute(
+        """SELECT SUM(cantidad), SUM(valor_imputado)
+           FROM movimientos
+           WHERE producto_id=? AND centro_costo=? AND tipo='Ingreso'""",
+        (int(producto_id), CC_ESPINO),
+    ).fetchone()
+    if not row or not row[0]:
+        return None
+    qty = float(row[0] or 0)
+    if qty <= 0:
+        return None
+    return float(row[1] or 0) / qty
+
+
 def _stock_rows(demo, dfs_view: pd.DataFrame, stock_map: dict[int, float]) -> list[dict]:
     rows = []
     for _, r in dfs_view.iterrows():
@@ -254,13 +276,13 @@ def registrar_salida_bodega(
     producto_id: int | None = None,
     producto: str | None = None,
     fecha=None,
-) -> tuple[bool, str]:
-    """Registra salida en bodega El Espino (sin commit). Usado por LC y formulario manual."""
+) -> tuple[bool, str, int | None]:
+    """Registra salida en bodega El Espino (sin commit). Retorna movimiento_id si ok."""
     ok, msg, iid, prod_nombre, _um = validar_salida_bodega(
         demo, conn, cantidad, producto_id=producto_id, producto=producto
     )
     if not ok:
-        return False, msg
+        return False, msg, None
     row = _producto_por_id(conn, demo, iid)
     pmp, um_sel = float(row[2] or 0), row[3]
     fecha_mov = str(fecha or hoy_demo(demo))
@@ -270,7 +292,9 @@ def registrar_salida_bodega(
            VALUES (?,?,?,?,?,?,?)""",
         (iid, "Salida", cantidad, fecha_mov, CC_ESPINO, cantidad * pmp, um_sel),
     )
-    return True, prod_nombre
+    mov_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+    _sync_inventario_stock(conn, iid)
+    return True, prod_nombre, mov_id
 
 
 def post_salida(demo, conn) -> dict:
@@ -279,7 +303,7 @@ def post_salida(demo, conn) -> dict:
         ct = float(request.form.get("cantidad") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Datos de salida inválidos."}
-    ok, res = registrar_salida_bodega(demo, conn, ct, producto_id=iid)
+    ok, res, _mov = registrar_salida_bodega(demo, conn, ct, producto_id=iid)
     if not ok:
         return {"ok": False, "msg": res}
     conn.commit()
@@ -326,6 +350,7 @@ def post_ingreso_existente(demo, conn) -> dict:
            VALUES (?,?,?,?,?,?,?)""",
         (iid, "Ingreso", ct, fecha, CC_ESPINO, ct * pmp, um_sel),
     )
+    _sync_inventario_stock(conn, iid)
     conn.commit()
     demo.registrar_accion(CC_ESPINO, f"Ingreso bodega {prod_nombre} +{demo.f_cantidad(ct)} {um_sel}")
     return {
@@ -381,6 +406,7 @@ def post_ingreso_nuevo(demo, conn) -> dict:
                VALUES (?,?,?,?,?,?,?)""",
             (new_id, "Ingreso", ns, fecha, CC_ESPINO, ns * npr, nu),
         )
+        _sync_inventario_stock(conn, int(new_id))
     conn.commit()
     demo.registrar_accion(CC_ESPINO, f"Apertura bodega {np} stock_espino={ns}")
     extra = {"op": "stock" if ns > 0 else "nuevo"}
