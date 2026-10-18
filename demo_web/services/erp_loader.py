@@ -176,8 +176,22 @@ def _load_module(erp_app: str) -> Any:
     patch_erp_module(erp, erp_app)
     _wrap_registrar_accion(erp)
     if erp_app == "concepcion":
+        _patch_concepcion_cc_reparto(erp)
         _capture_lc_defaults(erp)
     return erp
+
+
+def _patch_concepcion_cc_reparto(erp: Any) -> None:
+    """Evita mezclar reglas LC/Espino en _reparto_por_cc (contratistas, compras, etc.)."""
+    from demo_web.services import cc_reparto
+
+    def _reparto_por_cc(conn, total, seleccionados):  # noqa: ANN001
+        return cc_reparto.reparto_por_cc(
+            conn, total, seleccionados, cargar_prorrateo_cc=erp.cargar_prorrateo_cc
+        )
+
+    erp._clasificar_cc_seleccionados = cc_reparto.clasificar_cc_seleccionados
+    erp._reparto_por_cc = _reparto_por_cc
 
 
 def get_erp_module() -> Any:

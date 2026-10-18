@@ -64,7 +64,17 @@ def tenant_slug() -> str:
 
 
 def is_espino_tenant() -> bool:
-    return tenant_slug() == "espino"
+    if tenant_slug() == "espino":
+        return True
+    try:
+        from demo_web.services.demo_loader import get_demo_module
+
+        demo = get_demo_module()
+        if str(getattr(demo, "TENANT_SLUG", "") or "").strip().lower() == "espino":
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def is_concepcion_tenant() -> bool:
