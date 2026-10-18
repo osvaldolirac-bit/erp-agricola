@@ -53,7 +53,14 @@
       margin-bottom: 0.35rem;
       font-size: 0.9rem;
     }
-    .mov-row.ing { border-color: #198754; background: #f8fff9; }
+    .mov-row.ing { border-color: #6c757d; background: #f8f9fa; }
+    .mov-row.compra {
+      border-color: #198754;
+      background: linear-gradient(90deg, #d1e7dd 0%, #f0faf2 100%);
+      border-left-width: 5px;
+    }
+    .mov-row.compra .mov-delta { color: #0f5132; }
+    .mov-row.compra .kardex-origen-compra { color: #0f5132; font-weight: 600; }
     .mov-row.sal { border-color: #dc3545; background: #fff8f8; }
     .mov-delta { font-weight: 700; }
     .btn-back { color: #fff; border-color: rgba(255,255,255,.6); }
@@ -114,12 +121,12 @@
         <div class="kardex-panel">
           <h2 class="h6 mb-2">Cuenta corriente</h2>
           {% for m in kardex_rows %}
-          <div class="mov-row {% if m.tipo == 'Ingreso' %}ing{% else %}sal{% endif %}">
+          <div class="mov-row {% if m.es_compra|default(false) %}compra{% elif m.tipo == 'Ingreso' %}ing{% else %}sal{% endif %}">
             <div class="d-flex justify-content-between">
-              <span>{{ m.fecha }} · {{ m.tipo }}</span>
+              <span>{{ m.fecha }} · {% if m.es_compra|default(false) %}<strong>Compra</strong>{% else %}{{ m.tipo }}{% endif %}</span>
               <span class="mov-delta">{{ m.delta_fmt }} {{ kardex_producto.um }}</span>
             </div>
-            <div class="text-muted small">{{ m.cuartel }} · {{ m.origen }}</div>
+            <div class="small {% if m.es_compra|default(false) %}kardex-origen-compra{% else %}text-muted{% endif %}">{{ m.cuartel }} · {{ m.origen }}</div>
             <div class="small text-end">Saldo {{ m.saldo }} {{ kardex_producto.um }}</div>
           </div>
           {% endfor %}

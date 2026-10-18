@@ -136,6 +136,8 @@ def _kardex_row(
 ) -> dict:
     tipo_n = _normalize_tipo_mov(tipo)
     delta = qty if tipo_n == "Ingreso" else -qty
+    origen_txt = (origen or "").strip()
+    es_compra = tipo_n == "Ingreso" and origen_txt.lower().startswith("compra")
     return {
         "id": row_id,
         "fecha": fecha,
@@ -144,7 +146,8 @@ def _kardex_row(
         "cant_raw": qty,
         "delta_fmt": ("+" if delta >= 0 else "−") + demo.f_cantidad(abs(delta)),
         "cuartel": cuartel,
-        "origen": origen,
+        "origen": origen_txt,
+        "es_compra": es_compra,
         "saldo": demo.f_cantidad(saldo),
         "saldo_raw": saldo,
     }

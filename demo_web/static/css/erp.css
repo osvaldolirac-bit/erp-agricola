@@ -4037,3 +4037,39 @@ body.gap-comercial-page main.demo-main {
   line-height: 1.35;
 }
 
+/* Bodega LC — kardex: compras agro en verde */
+.table tbody tr.kardex-row-compra > td {
+  background-color: #d1e7dd !important;
+  border-color: #a3cfbb;
+}
+
+.table-striped > tbody > tr.kardex-row-compra:nth-of-type(odd) > td {
+  background-color: #c8e6d4 !important;
+}
+
+.kardex-row-compra .kardex-origen-compra,
+.kardex-origen-compra {
+  color: #0f5132;
+  font-weight: 600;
+}
+
+.kardex-badge-compra {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+  background: #198754;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+tr.kardex-row-ingreso > td {
+  background-color: #f8f9fa !important;
+}
+
+tr.kardex-row-salida > td {
+  background-color: #f8d7da !important;
+}
+

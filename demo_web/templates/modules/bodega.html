@@ -230,12 +230,12 @@
         </thead>
         <tbody>
           {% for m in kardex_rows %}
-          <tr class="{% if m.tipo == 'Ingreso' %}table-success{% else %}table-danger{% endif %}">
+          <tr class="{% if m.es_compra|default(false) %}kardex-row-compra{% elif m.tipo == 'Ingreso' %}kardex-row-ingreso{% else %}kardex-row-salida{% endif %}">
             <td>{{ m.fecha }}</td>
-            <td>{{ m.tipo }}</td>
+            <td>{% if m.es_compra|default(false) %}<span class="kardex-badge-compra">Compra</span>{% else %}{{ m.tipo }}{% endif %}</td>
             <td class="text-end fw-semibold">{{ m.delta_fmt }} {{ kardex_producto.um }}</td>
             <td>{{ m.cuartel }}</td>
-            <td>{{ m.origen }}</td>
+            <td class="{% if m.es_compra|default(false) %}kardex-origen-compra{% endif %}">{{ m.origen }}</td>
             <td class="text-end">{{ m.saldo }} {{ kardex_producto.um }}</td>
           </tr>
           {% endfor %}
