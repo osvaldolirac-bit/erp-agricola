@@ -14,6 +14,8 @@ FILES = [
     ("demo_web/tenants.py", "demo_web/tenants.py"),
     ("demo_web/services/erp_loader.py", "demo_web/services/erp_loader.py"),
     ("demo_web/services/tenant_rules.py", "demo_web/services/tenant_rules.py"),
+    ("demo_web/services/espino_scope.py", "demo_web/services/espino_scope.py"),
+    ("demo_web/services/tenant_scope.py", "demo_web/services/tenant_scope.py"),
     ("demo_web/services/lc_query_scope.py", "demo_web/services/lc_query_scope.py"),
     ("demo_web/services/lc_aplicacion_service.py", "demo_web/services/lc_aplicacion_service.py"),
     ("demo_web/services/lc_bodega_desfase.py", "demo_web/services/lc_bodega_desfase.py"),
@@ -21,6 +23,10 @@ FILES = [
     ("demo_web/services/native/compras.py", "demo_web/services/native/compras.py"),
     ("demo_web/services/native/costos.py", "demo_web/services/native/costos.py"),
     ("demo_web/services/native/tesoreria.py", "demo_web/services/native/tesoreria.py"),
+    ("demo_web/services/native/flujo.py", "demo_web/services/native/flujo.py"),
+    ("demo_web/services/dashboard.py", "demo_web/services/dashboard.py"),
+    ("demo_web/services/native/bodega.py", "demo_web/services/native/bodega.py"),
+    ("demo_web/services/native/rrhh.py", "demo_web/services/native/rrhh.py"),
 ]
 
 

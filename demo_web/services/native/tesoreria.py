@@ -119,7 +119,8 @@ def _pdf_url(demo, blob, archivo: str) -> str | None:
 
 def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
     dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
-    if dfp.empty:
+    dfp = filtrar_df_facturas_espino_lc(dfp)
+    if dfp is None or dfp.empty:
         return None
     dfp_show = dfp.rename(columns={
         "nro_documento": "N° DOCUMENTO",
@@ -195,7 +196,8 @@ def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | 
 
 def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
     dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
-    if dfp.empty:
+    dfp = filtrar_df_facturas_espino_lc(dfp)
+    if dfp is None or dfp.empty:
         return [], demo.f_peso(0), 0
     total = demo.f_peso(dfp["saldo"].sum())
     rows = []
