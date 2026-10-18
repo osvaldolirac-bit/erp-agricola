@@ -5,6 +5,7 @@ from flask import render_template, send_file, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.flujo_excel import build_flujo_mensual_xlsx, filename_flujo_excel
+from demo_web.services.lc_query_scope import cuarteles_operativos_lc, resumen_costos_flujo
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.native._helpers import (
     hoy_demo,
@@ -33,9 +34,10 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         )
         from erp_flujo_financiero import _mes_label
 
-        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        cuarteles = cuarteles_operativos_lc(demo)
+        resumen_costos = resumen_costos_flujo(demo, conn, nombre, fi, ff)
         df_flujo, df_cc, df_eg_cc, meta = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+            conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
         )
 
         flujo_rows = []
@@ -201,9 +203,10 @@ def export_flujo_excel(user_email: str, user_rol: str):
     try:
         from erp_flujo_financiero import armar_flujo_financiero
 
-        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        cuarteles = cuarteles_operativos_lc(demo)
+        resumen_costos = resumen_costos_flujo(demo, conn, nombre, fi, ff)
         df_flujo, _, _, _ = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+            conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
         )
     finally:
         conn.close()
