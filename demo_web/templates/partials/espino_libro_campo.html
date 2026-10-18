@@ -132,17 +132,22 @@
 {% endif %}
 
 {% else %}
-<div class="alert alert-primary small mb-3">
-  Al guardar una aplicación se archiva en Libro de Campo y se <strong>rebaja automáticamente</strong> el stock en
-  <strong><a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock') }}">Bodega</a></strong>.
-  Use entrada/salida manual en Bodega solo para ajustes.
+{% if lc_stock_error %}
+<div class="alert alert-danger small mb-3" role="alert">
+  <strong>No se pudo guardar:</strong> {{ lc_stock_error }}
+</div>
+{% endif %}
+<div class="alert alert-info small mb-3">
+  Si aumentó el <strong>stock manualmente</strong> en Bodega/inventario, al <strong>guardar</strong> la aplicación el sistema
+  registra un <strong>ingreso kardex</strong> por la diferencia y rebaja según ese saldo (hasta el stock que indicó).
+  También puede usar <a href="{{ url_for('modules.espino', temp=temp_sel, sec='bodega', op='stock') }}">Bodega → Entrada manual</a>.
 </div>
 {% if not productos_stock %}
 <div class="alert alert-warning">No hay productos con stock en bodega El Espino (Piriproxifen, Bioil spray, Cobre).</div>
 {% else %}
 <div class="panel-card mb-3">
   <h2 class="h6">Nueva orden N° {{ '%05d'|format(siguiente_app) }}</h2>
-  <p class="small text-muted">Cuartel fijo <strong>{{ cc_espino|default('EL ESPINO') }}</strong> · un evento puede incluir varios productos fitosanitarios.</p>
+  <p class="small text-muted">Sector = <strong>variedad</strong> del huerto · un evento puede incluir varios productos fitosanitarios.</p>
   <form method="post" id="lcEventoForm">
     <input type="hidden" name="action" value="lc_guardar_evento">
     <input type="hidden" name="sec" value="libro_campo">
@@ -150,7 +155,9 @@
     <input type="hidden" name="temp" value="{{ temp_sel }}">
     <div class="row g-2 mb-3" id="lcCabeceraFields">
       <div class="col-md-3"><label class="form-label small">Fecha aplicación</label><input type="date" name="fecha" class="form-control form-control-sm lc-cab" value="{{ form_fecha|default(hoy) }}" required></div>
-      <div class="col-md-3"><label class="form-label small">Cuartel</label><input type="text" class="form-control form-control-sm" value="{{ cc_espino|default('EL ESPINO') }}" readonly disabled></div>
+      <div class="col-md-3"><label class="form-label small">Variedad (sector)</label>
+        <select name="cuartel" id="lcCuartel" class="form-select form-select-sm lc-cab" required>{% for c in cuarteles %}<option value="{{ c }}" {% if c == form_cuartel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+      </div>
       <div class="col-md-3"><label class="form-label small">Especie</label>
         <select name="especie" class="form-select form-select-sm lc-cab">{% for e in especies %}<option value="{{ e }}" {% if e == form_especie %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
       </div>
@@ -164,6 +171,43 @@
         <select name="tractor" class="form-select form-select-sm lc-cab">{% for cod, etiq in tractor_opts %}<option value="{{ cod }}" {% if cod == form_tractor %}selected{% endif %}>{{ etiq }}</option>{% endfor %}</select>
       </div>
     </div>
+    {% if lc_car_items %}
+    <h2 class="h6 mt-3">Productos en este evento</h2>
+    {% for k in lc_car_kardex if k.desfase_manual %}
+    <div class="alert alert-warning py-2 small mb-2">
+      <strong>{{ k.producto }}:</strong> stock manual {{ k.inventario_fmt }} {{ k.um }} — al guardar se creará ingreso kardex
+      hasta ese saldo (disponible para esta aplicación: <strong>{{ k.pool_fmt }} {{ k.um }}</strong>).
+    </div>
+    {% endfor %}
+    {% for k in lc_car_kardex if k.supera_kardex and not k.desfase_manual %}
+    <div class="alert alert-danger py-2 small mb-2">
+      <strong>{{ k.producto }}:</strong> total pedido {{ k.pedido_fmt }} {{ k.um }} supera kardex disponible
+      ({{ k.pool_fmt }} {{ k.um }}).
+    </div>
+    {% endfor %}
+    <p class="small text-muted">Corrija el <strong>total</strong> (≤ máx. kardex) antes de guardar.</p>
+    <div class="table-responsive mb-2">
+      <table class="table table-sm table-bordered">
+        <thead><tr><th>Producto</th><th>Máx. usable</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total a usar</th><th>UM</th><th>PHI</th></tr></thead>
+        <tbody>{% for r in lc_car %}
+        {% set k = lc_car_kardex[loop.index0] if lc_car_kardex|length > loop.index0 else none %}
+        <tr class="{% if k and (k.supera_kardex or k.desfase_manual) %}table-danger{% endif %}">
+          <td>{{ r.producto }}</td>
+          <td class="fw-semibold">{% if k %}{{ k.pool_fmt }}{% else %}—{% endif %}</td>
+          <td>{{ r.lote }}</td><td>{{ r.ingrediente }}</td><td>{{ r.dosis }}</td>
+          <td>{{ r.unidad_dosis }}</td>
+          <td style="min-width:5rem">
+            <input type="text" name="gasto_linea_{{ loop.index0 }}" class="form-control form-control-sm js-decimal-coma"
+                   inputmode="decimal" autocomplete="off" value="{{ lc_car_items[loop.index0].gasto_total }}" required>
+          </td>
+          <td>{{ r.um_gasto }}</td><td>{{ r.dias_car }}</td>
+        </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <button type="submit" class="btn btn-primary btn-sm">Validar y guardar evento completo</button>
+    </div>
+    {% endif %}
   </form>
 </div>
 
@@ -180,7 +224,15 @@
       {% endfor %}
     </select>
   </form>
-  {% if stock_info %}<p class="small text-muted">Stock disponible: <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>{% endif %}
+  {% if stock_info %}
+  <p class="small text-muted mb-0">Máximo usable en Libro de Campo (kardex): <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong></p>
+  {% if lc_car_kardex %}
+    {% for k in lc_car_kardex if k.producto == prod_sel and k.desfase_manual %}
+  <p class="small text-muted mb-0">Disponible para esta aplicación: <strong>{{ stock_info.stock_fmt }} {{ stock_info.um }}</strong> (incluye stock manual si lo subió).</p>
+    {% endfor %}
+  {% endif %}
+  {% endif %}
+  <p class="small text-muted mb-0">Después de agregar, puede ajustar el total en la tabla del evento (arriba) antes de guardar.</p>
   {% if prod_sel and not pppl_ok %}<div class="alert alert-warning small py-2">Producto no autorizado en PPPL. Revise en GlobalGAP → PPPL.</div>{% endif %}
   <form method="post" class="row g-2" id="lcAddProdForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
     <input type="hidden" name="action" value="lc_agregar_producto">
@@ -202,26 +254,13 @@
 
 {% if lc_car %}
 <div class="panel-card mb-3">
-  <h2 class="h6">Productos en este evento</h2>
-  <div class="table-responsive mb-2">
-    <table class="table table-sm table-bordered">
-      <thead><tr><th>Producto</th><th>Lote</th><th>Ing. activo</th><th>Dosis/100L</th><th>Unidad</th><th>Total</th><th>UM</th><th>PHI días</th></tr></thead>
-      <tbody>{% for r in lc_car %}<tr>
-        <td>{{ r.producto }}</td><td>{{ r.lote }}</td><td>{{ r.ingrediente }}</td><td>{{ r.dosis }}</td>
-        <td>{{ r.unidad_dosis }}</td><td>{{ r.gasto_total }}</td><td>{{ r.um_gasto }}</td><td>{{ r.dias_car }}</td>
-      </tr>{% endfor %}</tbody>
-    </table>
-  </div>
-  <div class="d-flex gap-2">
-    <form method="post" id="lcPopForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
-      <input type="hidden" name="action" value="lc_pop_producto">
-      <input type="hidden" name="sec" value="libro_campo">
-      <input type="hidden" name="op" value="ingreso">
-      <input type="hidden" name="temp" value="{{ temp_sel }}">
-      <button type="submit" class="btn btn-outline-secondary btn-sm">Quitar último</button>
-    </form>
-    <button type="submit" form="lcEventoForm" class="btn btn-primary btn-sm">Validar y guardar evento completo</button>
-  </div>
+  <form method="post" id="lcPopForm" onsubmit="return window.lcSyncCabecera && window.lcSyncCabecera(this)">
+    <input type="hidden" name="action" value="lc_pop_producto">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="op" value="ingreso">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Quitar último producto</button>
+  </form>
 </div>
 {% else %}
 <div class="alert alert-info">Agregue uno o más productos al evento antes de guardar.</div>

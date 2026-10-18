@@ -8,9 +8,31 @@ from flask import request, session, url_for
 
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
-from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_form
+from demo_web.services.espino_scope import (
+    ESPECIE_LIBRO_CAMPO_ESPINO,
+    LEGADO_SECTOR_LC_ESPINO,
+    cuarteles_espino,
+    especies_libro_campo_espino,
+)
 
 CC_ESPINO = espino_bodega.CC_ESPINO
+
+
+def _variedades_libro() -> list[str]:
+    return cuarteles_espino()
+
+
+def _sectores_historial_espino() -> tuple[str, ...]:
+    return tuple({*(v.upper() for v in _variedades_libro()), CC_ESPINO.upper(), LEGADO_SECTOR_LC_ESPINO.upper()})
+
+
+def _sector_valido(raw: str) -> str | None:
+    u = (raw or "").strip().upper()
+    for v in _variedades_libro():
+        if v.upper() == u:
+            return v
+    return None
 CAR_KEY = "espino_lc_car"
 META_KEY = "espino_lc_evento_meta"
 
@@ -61,7 +83,61 @@ def _pop_alertas() -> dict:
     out: dict = {}
     if "espino_lc_rebaje_ok" in session:
         out["rebaje_bodega_ok"] = session.pop("espino_lc_rebaje_ok")
+    if "espino_lc_stock_error" in session:
+        out["lc_stock_error"] = session.pop("espino_lc_stock_error")
     return out
+
+
+def _materializar_ajustes_car(demo, conn, car: list[dict], fecha) -> None:
+    from demo_web.services.espino_bodega_stock import materializar_ajuste_manual_inventario
+
+    fe = str(fecha)[:10] if fecha else hoy_demo(demo).isoformat()
+    vistos: set[int] = set()
+    for prod in _totales_por_producto_en_car(car):
+        row = conn.execute(
+            "SELECT id FROM inventario WHERE UPPER(TRIM(producto))=?",
+            (prod.upper(),),
+        ).fetchone()
+        if not row:
+            continue
+        pid = int(row[0])
+        if pid in vistos:
+            continue
+        vistos.add(pid)
+        materializar_ajuste_manual_inventario(conn, pid, fecha=fe)
+
+
+def _kardex_por_producto_en_car(demo, conn, car: list[dict]) -> list[dict]:
+    from demo_web.services.espino_bodega_stock import stock_disponible_bodega, stock_inventario, stock_pool
+
+    filas: list[dict] = []
+    for item in car:
+        prod = str(item.get("producto") or "").strip()
+        if not prod:
+            continue
+        row = conn.execute(
+            "SELECT id, COALESCE(stock, 0), COALESCE(unidad_medida, ?) FROM inventario WHERE UPPER(TRIM(producto))=?",
+            (demo.DEFAULT_UNIDAD_INSUMO, prod.upper()),
+        ).fetchone()
+        if not row:
+            continue
+        pid, inv, um = int(row[0]), float(row[1] or 0), str(row[2])
+        pool = stock_pool(conn, pid)
+        disp = stock_disponible_bodega(conn, pid)
+        pedido = float(item.get("gasto_total") or 0)
+        filas.append(
+            {
+                "producto": prod,
+                "um": um,
+                "pool_fmt": demo.f_cantidad(disp),
+                "pool_raw": disp,
+                "inventario_fmt": demo.f_cantidad(inv),
+                "pedido_fmt": demo.f_cantidad(pedido),
+                "desfase_manual": inv > pool + 1e-6,
+                "supera_kardex": pedido > disp + 1e-9,
+            }
+        )
+    return filas
 
 
 def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tuple[str, str]]:
@@ -75,33 +151,19 @@ def _opciones_maquinaria(conn, tipos, permitir_vacio: bool = False) -> list[tupl
 
 
 def _productos_stock_espino(demo, conn) -> list[dict]:
-    stock_map = espino_bodega._stock_cc_map(conn)
-    dfi = pd.read_sql_query(
-        "SELECT id, producto, COALESCE(unidad_medida, ?) AS um FROM inventario ORDER BY producto",
-        conn,
-        params=(demo.DEFAULT_UNIDAD_INSUMO,),
+    from demo_web.services.espino_bodega_stock import productos_disponibles_libro_campo
+
+    return productos_disponibles_libro_campo(
+        conn, demo, es_bodega_fn=espino_bodega._es_producto_bodega_espino
     )
-    out = []
-    for _, r in dfi.iterrows():
-        if not espino_bodega._es_producto_bodega_espino(str(r["producto"])):
-            continue
-        stock = stock_map.get(int(r["id"]), 0.0)
-        if stock <= 0:
-            continue
-        out.append(
-            {
-                "producto": r["producto"],
-                "stock_fmt": demo.f_cantidad(stock),
-                "um": r["um"],
-            }
-        )
-    return out
 
 
 def _evento_meta_defaults(demo) -> dict:
+    variedades = _variedades_libro()
     return {
         "fecha": hoy_demo(demo).isoformat(),
-        "especie": "",
+        "cuartel": variedades[0] if variedades else "",
+        "especie": ESPECIE_LIBRO_CAMPO_ESPINO,
         "vol_agua": "",
         "aplicador": "",
         "op_cert": "",
@@ -114,7 +176,7 @@ def _guardar_evento_meta(demo, src=None) -> dict:
     """Guarda cabecera del evento en sesión (sobrevive a agregar producto / cambio de prod)."""
     src = src if src is not None else request.values
     meta = session.get(META_KEY) or _evento_meta_defaults(demo)
-    for key in ("fecha", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
+    for key in ("fecha", "cuartel", "especie", "vol_agua", "aplicador", "maquinaria", "tractor"):
         if key not in src:
             continue
         val = (src.get(key) or "").strip()
@@ -130,8 +192,8 @@ def _leer_evento_meta(demo) -> dict:
     base = _evento_meta_defaults(demo)
     meta = session.get(META_KEY) or {}
     out = {**base, **{k: meta.get(k, base.get(k)) for k in base}}
-    if not out.get("especie") and getattr(demo, "GAP_ESPECIES", None):
-        out["especie"] = demo.GAP_ESPECIES[0]
+    if not out.get("especie"):
+        out["especie"] = ESPECIE_LIBRO_CAMPO_ESPINO
     return out
 
 
@@ -139,9 +201,9 @@ def _siguiente_n_aplicacion(conn) -> int:
     """Correlativo propio El Espino (no hereda n° del Libro de Campo global)."""
     res = conn.execute(
         "SELECT MAX(CAST(n_aplicacion AS INTEGER)) FROM libro_campo "
-        "WHERE UPPER(sector)=? AND n_aplicacion GLOB '[0-9]*' "
+        "WHERE n_aplicacion GLOB '[0-9]*' "
         "AND CAST(n_aplicacion AS INTEGER) < ?",
-        (CC_ESPINO.upper(), _N_APP_HIST_MIN),
+        (_N_APP_HIST_MIN,),
     ).fetchone()[0]
     return int(res) + 1 if res is not None else 1
 
@@ -188,13 +250,15 @@ def _ingreso(demo, conn) -> dict:
         "siguiente_app": siguiente,
         "hoy": meta.get("fecha") or hoy_demo(demo).isoformat(),
         "form_fecha": meta.get("fecha") or hoy_demo(demo).isoformat(),
+        "form_cuartel": meta.get("cuartel") or (_variedades_libro()[0] if _variedades_libro() else ""),
+        "cuarteles": _variedades_libro(),
         "form_especie": meta.get("especie") or "",
         "form_vol_agua": meta.get("vol_agua") or "",
         "form_aplicador": meta.get("aplicador") or "",
         "form_op_cert": bool(meta.get("op_cert")),
         "form_maquinaria": meta.get("maquinaria") or "",
         "form_tractor": meta.get("tractor") or "",
-        "especies": demo.GAP_ESPECIES,
+        "especies": especies_libro_campo_espino(),
         "productos_stock": productos,
         "prod_sel": prod_sel,
         "stock_info": stock_info,
@@ -205,6 +269,8 @@ def _ingreso(demo, conn) -> dict:
         "maquinaria_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "tractor_opts": _opciones_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR, permitir_vacio=True),
         "lc_car": car_rows,
+        "lc_car_items": car,
+        "lc_car_kardex": _kardex_por_producto_en_car(demo, conn, car) if car else [],
     }
 
 
@@ -217,8 +283,10 @@ def _historial(demo, conn) -> dict:
     q_prod = (request.args.get("q") or "").strip()
     q_app = (request.args.get("n_app") or "").strip()
 
-    filtros = ["fecha BETWEEN ? AND ?", "UPPER(sector)=?"]
-    params: list = [str(fi), str(ff), CC_ESPINO.upper()]
+    sectores = _sectores_historial_espino()
+    placeholders = ",".join("?" for _ in sectores)
+    filtros = ["fecha BETWEEN ? AND ?", f"UPPER(sector) IN ({placeholders})"]
+    params: list = [str(fi), str(ff), *sectores]
     if q_prod:
         filtros.append(
             "(UPPER(COALESCE(producto,'')) LIKE ? OR UPPER(COALESCE(ingrediente,'')) LIKE ?)"
@@ -346,11 +414,15 @@ def _desfase(demo, conn) -> dict:
     dias_v = max(1, min(60, dias_v))
 
     df_lc_sin, df_bod_sin = demo._calcular_desfaces_lc_bodega(conn, fi, ff, dias_v)
-    cc_u = CC_ESPINO.upper()
+    sectores = _sectores_historial_espino()
     if not df_lc_sin.empty and "CUARTEL" in df_lc_sin.columns:
-        df_lc_sin = df_lc_sin[df_lc_sin["CUARTEL"].astype(str).str.upper() == cc_u]
+        df_lc_sin = df_lc_sin[
+            df_lc_sin["CUARTEL"].astype(str).str.upper().isin(sectores)
+        ]
     if not df_bod_sin.empty and "CUARTEL" in df_bod_sin.columns:
-        df_bod_sin = df_bod_sin[df_bod_sin["CUARTEL"].astype(str).str.upper() == cc_u]
+        df_bod_sin = df_bod_sin[
+            df_bod_sin["CUARTEL"].astype(str).str.upper().isin(sectores)
+        ]
 
     lc_rows = df_lc_sin.fillna("").to_dict(orient="records") if not df_lc_sin.empty else []
     bod_rows = df_bod_sin.fillna("").to_dict(orient="records") if not df_bod_sin.empty else []
@@ -363,6 +435,46 @@ def _desfase(demo, conn) -> dict:
         "filtro_hasta": ff.isoformat(),
         "ventana_dias": dias_v,
     }
+
+
+def _aplicar_cantidades_guardar(car: list[dict]) -> str | None:
+    """Lee gasto_linea_N del POST al validar/guardar (totales editables en tabla)."""
+    for i, item in enumerate(car):
+        raw = request.form.get(f"gasto_linea_{i}")
+        if raw is None or not str(raw).strip():
+            continue
+        qty = parse_decimal_form(str(raw), None)
+        if qty is None or qty < 0:
+            prod = item.get("producto") or f"línea {i + 1}"
+            return f"Cantidad inválida para {prod}."
+        item["gasto_total"] = float(qty)
+    return None
+
+
+def _totales_por_producto_en_car(car: list[dict]) -> dict[str, float]:
+    acc: dict[str, float] = {}
+    for item in car:
+        prod = str(item.get("producto") or "").strip()
+        if not prod:
+            continue
+        acc[prod] = acc.get(prod, 0.0) + float(item.get("gasto_total") or 0)
+    return acc
+
+
+def _msg_validacion_stock_car(demo, conn, car: list[dict]) -> str | None:
+    for prod, cant in _totales_por_producto_en_car(car).items():
+        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
+            demo, conn, cant, producto=prod
+        )
+        if not ok:
+            hint = (
+                " Si cambió el «Total producto» en el formulario, use «Quitar último» "
+                "y vuelva a «Agregar producto» (la tabla del evento guarda la cantidad al agregar)."
+            )
+            full = (msg or "Stock insuficiente.") + hint
+            session["espino_lc_stock_error"] = full
+            return full
+    return None
 
 
 def post_agregar_producto(demo, conn) -> dict:
@@ -382,7 +494,7 @@ def post_agregar_producto(demo, conn) -> dict:
     from erp_inventario_ia import resolver_ingrediente_activo
 
     um_prod = demo._um_producto_inventario(conn, prod)
-    car = session.get(CAR_KEY, [])
+    car = list(session.get(CAR_KEY, []))
     car.append(
         {
             "producto": prod,
@@ -396,14 +508,23 @@ def post_agregar_producto(demo, conn) -> dict:
             "dias_car": dias_car,
         }
     )
+    err = _msg_validacion_stock_car(demo, conn, car)
+    if err:
+        return {"ok": False, "msg": err}
     session[CAR_KEY] = car
     return {"ok": True, "msg": f"Producto {prod} agregado al evento.", "extra": {"op": "ingreso"}}
 
 
 def post_guardar_evento(demo, conn) -> dict:
-    car = session.get(CAR_KEY, [])
+    car = list(session.get(CAR_KEY, []))
     if not car:
         return {"ok": False, "msg": "Agregue al menos un producto al evento."}
+    err_qty = _aplicar_cantidades_guardar(car)
+    if err_qty:
+        return {"ok": False, "msg": err_qty}
+    session[CAR_KEY] = car
+    fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    _materializar_ajustes_car(demo, conn, car, fe_app)
     maquinaria = (request.form.get("maquinaria") or "").strip()
     aplicador = (request.form.get("aplicador") or "").strip()
     try:
@@ -417,30 +538,26 @@ def post_guardar_evento(demo, conn) -> dict:
     if total_agua <= 0:
         return {"ok": False, "msg": "Ingrese el volumen total de agua aplicada."}
 
-    fe_app = parse_date(request.form.get("fecha"), hoy_demo(demo))
-    especie = request.form.get("especie") or demo.GAP_ESPECIES[0]
+    sector = _sector_valido(request.form.get("cuartel") or "")
+    if not sector:
+        return {"ok": False, "msg": "Seleccione la variedad (sector) de la aplicación."}
+    especie = (request.form.get("especie") or "").strip() or ESPECIE_LIBRO_CAMPO_ESPINO
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
-    for item in car:
-        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
-            demo,
-            conn,
-            float(item.get("gasto_total") or 0),
-            producto=str(item.get("producto") or ""),
-        )
-        if not ok:
-            return {"ok": False, "msg": msg}
+    err = _msg_validacion_stock_car(demo, conn, car)
+    if err:
+        return {"ok": False, "msg": err}
 
     n_app = _siguiente_n_aplicacion(conn)
-    n_orden = _siguiente_n_orden(conn)
+    n_orden = _siguiente_n_orden(conn, sector)
 
     for item in car:
         demo._insertar_linea_libro_campo(
             conn,
             fe_app,
             n_app,
-            CC_ESPINO,
+            sector,
             especie,
             item,
             total_agua,
@@ -458,12 +575,14 @@ def post_guardar_evento(demo, conn) -> dict:
             float(item.get("gasto_total") or 0),
             producto=str(item.get("producto") or ""),
             fecha=fe_app,
+            centro_costo=sector,
         )
         if not ok:
+            conn.rollback()
             return {"ok": False, "msg": msg}
     conn.commit()
     prods_txt = ", ".join(i["producto"] for i in car)
-    demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {CC_ESPINO} · {prods_txt}")
+    demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {sector} · {prods_txt}")
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
     rebajes = [
