@@ -52,6 +52,10 @@ def match_producto_id(conn: sqlite3.Connection, nombre: str) -> int | None:
     return None
 
 
+def _fecha_cmp(fecha: str) -> str:
+    return str(fecha or "").strip()[:10]
+
+
 def origen_compra_ingreso(
     conn: sqlite3.Connection,
     producto_id: int,
@@ -61,19 +65,24 @@ def origen_compra_ingreso(
 ) -> str | None:
     """Busca factura agro que explique un ingreso kardex (nro doc + fecha compra)."""
     nombre_u = (producto_nombre or "").upper().strip()
+    f_mov = _fecha_cmp(fecha)
+    candidatos: list[tuple[str, str, str]] = []
     for nro, fcompra, concepto in conn.execute(
         """SELECT nro_documento, fecha_compra, concepto FROM facturas
            WHERE nro_documento NOT LIKE '%_P' AND concepto IS NOT NULL
-           ORDER BY fecha_compra, id"""
+             AND date(fecha_compra)=date(?)
+           ORDER BY fecha_compra, id""",
+        (f_mov,),
     ):
-        if str(fcompra) != str(fecha):
-            continue
         for item in parse_concepto_compra(str(concepto or "")):
-            if abs(float(item["cantidad"]) - cant) > 1e-4:
+            if abs(float(item["cantidad"]) - float(cant)) > 1e-4:
                 continue
             pid = match_producto_id(conn, item["producto"])
-            if pid == producto_id:
-                return f"Compra N° {nro} ({fcompra})"
-            if item["producto"].upper().strip() == nombre_u:
-                return f"Compra N° {nro} ({fcompra})"
-    return None
+            item_u = item["producto"].upper().strip()
+            if pid == producto_id or item_u == nombre_u or nombre_u in item_u or item_u in nombre_u:
+                candidatos.append((str(nro), _fecha_cmp(fcompra), str(concepto or "")))
+                break
+    if not candidatos:
+        return None
+    nro, fcompra, _ = max(candidatos, key=lambda t: (t[1], t[0]))
+    return f"Compra N° {nro} ({fcompra})"

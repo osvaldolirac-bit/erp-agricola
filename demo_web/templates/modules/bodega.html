@@ -207,7 +207,7 @@
   </div>
   {% if kardex_lc_pendientes %}
   <div class="alert alert-warning small">
-    <strong>Libro de Campo sin salida de bodega registrada</strong> (aparecen en la cuenta corriente como referencia):
+    <strong>Libro de Campo sin salida de bodega registrada</strong> (referencia; no altera el saldo de bodega):
     {% for lc in kardex_lc_pendientes %}
     App N° {{ '%05d'|format(lc.n_app) }} · {{ lc.fecha }} · {{ lc.sector }} · −{{ lc.gasto }} {{ kardex_producto.um }}{% if not loop.last %} · {% endif %}
     {% endfor %}

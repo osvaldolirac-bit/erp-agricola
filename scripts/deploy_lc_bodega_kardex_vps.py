@@ -16,6 +16,8 @@ FILES = [
     "demo_web/services/bodega_kardex.py",
     "demo_web/services/native/bodega.py",
     "demo_web/templates/modules/bodega.html",
+    "demo_web/templates/stock_bodega_rapido.html",
+    "demo_web/static/css/erp.css",
     "scripts/repair_lc_bodega_salidas_desde_libro_vps.py",
 ]
 

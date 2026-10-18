@@ -207,24 +207,7 @@ def _build_kardex_rows(
             )
         )
 
-    for lc in lc_lineas:
-        if lc.get("_used") or float(lc.get("gasto") or 0) <= 0:
-            continue
-        lc["_synthetic"] = True
-        rows.append(
-            _kardex_row(
-                demo,
-                row_id=-int(lc["n_app"] or 0),
-                fecha=str(lc["fecha"] or "")[:10],
-                tipo="Salida",
-                qty=float(lc["gasto"]),
-                cuartel=(lc.get("sector") or "").strip() or "—",
-                origen=f"LC App N° {int(lc['n_app']):05d} · sin salida bodega",
-                saldo=0.0,
-            )
-        )
-
-    rows.sort(key=_row_sort_key)
+    # Salidas LC sin movimiento bodega → solo kardex_lc_pendientes (no mezclar saldo).
 
     if stock_objetivo is not None:
         ing = sum(r["cant_raw"] for r in rows if r["tipo"] == "Ingreso")
@@ -240,11 +223,12 @@ def _build_kardex_rows(
                     tipo="Ingreso",
                     qty=apertura,
                     cuartel=ETIQUETA_BODEGA,
-                    origen="Stock inicial / apertura",
+                    origen="Stock anterior / arrastre",
                     saldo=0.0,
                 ),
             )
 
+    rows.sort(key=_row_sort_key)
     _recalc_kardex_saldos(demo, rows)
     return rows
 
@@ -355,9 +339,7 @@ def gather_kardex_producto(
     lc_sin_par = [
         lc
         for lc in lc_lineas
-        if not lc.get("_used")
-        and not lc.get("_synthetic")
-        and float(lc.get("gasto") or 0) > 0
+        if not lc.get("_used") and float(lc.get("gasto") or 0) > 0
     ]
 
     ing_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Ingreso")
