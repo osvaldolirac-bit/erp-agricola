@@ -52,10 +52,14 @@ def nombre_erp(demo: Any = None) -> str:
 
 def tenant_slug() -> str:
     try:
-        from flask import g, has_request_context, session
+        from flask import g, has_app_context, has_request_context, session
 
+        if has_app_context():
+            slug = getattr(g, "tenant_slug", None)
+            if slug:
+                return str(slug).strip().lower()
         if has_request_context():
-            slug = getattr(g, "tenant_slug", None) or session.get("tenant_slug")
+            slug = session.get("tenant_slug")
             if slug:
                 return str(slug).strip().lower()
     except Exception:
