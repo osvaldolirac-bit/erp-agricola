@@ -809,6 +809,18 @@ def _post_corregir_factura(demo, conn) -> dict:
     if nmonto <= 0:
         return {"ok": False, "msg": "El monto bruto debe ser superior a $0."}
 
+    if is_espino_tenant():
+        row_pago = conn.execute(
+            "SELECT COALESCE(estado,''), COALESCE(monto_pagado,0) FROM facturas WHERE id=?",
+            (fid,),
+        ).fetchone()
+        if row_pago:
+            ok_pago, msg_pago = validar_estado_pago_coherente(
+                str(row_pago[0]), nmonto, float(row_pago[1] or 0),
+            )
+            if not ok_pago:
+                return {"ok": False, "msg": msg_pago}
+
     razones = list(razones_sociales_compras(demo))
     if nrazon not in razones and razones:
         nrazon = razones[0]

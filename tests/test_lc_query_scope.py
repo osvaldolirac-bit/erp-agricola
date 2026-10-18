@@ -6,6 +6,7 @@ import unittest
 import pandas as pd
 
 from demo_web.services.lc_query_scope import (
+    cuarteles_costos_lc,
     es_razon_social_espino_excluida,
     filtrar_df_facturas_espino_lc,
     sql_and_excluir_razon_social_espino,
