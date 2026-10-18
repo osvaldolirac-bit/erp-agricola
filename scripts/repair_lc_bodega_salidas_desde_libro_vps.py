@@ -33,6 +33,7 @@ def main() -> int:
     p.add_argument("--desde", default="", help="Fecha inicio YYYY-MM-DD (default: hoy-365d)")
     p.add_argument("--hasta", default="", help="Fecha fin YYYY-MM-DD (default: hoy)")
     p.add_argument("--ventana", type=int, default=DEFAULT_VENTANA_DIAS)
+    p.add_argument("--n-app", type=int, default=0, help="Solo líneas de esta N° aplicación LC")
     p.add_argument("--backup", action="store_true", help="Copia .bak antes de --apply")
     args = p.parse_args()
 
@@ -54,7 +55,11 @@ def main() -> int:
     conn.row_factory = sqlite3.Row
     try:
         lc_sin = listar_lc_sin_salida_bodega(conn, fi, ff, ventana_dias=args.ventana)
+        if args.n_app:
+            lc_sin = [lc for lc in lc_sin if int(lc.get("n_app") or 0) == int(args.n_app)]
         print(f"Ventana LC↔bodega: {args.ventana} días · rango LC {fi} … {ff}")
+        if args.n_app:
+            print(f"Filtro: solo aplicación N° {int(args.n_app):05d}")
         print(f"Líneas LC sin salida emparejable: {len(lc_sin)}")
 
         ok = skip = fail = 0
