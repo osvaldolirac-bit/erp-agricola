@@ -34,8 +34,88 @@ def cuarteles_costos_lc(cuarteles: list[str] | None) -> list[str]:
 
 
 def cuarteles_matriz_costos_lc(cuarteles: list[str] | None) -> list[str]:
-    """Cuarteles visibles en módulo Costos LC (incluye EL ESPINO para petróleo e imputaciones)."""
+    """Cuarteles visibles en módulo Costos LC (incluye EL ESPINO solo para salidas petróleo)."""
     return list(cuarteles or [])
+
+
+RUBRO_PETROLEO_COSTOS = "Petróleo"
+
+
+def _columna_cc_en_matriz(matriz: pd.DataFrame, cc: str) -> str | None:
+    cc_u = str(cc or "").upper().strip()
+    for col in matriz.columns:
+        if str(col).upper().strip() == cc_u:
+            return str(col)
+    return None
+
+
+def _sum_petroleo_salidas_cc(conn, cc: str, fi=None, ff=None) -> float:
+    cc_u = str(cc or "").upper().strip()
+    if fi and ff:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(valor_imputado), 0)
+               FROM petroleo
+               WHERE UPPER(TRIM(centro_costo)) = ?
+                 AND LOWER(TRIM(tipo)) = 'salida'
+                 AND ABS(COALESCE(valor_imputado, 0)) > 0.01
+                 AND fecha BETWEEN ? AND ?""",
+            (cc_u, str(fi), str(ff)),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(valor_imputado), 0)
+               FROM petroleo
+               WHERE UPPER(TRIM(centro_costo)) = ?
+                 AND LOWER(TRIM(tipo)) = 'salida'
+                 AND ABS(COALESCE(valor_imputado, 0)) > 0.01""",
+            (cc_u,),
+        ).fetchone()
+    return float(row[0] or 0) if row else 0.0
+
+
+def matriz_costos_cc_espino_solo_petroleo_lc(
+    conn,
+    matriz: pd.DataFrame | None,
+    fi=None,
+    ff=None,
+    cc: str = CUARTEL_ESPINO_LC,
+) -> pd.DataFrame | None:
+    """En Costos LC, columna EL ESPINO = solo rubro Petróleo (salidas imputadas)."""
+    if not _lc_excluir() or matriz is None or matriz.empty:
+        return matriz
+    col = _columna_cc_en_matriz(matriz, cc)
+    if not col:
+        return matriz
+    pet = _sum_petroleo_salidas_cc(conn, cc, fi, ff)
+    cierre = {"TOTAL GASTO", "PRESUPUESTO", "SALDO"}
+    body = matriz[~matriz["Rubro"].isin(cierre)].copy()
+    body[col] = 0.0
+    rubro_norm = RUBRO_PETROLEO_COSTOS.casefold()
+    mask = body["Rubro"].astype(str).str.strip().str.casefold() == rubro_norm
+    if mask.any():
+        body.loc[mask, col] = pet
+    if "TOTAL" in body.columns:
+        skip = {"Rubro", "TOTAL", "% Total"}
+        cc_cols = [c for c in body.columns if c not in skip]
+        body["TOTAL"] = body[cc_cols].sum(axis=1)
+    ppto = matriz[matriz["Rubro"] == "PRESUPUESTO"]
+    if not ppto.empty:
+        body = pd.concat([body, ppto], ignore_index=True)
+    return _recomputar_cierre_matriz(body)
+
+
+def filtrar_detalle_cc_solo_petroleo_lc(
+    df: pd.DataFrame | None,
+    cc: str | None = None,
+) -> pd.DataFrame | None:
+    if not _lc_excluir() or df is None or df.empty:
+        return df
+    if cc and str(cc).upper().strip() != CUARTEL_ESPINO_LC:
+        return df
+    if "Rubro" not in df.columns:
+        return df
+    rub = df["Rubro"].astype(str).str.strip().str.casefold()
+    return df.loc[rub == RUBRO_PETROLEO_COSTOS.casefold()].copy().reset_index(drop=True)
 
 
 def cuarteles_operativos_lc(demo: Any) -> list[str]:

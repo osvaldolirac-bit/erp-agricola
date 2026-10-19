@@ -5,9 +5,12 @@ from flask import render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.lc_query_scope import (
+    CUARTEL_ESPINO_LC,
     ajustar_matriz_costos_excluir_espino_lc,
     cuarteles_matriz_costos_lc,
+    filtrar_detalle_cc_solo_petroleo_lc,
     filtrar_detalle_movimientos_espino_lc,
+    matriz_costos_cc_espino_solo_petroleo_lc,
 )
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.tenant_scope import cuarteles_oficiales
@@ -183,6 +186,7 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
         matriz = ajustar_matriz_costos_excluir_espino_lc(
             conn, demo, matriz, cuarteles_full, det_fi, det_ff,
         )
+        matriz = matriz_costos_cc_espino_solo_petroleo_lc(conn, matriz, det_fi, det_ff)
 
         matriz_cols, matriz_rows = [], []
         detalle_cols, detalle_rows = [], []
@@ -280,6 +284,8 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
                     conn, vista, prorr, det_fi, det_ff, fi, ff,
                 )
                 df_mov = filtrar_detalle_movimientos_espino_lc(conn, df_mov)
+                if str(vista).upper().strip() == CUARTEL_ESPINO_LC:
+                    df_mov = filtrar_detalle_cc_solo_petroleo_lc(df_mov, vista)
                 if df_mov is not None and not df_mov.empty:
                     df_mov = df_mov.copy()
                     df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")
