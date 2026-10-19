@@ -195,6 +195,8 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     demo = get_demo_module()
     bind_user_session(user_email, rol)
     opts = demo.construir_menu_usuario(user_email, rol)
+    modulos_menu = set(opts.values())
+    badge_by_key: dict[str, int] = {}
     conn = demo.conectar_db()
     try:
         try:
@@ -203,12 +205,9 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
             opts = aplicar_badge_menu_soporte(opts, conn, demo.es_admin)
         except Exception:
             pass
-        try:
-            from erp_maquinaria import aplicar_badge_menu_maquinaria
+        from demo_web.services.sidebar_badges import conteos_sidebar
 
-            opts = aplicar_badge_menu_maquinaria(opts, conn)
-        except Exception:
-            pass
+        badge_by_key = conteos_sidebar(conn, modulos_menu)
     finally:
         conn.close()
 
@@ -254,12 +253,13 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     for label, key in opts.items():
         endpoint = slug_map.get(key)
         if endpoint:
-            items.append(
-                {
-                    "label": label,
-                    "key": key,
-                    "endpoint": endpoint,
-                    "icon": icon_map.get(key, "bi-circle"),
-                }
-            )
+            item = {
+                "label": label,
+                "key": key,
+                "endpoint": endpoint,
+                "icon": icon_map.get(key, "bi-circle"),
+            }
+            if key in badge_by_key:
+                item["badge_count"] = badge_by_key[key]
+            items.append(item)
     return items

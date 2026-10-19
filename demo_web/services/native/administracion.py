@@ -11,6 +11,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
+from demo_web.services.tenant_scope import is_espino_tenant
 
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
 SECCION_DEFS = [
@@ -380,6 +381,10 @@ def _gather_flujo(demo, conn) -> dict:
     temp_nombre, fi, ff = temporada_sel(demo, "temp")
     meses = list(iter_meses_rango(fi, ff))
     ing = cargar_ingresos_cc(conn, temp_nombre)
+    if is_espino_tenant():
+        from demo_web.services.flujo_espino import normalizar_mapa_ingresos_cc
+
+        ing = normalizar_mapa_ingresos_cc(ing, list(demo.CUARTELES_OFICIALES))
     notas = cargar_notas_ingresos_cc(conn, temp_nombre)
     caja_ini = cargar_saldo_caja_inicial(conn, temp_nombre)
     es_vigente = fi <= demo.hoy <= ff

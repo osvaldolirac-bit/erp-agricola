@@ -1001,8 +1001,10 @@ def cerrar_caso_maquinaria(conn, cod_registro, etiqueta_cierre="Cerrado conforme
 
 
 def aplicar_badge_menu_maquinaria(opts, conn):
-    """Legacy no-op: el contador lo arma build_menu (badge_count en sidebar)."""
-    return opts
+    """Streamlit: (N) en label. Flask: build_menu + sidebar_badges.badge_count."""
+    from demo_web.services.sidebar_badges import aplicar_badges_labels_menu
+
+    return aplicar_badges_labels_menu(opts, conn)
 
 
 MAQ_WIDGET_CSS = """
