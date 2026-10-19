@@ -4,7 +4,14 @@ import pandas as pd
 from flask import render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.lc_query_scope import (
+    ajustar_matriz_costos_excluir_espino_lc,
+    cuarteles_costos_lc,
+    filtrar_detalle_movimientos_espino_lc,
+    ocultar_cuartel_espino_en_matriz_lc,
+)
 from demo_web.services.module_runner import store_pdf
+from demo_web.services.tenant_scope import cuarteles_oficiales
 from demo_web.services.native._helpers import (
     hoy_demo,
     avance_ppto_badge_tone,
@@ -152,7 +159,10 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     hoy = hoy_demo(demo)
     es_vigente = fi <= hoy <= ff
 
-    cuarteles = demo.CUARTELES_OFICIALES
+    cuarteles_full = list(cuarteles_oficiales(demo) or [])
+    cuarteles = cuarteles_costos_lc(cuarteles_full)
+    if not cuarteles:
+        cuarteles = cuarteles_full
     vistas = [("resumen", "📊 Resumen")] + [(c, c) for c in cuarteles]
     vista = request.args.get("vista", "resumen")
     if vista != "resumen" and vista not in cuarteles:
@@ -164,15 +174,19 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
         fi_cons, ff_cons = demo._rango_fechas_costos_consulta(conn, fi, ff, es_vigente) if es_vigente else (fi, ff)
         if es_vigente:
             matriz = demo._armar_matriz_costos_vista_b(
-                conn, fi_cons, ff_cons, cuarteles, prorr, nombre,
+                conn, fi_cons, ff_cons, cuarteles_full, prorr, nombre,
                 fi_rrhh=fi, ff_rrhh=ff,
             )
             det_fi, det_ff = fi_cons, ff_cons
         else:
             matriz = demo._armar_matriz_costos_vista_b(
-                conn, fi, ff, cuarteles, prorr, nombre,
+                conn, fi, ff, cuarteles_full, prorr, nombre,
             )
             det_fi, det_ff = fi, ff
+        matriz = ajustar_matriz_costos_excluir_espino_lc(
+            conn, demo, matriz, cuarteles_full, det_fi, det_ff,
+        )
+        matriz = ocultar_cuartel_espino_en_matriz_lc(matriz)
 
         matriz_cols, matriz_rows = [], []
         detalle_cols, detalle_rows = [], []
@@ -269,7 +283,8 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
                 df_mov = demo._obtener_detalle_gastos_cc(
                     conn, vista, prorr, det_fi, det_ff, fi, ff,
                 )
-                if not df_mov.empty:
+                df_mov = filtrar_detalle_movimientos_espino_lc(conn, df_mov)
+                if df_mov is not None and not df_mov.empty:
                     df_mov = df_mov.copy()
                     df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")
                     # Filtrar/ordenar con fecha real; formatear después
