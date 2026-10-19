@@ -6,6 +6,8 @@ Uso:
   python3 scripts/deploy_robustez_lc_espino_vps.py --check  # solo valida manifest local
 
 Requiere SSH al VPS (SSHPASS opcional).
+
+Política del repo: `.cursor/rules/erp-agricola-vps-deploy.mdc`
 """
 from __future__ import annotations
 
