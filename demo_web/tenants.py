@@ -57,7 +57,7 @@ def _build_tenants() -> dict[str, dict[str, Any]]:
             "nombre_erp": "ERP Agrícola El Espino",
             "db": _env("ERP_ESPINO_DB", "/root/espino/erp_espino.db"),
             "secrets": _env("ERP_ESPINO_SECRETS", "/root/espino/.streamlit/secrets.toml"),
-            "descripcion": "El Espino — BD propia; reglas en tenant_scope",
+            "descripcion": "El Espino",
         },
         "demo": {
             "slug": "demo",
