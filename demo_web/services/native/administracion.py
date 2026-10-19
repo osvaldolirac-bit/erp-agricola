@@ -388,6 +388,7 @@ def _gather_flujo(demo, conn) -> dict:
     notas = cargar_notas_ingresos_cc(conn, temp_nombre)
     caja_ini = cargar_saldo_caja_inicial(conn, temp_nombre)
     es_vigente = fi <= demo.hoy <= ff
+    from demo_web.services.native._helpers import format_monto_input_cl
 
     filas = []
     flujo_cuarteles = []
@@ -406,6 +407,7 @@ def _gather_flujo(demo, conn) -> dict:
                     "mes": mes,
                     "label": lbl,
                     "monto": float(monto),
+                    "monto_input": format_monto_input_cl(monto),
                     "nota": notas.get((cc, anio, mes), ""),
                 }
             )
@@ -431,6 +433,7 @@ def _gather_flujo(demo, conn) -> dict:
         "flujo_totales_mes": totales_mes,
         "flujo_cuarteles": flujo_cuarteles,
         "caja_inicial": float(caja_ini),
+        "caja_inicial_input": format_monto_input_cl(caja_ini),
         "caja_inicial_fmt": demo.f_peso(caja_ini),
         "flujo_meses_txt": meses_txt,
         "flujo_vigente": es_vigente,
@@ -1049,6 +1052,7 @@ def _post_editar_encargado(demo, conn) -> dict:
 
 def _post_guardar_ingresos_flujo(demo, conn) -> dict:
     from erp_flujo_financiero import (
+        _mes_label,
         guardar_ingresos_cc,
         guardar_saldo_caja_inicial,
         iter_meses_rango,
@@ -1065,9 +1069,10 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
     if fi is None:
         return {"ok": False, "msg": "Temporada no encontrada."}
     meses = list(iter_meses_rango(fi, ff))
-    try:
-        caja_ini = float(request.form.get("caja_inicial") or 0)
-    except ValueError:
+    from demo_web.services.native._helpers import parse_decimal_cl
+
+    caja_ini = parse_decimal_cl(request.form.get("caja_inicial"), default=None)
+    if caja_ini is None:
         return {"ok": False, "msg": "Saldo caja inicial inválido."}
     ing_cc = {}
     notas_cc = {}
@@ -1075,10 +1080,9 @@ def _post_guardar_ingresos_flujo(demo, conn) -> dict:
         for anio, mes in meses:
             key = f"ing_{cc}_{anio}_{mes}"
             nota_key = f"nota_{cc}_{anio}_{mes}"
-            try:
-                monto = float(request.form.get(key) or 0)
-            except ValueError:
-                return {"ok": False, "msg": f"Monto inválido en {cc}."}
+            monto = parse_decimal_cl(request.form.get(key), default=None)
+            if monto is None:
+                return {"ok": False, "msg": f"Monto inválido en {cc} ({_mes_label(anio, mes)})."}
             ing_cc[(cc, anio, mes)] = monto
             notas_cc[(cc, anio, mes)] = (request.form.get(nota_key) or "").strip()
     guardar_ingresos_cc(conn, temp, ing_cc, notas_cc)

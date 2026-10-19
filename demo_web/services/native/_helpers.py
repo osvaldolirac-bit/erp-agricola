@@ -40,6 +40,29 @@ def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | No
         return default
 
 
+def format_monto_input_cl(v: float | None) -> str:
+    """Texto para inputs js-decimal-coma (pesos CL, sin símbolo $)."""
+    if v is None:
+        return "0"
+    x = float(v)
+    if abs(x - round(x)) < 1e-6:
+        n = int(round(x))
+        if n == 0:
+            return "0"
+        neg = n < 0
+        n = abs(n)
+        s = str(n)
+        out: list[str] = []
+        while len(s) > 3:
+            out.append(s[-3:])
+            s = s[:-3]
+        out.append(s)
+        body = ".".join(reversed(out))
+        return f"-{body}" if neg else body
+    s = f"{x:.2f}".rstrip("0").rstrip(".")
+    return s.replace(".", ",")
+
+
 def temporada_sel(demo, param: str = "temp", temporadas=None) -> tuple[str, date, date]:
     from flask import request
 

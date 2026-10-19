@@ -5,7 +5,8 @@ from flask import render_template, send_file, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.flujo_excel import build_flujo_mensual_xlsx, filename_flujo_excel
-from demo_web.services.lc_query_scope import cuarteles_operativos_lc, resumen_costos_flujo
+from demo_web.services.lc_query_scope import cuarteles_ingresos_flujo_lc, resumen_costos_flujo
+from demo_web.services.tenant_scope import is_concepcion_tenant, is_espino_tenant
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.native._helpers import (
     hoy_demo,
@@ -34,10 +35,29 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         )
         from erp_flujo_financiero import _mes_label
 
-        cuarteles = cuarteles_operativos_lc(demo)
+        if is_concepcion_tenant() or is_espino_tenant():
+            cuarteles = cuarteles_ingresos_flujo_lc(demo)
+        else:
+            from demo_web.services.lc_query_scope import cuarteles_operativos_lc
+
+            cuarteles = cuarteles_operativos_lc(demo)
         resumen_costos = resumen_costos_flujo(demo, conn, nombre, fi, ff)
+        imputar_gastado = False
+        try:
+            from demo_web.services.tenant_rules import flujo_imputar_gastado_contable
+
+            imputar_gastado = flujo_imputar_gastado_contable()
+        except Exception:
+            imputar_gastado = is_espino_tenant()
         df_flujo, df_cc, df_eg_cc, meta = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
+            conn,
+            nombre,
+            fi,
+            ff,
+            hoy,
+            cuarteles,
+            resumen_costos,
+            imputar_gastado_contable=imputar_gastado,
         )
 
         flujo_rows = []
@@ -203,10 +223,29 @@ def export_flujo_excel(user_email: str, user_rol: str):
     try:
         from erp_flujo_financiero import armar_flujo_financiero
 
-        cuarteles = cuarteles_operativos_lc(demo)
+        if is_concepcion_tenant() or is_espino_tenant():
+            cuarteles = cuarteles_ingresos_flujo_lc(demo)
+        else:
+            from demo_web.services.lc_query_scope import cuarteles_operativos_lc
+
+            cuarteles = cuarteles_operativos_lc(demo)
         resumen_costos = resumen_costos_flujo(demo, conn, nombre, fi, ff)
+        imputar_gastado = False
+        try:
+            from demo_web.services.tenant_rules import flujo_imputar_gastado_contable
+
+            imputar_gastado = flujo_imputar_gastado_contable()
+        except Exception:
+            imputar_gastado = is_espino_tenant()
         df_flujo, _, _, _ = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, cuarteles, resumen_costos,
+            conn,
+            nombre,
+            fi,
+            ff,
+            hoy,
+            cuarteles,
+            resumen_costos,
+            imputar_gastado_contable=imputar_gastado,
         )
     finally:
         conn.close()

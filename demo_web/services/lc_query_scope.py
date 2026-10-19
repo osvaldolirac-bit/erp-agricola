@@ -126,6 +126,13 @@ def cuarteles_operativos_lc(demo: Any) -> list[str]:
     return filtered if filtered else full
 
 
+def cuarteles_ingresos_flujo_lc(demo: Any) -> list[str]:
+    """Ingresos flujo / Administración: todos los CC oficiales (incluye EL ESPINO en LC)."""
+    from demo_web.services.tenant_scope import cuarteles_oficiales
+
+    return list(cuarteles_oficiales(demo) or [])
+
+
 def resumen_costos_flujo(demo: Any, conn, temporada: str, fi, ff) -> dict:
     if _lc_excluir():
         return resumen_costos_para_flujo_lc(conn, demo, temporada, fi, ff)

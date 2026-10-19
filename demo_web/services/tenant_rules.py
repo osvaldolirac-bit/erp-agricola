@@ -14,10 +14,19 @@ LC_TENANT_SLUGS = frozenset({"concepcion", "espino"})
 class TenantRuleSet:
     slug: str
     excluir_razon_social_el_espino: bool
+    flujo_imputar_gastado_contable: bool
 
 
-CONCEPCION = TenantRuleSet(slug="concepcion", excluir_razon_social_el_espino=True)
-ESPINO = TenantRuleSet(slug="espino", excluir_razon_social_el_espino=False)
+CONCEPCION = TenantRuleSet(
+    slug="concepcion",
+    excluir_razon_social_el_espino=True,
+    flujo_imputar_gastado_contable=False,
+)
+ESPINO = TenantRuleSet(
+    slug="espino",
+    excluir_razon_social_el_espino=False,
+    flujo_imputar_gastado_contable=True,
+)
 
 _BY_SLUG: dict[str, TenantRuleSet] = {
     "concepcion": CONCEPCION,
@@ -33,6 +42,13 @@ def rules_for_request() -> TenantRuleSet | None:
     from demo_web.services.tenant_scope import tenant_slug
 
     return rules_for_slug(tenant_slug())
+
+
+def flujo_imputar_gastado_contable() -> bool:
+    r = rules_for_request()
+    if r is not None:
+        return r.flujo_imputar_gastado_contable
+    return False
 
 
 def excluir_razon_social_espino_en_queries() -> bool:
