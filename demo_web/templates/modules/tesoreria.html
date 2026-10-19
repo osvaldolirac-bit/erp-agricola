@@ -32,6 +32,8 @@
             <th>Vencimiento</th>
             <th>Días venc.</th>
             <th>Monto doc.</th>
+            <th>Abonado</th>
+            <th>Saldo pendiente</th>
           </tr>
         </thead>
         <tbody>
@@ -43,6 +45,8 @@
             <td>{{ row.fecha_vencimiento }}</td>
             <td>{{ row.dias_vencido }}</td>
             <td>{{ row.monto_total }}</td>
+            <td>{{ row.monto_pagado|default('—') }}</td>
+            <td class="fw-semibold">{{ row.saldo }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -82,6 +86,8 @@
             <th>N° Documento</th>
             <th>Vencimiento</th>
             <th>Monto doc.</th>
+            <th>Abonado</th>
+            <th>Saldo pendiente</th>
           </tr>
         </thead>
         <tbody>
@@ -90,6 +96,8 @@
             <td>{{ row.nro_documento }}</td>
             <td>{{ row.fecha_vencimiento }}</td>
             <td>{{ row.monto_total }}</td>
+            <td>{{ row.monto_pagado|default('—') }}</td>
+            <td class="fw-semibold">{{ row.saldo }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -178,7 +186,9 @@
         </div>
         <div class="col-md-2">
           <label class="form-label">Monto abono ($)</label>
-          <input type="number" name="monto_abono" id="abono-monto" class="form-control" min="1" step="1000" required>
+          <input type="text" name="monto_abono" id="abono-monto" class="form-control js-decimal-coma"
+                 inputmode="decimal" autocomplete="off" required placeholder="Ej. 150000 o 1.250.000">
+          <div class="form-text small">Pesos chilenos: coma decimal opcional (ej. 1.250.000,50). No use punto como decimal.</div>
         </div>
         <div class="col-md-2">
           <label class="form-label">Forma de pago</label>
@@ -315,8 +325,11 @@
       var opt = sel.options[sel.selectedIndex];
       var max = parseFloat(opt && opt.dataset.saldo ? opt.dataset.saldo : '0');
       if (max > 0) {
-        inp.max = max;
-        if (!inp.value || parseFloat(inp.value) > max) inp.value = max;
+        inp.dataset.saldoMax = String(max);
+        if (!inp.value || parseFloat(String(inp.value).replace(/\./g, '').replace(',', '.')) > max + 0.01) {
+          var ent = Math.round(max);
+          inp.value = ent >= 1000 ? ent.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : String(ent);
+        }
       }
     }
     $('#abono-doc').on('change', syncAbonoMax);

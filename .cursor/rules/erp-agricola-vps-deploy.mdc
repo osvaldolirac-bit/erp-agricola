@@ -1,0 +1,30 @@
+---
+description: Despliegues VPS obligatorios para LC y El Espino (manifest unificado, smoke, PR)
+globs:
+  - demo_web/**
+  - scripts/deploy*.py
+  - erp_flujo_financiero.py
+alwaysApply: true
+---
+
+## ERP Agrícola — despliegues VPS (LC + El Espino)
+
+**Alcance:** tenant La Concepción, El Espino y cualquier cambio bajo `demo_web/`, `erp_flujo_financiero.py` o módulos compartidos `app_concepcion` en producción (`45.7.230.70`, `/root/demo-web`).
+
+### Obligatorio en producción
+1. **Nunca** desplegar con `scp` suelto, scripts parciales viejos (`deploy_lc_global_vps.py`, `deploy_espino_bodega_vps.py`, etc.) ni “solo el archivo del fix”, salvo que el usuario diga explícitamente **“parche suelto autorizado”**.
+2. **Siempre** usar `python3 scripts/deploy_robustez_lc_espino_vps.py` después de validar localmente:
+   - `python3 scripts/deploy_robustez_lc_espino_vps.py --check`
+   - `python3 -m unittest discover -s tests -p 'test_*.py'`
+3. Si el fix **añade o cambia** archivos que deben ir juntos (`.py` + template HTML, nuevo servicio, `decorators.py`, etc.), **actualizar el manifest** en `scripts/deploy_robustez_lc_espino_vps.py` (`ROBUSTEZ_LC_ESPINO_FILES`) en el **mismo commit** que el fix. Backend y templates **siempre alineados**.
+4. Tras deploy, confirmar que el post-deploy en VPS pasó: migración Espino (si aplica), `smoke_robustez.py`, `erp-agricola-web` **active**. Si smoke falla, **no** dar por cerrado el ticket.
+
+### Repo vs VPS
+5. Cambios en producción deben existir en **rama + PR** hacia `main`; no “solo VPS”. Preferir merge de PRs de robustez (#200, #201, etc.) para que CI ejecute `--check`.
+
+### Excepciones
+6. Otros tenants/rubros (GlobalGAP, consola, constructora, comercial) **no** usan este manifest salvo instrucción explícita; ahí aplicar el deploy/script documentado de ese rubro.
+7. Reparaciones **solo de datos** en VPS (scripts `repair_*`, SQL) pueden correr sin redeploy completo, pero si tocan código Python, volver al punto 2.
+
+### Criterio de agente
+8. Ante “sube al VPS” / “está caído en producción”: asumir **deploy unificado**, no el diff mínimo. Minimizar el **código**, no el **paquete de despliegue** en LC/Espino.

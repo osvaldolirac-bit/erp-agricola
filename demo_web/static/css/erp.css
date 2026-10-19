@@ -1534,9 +1534,17 @@ body.demo-body .costos-matriz-table td.costos-saldo-neutro {
 .flujo-legend { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.82rem; margin-right: 8px; }
 .flujo-legend-real { background: #e3f2fd; }
 .flujo-legend-proy { background: #fff3e0; color: #e65100; }
-.flujo-metric { border-radius: 8px; overflow: hidden; border: 1px solid #dde5df; margin-bottom: 4px; }
+.flujo-kpi-row { min-width: 0; }
+.flujo-metric { border-radius: 8px; overflow: hidden; border: 1px solid #dde5df; margin-bottom: 4px; height: 100%; }
 .flujo-metric-label { font-size: 12px; padding: 6px 10px; font-weight: 600; color: #fff; line-height: 1.3; }
-.flujo-metric-value { font-size: 1.35rem; font-weight: 600; padding: 8px 10px 10px; color: #1f2933; line-height: 1.2; }
+.flujo-metric-value {
+  font-size: clamp(0.95rem, 2.5vw, 1.35rem);
+  font-weight: 600;
+  padding: 8px 10px 10px;
+  color: #1f2933;
+  line-height: 1.2;
+  word-break: break-word;
+}
 .flujo-metric-ing .flujo-metric-label { background: #2e7d32; }
 .flujo-metric-eg .flujo-metric-label { background: #c62828; }
 .flujo-metric-res .flujo-metric-label { background: #1565c0; }

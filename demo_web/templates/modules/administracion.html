@@ -7,7 +7,7 @@
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <div>
       <h1 class="h3 mb-0">{{ title }}</h1>
-      <p class="text-muted mb-0">Maestras y configuración operativa del ERP{% if erp_app == 'concepcion' %} — La Concepción{% endif %}</p>
+      <p class="text-muted mb-0">Maestras y configuración operativa del ERP{% if tenant %} — {{ tenant.nombre }}{% endif %}</p>
     </div>
     <button class="btn btn-outline-primary d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#demoMenu">Menú</button>
   </div>
@@ -373,7 +373,8 @@
     <div class="row g-2 mb-3">
       <div class="col-md-4">
         <label class="form-label small">Saldo caja inicial ($)</label>
-        <input type="number" name="caja_inicial" class="form-control form-control-sm" value="{{ caja_inicial|int }}" min="0" step="100000">
+        <input type="text" name="caja_inicial" class="form-control form-control-sm js-decimal-coma" inputmode="decimal"
+               autocomplete="off" value="{{ caja_inicial_input }}" placeholder="Ej. 1.500.000">
       </div>
     </div>
     {% for cc in flujo_cuarteles %}
@@ -386,7 +387,8 @@
             {% for m in cc.meses %}
             <tr>
               <td>{{ m.label }}</td>
-              <td><input type="number" name="ing_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.monto|int }}" min="0" step="100000"></td>
+              <td><input type="text" name="ing_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm js-decimal-coma"
+                         inputmode="decimal" autocomplete="off" value="{{ m.monto_input }}"></td>
               <td><input type="text" name="nota_{{ cc.cc }}_{{ m.anio }}_{{ m.mes }}" class="form-control form-control-sm" value="{{ m.nota }}" placeholder="Nota…"></td>
             </tr>
             {% endfor %}

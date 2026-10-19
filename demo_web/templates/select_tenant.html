@@ -21,8 +21,7 @@
     <form method="post" class="tenant-pick">
       {% for o in options %}
       <button class="tenant-pick-item" type="submit" name="tenant_slug" value="{{ o.slug }}">
-        <strong>{{ o.nombre }}</strong>
-        <span>{{ o.descripcion or o.rol }}</span>
+        {{ o.nombre }}
       </button>
       {% endfor %}
     </form>

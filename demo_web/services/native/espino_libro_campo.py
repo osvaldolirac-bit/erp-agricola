@@ -6,13 +6,22 @@ from datetime import timedelta
 import pandas as pd
 from flask import request, session, url_for
 
+from demo_web.services.espino_aplicacion_service import (
+    EspinoAplicacionError,
+    eliminar_aplicacion_espino,
+    eliminar_linea_espino,
+    guardar_aplicacion_espino,
+    reabrir_aplicacion_espino,
+)
 from demo_web.services.module_runner import pdf_download_url, store_pdf
 from demo_web.services.native import espino_bodega
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.tenant_scope import tenant_slug
 
 CC_ESPINO = espino_bodega.CC_ESPINO
 CAR_KEY = "espino_lc_car"
 META_KEY = "espino_lc_evento_meta"
+UNDO_KEY = "espino_lc_undo_n_app"
 
 LIBRO_SECCIONES = [("libro_campo", "📒 LIBRO DE CAMPO")]
 
@@ -144,6 +153,90 @@ def _siguiente_n_aplicacion(conn) -> int:
         (CC_ESPINO.upper(), _N_APP_HIST_MIN),
     ).fetchone()[0]
     return int(res) + 1 if res is not None else 1
+
+
+def _check_master(demo, clave: str) -> bool:
+    return (clave or "").strip() == getattr(demo, "CLAVE_MAESTRA", "")
+
+
+def _lineas_aplicacion(conn, n_app: int) -> list[dict]:
+    cur = conn.execute(
+        """SELECT id, movimiento_id, n_aplicacion, producto, lote_producto, ingrediente, dosis,
+                  unidad_dosis, gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
+                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta
+           FROM libro_campo WHERE n_aplicacion=? AND UPPER(sector)=? ORDER BY id""",
+        (int(n_app), CC_ESPINO.upper()),
+    )
+    cols = [d[0] for d in cur.description or ()]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def _linea_libro_por_id(conn, linea_id: int) -> dict | None:
+    cur = conn.execute(
+        """SELECT id, movimiento_id, n_aplicacion, producto, lote_producto, ingrediente, dosis,
+                  unidad_dosis, gasto_total, unidad_gasto, vol_total, fecha, sector, especie,
+                  aplicadores, operador_certificado, maquina, tractor, car_etiqueta
+           FROM libro_campo WHERE id=? AND UPPER(sector)=?""",
+        (int(linea_id), CC_ESPINO.upper()),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cols = [d[0] for d in cur.description or ()]
+    return dict(zip(cols, row))
+
+
+def _car_y_meta_desde_lineas(rows) -> tuple[list[dict], dict]:
+    car: list[dict] = []
+    for r in rows:
+        try:
+            dias_car = int(r.get("car_etiqueta") or 0)
+        except (TypeError, ValueError):
+            dias_car = 0
+        car.append(
+            {
+                "producto": r["producto"],
+                "lote_producto": r.get("lote_producto") or "",
+                "ingrediente": r.get("ingrediente") or "",
+                "dosis": float(r.get("dosis") or 0),
+                "unidad_dosis": r.get("unidad_dosis") or UNIDADES_DOSIS[0],
+                "gasto_total": float(r.get("gasto_total") or 0),
+                "um_gasto": r.get("unidad_gasto") or "",
+                "dias_car": dias_car,
+            }
+        )
+    r0 = rows[0]
+    meta = {
+        "fecha": str(r0.get("fecha") or "")[:10],
+        "especie": (r0.get("especie") or "").strip(),
+        "vol_agua": str(float(r0.get("vol_total") or 0)),
+        "aplicador": (r0.get("aplicadores") or "").strip(),
+        "op_cert": "1" if int(r0.get("operador_certificado") or 0) else "",
+        "maquinaria": (r0.get("maquina") or "").strip(),
+        "tractor": (r0.get("tractor") or "").strip(),
+    }
+    return car, meta
+
+
+def _ultima_n_aplicacion(conn) -> int | None:
+    n = _siguiente_n_aplicacion(conn) - 1
+    return n if n >= 1 else None
+
+
+def _reabrir_n_app_ctx(demo, conn) -> int | None:
+    ultima = _ultima_n_aplicacion(conn)
+    if not ultima:
+        return None
+    rows = _lineas_aplicacion(conn, ultima)
+    if not rows or session.get(CAR_KEY):
+        return None
+    undo_n = session.get(UNDO_KEY)
+    if undo_n is not None and int(undo_n) == ultima:
+        return ultima
+    fe = parse_date(str(rows[0]["fecha"]), hoy_demo(demo))
+    if (hoy_demo(demo) - fe).days <= 14:
+        return ultima
+    return None
 
 
 def _siguiente_n_orden(conn) -> str:
@@ -422,46 +515,27 @@ def post_guardar_evento(demo, conn) -> dict:
     op_cert = request.form.get("op_cert") == "1"
     tractor = (request.form.get("tractor") or "").strip()
 
-    for item in car:
-        ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
+    slug = tenant_slug() or "espino"
+    try:
+        saved = guardar_aplicacion_espino(
+            conn,
             demo,
-            conn,
-            float(item.get("gasto_total") or 0),
-            producto=str(item.get("producto") or ""),
+            tenant_slug=slug,
+            car=car,
+            fe_app=fe_app,
+            especie=especie,
+            total_agua=total_agua,
+            aplicador=aplicador,
+            op_cert=op_cert,
+            maquinaria=maquinaria,
+            tractor=tractor,
+            n_app_fn=_siguiente_n_aplicacion,
+            n_orden_fn=lambda c: _siguiente_n_orden(c),
         )
-        if not ok:
-            return {"ok": False, "msg": msg}
-
-    n_app = _siguiente_n_aplicacion(conn)
-    n_orden = _siguiente_n_orden(conn)
-
-    for item in car:
-        demo._insertar_linea_libro_campo(
-            conn,
-            fe_app,
-            n_app,
-            CC_ESPINO,
-            especie,
-            item,
-            total_agua,
-            aplicador,
-            op_cert,
-            maquinaria,
-            tractor,
-            n_orden=n_orden,
-        )
-
-    for item in car:
-        ok, msg = espino_bodega.registrar_salida_bodega(
-            demo,
-            conn,
-            float(item.get("gasto_total") or 0),
-            producto=str(item.get("producto") or ""),
-            fecha=fe_app,
-        )
-        if not ok:
-            return {"ok": False, "msg": msg}
-    conn.commit()
+    except EspinoAplicacionError as exc:
+        return {"ok": False, "msg": exc.msg}
+    n_app = saved.n_app
+    session[UNDO_KEY] = n_app
     prods_txt = ", ".join(i["producto"] for i in car)
     demo.registrar_accion("LIBRO CAMPO ESPINO", f"App N°{n_app} · {CC_ESPINO} · {prods_txt}")
     session[CAR_KEY] = []
@@ -478,6 +552,71 @@ def post_guardar_evento(demo, conn) -> dict:
     }
 
 
+def post_reabrir_aplicacion(demo, conn) -> dict:
+    try:
+        n_app = int(request.form.get("n_app") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "N° de aplicación inválido."}
+    ultima = _ultima_n_aplicacion(conn)
+    if not ultima or n_app != ultima:
+        return {
+            "ok": False,
+            "msg": "Solo puede reabrir la última aplicación registrada en El Espino.",
+        }
+    slug = tenant_slug() or "espino"
+    try:
+        rows, rev_info, omitidas_prods = reabrir_aplicacion_espino(
+            conn,
+            demo,
+            tenant_slug=slug,
+            n_app=n_app,
+            lineas_fn=_lineas_aplicacion,
+        )
+    except EspinoAplicacionError as exc:
+        return {"ok": False, "msg": exc.msg}
+    car, meta = _car_y_meta_desde_lineas(rows)
+    session[CAR_KEY] = car
+    session[META_KEY] = meta
+    session.pop(UNDO_KEY, None)
+    demo.registrar_accion("LIBRO CAMPO ESPINO", f"Reabrir borrador App N°{n_app}")
+    msg = (
+        f"Aplicación N° {n_app:05d} reabierta en ingreso. "
+        "Revise productos y guarde cuando termine."
+    )
+    if omitidas_prods:
+        msg += f" Atención: no se revirtió bodega para: {', '.join(omitidas_prods)}."
+    return {"ok": True, "msg": msg, "extra": {"op": "ingreso"}}
+
+
+def post_eliminar_evento(demo, conn) -> dict:
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Requiere perfil admin."}
+    if not _check_master(demo, request.form.get("clave_maestra")):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+    try:
+        n_app = int(request.form.get("n_app") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Evento inválido."}
+    slug = tenant_slug() or "espino"
+    try:
+        result = eliminar_aplicacion_espino(
+            conn,
+            demo,
+            tenant_slug=slug,
+            n_app=n_app,
+            lineas_fn=_lineas_aplicacion,
+        )
+    except EspinoAplicacionError as exc:
+        return {"ok": False, "msg": exc.msg}
+    demo.registrar_accion("LIBRO CAMPO ESPINO", f"Eliminar App N°{n_app}")
+    msg = f"Evento N° {n_app:05d} eliminado."
+    if result.reverts and not result.omitidas_sin_mov:
+        msg += " Salidas bodega revertidas."
+    elif result.omitidas_sin_mov:
+        msg += f" Atención: bodega no revertida para: {', '.join(result.omitidas_sin_mov)}."
+    return {"ok": True, "msg": msg, "extra": {"op": "historial"}}
+
+
 def post_pop_producto(demo) -> None:
     _guardar_evento_meta(demo, request.form)
     car = session.get(CAR_KEY, [])
@@ -492,6 +631,8 @@ def gather_libro_campo(demo, conn, op_override: str | None = None) -> dict:
         "libro_ops": LIBRO_OPS,
         "lc_op_activa": op,
         "cc_espino": CC_ESPINO,
+        "es_admin": demo.es_admin(),
+        "reabrir_n_app": _reabrir_n_app_ctx(demo, conn),
         **_pop_alertas(),
     }
     if op == "ingreso":

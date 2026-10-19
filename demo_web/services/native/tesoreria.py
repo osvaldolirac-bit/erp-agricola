@@ -6,8 +6,14 @@ import pandas as pd
 from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
+from demo_web.services.lc_query_scope import (
+    filtrar_df_facturas_espino_lc,
+    sql_and_excluir_razon_social_espino,
+)
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.espino_compras_guards import validar_estado_pago_coherente
+from demo_web.services.native._helpers import hoy_demo, parse_decimal_cl
+from demo_web.services.tenant_scope import is_espino_tenant
 
 SECCIONES = [
     ("pendientes", "🔴 PENDIENTES"),
@@ -115,7 +121,8 @@ def _pdf_url(demo, blob, archivo: str) -> str | None:
 
 def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
     dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
-    if dfp.empty:
+    dfp = filtrar_df_facturas_espino_lc(dfp)
+    if dfp is None or dfp.empty:
         return None
     dfp_show = dfp.rename(columns={
         "nro_documento": "N° DOCUMENTO",
@@ -124,18 +131,20 @@ def _pendientes_pdf(demo, conn, hoy: date) -> str | None:
         "fecha_vencimiento": "VENCIMIENTO",
         "dias_vencido": "DÍAS VENC.",
         "monto_total": "MONTO DOC.",
-    }).drop(columns=["id", "monto_pagado", "saldo"], errors="ignore")
+        "monto_pagado": "ABONADO",
+        "saldo": "SALDO PEND.",
+    }).drop(columns=["id"], errors="ignore")
     dfp_show = dfp_show[
         [
             "N° DOCUMENTO", "PROVEEDOR", "RAZÓN SOCIAL", "VENCIMIENTO", "DÍAS VENC.",
-            "MONTO DOC.",
+            "MONTO DOC.", "ABONADO", "SALDO PEND.",
         ]
     ]
     estilo = getattr(demo, "_pdf_estilo_tesoreria_vencida", None)
     blob = demo.generar_pdf_blob(
         dfp_show,
         "DEUDAS PENDIENTES",
-        campo_suma_forzado="MONTO DOC.",
+        campo_suma_forzado="SALDO PEND.",
         estilo_celda_fn=estilo,
         font_size_header=12,
         font_size_body=11,
@@ -168,12 +177,14 @@ def _deuda_pdf(demo, conn, proveedor: str) -> str | None:
         "nro_documento": "N° DOCUMENTO",
         "fecha_vencimiento": "VENCIMIENTO",
         "monto_total": "MONTO DOC.",
-    })[["N° DOCUMENTO", "VENCIMIENTO", "MONTO DOC."]]
+        "monto_pagado": "ABONADO",
+        "saldo_pendiente": "SALDO PEND.",
+    })[["N° DOCUMENTO", "VENCIMIENTO", "MONTO DOC.", "ABONADO", "SALDO PEND."]]
     estilo = getattr(demo, "_pdf_estilo_tesoreria_vencida", None)
     blob = demo.generar_pdf_blob(
         dfpr_show,
         f"DEUDA {proveedor}",
-        campo_suma_forzado="MONTO DOC.",
+        campo_suma_forzado="SALDO PEND.",
         estilo_celda_fn=estilo,
     )
     safe = proveedor.lower().replace(" ", "_")[:40]
@@ -191,7 +202,8 @@ def _historial_pdf(demo, conn, fi: date, ff: date, bsq: str, met: str) -> str | 
 
 def _pendientes_rows(demo, conn, hoy: date) -> tuple[list[dict], str, int]:
     dfp = demo._cargar_facturas_pendientes_saldo(conn).sort_values("fecha_vencimiento")
-    if dfp.empty:
+    dfp = filtrar_df_facturas_espino_lc(dfp)
+    if dfp is None or dfp.empty:
         return [], demo.f_peso(0), 0
     total = demo.f_peso(dfp["saldo"].sum())
     rows = []
@@ -225,16 +237,17 @@ def _deuda_rows(demo, conn, proveedor: str | None) -> tuple[list[str], list[dict
     if not proveedores:
         return [], [], None, ""
     psel = proveedor if proveedor in proveedores else proveedores[0]
-    dfpr = pd.read_sql_query(
+    sql_deuda = (
         """SELECT id, nro_documento, fecha_vencimiento, monto_total,
                   COALESCE(monto_pagado, 0) AS monto_pagado,
                   COALESCE(NULLIF(TRIM(razon_social), ''), '') AS razon_social
            FROM facturas
-           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0
-           ORDER BY fecha_vencimiento ASC""",
-        conn,
-        params=(psel,),
+           WHERE proveedor=? AND estado='Pendiente' AND nro_documento NOT LIKE '%_P' AND monto_total > 0"""
+        + sql_and_excluir_razon_social_espino()
+        + " ORDER BY fecha_vencimiento ASC"
     )
+    dfpr = pd.read_sql_query(sql_deuda, conn, params=(psel,))
+    dfpr = filtrar_df_facturas_espino_lc(dfpr)
     dfpr["saldo"] = dfpr.apply(
         lambda r: demo._saldo_pendiente_factura(r["monto_total"], r["monto_pagado"]),  # noqa: SLF001
         axis=1,
@@ -518,9 +531,15 @@ def _post_abono_parcial(demo, conn, user_email: str) -> dict:
         return {"ok": False, "msg": "Seleccione un proveedor.", "extra": {"sec": "deuda"}}
     try:
         doc_id = int(request.form.get("doc_id") or 0)
-        monto_ab = float(request.form.get("monto_abono") or 0)
     except ValueError:
-        return {"ok": False, "msg": "Datos de abono inválidos.", "extra": {"sec": "deuda", "proveedor": proveedor}}
+        return {"ok": False, "msg": "Documento inválido.", "extra": {"sec": "deuda", "proveedor": proveedor}}
+    monto_ab = parse_decimal_cl(request.form.get("monto_abono"), default=None)
+    if monto_ab is None or monto_ab <= 0:
+        return {
+            "ok": False,
+            "msg": "Monto de abono inválido. Use solo coma decimal (ej. 150000 o 1.250.000,50).",
+            "extra": {"sec": "deuda", "proveedor": proveedor},
+        }
     metodo = request.form.get("metodo_pago") or METODOS_PAGO[0]
     if metodo not in METODOS_PAGO:
         metodo = METODOS_PAGO[0]
@@ -539,6 +558,18 @@ def _post_abono_parcial(demo, conn, user_email: str) -> dict:
     )
     if not ok:
         return {"ok": False, "msg": str(res), "extra": {"sec": "deuda", "proveedor": proveedor}}
+    if is_espino_tenant():
+        row_pago = conn.execute(
+            "SELECT COALESCE(estado,''), monto_total, COALESCE(monto_pagado,0) FROM facturas WHERE id=?",
+            (int(doc_id),),
+        ).fetchone()
+        if row_pago:
+            ok_pago, msg_pago = validar_estado_pago_coherente(
+                str(row_pago[0]), float(row_pago[1] or 0), float(row_pago[2] or 0),
+            )
+            if not ok_pago:
+                conn.rollback()
+                return {"ok": False, "msg": msg_pago, "extra": {"sec": "deuda", "proveedor": proveedor}}
     conn.commit()
     rs_ab = ""
     if hasattr(fila_ab, "index") and "razon_social" in fila_ab.index:

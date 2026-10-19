@@ -5,6 +5,8 @@ from flask import render_template, send_file, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.flujo_excel import build_flujo_mensual_xlsx, filename_flujo_excel
+from demo_web.services.lc_query_scope import cuarteles_ingresos_flujo_lc, resumen_costos_flujo
+from demo_web.services.tenant_scope import is_concepcion_tenant, is_espino_tenant
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.native._helpers import (
     hoy_demo,
@@ -33,9 +35,29 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
         )
         from erp_flujo_financiero import _mes_label
 
-        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        if is_concepcion_tenant() or is_espino_tenant():
+            cuarteles = cuarteles_ingresos_flujo_lc(demo)
+        else:
+            from demo_web.services.lc_query_scope import cuarteles_operativos_lc
+
+            cuarteles = cuarteles_operativos_lc(demo)
+        resumen_costos = resumen_costos_flujo(demo, conn, nombre, fi, ff)
+        imputar_gastado = False
+        try:
+            from demo_web.services.tenant_rules import flujo_imputar_gastado_contable
+
+            imputar_gastado = flujo_imputar_gastado_contable()
+        except Exception:
+            imputar_gastado = is_espino_tenant()
         df_flujo, df_cc, df_eg_cc, meta = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+            conn,
+            nombre,
+            fi,
+            ff,
+            hoy,
+            cuarteles,
+            resumen_costos,
+            imputar_gastado_contable=imputar_gastado,
         )
 
         flujo_rows = []
@@ -53,12 +75,15 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             tot_eg_real = float(df_flujo["EGRESOS_REAL"].sum())
             tot_eg_proy = float(df_flujo["EGRESOS_PROY"].sum())
             eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
+            eerr_fmt = demo.f_peso(eerr_final)
             kpis = {
                 "ingresos": demo.f_peso(tot_ing),
                 "gastado": demo.f_peso(meta.get("total_gastado", 0)),
                 "cxp": demo.f_peso(meta.get("teso_cxp_total", tot_eg_real)),
                 "egresos_proy": demo.f_peso(tot_eg_proy),
-                "eerr": demo.f_peso(eerr_final),
+                "eerr": eerr_fmt,
+                # Plantilla legacy en VPS usaba kpis.margen para el EERR acumulado.
+                "margen": eerr_fmt,
             }
 
             display_cols = [
@@ -201,9 +226,29 @@ def export_flujo_excel(user_email: str, user_rol: str):
     try:
         from erp_flujo_financiero import armar_flujo_financiero
 
-        resumen_costos = demo._resumen_costos_para_flujo(conn, nombre, fi, ff)
+        if is_concepcion_tenant() or is_espino_tenant():
+            cuarteles = cuarteles_ingresos_flujo_lc(demo)
+        else:
+            from demo_web.services.lc_query_scope import cuarteles_operativos_lc
+
+            cuarteles = cuarteles_operativos_lc(demo)
+        resumen_costos = resumen_costos_flujo(demo, conn, nombre, fi, ff)
+        imputar_gastado = False
+        try:
+            from demo_web.services.tenant_rules import flujo_imputar_gastado_contable
+
+            imputar_gastado = flujo_imputar_gastado_contable()
+        except Exception:
+            imputar_gastado = is_espino_tenant()
         df_flujo, _, _, _ = armar_flujo_financiero(
-            conn, nombre, fi, ff, hoy, demo.CUARTELES_OFICIALES, resumen_costos,
+            conn,
+            nombre,
+            fi,
+            ff,
+            hoy,
+            cuarteles,
+            resumen_costos,
+            imputar_gastado_contable=imputar_gastado,
         )
     finally:
         conn.close()
