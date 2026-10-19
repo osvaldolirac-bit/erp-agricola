@@ -5,8 +5,15 @@ from dateutil.relativedelta import relativedelta
 import pandas as pd
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
-from demo_web.services.erp_loader import get_erp_app
+from demo_web.services.erp_loader import current_tenant, get_erp_app
+from demo_web.tenants import tenant_nombre_erp
+from demo_web.services.lc_query_scope import (
+    ajustar_gastos_dashboard_excluir_espino_lc,
+    cuarteles_operativos_lc,
+    filtrar_df_facturas_espino_lc,
+)
 from demo_web.services.native._helpers import avance_ppto_badge_tone, prorrateo_rrhh
+from demo_web.services.tenant_scope import cuarteles_oficiales
 
 
 def _demo():
@@ -39,6 +46,9 @@ def gather_dashboard(email: str, rol: str) -> dict:
 
         ind = demo.obtener_indicadores()
         df_f = demo._cargar_facturas_pendientes_saldo(conn)
+        df_f = filtrar_df_facturas_espino_lc(df_f)
+        if df_f is None:
+            df_f = pd.DataFrame()
         df_p_c = pd.read_sql_query(
             "SELECT SUM(litros) as l FROM petroleo WHERE tipo='Carga' OR (tipo='Ajuste Manual' AND litros > 0)",
             conn,
@@ -70,9 +80,19 @@ def gather_dashboard(email: str, rol: str) -> dict:
 
         gastos_cc = []
         pagos_mes = []
+        cuarteles_full = list(cuarteles_oficiales(demo) or [])
+        cuarteles_dash = cuarteles_operativos_lc(demo)
         dfr_base, _ = demo._armar_dataframe_costos_dashboard(
-            conn, demo.CUARTELES_OFICIALES, prorrateo_rrhh(demo, conn)
+            conn, cuarteles_full, prorrateo_rrhh(demo, conn)
         )
+        dfr_base = ajustar_gastos_dashboard_excluir_espino_lc(
+            conn, demo, dfr_base, cuarteles_full
+        )
+        if dfr_base is not None and not dfr_base.empty and cuarteles_dash:
+            dfr_base = dfr_base[
+                dfr_base["Cuartel"].astype(str).isin(cuarteles_dash)
+                | (dfr_base["Cuartel"].astype(str).str.upper() == "TOTAL GENERAL")
+            ].copy()
         if not dfr_base.empty:
             df_gastos = demo._build_dashboard_gastos_cc_df(conn, dfr_base)
             for _, row in df_gastos.iterrows():
@@ -123,11 +143,14 @@ def gather_dashboard(email: str, rol: str) -> dict:
                 }
             )
 
-        dash_title = (
-            "ERP AGRÍCOLA LA CONCEPCIÓN"
-            if get_erp_app() == "concepcion"
-            else "ERP DEMO AGRÍCOLA"
-        )
+        t = current_tenant()
+        erp_nombre = tenant_nombre_erp(t, getattr(demo, "NOMBRE_ERP", None))
+        if erp_nombre:
+            dash_title = erp_nombre.upper()
+        elif get_erp_app() == "concepcion":
+            dash_title = "ERP AGRÍCOLA LA CONCEPCIÓN"
+        else:
+            dash_title = "ERP DEMO AGRÍCOLA"
 
         return {
             "alerta_rrhh": alerta_rrhh,

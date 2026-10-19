@@ -7,6 +7,7 @@ from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.tenant_scope import centros_costo
 from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
 
 SECCIONES = [
@@ -34,6 +35,10 @@ _ESTADO_CSS = {
 
 def _secciones(demo) -> list[tuple[str, str]]:
     return SECCIONES_CERT if demo.es_certificacion() else SECCIONES
+
+
+def _centros_costo(demo) -> list[str]:
+    return list(centros_costo(demo) or [])
 
 
 def _check_master(demo, clave: str) -> bool:
@@ -176,7 +181,7 @@ def _procesar_salida(demo, conn) -> dict:
     if ct is None:
         return {"ok": False, "msg": "Cantidad inválida. Use coma decimal (ej. 1,5)."}
 
-    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in demo.CENTROS_COSTO]
+    ccs = [c.upper() for c in request.form.getlist("cuarteles") if c in _centros_costo(demo)]
     row = conn.execute(
         "SELECT producto, precio_medio, COALESCE(unidad_medida, ?), COALESCE(stock, 0) "
         "FROM inventario WHERE id=?",
@@ -304,9 +309,9 @@ def _pppl(demo, conn) -> dict:
 
 def _consulta_cuartel(demo, conn) -> dict:
     hoy = hoy_demo(demo)
-    ccq = request.args.get("cuartel", demo.CENTROS_COSTO[0])
-    if ccq not in demo.CENTROS_COSTO:
-        ccq = demo.CENTROS_COSTO[0]
+    ccq = request.args.get("cuartel", _centros_costo(demo)[0])
+    if ccq not in _centros_costo(demo):
+        ccq = _centros_costo(demo)[0]
     fi = parse_date(request.args.get("desde"), hoy - timedelta(days=90))
     ff = parse_date(request.args.get("hasta"), hoy)
 
@@ -380,7 +385,7 @@ def _consulta_cuartel(demo, conn) -> dict:
         "mov_opts": mov_opts,
         "mov_edit": mov_edit,
         "filtro_cuartel": ccq,
-        "cuarteles": demo.CENTROS_COSTO,
+        "cuarteles": _centros_costo(demo),
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "pdf_consulta_url": pdf_url,
@@ -675,7 +680,7 @@ def gather_bodega(user_email: str, user_rol: str) -> dict:
             ctx.update(_stock(demo, conn, cert=demo.es_certificacion()))
         elif sec == "salida":
             ctx["productos_salida"] = _productos_salida(demo, conn)
-            ctx["cuarteles"] = demo.CENTROS_COSTO
+            ctx["cuarteles"] = _centros_costo(demo)
         elif sec == "pppl":
             ctx.update(_pppl(demo, conn))
         elif sec == "apertura":
