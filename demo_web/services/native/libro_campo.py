@@ -861,39 +861,51 @@ def _post_guardar_evento(demo, conn) -> dict:
         msg += " — visible en planilla GlobalGAP."
         return {"ok": True, "msg": msg}
 
-    n_app = _siguiente_n_aplicacion(conn)
-    n_orden = _siguiente_n_orden(conn, huerto)
-
-    for item in car:
-        demo._insertar_linea_libro_campo(
-            conn,
-            fe_app,
-            n_app,
-            huerto,
-            especie,
-            item,
-            total_agua,
-            aplicador,
-            op_cert,
-            maquinaria,
-            tractor,
-            n_orden=n_orden,
-        )
-
     if rebaje_espino:
-        from demo_web.services.native import espino_bodega
+        slug = tenant_slug() or "espino"
+        try:
+            from demo_web.services.espino_aplicacion_service import (
+                EspinoAplicacionError,
+                guardar_aplicacion_espino,
+            )
+
+            saved = guardar_aplicacion_espino(
+                conn,
+                demo,
+                tenant_slug=slug,
+                car=car,
+                fe_app=fe_app,
+                especie=especie,
+                total_agua=total_agua,
+                aplicador=aplicador,
+                op_cert=op_cert,
+                maquinaria=maquinaria,
+                tractor=tractor,
+                n_app_fn=_siguiente_n_aplicacion,
+                n_orden_fn=lambda c: _siguiente_n_orden(c, huerto),
+            )
+            n_app = saved.n_app
+        except EspinoAplicacionError as exc:
+            return {"ok": False, "msg": exc.msg}
+    else:
+        n_app = _siguiente_n_aplicacion(conn)
+        n_orden = _siguiente_n_orden(conn, huerto)
 
         for item in car:
-            ok_bod, msg_bod, _mid = espino_bodega.registrar_salida_bodega(
-                demo,
+            demo._insertar_linea_libro_campo(
                 conn,
-                float(item.get("gasto_total") or 0),
-                producto=str(item.get("producto") or ""),
-                fecha=fe_app,
+                fe_app,
+                n_app,
+                huerto,
+                especie,
+                item,
+                total_agua,
+                aplicador,
+                op_cert,
+                maquinaria,
+                tractor,
+                n_orden=n_orden,
             )
-            if not ok_bod:
-                conn.rollback()
-                return {"ok": False, "msg": msg_bod}
 
     from demo_web.services.libro_campo_gap import enriquecer_aplicacion_globalgap
 

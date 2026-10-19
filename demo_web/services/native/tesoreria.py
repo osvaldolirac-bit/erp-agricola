@@ -11,7 +11,9 @@ from demo_web.services.lc_query_scope import (
     sql_and_excluir_razon_social_espino,
 )
 from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.espino_compras_guards import validar_estado_pago_coherente
 from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.tenant_scope import is_espino_tenant
 
 SECCIONES = [
     ("pendientes", "🔴 PENDIENTES"),
@@ -546,6 +548,18 @@ def _post_abono_parcial(demo, conn, user_email: str) -> dict:
     )
     if not ok:
         return {"ok": False, "msg": str(res), "extra": {"sec": "deuda", "proveedor": proveedor}}
+    if is_espino_tenant():
+        row_pago = conn.execute(
+            "SELECT COALESCE(estado,''), monto_total, COALESCE(monto_pagado,0) FROM facturas WHERE id=?",
+            (int(doc_id),),
+        ).fetchone()
+        if row_pago:
+            ok_pago, msg_pago = validar_estado_pago_coherente(
+                str(row_pago[0]), float(row_pago[1] or 0), float(row_pago[2] or 0),
+            )
+            if not ok_pago:
+                conn.rollback()
+                return {"ok": False, "msg": msg_pago, "extra": {"sec": "deuda", "proveedor": proveedor}}
     conn.commit()
     rs_ab = ""
     if hasattr(fila_ab, "index") and "razon_social" in fila_ab.index:
