@@ -986,8 +986,10 @@ def contar_pendientes(conn) -> int:
 
 
 def aplicar_badge_menu_petroleo(opts, conn):
-    """Legacy no-op: el contador lo arma build_menu (badge_count en sidebar)."""
-    return opts
+    """Streamlit: (N) en label. Flask: build_menu + sidebar_badges.badge_count."""
+    from demo_web.services.sidebar_badges import aplicar_badges_labels_menu
+
+    return aplicar_badges_labels_menu(opts, conn)
 
 
 def datos_compartir() -> dict[str, str]:

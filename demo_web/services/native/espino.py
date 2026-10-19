@@ -329,6 +329,8 @@ def view(user_email: str, user_rol: str):
             lc_handlers = {
                 "lc_agregar_producto": espino_libro_campo.post_agregar_producto,
                 "lc_guardar_evento": espino_libro_campo.post_guardar_evento,
+                "lc_reabrir_aplicacion": espino_libro_campo.post_reabrir_aplicacion,
+                "lc_eliminar_evento": espino_libro_campo.post_eliminar_evento,
             }
             lc_fn = lc_handlers.get(action)
             if lc_fn:

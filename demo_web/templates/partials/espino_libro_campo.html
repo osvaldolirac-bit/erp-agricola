@@ -55,6 +55,19 @@
   </form>
 </div>
 
+{% if reabrir_n_app %}
+<div class="alert alert-warning small">
+  <strong>¿Registró la aplicación N° {{ '%05d'|format(reabrir_n_app) }} por error?</strong>
+  <form method="post" class="mt-2 d-inline" onsubmit="return confirm('¿Reabrir la aplicación N° {{ '%05d'|format(reabrir_n_app) }}? Se eliminará del historial y volverá al ingreso con los mismos productos.');">
+    <input type="hidden" name="action" value="lc_reabrir_aplicacion">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <input type="hidden" name="n_app" value="{{ reabrir_n_app }}">
+    <button type="submit" class="btn btn-outline-dark btn-sm">↩ Reabrir aplicación {{ '%05d'|format(reabrir_n_app) }}</button>
+  </form>
+</div>
+{% endif %}
+
 {% if historial_grupos %}
 <p class="small text-muted mb-3">
   <strong>{{ historial_stats.eventos }}</strong> evento(s) · <strong>{{ historial_stats.productos }}</strong> producto(s)
@@ -82,6 +95,19 @@
       </tbody>
     </table>
   </div>
+  {% if es_admin %}
+  <form method="post" class="mt-2" onsubmit="return confirm('¿Eliminar permanentemente la aplicación N° {{ '%05d'|format(g.num) }}? Se revertirá bodega si hay salidas ligadas.');">
+    <input type="hidden" name="action" value="lc_eliminar_evento">
+    <input type="hidden" name="sec" value="libro_campo">
+    <input type="hidden" name="temp" value="{{ temp_sel }}">
+    <input type="hidden" name="n_app" value="{{ g.num }}">
+    <label class="form-label small">Clave maestra (eliminar evento)</label>
+    <div class="input-group input-group-sm" style="max-width: 320px;">
+      <input type="password" name="clave_maestra" class="form-control" required autocomplete="off">
+      <button type="submit" class="btn btn-outline-danger">Eliminar evento</button>
+    </div>
+  </form>
+  {% endif %}
 </div>
 {% endfor %}
 {% else %}
