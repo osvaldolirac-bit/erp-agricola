@@ -75,12 +75,15 @@ def gather_flujo(user_email: str, user_rol: str) -> dict:
             tot_eg_real = float(df_flujo["EGRESOS_REAL"].sum())
             tot_eg_proy = float(df_flujo["EGRESOS_PROY"].sum())
             eerr_final = float(df_flujo["EERR_ACUM"].iloc[-1])
+            eerr_fmt = demo.f_peso(eerr_final)
             kpis = {
                 "ingresos": demo.f_peso(tot_ing),
                 "gastado": demo.f_peso(meta.get("total_gastado", 0)),
                 "cxp": demo.f_peso(meta.get("teso_cxp_total", tot_eg_real)),
                 "egresos_proy": demo.f_peso(tot_eg_proy),
-                "eerr": demo.f_peso(eerr_final),
+                "eerr": eerr_fmt,
+                # Plantilla legacy en VPS usaba kpis.margen para el EERR acumulado.
+                "margen": eerr_fmt,
             }
 
             display_cols = [
