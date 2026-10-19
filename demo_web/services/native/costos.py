@@ -6,9 +6,8 @@ from flask import render_template, request, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.lc_query_scope import (
     ajustar_matriz_costos_excluir_espino_lc,
-    cuarteles_costos_lc,
+    cuarteles_matriz_costos_lc,
     filtrar_detalle_movimientos_espino_lc,
-    ocultar_cuartel_espino_en_matriz_lc,
 )
 from demo_web.services.module_runner import store_pdf
 from demo_web.services.tenant_scope import cuarteles_oficiales
@@ -160,9 +159,7 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
     es_vigente = fi <= hoy <= ff
 
     cuarteles_full = list(cuarteles_oficiales(demo) or [])
-    cuarteles = cuarteles_costos_lc(cuarteles_full)
-    if not cuarteles:
-        cuarteles = cuarteles_full
+    cuarteles = cuarteles_matriz_costos_lc(cuarteles_full)
     vistas = [("resumen", "📊 Resumen")] + [(c, c) for c in cuarteles]
     vista = request.args.get("vista", "resumen")
     if vista != "resumen" and vista not in cuarteles:
@@ -186,7 +183,6 @@ def gather_costos(user_email: str, user_rol: str) -> dict:
         matriz = ajustar_matriz_costos_excluir_espino_lc(
             conn, demo, matriz, cuarteles_full, det_fi, det_ff,
         )
-        matriz = ocultar_cuartel_espino_en_matriz_lc(matriz)
 
         matriz_cols, matriz_rows = [], []
         detalle_cols, detalle_rows = [], []

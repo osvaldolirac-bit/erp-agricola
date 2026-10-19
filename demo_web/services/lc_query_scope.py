@@ -27,9 +27,15 @@ def sql_and_excluir_razon_social_espino(col: str = "razon_social", alias: str | 
 
 
 def cuarteles_costos_lc(cuarteles: list[str] | None) -> list[str]:
+    """Cuarteles para Flujo/Dashboard (sin columna EL ESPINO en totales consolidados)."""
     if not _lc_excluir() or not cuarteles:
         return list(cuarteles or [])
     return [c for c in cuarteles if str(c).upper().strip() != CUARTEL_ESPINO_LC]
+
+
+def cuarteles_matriz_costos_lc(cuarteles: list[str] | None) -> list[str]:
+    """Cuarteles visibles en módulo Costos LC (incluye EL ESPINO para petróleo e imputaciones)."""
+    return list(cuarteles or [])
 
 
 def cuarteles_operativos_lc(demo: Any) -> list[str]:
