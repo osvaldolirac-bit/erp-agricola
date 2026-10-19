@@ -44,6 +44,14 @@ class TestEspinoBodegaKardex(unittest.TestCase):
         st = espino_bodega._stock_cc(self.conn, 1)
         self.assertAlmostEqual(st, 150.0)
 
+    def test_salida_variedad_rebaja_stock_neto(self):
+        self.conn.execute(
+            """INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+               VALUES (1,'Salida',30,'2026-01-03','SANTINA',300,'L')"""
+        )
+        st = espino_bodega._stock_cc(self.conn, 1)
+        self.assertAlmostEqual(st, 70.0)
+
     @patch("demo_web.services.native.espino_bodega.is_espino_tenant", return_value=True)
     def test_sync_refleja_stock_cc(self, _mock_espino):
         espino_bodega._sync_inventario_stock(self.conn, 1)

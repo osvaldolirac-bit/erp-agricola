@@ -55,29 +55,31 @@ def _es_producto_bodega_espino(nombre: str) -> bool:
         return True
     if n.startswith("COBRE") or " COBRE" in f" {n}":
         return True
+    if "CAPTAN" in n:
+        return True
     return False
 
 
 def _stock_cc_map(conn) -> dict[int, float]:
-    """Stock bodega El Espino: kardex en CC canónico + legado Cerezos/CEREZOS."""
-    cc_sql, cc_params = _cc_bodega_in()
+    """Stock real por producto (ingresos − salidas en toda la BD Espino).
+
+    Histórico: ingresos en Cerezos/EL ESPINO y salidas Libro en variedades;
+    el neto global es el saldo bodega operativo.
+    """
     rows = conn.execute(
-        f"""SELECT producto_id,
-                  SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END) AS stock_cc
+        """SELECT producto_id,
+                  SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END) AS stock_neto
            FROM movimientos
-           WHERE {cc_sql}
            GROUP BY producto_id""",
-        cc_params,
     ).fetchall()
     return {int(r[0]): float(r[1] or 0) for r in rows}
 
 
 def _stock_cc(conn, producto_id: int) -> float:
-    cc_sql, cc_params = _cc_bodega_in()
     row = conn.execute(
-        f"""SELECT SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END)
-           FROM movimientos WHERE {cc_sql} AND producto_id = ?""",
-        (*cc_params, int(producto_id)),
+        """SELECT SUM(CASE WHEN tipo = 'Ingreso' THEN cantidad ELSE -cantidad END)
+           FROM movimientos WHERE producto_id = ?""",
+        (int(producto_id),),
     ).fetchone()
     return float(row[0] or 0) if row and row[0] is not None else 0.0
 

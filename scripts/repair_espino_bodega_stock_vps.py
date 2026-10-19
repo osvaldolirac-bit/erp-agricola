@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recalcula inventario.stock bodega El Espino desde kardex (CC EL ESPINO + Cerezos)."""
+"""Recalcula inventario.stock El Espino = neto ingresos−salidas (todos los CC)."""
 from __future__ import annotations
 
 import os
