@@ -22,6 +22,11 @@ def now_chile() -> str:
     return datetime.now(_TZ_CHILE).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def hoy_chile():
+    """Fecha de hoy en Chile (evitar date.today() UTC del servidor)."""
+    return datetime.now(_TZ_CHILE).date()
+
+
 def hash_password(password: str) -> str:
     return hashlib.sha256((password or "").encode("utf-8")).hexdigest()
 
