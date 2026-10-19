@@ -178,7 +178,9 @@
         </div>
         <div class="col-md-2">
           <label class="form-label">Monto abono ($)</label>
-          <input type="number" name="monto_abono" id="abono-monto" class="form-control" min="1" step="1000" required>
+          <input type="text" name="monto_abono" id="abono-monto" class="form-control js-decimal-coma"
+                 inputmode="decimal" autocomplete="off" required placeholder="Ej. 150000 o 1.250.000">
+          <div class="form-text small">Pesos chilenos: coma decimal opcional (ej. 1.250.000,50). No use punto como decimal.</div>
         </div>
         <div class="col-md-2">
           <label class="form-label">Forma de pago</label>
@@ -315,8 +317,11 @@
       var opt = sel.options[sel.selectedIndex];
       var max = parseFloat(opt && opt.dataset.saldo ? opt.dataset.saldo : '0');
       if (max > 0) {
-        inp.max = max;
-        if (!inp.value || parseFloat(inp.value) > max) inp.value = max;
+        inp.dataset.saldoMax = String(max);
+        if (!inp.value || parseFloat(String(inp.value).replace(/\./g, '').replace(',', '.')) > max + 0.01) {
+          var ent = Math.round(max);
+          inp.value = ent >= 1000 ? ent.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : String(ent);
+        }
       }
     }
     $('#abono-doc').on('change', syncAbonoMax);

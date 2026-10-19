@@ -12,7 +12,7 @@ from demo_web.services.lc_query_scope import (
 )
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.espino_compras_guards import validar_estado_pago_coherente
-from demo_web.services.native._helpers import hoy_demo
+from demo_web.services.native._helpers import hoy_demo, parse_decimal_cl
 from demo_web.services.tenant_scope import is_espino_tenant
 
 SECCIONES = [
@@ -527,9 +527,15 @@ def _post_abono_parcial(demo, conn, user_email: str) -> dict:
         return {"ok": False, "msg": "Seleccione un proveedor.", "extra": {"sec": "deuda"}}
     try:
         doc_id = int(request.form.get("doc_id") or 0)
-        monto_ab = float(request.form.get("monto_abono") or 0)
     except ValueError:
-        return {"ok": False, "msg": "Datos de abono inválidos.", "extra": {"sec": "deuda", "proveedor": proveedor}}
+        return {"ok": False, "msg": "Documento inválido.", "extra": {"sec": "deuda", "proveedor": proveedor}}
+    monto_ab = parse_decimal_cl(request.form.get("monto_abono"), default=None)
+    if monto_ab is None or monto_ab <= 0:
+        return {
+            "ok": False,
+            "msg": "Monto de abono inválido. Use solo coma decimal (ej. 150000 o 1.250.000,50).",
+            "extra": {"sec": "deuda", "proveedor": proveedor},
+        }
     metodo = request.form.get("metodo_pago") or METODOS_PAGO[0]
     if metodo not in METODOS_PAGO:
         metodo = METODOS_PAGO[0]
