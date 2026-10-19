@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Deploy paquete robustez ~8/10 LC+Espino (archivos .py quirúrgicos)."""
+"""Deploy paquete robustez ~8/10 LC+Espino (archivos .py quirúrgicos).
+
+Preferir el manifest completo: scripts/deploy_robustez_lc_espino_vps.py
+"""
 from __future__ import annotations
 
 import os

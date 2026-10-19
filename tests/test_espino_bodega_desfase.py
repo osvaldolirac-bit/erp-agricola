@@ -20,7 +20,7 @@ class TestEspinoRevertir(unittest.TestCase):
             CREATE TABLE libro_campo (id INTEGER, movimiento_id INTEGER);
             """
         )
-        conn.execute("INSERT INTO inventario VALUES (1,'PIRIPROXIFEN')")
+        conn.execute("INSERT INTO inventario (id, producto, stock) VALUES (1,'PIRIPROXIFEN',0)")
         conn.execute(
             """INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
                VALUES (1,'Salida',2,'2026-03-01','EL ESPINO',20,'L')"""
