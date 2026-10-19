@@ -19,6 +19,9 @@ def _imports_criticos() -> None:
         sidebar_badges,
     )
     assert hasattr(sidebar_badges, "conteos_sidebar")
+    from demo_web.services import tenant_rules  # noqa: F401
+
+    assert tenant_rules.verify_tenant_registry_errors() == []
     from demo_web.services.native import (  # noqa: F401
         bodega,
         espino,

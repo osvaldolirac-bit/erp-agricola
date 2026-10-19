@@ -58,6 +58,8 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "erp_flujo_financiero.py",
     "scripts/migrate_espino_libro_movimiento_id_vps.py",
     "scripts/smoke_robustez.py",
+    "scripts/verify_agricola_release.py",
+    "erp_maquinaria.py",
 )
 
 

@@ -1,0 +1,20 @@
+---
+description: Alta de un tercer tenant agrícola (LC/Espino comparten app_concepcion)
+globs:
+  - demo_web/tenants.py
+  - demo_web/services/tenant_rules.py
+  - demo_web/services/tenant_scope.py
+  - demo_web/services/erp_loader.py
+alwaysApply: false
+---
+
+## Nuevo tenant agrícola (tercero)
+
+1. **`demo_web/tenants.py`**: entrada con `slug`, `erp_app`, `kind`, `db`, `secrets`, `nombre`, `nombre_erp` (BD y secretos **únicos**).
+2. **`NOMBRE_ERP_POR_SLUG`**: marca en UI/correos.
+3. **`tenant_rules.py`**: si comparte reglas LC/Espino, añadir slug a `LC_TENANT_SLUGS` y matriz en `TenantRuleSet`; si no, documentar excepciones en módulos nativos.
+4. **`erp_loader.py`**: overrides de `CENTROS_COSTO` / razones sociales **solo** para ese slug (nunca dejar constantes LC en memoria al servir otro tenant).
+5. **Código compartido**: usar `tenant_scope`, `is_*_tenant()`, `lc_query_scope` solo donde aplique; no copiar filtros “Espino” ad hoc.
+6. **Manifest deploy**: cualquier `.py`/template nuevo → `ROBUSTEZ_LC_ESPINO_FILES` en el mismo commit.
+7. **Verificación obligatoria**: `python3 scripts/verify_agricola_release.py` antes de PR y VPS.
+8. **Deploy producción**: solo `deploy_robustez_lc_espino_vps.py` (ver regla `erp-agricola-vps-deploy.mdc`).

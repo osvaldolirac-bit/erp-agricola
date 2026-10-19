@@ -10,6 +10,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+from deploy_legacy_guard import block_legacy_deploy  # noqa: E402
+
+block_legacy_deploy(__file__)
+
 HOST = "root@45.7.230.70"
 PORT = "40484"
 REMOTE = "/root/demo-web"
