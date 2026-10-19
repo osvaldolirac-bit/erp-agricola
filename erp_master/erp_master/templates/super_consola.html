@@ -58,15 +58,20 @@
       <section class="admin-block">
         <h3>Usuarios</h3>
         <p class="help">Alta y control de cuentas del cliente seleccionado. Operas desde Master.</p>
+        {% if tenant.kind == 'demo' %}
+        <p class="help">En la demo la clave se genera sola en el servidor y se envía únicamente al correo del invitado. No queda visible en esta pantalla ni en la copia de respaldo.</p>
+        {% endif %}
         <form method="post" class="form-grid">
           <input type="hidden" name="action" value="crear_usuario">
           <input type="hidden" name="sec" value="usuarios">
           <label>Correo
             <input type="email" name="email" required>
           </label>
+          {% if tenant.kind != 'demo' %}
           <label>Clave
             <input type="text" name="password" required minlength="4" autocomplete="off">
           </label>
+          {% endif %}
           <label>Rol
             <select name="rol">
               {% for r in roles %}
@@ -78,10 +83,7 @@
           <label>Días demo
             <input type="number" name="dias_demo" value="30" min="1" max="365">
           </label>
-          <label class="check-inline">
-            <input type="checkbox" name="enviar_invitacion" value="1" checked>
-            Enviar invitación por correo
-          </label>
+          <input type="hidden" name="enviar_invitacion" value="1">
           {% endif %}
           <label class="check-inline">
             <input type="checkbox" name="mail_tesoreria" value="1">

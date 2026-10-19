@@ -5,9 +5,12 @@ Lee/escribe SQLite de cada tenant. No toca Río Maipo ni fusiona código.
 from __future__ import annotations
 
 import hashlib
+import html
 import os
 import re
+import secrets
 import sqlite3
+import string
 import sys
 from contextlib import contextmanager
 from datetime import date, timedelta
@@ -69,6 +72,15 @@ MENU_GLOBALGAP = [
 ]
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def generar_clave_demo(largo: int = 12) -> str:
+    """Clave aleatoria para la prueba. No se muestra en la consola ni en la copia admin."""
+    alfabeto = "".join(
+        c for c in (string.ascii_letters + string.digits) if c not in "O0Il1"
+    )
+    n = max(10, int(largo))
+    return "".join(secrets.choice(alfabeto) for _ in range(n))
 
 
 def hash_password(password: str, kind: str) -> str:
@@ -188,10 +200,13 @@ def create_user(
     email_n = (email or "").strip().lower()
     if not email_n or not _EMAIL_RE.match(email_n):
         return False, "Correo inválido."
-    if not password or len(password) < 4:
-        return False, "La clave debe tener al menos 4 caracteres."
     if rol not in roles_for(kind):
         return False, "Rol no válido para este ERP."
+    if kind == "demo":
+        # La consola no elige ni ve la clave: se genera y viaja solo al invitado.
+        password = generar_clave_demo()
+    elif not password or len(password) < 4:
+        return False, "La clave debe tener al menos 4 caracteres."
     exp = ""
     with tenant_conn(db_path) as conn:
         exists = conn.execute(
@@ -220,20 +235,90 @@ def create_user(
             )
     msg = "Usuario creado."
     if kind == "demo":
-        msg = f"Usuario creado. Vigencia hasta {exp}."
-        if enviar_invitacion:
-            ok_mail, mail_txt = send_demo_invitation(
-                db_path,
-                email_n,
-                password,
-                rol,
-                invitado_por or "",
-                exp,
+        ok_mail, mail_txt = send_demo_invitation(
+            db_path,
+            email_n,
+            password,
+            rol,
+            invitado_por or "",
+            exp,
+        )
+        if not ok_mail:
+            with tenant_conn(db_path) as conn:
+                conn.execute(
+                    "DELETE FROM usuarios WHERE lower(email) = ?",
+                    (email_n,),
+                )
+            return False, (
+                "No se creó la cuenta: no se pudo enviar la clave al correo del invitado. "
+                "Revise SMTP e intente de nuevo."
             )
-            msg = f"{msg} {mail_txt}"
-            if not ok_mail:
-                return True, msg
+        msg = f"Usuario de prueba creado. Vigencia hasta {exp}. {mail_txt}"
     return True, msg
+
+
+def _cuerpo_invitacion_demo(
+    *,
+    email: str,
+    rol_txt: str,
+    fecha_txt: str,
+    login_url: str,
+    admin_email: str,
+    clave: str = "",
+) -> str:
+    """HTML de invitación. La clave solo va en el correo del invitado."""
+    from erp_correo_html import plantilla_correo_html
+
+    email_s = html.escape(email)
+    rol_s = html.escape(rol_txt)
+    fecha_s = html.escape(fecha_txt)
+    url_s = html.escape(login_url, quote=True)
+    admin_s = html.escape(admin_email or "Administrador ERP Demo")
+    if clave:
+        bloque_clave = (
+            f"<p style='margin: 6px 0;'><b>Contraseña:</b> "
+            f"<span style='color: #6A1B9A; font-weight: bold;'>{html.escape(clave)}</span></p>"
+        )
+        intro = (
+            "Has sido invitado a probar el <b>ERP Agrícola en entorno de demostración</b>. "
+            "Este acceso es temporal y sirve para conocer el sistema sin afectar datos de producción."
+        )
+    else:
+        bloque_clave = (
+            "<p style='margin: 6px 0; color: #5F6B7A;'>"
+            "La contraseña se generó en el servidor y se envió <b>solo</b> al correo del invitado. "
+            "Esta copia no la incluye."
+            "</p>"
+        )
+        intro = (
+            f"Se creó un acceso de prueba para <b>{email_s}</b>. "
+            "La clave no queda en la consola ni en este correo."
+        )
+    interior = f"""
+            <p style='color: #1F2933; line-height: 1.55;'>{intro}</p>
+            <div style='background: #FFF8E1; border: 1px solid #FFE082; border-radius: 10px; padding: 14px 18px; margin: 18px 0;'>
+                <p style='margin: 0; color: #5D4037; font-weight: 700;'>Periodo de prueba</p>
+                <p style='margin: 8px 0 0; color: #5D4037;'>Vigente hasta el <b>{fecha_s}</b> (inclusive).</p>
+            </div>
+            <div style='background: #F3E5F5; border: 1px solid #CE93D8; border-radius: 10px; padding: 18px 20px; margin: 18px 0;'>
+                <p style='margin: 0 0 10px; font-weight: 800; color: #6A1B9A;'>Datos de acceso</p>
+                <p style='margin: 6px 0;'><b>Usuario:</b> <span style='color: #6A1B9A; font-weight: bold;'>{email_s}</span></p>
+                {bloque_clave}
+                <p style='margin: 6px 0;'><b>Perfil:</b> {rol_s}</p>
+                <p style='margin: 6px 0;'><b>Enlace:</b> <a href='{url_s}' style='color: #6A1B9A; font-weight: bold;'>{url_s}</a></p>
+            </div>
+            <p style='text-align: center; margin: 24px 0;'>
+                <a href='{url_s}' style='display: inline-block; background: linear-gradient(135deg, #6A1B9A, #9C27B0); color: white; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 800;'>ACCEDER AL ERP DEMO</a>
+            </p>
+            <p style='font-size: 13px; color: #5F6B7A; margin: 6px 0;'><b>Invitación emitida por:</b> {admin_s}</p>
+    """
+    return plantilla_correo_html(
+        "invitacion",
+        "Bienvenido al ERP Agrícola — Ambiente Demo",
+        interior,
+        nombre_erp="ERP DEMO AGRICOLA",
+        pie="Si no esperaba esta invitación, ignore el correo.",
+    )
 
 
 def send_demo_invitation(
@@ -244,23 +329,72 @@ def send_demo_invitation(
     admin_email: str,
     fecha_expira: str,
 ) -> tuple[bool, str]:
-    """Envía correo de invitación demo (usa helpers de app_demo)."""
+    """Envía la clave solo al invitado. La copia de respaldo no lleva la contraseña."""
     try:
         _ensure_demo_web_path()
         import app_demo as demo  # noqa: WPS433
 
         demo.NOMBRE_DB = db_path
-        # Acceso unificado del rubro agrícola
         demo.DEMO_URL = DEMO_LOGIN_URL
-        res = demo.enviar_correo_invitacion_demo(
-            email, password_plain, rol, admin_email, fecha_expira
+        try:
+            perfil = demo.etiqueta_perfil_demo(rol, email)
+        except Exception:
+            perfil = rol
+        try:
+            fecha_txt = date.fromisoformat(str(fecha_expira)[:10]).strftime("%d-%m-%Y")
+        except ValueError:
+            fecha_txt = str(fecha_expira)[:10]
+        cuerpo_invitado = _cuerpo_invitacion_demo(
+            email=email,
+            rol_txt=str(perfil),
+            fecha_txt=fecha_txt,
+            login_url=DEMO_LOGIN_URL,
+            admin_email=admin_email,
+            clave=password_plain,
         )
-        ok = bool(res.get("invitado")) if isinstance(res, dict) else bool(res)
-        if ok:
-            return True, f"Correo de invitación enviado a {email}."
-        return False, "No se pudo enviar el correo de invitación (revise SMTP)."
+        ok_inv = bool(
+            demo._enviar_correo_html(
+                "Invitación — ERP Agrícola Demo (acceso de prueba)",
+                cuerpo_invitado,
+                [email],
+            )
+        )
+        try:
+            demo._registrar_envio_correo("MAIL INVITACION", email, ok_inv)
+        except Exception:
+            pass
+        if not ok_inv:
+            return False, "No se pudo enviar el correo de invitación (revise SMTP)."
+        try:
+            cc = demo._destinatarios_admin_demo(admin_email) or []
+        except Exception:
+            cc = []
+        cc = [c for c in cc if str(c).lower() != email.lower()]
+        if cc:
+            cuerpo_copia = _cuerpo_invitacion_demo(
+                email=email,
+                rol_txt=str(perfil),
+                fecha_txt=fecha_txt,
+                login_url=DEMO_LOGIN_URL,
+                admin_email=admin_email,
+                clave="",
+            )
+            ok_copia = bool(
+                demo._enviar_correo_html(
+                    f"Copia — Invitación demo enviada a {email} (sin clave)",
+                    cuerpo_copia,
+                    cc,
+                )
+            )
+            try:
+                demo._registrar_envio_correo("MAIL INVITACION COPIA", cc, ok_copia)
+            except Exception:
+                pass
+            if not ok_copia:
+                return True, f"La clave se envió solo a {email}. La copia de respaldo no salió."
+        return True, f"La clave se envió solo a {email}. Ni la consola ni la copia de respaldo la muestran."
     except Exception as exc:
-        return False, f"Invitación no enviada: {exc}"
+        return False, f"Invitación no enviada: {type(exc).__name__}"
 
 
 def get_plataforma_demo(db_path: str) -> dict[str, Any]:
