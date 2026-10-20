@@ -325,6 +325,33 @@ def _pdf_kardex_producto(
     return url_for("modules.pdf_download", token=token), fname
 
 
+def registrar_ingreso_kardex_compra_lc(
+    demo,
+    conn: sqlite3.Connection,
+    producto_id: int,
+    cantidad: float,
+    precio_unitario: float,
+    fecha: str,
+) -> None:
+    """Deja la compra en el kardex. El stock ya lo actualizó la misma factura."""
+    cant = float(cantidad or 0)
+    if cant <= 0:
+        return
+    um_default = getattr(demo, "DEFAULT_UNIDAD_INSUMO", "kg")
+    um_row = conn.execute(
+        "SELECT COALESCE(unidad_medida, ?) FROM inventario WHERE id=?",
+        (um_default, int(producto_id)),
+    ).fetchone()
+    um = um_row[0] if um_row else um_default
+    valor = round(cant * float(precio_unitario or 0), 2)
+    conn.execute(
+        """INSERT INTO movimientos
+           (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
+           VALUES (?, 'Ingreso', ?, ?, ?, ?, ?)""",
+        (int(producto_id), cant, str(fecha or "")[:10], ETIQUETA_BODEGA, valor, um),
+    )
+
+
 def gather_kardex_producto(
     demo,
     conn,

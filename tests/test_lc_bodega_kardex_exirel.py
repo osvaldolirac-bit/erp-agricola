@@ -10,7 +10,11 @@ import sqlite3
 import unittest
 from datetime import datetime
 
-from demo_web.services.bodega_kardex import _build_kardex_rows, gather_kardex_producto
+from demo_web.services.bodega_kardex import (
+    _build_kardex_rows,
+    gather_kardex_producto,
+    registrar_ingreso_kardex_compra_lc,
+)
 
 
 class _Demo:
@@ -114,6 +118,27 @@ class TestKardexExirel(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["cant_raw"], -7.0)
         self.assertEqual([r["cant_raw"] for r in rows[1:]], [10.0, 2.0])
         self.assertAlmostEqual(rows[-1]["saldo_raw"], 1.0)
+
+    def test_compra_lc_deja_ingreso_sin_mover_stock(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute(
+            """CREATE TABLE inventario (
+                id INTEGER PRIMARY KEY, producto TEXT, unidad_medida TEXT, stock REAL)"""
+        )
+        conn.execute(
+            """CREATE TABLE movimientos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, tipo TEXT,
+                cantidad REAL, fecha TEXT, centro_costo TEXT, valor_imputado REAL,
+                unidad_medida TEXT)"""
+        )
+        conn.execute("INSERT INTO inventario VALUES (95, 'EVOLUTION FIFTY', 'lt', 70)")
+        registrar_ingreso_kardex_compra_lc(_Demo(), conn, 95, 40, 11782.32, "2026-10-20")
+        stock = conn.execute("SELECT stock FROM inventario WHERE id=95").fetchone()[0]
+        mov = conn.execute(
+            "SELECT tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida FROM movimientos"
+        ).fetchone()
+        self.assertEqual(stock, 70)
+        self.assertEqual(mov, ("Ingreso", 40.0, "2026-10-20", "BODEGA", 471292.8, "lt"))
 
 
 if __name__ == "__main__":

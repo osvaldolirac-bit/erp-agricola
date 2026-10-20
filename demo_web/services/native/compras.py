@@ -514,6 +514,22 @@ def _post_add_car(demo) -> dict:
     return {"ok": True, "msg": "Ítem agregado al carro."}
 
 
+def _kardex_lc_activo() -> bool:
+    from demo_web.services.erp_loader import get_erp_app
+    from demo_web.services.tenant_scope import current_tenant
+
+    slug = str((current_tenant() or {}).get("slug") or "").lower()
+    return get_erp_app() == "concepcion" or slug == "concepcion"
+
+
+def _registrar_compra_en_kardex_lc(demo, conn, producto_id, cantidad, precio, fecha) -> None:
+    if not _kardex_lc_activo():
+        return
+    from demo_web.services.bodega_kardex import registrar_ingreso_kardex_compra_lc
+
+    registrar_ingreso_kardex_compra_lc(demo, conn, producto_id, cantidad, precio, fecha)
+
+
 def _post_save_agro(demo, conn) -> dict:
     from erp_inventario_ia import poblar_ingredientes_inventario
 
@@ -566,7 +582,9 @@ def _post_save_agro(demo, conn) -> dict:
                         "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
                         (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
                     )
-                    poblar_ingredientes_inventario(conn, cur_ins.lastrowid)
+                    new_id = int(cur_ins.lastrowid)
+                    poblar_ingredientes_inventario(conn, new_id)
+                    _registrar_compra_en_kardex_lc(demo, conn, new_id, i["c"], i["p"], fe)
             else:
                 pid = int(i["id"])
                 if is_espino_tenant():
@@ -586,6 +604,7 @@ def _post_save_agro(demo, conn) -> dict:
                         "UPDATE inventario SET stock = stock + ?, precio_medio = ? WHERE id = ?",
                         (i["c"], npmp, pid),
                     )
+                    _registrar_compra_en_kardex_lc(demo, conn, pid, i["c"], i["p"], fe)
         conn.commit()
     except Exception as exc:
         conn.rollback()
