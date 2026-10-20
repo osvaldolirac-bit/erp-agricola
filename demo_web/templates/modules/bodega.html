@@ -207,15 +207,20 @@
   </div>
   {% if kardex_lc_pendientes %}
   <div class="alert alert-warning small">
-    <strong>Libro de Campo sin salida de bodega registrada</strong> (aparecen en la cuenta corriente como referencia):
+    <strong>Libro de Campo sin salida de bodega.</strong>
+    Estas aplicaciones no rebajan el saldo (no hay movimiento de bodega):
     {% for lc in kardex_lc_pendientes %}
-    App N° {{ '%05d'|format(lc.n_app) }} · {{ lc.fecha }} · {{ lc.sector }} · −{{ lc.gasto }} {{ kardex_producto.um }}{% if not loop.last %} · {% endif %}
+    App N° {{ '%05d'|format(lc.n_app) }} · {{ lc.fecha }} · {{ lc.sector }} · {{ lc.gasto }} {{ kardex_producto.um }}{% if not loop.last %} · {% endif %}
     {% endfor %}
   </div>
   {% endif %}
   {% if kardex_rows %}
   <div class="panel-card mb-3">
     <h3 class="h6 panel-title">Cuenta corriente bodega</h3>
+    <p class="small text-muted mb-2">
+      El saldo usa solo movimientos de bodega.
+      Una fecha de un año anterior es la fecha registrada en esa salida o ingreso.
+    </p>
     <div class="table-responsive">
       <table class="table table-sm table-striped w-100">
         <thead>
@@ -230,8 +235,11 @@
         </thead>
         <tbody>
           {% for m in kardex_rows %}
-          <tr class="{% if m.tipo == 'Ingreso' %}table-success{% else %}table-danger{% endif %}">
-            <td>{{ m.fecha }}</td>
+          <tr class="{% if m.es_apertura %}table-light{% elif m.tipo == 'Ingreso' %}table-success{% else %}table-danger{% endif %}">
+            <td>
+              {% if m.es_apertura %}Apertura{% else %}{{ m.fecha }}{% endif %}
+              {% if m.fuera_temporada %}<span class="badge text-bg-secondary ms-1">temporada anterior</span>{% endif %}
+            </td>
             <td>{{ m.tipo }}</td>
             <td class="text-end fw-semibold">{{ m.delta_fmt }} {{ kardex_producto.um }}</td>
             <td>{{ m.cuartel }}</td>
