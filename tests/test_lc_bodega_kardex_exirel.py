@@ -10,7 +10,7 @@ import sqlite3
 import unittest
 from datetime import datetime
 
-from demo_web.services.bodega_kardex import gather_kardex_producto
+from demo_web.services.bodega_kardex import _build_kardex_rows, gather_kardex_producto
 
 
 class _Demo:
@@ -91,6 +91,29 @@ class TestKardexExirel(unittest.TestCase):
         self.assertEqual(pend[0]["fecha"], "2025-12-01")
         self.assertEqual(pend[0]["gasto"], "10.0")
         self.assertNotIn(10.0, [r["cant_raw"] for r in rows])
+
+    def test_stock_menor_que_neto_abre_en_negativo_y_conserva_filas(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute(
+            "CREATE TABLE facturas (id INTEGER, nro_documento TEXT, fecha_compra TEXT, concepto TEXT)"
+        )
+        rows = _build_kardex_rows(
+            _Demo(),
+            conn,
+            1,
+            "PIRIPROXIFEN",
+            [
+                (1, "Ingreso", 10.0, "2026-07-30", "BODEGA"),
+                (2, "Salida", 2.0, "2026-08-10", "CIRUELOS"),
+            ],
+            [],
+            set(),
+            stock_objetivo=1.0,
+        )
+        self.assertTrue(rows[0]["es_apertura"])
+        self.assertAlmostEqual(rows[0]["cant_raw"], -7.0)
+        self.assertEqual([r["cant_raw"] for r in rows[1:]], [10.0, 2.0])
+        self.assertAlmostEqual(rows[-1]["saldo_raw"], 1.0)
 
 
 if __name__ == "__main__":

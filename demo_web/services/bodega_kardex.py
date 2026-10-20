@@ -231,7 +231,9 @@ def _build_kardex_rows(
         ing = sum(r["cant_raw"] for r in rows if r["tipo"] == "Ingreso")
         sal = sum(r["cant_raw"] for r in rows if r["tipo"] == "Salida")
         apertura = float(stock_objetivo) - ing + sal
-        if apertura > 1e-6:
+        # También si el stock real es menor que el neto de movimientos:
+        # la apertura queda negativa y el historial de compras y aplicaciones se conserva.
+        if abs(apertura) > 1e-6:
             rows.insert(
                 0,
                 _kardex_row(
