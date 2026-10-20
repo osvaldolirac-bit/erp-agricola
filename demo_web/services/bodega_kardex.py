@@ -54,7 +54,6 @@ def _lc_lineas_producto(conn, producto: str) -> list[dict]:
             "sector": str(r[2] or ""),
             "gasto": float(r[3] or 0),
             "_used": False,
-            "_synthetic": False,
         }
         for r in rows
     ]
@@ -123,6 +122,22 @@ def _origen_movimiento(
     return f"Salida manual → {cc}"
 
 
+def _inicio_temporada_vigente(demo) -> date | None:
+    """Inicio de la temporada que contiene hoy. None si el tenant no declara temporadas."""
+    temps = getattr(demo, "TEMPORADAS_COSTOS", None) or []
+    hoy = date.today()
+    hora = getattr(demo, "hora_chile", None)
+    if callable(hora):
+        try:
+            hoy = hora().date()
+        except Exception:
+            hoy = date.today()
+    for t in temps:
+        if len(t) >= 3 and t[1] <= hoy <= t[2]:
+            return t[1]
+    return None
+
+
 def _kardex_row(
     demo,
     *,
@@ -133,6 +148,7 @@ def _kardex_row(
     cuartel: str,
     origen: str,
     saldo: float,
+    es_apertura: bool = False,
 ) -> dict:
     tipo_n = _normalize_tipo_mov(tipo)
     delta = qty if tipo_n == "Ingreso" else -qty
@@ -147,6 +163,8 @@ def _kardex_row(
         "origen": origen,
         "saldo": demo.f_cantidad(saldo),
         "saldo_raw": saldo,
+        "es_apertura": es_apertura,
+        "fuera_temporada": False,
     }
 
 
@@ -204,23 +222,9 @@ def _build_kardex_rows(
             )
         )
 
-    for lc in lc_lineas:
-        if lc.get("_used") or float(lc.get("gasto") or 0) <= 0:
-            continue
-        lc["_synthetic"] = True
-        rows.append(
-            _kardex_row(
-                demo,
-                row_id=-int(lc["n_app"] or 0),
-                fecha=str(lc["fecha"] or "")[:10],
-                tipo="Salida",
-                qty=float(lc["gasto"]),
-                cuartel=(lc.get("sector") or "").strip() or "—",
-                origen=f"LC App N° {int(lc['n_app']):05d} · sin salida bodega",
-                saldo=0.0,
-            )
-        )
-
+    # Libro de Campo sin movimiento de bodega no entra al saldo: si se
+    # insertara como salida, la apertura se infla para forzar el stock final
+    # y la cuenta deja de cuadrar (caso EXIREL, app 10 L sin salida).
     rows.sort(key=_row_sort_key)
 
     if stock_objetivo is not None:
@@ -239,8 +243,17 @@ def _build_kardex_rows(
                     cuartel=ETIQUETA_BODEGA,
                     origen="Stock inicial / apertura",
                     saldo=0.0,
+                    es_apertura=True,
                 ),
             )
+
+    inicio = _inicio_temporada_vigente(demo)
+    if inicio is not None:
+        for r in rows:
+            if r.get("es_apertura"):
+                continue
+            f = parse_fecha_iso(str(r.get("fecha") or ""))
+            r["fuera_temporada"] = bool(f and f < inicio)
 
     _recalc_kardex_saldos(demo, rows)
     return rows
@@ -352,9 +365,7 @@ def gather_kardex_producto(
     lc_sin_par = [
         lc
         for lc in lc_lineas
-        if not lc.get("_used")
-        and not lc.get("_synthetic")
-        and float(lc.get("gasto") or 0) > 0
+        if not lc.get("_used") and float(lc.get("gasto") or 0) > 0
     ]
 
     ing_total = sum(r["cant_raw"] for r in kardex_rows if r["tipo"] == "Ingreso")
