@@ -178,6 +178,10 @@ def _load_module(erp_app: str) -> Any:
     else:
         import app_demo as erp  # noqa: WPS433
     patch_erp_module(erp, erp_app)
+    if erp_app == "concepcion":
+        from demo_web.services.lc_imputacion_bruto import instalar_imputacion_bruta_lc
+
+        instalar_imputacion_bruta_lc(erp)
     _wrap_registrar_accion(erp)
     if erp_app == "concepcion":
         _capture_lc_defaults(erp)
