@@ -515,11 +515,19 @@ def _post_add_car(demo) -> dict:
 
 
 def _kardex_lc_activo() -> bool:
-    from demo_web.services.erp_loader import get_erp_app
-    from demo_web.services.tenant_scope import current_tenant
+    from demo_web.services.tenant_scope import tenant_slug
+
+    slug = tenant_slug()
+    if slug == "espino":
+        return False
+    if slug == "concepcion":
+        return True
+    from demo_web.services.erp_loader import current_tenant, get_erp_app
 
     slug = str((current_tenant() or {}).get("slug") or "").lower()
-    return get_erp_app() == "concepcion" or slug == "concepcion"
+    if slug == "espino":
+        return False
+    return slug == "concepcion" or get_erp_app() == "concepcion"
 
 
 def _registrar_compra_en_kardex_lc(demo, conn, producto_id, cantidad, precio, fecha) -> None:
@@ -652,6 +660,11 @@ def _post_save_gastos(demo, conn) -> dict:
                tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (ng + "_P", prov, fe, fv, 0, "Gasto Operacional", c.upper(), imp / len(selcc), concepto, razon, tipo_gasto),
         )
+    if _kardex_lc_activo():
+        from demo_web.services.lc_imputacion_bruto import marcar_imputacion_respeta_bruto
+
+        # Marcado: Costos deja el bruto. Desmarcado: sigue el neto del rubro.
+        marcar_imputacion_respeta_bruto(conn, ng, prov, iva_bruto)
     conn.commit()
     demo.registrar_accion("GASTO", ng)
     return {"ok": True, "msg": f"Gasto registrado bajo folio {ng}."}

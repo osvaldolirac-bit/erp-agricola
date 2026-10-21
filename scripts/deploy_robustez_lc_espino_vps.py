@@ -31,6 +31,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/services/lc_query_scope.py",
     "demo_web/services/lc_aplicacion_service.py",
     "demo_web/services/lc_bodega_desfase.py",
+    "demo_web/services/lc_imputacion_bruto.py",
     "demo_web/services/espino_aplicacion_service.py",
     "demo_web/services/espino_bodega_desfase.py",
     "demo_web/services/espino_compras_guards.py",
