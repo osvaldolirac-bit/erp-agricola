@@ -40,6 +40,38 @@ def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | No
         return default
 
 
+def parse_numero_form(raw: str | None, default: float | None = 0.0) -> float | None:
+    """Número posteado por un formulario.
+
+    Acepta la coma chilena (1,5 y 1.250,5) y el punto que envía un input
+    type=number (2.5, 93488.5). Sin coma, un solo punto es decimal.
+    """
+    import re
+
+    s = (raw or "").strip().replace(" ", "").replace("$", "")
+    if not s:
+        return default
+    if "," in s:
+        return parse_decimal_cl(s, default)
+    if re.fullmatch(r"-?\d+(\.\d+)?([eE][+-]?\d+)?", s):
+        try:
+            return float(s)
+        except ValueError:
+            return default
+    return parse_decimal_cl(s, default)
+
+
+def numero_input(v: float | None) -> str:
+    """Valor para un input type=number: decimal simple, sin notación científica."""
+    x = float(v or 0)
+    if abs(x) < 1e-8:
+        return "0"
+    s = repr(x)
+    if "e" in s.lower():
+        s = f"{x:.12f}".rstrip("0").rstrip(".")
+    return s or "0"
+
+
 def format_monto_input_cl(v: float | None) -> str:
     """Texto para inputs js-decimal-coma (pesos CL, sin símbolo $)."""
     if v is None:

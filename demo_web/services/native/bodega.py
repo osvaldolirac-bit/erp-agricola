@@ -8,7 +8,13 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import current_tenant, get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
+from demo_web.services.native._helpers import (
+    hoy_demo,
+    numero_input,
+    parse_date,
+    parse_decimal_cl,
+    parse_numero_form,
+)
 
 SECCIONES = [
     ("stock", "📊 STOCK ACTUAL"),
@@ -144,9 +150,9 @@ def _stock(demo, conn, cert: bool = False) -> dict:
                 "id": int(r["id"]),
                 "producto": r["producto"],
                 "familia": r["familia"] or "",
-                "stock": float(r["stock"] or 0),
+                "stock": numero_input(r["stock"]),
                 "unidad_medida": r["unidad_medida"],
-                "precio_medio": float(r["precio_medio"] or 0),
+                "precio_medio": numero_input(r["precio_medio"]),
                 "ingrediente_activo": r.get("ingrediente_activo") or demo._ingrediente_pppl_producto(conn, r["producto"]),
             }
 
@@ -476,8 +482,8 @@ def _post_corregir_stock(demo, conn) -> dict:
         iid = int(request.form.get("producto_id") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Valores inválidos."}
-    nst = parse_decimal_cl(request.form.get("stock"), None)
-    npmp = parse_decimal_cl(request.form.get("precio_medio"), None)
+    nst = parse_numero_form(request.form.get("stock"), None)
+    npmp = parse_numero_form(request.form.get("precio_medio"), None)
     if nst is None or npmp is None:
         return {"ok": False, "msg": "Valores inválidos."}
     if nst < 0:
@@ -517,8 +523,8 @@ def _post_apertura(demo, conn) -> dict:
     nf = request.form.get("familia") or ""
     nu = request.form.get("unidad_medida") or demo.DEFAULT_UNIDAD_INSUMO
     nia = (request.form.get("ingrediente_activo") or "").strip()
-    ns = parse_decimal_cl(request.form.get("stock"), None)
-    npr = parse_decimal_cl(request.form.get("precio_medio"), None)
+    ns = parse_numero_form(request.form.get("stock"), None)
+    npr = parse_numero_form(request.form.get("precio_medio"), None)
     if ns is None or npr is None:
         return {"ok": False, "msg": "Stock o PMP inválido."}
     if ns < 0:

@@ -35,12 +35,17 @@ def _imports_criticos() -> None:
 
 
 def _abono_y_saldo() -> None:
-    from demo_web.services.native._helpers import parse_decimal_cl
+    from demo_web.services.native._helpers import parse_decimal_cl, parse_numero_form
     from erp_flujo_financiero import _saldo_pendiente
 
     assert parse_decimal_cl("850000") == 850_000.0
     assert parse_decimal_cl("1.250.000,50") == 1_250_000.5
     assert parse_decimal_cl("1.5", default=None) is None  # punto decimal rechazado
+    # El formulario de bodega usa input type=number, que envía punto decimal.
+    assert parse_numero_form("2.5", default=None) == 2.5
+    assert parse_numero_form("93488.5", default=None) == 93488.5
+    assert parse_numero_form("2,5", default=None) == 2.5
+    assert parse_numero_form("1.250.000", default=None) == 1_250_000.0
     assert _saldo_pendiente(1_000_000, 850_000) == 150_000.0
     assert _saldo_pendiente(1_000_000, 1_000_000) == 0.0
 
