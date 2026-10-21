@@ -8,7 +8,7 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import current_tenant, get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl
+from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl, parse_numero_form
 
 SECCIONES = [
     ("stock", "📊 STOCK ACTUAL"),
@@ -476,8 +476,8 @@ def _post_corregir_stock(demo, conn) -> dict:
         iid = int(request.form.get("producto_id") or 0)
     except (TypeError, ValueError):
         return {"ok": False, "msg": "Valores inválidos."}
-    nst = parse_decimal_cl(request.form.get("stock"), None)
-    npmp = parse_decimal_cl(request.form.get("precio_medio"), None)
+    nst = parse_numero_form(request.form.get("stock"), None)
+    npmp = parse_numero_form(request.form.get("precio_medio"), None)
     if nst is None or npmp is None:
         return {"ok": False, "msg": "Valores inválidos."}
     if nst < 0:
@@ -517,8 +517,8 @@ def _post_apertura(demo, conn) -> dict:
     nf = request.form.get("familia") or ""
     nu = request.form.get("unidad_medida") or demo.DEFAULT_UNIDAD_INSUMO
     nia = (request.form.get("ingrediente_activo") or "").strip()
-    ns = parse_decimal_cl(request.form.get("stock"), None)
-    npr = parse_decimal_cl(request.form.get("precio_medio"), None)
+    ns = parse_numero_form(request.form.get("stock"), None)
+    npr = parse_numero_form(request.form.get("precio_medio"), None)
     if ns is None or npr is None:
         return {"ok": False, "msg": "Stock o PMP inválido."}
     if ns < 0:
