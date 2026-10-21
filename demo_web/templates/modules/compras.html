@@ -173,6 +173,30 @@
         <label class="form-label small">Concepto</label>
         <input type="text" name="concepto" class="form-control form-control-sm" value="{{ factura_edit.concepto_full }}">
       </div>
+      {% if factura_edit.lineas_insumo %}
+      <div class="col-12">
+        <label class="form-label small mb-1">Cantidad del insumo</label>
+        <p class="form-text mt-0 mb-2">Al guardar, esta cantidad queda en el documento y en la bodega (stock y ingreso).</p>
+        {% for ln in factura_edit.lineas_insumo %}
+        <div class="row g-2 align-items-center mb-1">
+          <div class="col-md-5">
+            <input type="text" class="form-control form-control-sm" value="{{ ln.producto }}" disabled>
+          </div>
+          <div class="col-md-2">
+            <input type="text" class="form-control form-control-sm" value="{{ ln.um or '—' }}" disabled>
+          </div>
+          <div class="col-md-2">
+            <input type="number" name="insumo_cant_{{ loop.index0 }}" class="form-control form-control-sm"
+                   value="{{ ln.cantidad }}" min="0" step="any" required
+                   aria-label="Cantidad de {{ ln.producto }}">
+          </div>
+          {% if not ln.en_bodega %}
+          <div class="col-md-3 small text-warning">Este nombre no está en bodega.</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
       <div class="col-md-3">
         <label class="form-label small">Tipo gasto (matriz CC)</label>
         <select name="tipo_gasto" class="form-select form-select-sm">

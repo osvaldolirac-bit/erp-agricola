@@ -16,6 +16,11 @@ from demo_web.services.espino_compras_guards import (
     validar_estado_pago_coherente,
     validar_nueva_factura_compra,
 )
+from demo_web.services.espino_compras_kardex import (
+    aplicar_cantidades_insumo_en_bodega,
+    match_producto_id,
+    parse_concepto_compra,
+)
 from demo_web.services.tenant_scope import (
     centros_costo,
     is_espino_tenant,
@@ -281,6 +286,7 @@ def _historial(demo, conn) -> dict:
             tg = tipos[0]
         factura_edit = dict(factura_edit)
         factura_edit["tipo_gasto_sel"] = tg
+        factura_edit["lineas_insumo"] = _lineas_insumo_doc(conn, factura_edit.get("concepto_full") or "")
 
     razones = list(razones_sociales_compras(demo))
     tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
@@ -805,6 +811,40 @@ def _post_asignar_folio_interno(demo, conn) -> dict:
     }
 
 
+def _lineas_insumo_doc(conn, concepto: str) -> list[dict]:
+    """Líneas de un documento de insumos, para editar la cantidad que entra a bodega."""
+    out = []
+    for it in parse_concepto_compra(concepto or ""):
+        qty = float(it["cantidad"])
+        texto = f"{qty:.4f}".rstrip("0").rstrip(".") or "0"
+        out.append(
+            {
+                "producto": it["producto"],
+                "um": it.get("um") or "",
+                "cantidad": texto,
+                "en_bodega": match_producto_id(conn, it["producto"]) is not None,
+            }
+        )
+    return out
+
+
+def _cantidades_insumo_form() -> list[float] | None:
+    if not any(str(k).startswith("insumo_cant_") for k in request.form):
+        return None
+    vals: list[float] = []
+    i = 0
+    while f"insumo_cant_{i}" in request.form:
+        raw = (request.form.get(f"insumo_cant_{i}") or "").strip().replace(" ", "")
+        if "," in raw and "." not in raw:
+            raw = raw.replace(",", ".")
+        try:
+            vals.append(float(raw))
+        except ValueError as exc:
+            raise ValueError("Cantidad inválida.") from exc
+        i += 1
+    return vals
+
+
 def _post_corregir_factura(demo, conn) -> dict:
     if demo.es_solo_lectura():
         return {"ok": False, "msg": "Modo solo lectura: no puede editar documentos."}
@@ -874,10 +914,38 @@ def _post_corregir_factura(demo, conn) -> dict:
             "ok": False,
             "msg": f"El correlativo {folio_new} ya está usado en otra factura de esta razón social.",
         }
+
+    concepto_old = str(fila[6] or "")
+    fecha_old = str(fila[3] or "")[:10]
+    avisos_bodega: list[str] = []
+    concepto_guardar = nconcepto
+    if parse_concepto_compra(concepto_old):
+        try:
+            cants = _cantidades_insumo_form()
+        except ValueError as exc:
+            return {"ok": False, "msg": str(exc)}
+        if cants is not None:
+            try:
+                concepto_nuevo, avisos_bodega = aplicar_cantidades_insumo_en_bodega(
+                    conn,
+                    concepto=concepto_old,
+                    fecha_old=fecha_old,
+                    fecha_new=nfe,
+                    cantidades=cants,
+                    stock_desde_kardex=is_espino_tenant(),
+                )
+            except ValueError as exc:
+                return {"ok": False, "msg": str(exc)}
+            cambio_cant = any(
+                abs(float(vieja["cantidad"]) - float(nueva)) > 1e-6
+                for vieja, nueva in zip(parse_concepto_compra(concepto_old), cants)
+            )
+            concepto_guardar = concepto_nuevo if cambio_cant else (nconcepto or concepto_nuevo)
+
     conn.execute(
         "UPDATE facturas SET nro_documento=?, folio_interno=?, proveedor=?, fecha_compra=?, fecha_vencimiento=?, "
         "monto_total=?, concepto=?, razon_social=?, tipo_gasto=? WHERE id=?",
-        (doc_new, folio_new, prov_new, nfe, nfv, nmonto, nconcepto, nrazon, tg_guardar, fid),
+        (doc_new, folio_new, prov_new, nfe, nfv, nmonto, concepto_guardar, nrazon, tg_guardar, fid),
     )
     demo._actualizar_tipo_gasto_factura(conn, doc_new, prov_new, tg_guardar)
     n_imp = demo._sincronizar_imputaciones_p_factura(
@@ -890,7 +958,7 @@ def _post_corregir_factura(demo, conn) -> dict:
         nmonto,
         nfe,
         nfv,
-        nconcepto,
+        concepto_guardar,
         nrazon,
         tg_guardar,
     )
@@ -898,10 +966,14 @@ def _post_corregir_factura(demo, conn) -> dict:
     det = f"Corrección ID {fid} — {doc_new} — {nrazon}"
     if n_imp:
         det += f" | {n_imp} imputación(es) _P"
+    if avisos_bodega:
+        det += " | " + " ".join(avisos_bodega)
     demo.registrar_accion("COMPRA", det)
     msg = "Documento actualizado."
     if n_imp:
         msg += f" Se actualizaron {n_imp} imputación(es) en centros de costo."
+    if avisos_bodega:
+        msg += " " + " ".join(avisos_bodega)
     return {"ok": True, "msg": msg}
 
 
