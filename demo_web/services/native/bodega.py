@@ -8,7 +8,13 @@ from flask import flash, render_template, request, session, url_for
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import current_tenant, get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import hoy_demo, parse_date, parse_decimal_cl, parse_numero_form
+from demo_web.services.native._helpers import (
+    hoy_demo,
+    numero_input,
+    parse_date,
+    parse_decimal_cl,
+    parse_numero_form,
+)
 
 SECCIONES = [
     ("stock", "📊 STOCK ACTUAL"),
@@ -144,9 +150,9 @@ def _stock(demo, conn, cert: bool = False) -> dict:
                 "id": int(r["id"]),
                 "producto": r["producto"],
                 "familia": r["familia"] or "",
-                "stock": float(r["stock"] or 0),
+                "stock": numero_input(r["stock"]),
                 "unidad_medida": r["unidad_medida"],
-                "precio_medio": float(r["precio_medio"] or 0),
+                "precio_medio": numero_input(r["precio_medio"]),
                 "ingrediente_activo": r.get("ingrediente_activo") or demo._ingrediente_pppl_producto(conn, r["producto"]),
             }
 

@@ -6,7 +6,7 @@ import unittest
 
 from flask import Flask
 
-from demo_web.services.native._helpers import parse_numero_form
+from demo_web.services.native._helpers import numero_input, parse_numero_form
 from demo_web.services.native.bodega import _post_corregir_stock
 
 
@@ -49,7 +49,11 @@ class TestCorregirProductoBodega(unittest.TestCase):
         self.assertEqual(parse_numero_form("93488.5", None), 93488.5)
         self.assertEqual(parse_numero_form("2,5", None), 2.5)
         self.assertEqual(parse_numero_form("1.250.000", None), 1_250_000.0)
+        self.assertAlmostEqual(parse_numero_form("5.551115123125783e-16", None), 5.551115123125783e-16)
         self.assertIsNone(parse_numero_form("abc", None))
+        self.assertEqual(numero_input(5.551115123125783e-16), "0")
+        self.assertEqual(numero_input(93488.5), "93488.5")
+        self.assertNotIn("e", numero_input(13.9).lower())
 
     def test_guardar_stock_y_pmp_con_punto_decimal(self):
         app = Flask(__name__)
