@@ -10,6 +10,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.tenant_scope import (
     centros_costo,
+    cuarteles_oficiales,
     razon_social_compras_default,
     razones_sociales_compras,
 )
@@ -206,11 +207,16 @@ def _contratistas_servicio(demo, conn) -> dict:
     }
 
 
+def _cuarteles_consulta_contratistas(demo) -> list[str]:
+    """CC de las consultas. En El Espino son las 3 variedades, no el legado Cerezos."""
+    return list(cuarteles_oficiales(demo) or [])
+
+
 def _contratistas_por_cc(demo, conn) -> dict:
     from erp_contratistas import fechas_consulta_contratistas_cc, listar_contratistas, query_imputaciones_contratistas_cc
 
-    cuarteles = demo.CUARTELES_OFICIALES
-    cc = request.args.get("cc") or (cuarteles[0] if cuarteles else "")
+    cuarteles = _cuarteles_consulta_contratistas(demo)
+    cc = (request.args.get("cc") or "").strip()
     if cc not in cuarteles:
         cc = cuarteles[0] if cuarteles else ""
 
@@ -275,15 +281,17 @@ def _contratistas_cuenta(demo, conn) -> dict:
     if ct_sel not in ct_map:
         ct_sel = list(ct_map.keys())[0]
 
-    cc_raw = request.args.get("cc_filtro", "")
-    cc_u = cc_raw.upper() if cc_raw and cc_raw in demo.CUARTELES_OFICIALES else None
+    cuarteles = _cuarteles_consulta_contratistas(demo)
+    cc_raw = (request.args.get("cc_filtro") or "").strip()
+    cc_sel = cc_raw if cc_raw in cuarteles else ""
+    cc_u = cc_sel.upper() if cc_sel else None
 
     hoy = hoy_demo(demo)
     if cc_u:
         fi_def, ff_def = fechas_consulta_contratistas_cc(conn, cc_u)
     else:
         fi_def, ff_def = hoy - timedelta(days=365), hoy
-    ctx_key = f"{cc_raw or ''}|{cc_u or ''}"
+    ctx_key = f"{cc_sel}|{cc_u or ''}"
     fi, ff = _fechas_con_reset_cc(ctx_key, fi_def, ff_def, "rrhh_ct_cuenta_cc")
 
     df, razon = query_cuenta_corriente_contratista(conn, ct_map[ct_sel], fi, ff, cc_u=cc_u)
@@ -324,8 +332,8 @@ def _contratistas_cuenta(demo, conn) -> dict:
         "cta_vacia": False,
         "contratistas_cta": ct_map,
         "contratista_cta_sel": ct_sel,
-        "cc_filtro_opts": demo.CUARTELES_OFICIALES,
-        "cc_filtro_sel": cc_raw,
+        "cc_filtro_opts": cuarteles,
+        "cc_filtro_sel": cc_sel,
         "cta_rows": rows,
         "cta_razon": razon,
         "cta_tot_gen": demo.f_peso(tot_debe),
