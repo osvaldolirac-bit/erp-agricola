@@ -96,6 +96,58 @@ def _vincular_lc_salida(
     return best
 
 
+def _etiqueta_salida_riego(origen: str, codigo: str) -> str:
+    """Hydra, link y registro manual no son una salida de bodega hecha a mano."""
+    clave = (origen or "").strip().lower()
+    nombre = {
+        "hydrawise": "Riego Hydra",
+        "manual": "Riego manual",
+        "link": "Riego link",
+    }.get(clave)
+    if not nombre:
+        nombre = f"Riego {origen}".strip() if (origen or "").strip() else "Riego"
+    cod = (codigo or "").strip()
+    return f"{nombre} {cod}".strip()
+
+
+def _vincular_salida_riego(
+    conn: sqlite3.Connection,
+    producto_id: int,
+    cant: float,
+    fecha: str,
+    centro_costo: str,
+    usados: set[int],
+) -> str | None:
+    """Salida de fertilizante de riego: misma fecha, cuartel, producto y cantidad."""
+    try:
+        rows = conn.execute(
+            """SELECT f.id, r.codigo, COALESCE(r.origen, 'manual')
+               FROM riego_fertilizantes f
+               INNER JOIN riego r ON r.codigo = f.codigo
+               WHERE f.producto_id = ?
+                 AND substr(COALESCE(r.fecha, ''), 1, 10) = ?
+                 AND UPPER(TRIM(COALESCE(r.huerto, ''))) = UPPER(TRIM(?))
+                 AND ABS(COALESCE(f.cantidad, 0) - ?) <= ?
+               ORDER BY f.id""",
+            (
+                int(producto_id),
+                str(fecha or "")[:10],
+                centro_costo or "",
+                float(cant or 0),
+                1e-4,
+            ),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    for fid, codigo, origen in rows:
+        fid_i = int(fid)
+        if fid_i in usados:
+            continue
+        usados.add(fid_i)
+        return _etiqueta_salida_riego(str(origen or ""), str(codigo or ""))
+    return None
+
+
 def _origen_movimiento(
     conn: sqlite3.Connection,
     producto_id: int,
@@ -106,6 +158,7 @@ def _origen_movimiento(
     centro_costo: str,
     lc_lineas: list[dict],
     cuarteles: set[str],
+    riego_usados: set[int] | None = None,
 ) -> str:
     if _normalize_tipo_mov(tipo) == "Ingreso":
         origen = origen_compra_ingreso(conn, producto_id, producto_nombre, cant, fecha)
@@ -115,6 +168,16 @@ def _origen_movimiento(
         if cc:
             return f"Ingreso manual → {cc}"
         return "Ingreso bodega"
+    riego = _vincular_salida_riego(
+        conn,
+        producto_id,
+        cant,
+        fecha,
+        centro_costo,
+        riego_usados if riego_usados is not None else set(),
+    )
+    if riego:
+        return riego
     lc = _vincular_lc_salida(lc_lineas, cant, fecha, centro_costo, cuarteles)
     if lc:
         return f"LC App N° {lc['n_app']:05d}"
@@ -196,6 +259,7 @@ def _build_kardex_rows(
     stock_objetivo: float | None = None,
 ) -> list[dict]:
     rows: list[dict] = []
+    riego_usados: set[int] = set()
     for mid, tipo, cant, fecha, cc in movs:
         tipo_n = _normalize_tipo_mov(str(tipo))
         qty = float(cant or 0)
@@ -217,6 +281,7 @@ def _build_kardex_rows(
                     str(cc or ""),
                     lc_lineas,
                     cuarteles,
+                    riego_usados,
                 ),
                 saldo=0.0,
             )
