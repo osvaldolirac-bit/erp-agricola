@@ -72,11 +72,20 @@ def _folio_interno(conn, fecha) -> str:
 
 
 def _es_documento_interno(nro_documento: str | None) -> bool:
-    """True si el N° doc es interno (sin factura real), p.ej. INT-20260810-01."""
+    """True si el N° doc es interno (sin factura real): INT-… o servicio CONTR-…."""
     doc = (nro_documento or "").strip().upper()
     if not doc:
         return True
-    return doc.startswith("INT-") or doc.startswith("INT/")
+    return doc.startswith(("INT-", "INT/", "CONTR-", "CONTR/"))
+
+
+def _sql_excluir_doc_interno(col: str = "nro_documento") -> str:
+    return (
+        f" AND UPPER(TRIM({col})) NOT LIKE 'INT-%'"
+        f" AND UPPER(TRIM({col})) NOT LIKE 'INT/%'"
+        f" AND UPPER(TRIM({col})) NOT LIKE 'CONTR-%'"
+        f" AND UPPER(TRIM({col})) NOT LIKE 'CONTR/%'"
+    )
 
 
 def _ensure_folio_interno_col(conn) -> None:
@@ -88,32 +97,28 @@ def _ensure_folio_interno_col(conn) -> None:
             return
         conn.execute("ALTER TABLE facturas ADD COLUMN folio_interno TEXT DEFAULT ''")
         conn.commit()
-    # El correlativo solo aplica a facturas reales: limpiar en documentos INT-…
+    # El correlativo solo aplica a facturas reales: limpiar INT- y servicios CONTR-.
     if not conn_en_solo_lectura(conn):
         conn.execute(
-            """
+            f"""
             UPDATE facturas
             SET folio_interno=''
             WHERE TRIM(COALESCE(folio_interno, '')) != ''
-              AND (
-                UPPER(TRIM(nro_documento)) LIKE 'INT-%'
-                OR UPPER(TRIM(nro_documento)) LIKE 'INT/%'
-              )
+              AND NOT (1=1 {_sql_excluir_doc_interno()})
             """
         )
         conn.commit()
 
 
 def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str:
-    """Siguiente correlativo por razón social (solo facturas reales, no INT-)."""
-    sql = """
+    """Siguiente correlativo por razón social (solo facturas reales, no INT- ni CONTR-)."""
+    sql = f"""
         SELECT MAX(CAST(folio_interno AS INTEGER))
         FROM facturas
         WHERE TRIM(COALESCE(folio_interno, '')) != ''
           AND folio_interno GLOB '[0-9]*'
           AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_excluir_doc_interno()}
     """
     params: list = []
     if razon_social:
@@ -126,14 +131,13 @@ def _siguiente_correlativo_interno(conn, razon_social: str | None = None) -> str
 def _correlativo_duplicado(conn, folio: str, razon_social: str, exclude_id: int = 0):
     """True si el correlativo ya existe en la misma razón social (puede repetirse entre razones)."""
     return conn.execute(
-        """
+        f"""
         SELECT id FROM facturas
         WHERE TRIM(COALESCE(folio_interno,''))=?
           AND TRIM(COALESCE(razon_social,''))=?
           AND id!=?
           AND nro_documento NOT LIKE '%_P'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT-%'
-          AND UPPER(TRIM(nro_documento)) NOT LIKE 'INT/%'
+          {_sql_excluir_doc_interno()}
         """,
         (folio, (razon_social or "").strip(), exclude_id),
     ).fetchone()
@@ -774,7 +778,7 @@ def _post_asignar_folio_interno(demo, conn) -> dict:
     if _es_documento_interno(doc):
         return {
             "ok": False,
-            "msg": "El correlativo solo aplica a documentos con N° de factura real (no internos INT-…).",
+            "msg": "El correlativo solo aplica a documentos con N° de factura real (no internos INT- ni servicios CONTR-).",
         }
     folio_old = str(fila[2] or "").strip()
     razon = str(fila[3] or "").strip()

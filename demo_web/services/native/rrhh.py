@@ -853,6 +853,9 @@ def _post_registrar_servicio(demo, conn) -> dict:
     if not selcc:
         return {"ok": False, "msg": "Seleccione al menos un centro de costo."}
 
+    from demo_web.services.native.compras import _es_documento_interno
+
+    # Sin factura real sigue en CONTR-…; en compras no lleva correlativo, igual que un INT-.
     ndoc = demo._siguiente_folio_contratista(conn, fecha) if sin_doc else nro
     if not ndoc:
         return {"ok": False, "msg": "N° documento obligatorio."}
@@ -860,6 +863,14 @@ def _post_registrar_servicio(demo, conn) -> dict:
     ok, err = demo._registrar_servicio_contratista(
         conn, cid, row[0], ndoc, fecha, fv, monto, concepto, selcc, razon, imputar_bruto=iva_bruto,
     )
+    if ok and _es_documento_interno(ndoc):
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)")}
+        if "folio_interno" in cols:
+            conn.execute(
+                """UPDATE facturas SET folio_interno=''
+                   WHERE proveedor=? AND nro_documento IN (?, ?)""",
+                (row[0], ndoc, f"{ndoc}_P"),
+            )
     if not ok:
         return {"ok": False, "msg": err or "No se pudo registrar."}
     conn.commit()
