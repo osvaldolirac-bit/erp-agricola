@@ -57,14 +57,21 @@ def _restore_lc_defaults(erp: Any) -> None:
 
 
 def _apply_espino_tenant_overrides(erp: Any) -> None:
-    """Tenant El Espino: cuarteles y compras acotados (módulo app_concepcion compartido)."""
-    erp.CENTROS_COSTO = ["Cerezos"]
-    erp.CUARTELES_OFICIALES = ["Cerezos"]
-    erp.CUARTELES_PRORRATEO = ["Cerezos"]
-    erp.CUARTELES_IMPUTACION_DIRECTA = ["Cerezos"]
-    erp.PRORRATEO_CC_DEFAULT = {"Cerezos": 100.0}
+    """Tenant El Espino: el centro de costo vigente son las 3 variedades.
+
+    Cerezos ya no es un CC seleccionable. Queda solo como especie del libro
+    (cerezo) y como etiqueta histórica de bodega/flujo, no en estas listas.
+    """
+    from demo_web.services.espino_scope import VARIEDADES_ESPINO, prorrateo_pct_espino
+
+    variedades = list(VARIEDADES_ESPINO)
+    erp.CENTROS_COSTO = variedades
+    erp.CUARTELES_OFICIALES = variedades
+    erp.CUARTELES_PRORRATEO = variedades
+    erp.CUARTELES_IMPUTACION_DIRECTA = variedades
+    erp.PRORRATEO_CC_DEFAULT = prorrateo_pct_espino()
     erp.GAP_ESPECIES = ["EL ESPINO"]
-    erp.GAP_ESPECIE_CUARTELES = {"EL ESPINO": ["Cerezos"]}
+    erp.GAP_ESPECIE_CUARTELES = {"EL ESPINO": variedades}
     erp.LIBRO_CAMPO_ESPECIES = ["Cerezos"]
     erp.RAZONES_SOCIALES_COMPRAS = ["El Espino"]
 
