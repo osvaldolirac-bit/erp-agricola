@@ -11,7 +11,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
 from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
-from demo_web.services.tenant_scope import is_espino_tenant
+from demo_web.services.tenant_scope import is_concepcion_tenant, is_espino_tenant
 
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
 SECCION_DEFS = [
@@ -22,6 +22,7 @@ SECCION_DEFS = [
     ("encargados", "💵 ENCARGADOS COMPRAS", "all"),
     ("ppto", "🍒 PPTO Y PRODUCCIÓN", "all"),
     ("flujo", "💰 INGRESOS FLUJO", "all"),
+    ("hydrawise", "💧 HYDRAWISE", "lc"),
 ]
 
 ACCIONES_MOVIDAS_A_MASTER = frozenset({
@@ -46,6 +47,10 @@ def _secciones_visibles(demo) -> list[tuple[str, str]]:
     es_super = demo.es_super_admin()
     out = []
     for key, label, scope in SECCION_DEFS:
+        if scope == "lc":
+            if is_concepcion_tenant():
+                out.append((key, label))
+            continue
         if scope == "all" or es_super:
             out.append((key, label))
     return out
@@ -54,8 +59,10 @@ def _secciones_visibles(demo) -> list[tuple[str, str]]:
 def _sec_activa(demo) -> str:
     visibles = _secciones_visibles(demo)
     keys = {k for k, _ in visibles}
-    sec = request.args.get("sec", visibles[0][0] if visibles else "familias")
-    return sec if sec in keys else (visibles[0][0] if visibles else "familias")
+    sec = (request.args.get("sec") or request.form.get("sec") or "").strip()
+    if sec in keys:
+        return sec
+    return visibles[0][0] if visibles else "familias"
 
 
 def _pdf_url(demo, df, titulo: str, archivo: str) -> str | None:
@@ -545,6 +552,17 @@ def gather_admin(user_email: str, user_rol: str) -> dict:
             ctx.update(_gather_ppto(demo, conn))
         elif sec == "flujo":
             ctx.update(_gather_flujo(demo, conn))
+        elif sec == "hydrawise" and is_concepcion_tenant():
+            from demo_web.services.hydrawise_riego import get_api_key, get_controller_id
+
+            key = get_api_key(conn)
+            ctx["hydrawise_tiene_key"] = bool(key)
+            ctx["hydrawise_key_masked"] = (
+                (key[:4] + "…" + key[-4:]) if len(key) > 10 else ""
+            )
+            ctx["hydrawise_controller_id"] = get_controller_id(conn)
+            ctx["hydrawise_test"] = None
+            ctx["hydrawise_equipos"] = []
     finally:
         conn.close()
 
@@ -1247,6 +1265,52 @@ def view(user_email: str, user_rol: str):
                 result = _post_guardar_ingresos_flujo(demo, conn)
             elif action == "reseed":
                 result = _post_reseed(demo, conn)
+            elif action == "guardar_hydrawise_key" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import set_api_key
+
+                key = (request.form.get("api_key") or "").strip()
+                if key:
+                    set_api_key(conn, key)
+                    result = {"ok": True, "msg": "API key Hydrawise guardada."}
+                else:
+                    result = {
+                        "ok": True,
+                        "msg": "Sin cambios (deje la key en blanco para mantener la actual).",
+                    }
+            elif action == "probar_hydrawise" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import probar_conexion
+
+                pr = probar_conexion(conn)
+                result = {
+                    "ok": bool(pr.get("ok")),
+                    "msg": pr.get("msg") or "Error",
+                }
+            elif action == "listar_hydrawise_equipos" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import listar_equipos
+
+                le = listar_equipos(conn)
+                eq = le.get("equipos") or []
+                det = " | ".join(
+                    f"{e.get('name')}: serial {e.get('serial_number') or '—'} → ID {e.get('controller_id')}"
+                    for e in eq
+                )
+                result = {
+                    "ok": bool(le.get("ok")),
+                    "msg": ((le.get("msg") or "") + (" — " + det if det else "")).strip(),
+                }
+            elif action == "guardar_hydrawise_controller" and is_concepcion_tenant():
+                from demo_web.services.hydrawise_riego import set_equipo_ref
+
+                raw = (request.form.get("controller_id") or "").strip()
+                if not raw:
+                    set_equipo_ref(conn, None)
+                    result = {"ok": True, "msg": "Equipo borrado (auto si hay uno solo)."}
+                else:
+                    set_equipo_ref(conn, raw)
+                    result = {
+                        "ok": True,
+                        "msg": f"Equipo Hydrawise guardado: {raw} (serial o ID API).",
+                    }
 
             if result:
                 flash(result["msg"], "success" if result["ok"] else "danger")
