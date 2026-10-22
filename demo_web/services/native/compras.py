@@ -646,7 +646,7 @@ def _post_save_gastos(demo, conn) -> dict:
         mt = float(request.form.get("monto") or 0)
     except ValueError:
         return {"ok": False, "msg": "Monto inválido."}
-    selcc = [c for c in demo.CENTROS_COSTO if request.form.get(f"cc_{c}") == "1"]
+    selcc = [c for c in centros_costo(demo) if request.form.get(f"cc_{c}") == "1"]
 
     if not prov:
         return {"ok": False, "msg": "El proveedor es obligatorio."}
