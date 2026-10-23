@@ -20,6 +20,9 @@ def _imports_criticos() -> None:
     )
     assert hasattr(sidebar_badges, "conteos_sidebar")
     from demo_web.services import tenant_rules  # noqa: F401
+    from demo_web.services import tesoreria_alerta  # noqa: F401
+
+    assert hasattr(tesoreria_alerta, "documentos_por_vencer")
 
     assert tenant_rules.verify_tenant_registry_errors() == []
     from demo_web.services.native import (  # noqa: F401
