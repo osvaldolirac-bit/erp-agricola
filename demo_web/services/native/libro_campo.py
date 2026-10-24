@@ -19,6 +19,7 @@ from demo_web.services.lc_aplicacion_service import (
     eliminar_linea_lc,
 )
 from demo_web.services.lc_bodega_desfase import (
+    ensure_movimiento_id_column,
     insertar_salida_desde_lc,
     lc_dict_desde_item_libro,
     lc_dict_desde_linea_libro,
@@ -26,6 +27,13 @@ from demo_web.services.lc_bodega_desfase import (
     revertir_salidas_lineas_libro,
     revertir_salida_desde_lc,
 )
+
+
+def _conectar_libro(demo):
+    """Abre la BD y asegura libro_campo.movimiento_id (LC aún no lo tenía)."""
+    conn = demo.conectar_db()
+    ensure_movimiento_id_column(conn)
+    return conn
 
 
 def _tenant_slug_lc(demo) -> str:
@@ -1180,7 +1188,7 @@ def gather_libro_campo(user_email: str, user_rol: str) -> dict:
     if sec not in {k for k, _ in secciones}:
         sec = "historial"
 
-    conn = demo.conectar_db()
+    conn = _conectar_libro(demo)
     try:
         ctx: dict = {
             "secciones": secciones,
@@ -1220,7 +1228,7 @@ def view(user_email: str, user_rol: str):
     if request.method == "POST":
         action = request.form.get("action", "")
         sec = request.form.get("sec") or request.args.get("sec", "ingreso")
-        conn = demo.conectar_db()
+        conn = _conectar_libro(demo)
         try:
             if action == "pop_producto":
                 _guardar_evento_meta(demo, request.form)
@@ -1260,7 +1268,7 @@ def view(user_email: str, user_rol: str):
             except (TypeError, ValueError):
                 flash("N° de aplicación inválido.", "danger")
             else:
-                conn = demo.conectar_db()
+                conn = _conectar_libro(demo)
                 try:
                     result = _copiar_aplicacion_a_ingreso(demo, conn, n_copiar)
                     flash(result["msg"], "success" if result["ok"] else "danger")

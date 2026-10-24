@@ -62,6 +62,14 @@ class TestMovimientoIdColumn(unittest.TestCase):
         ensure_movimiento_id_column(conn)
         cols = {r[1] for r in conn.execute("PRAGMA table_info(libro_campo)").fetchall()}
         self.assertIn("movimiento_id", cols)
+        conn.execute(
+            "INSERT INTO libro_campo (producto, gasto_total) VALUES ('KARATE', 1)"
+        )
+        row = conn.execute(
+            "SELECT id, movimiento_id, producto FROM libro_campo"
+        ).fetchone()
+        self.assertEqual(row[2], "KARATE")
+        self.assertIsNone(row[1])
 
 
 class TestInsertarSalida(unittest.TestCase):
