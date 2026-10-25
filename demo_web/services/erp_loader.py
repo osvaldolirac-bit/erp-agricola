@@ -67,8 +67,11 @@ def _apply_espino_tenant_overrides(erp: Any) -> None:
     variedades = list(VARIEDADES_ESPINO)
     erp.CENTROS_COSTO = variedades
     erp.CUARTELES_OFICIALES = variedades
+    # Imputación directa parte el monto en partes iguales. En El Espino el
+    # criterio es la superficie de cada variedad (prorrateo_cc), así que van
+    # solo al listado de prorrateo.
     erp.CUARTELES_PRORRATEO = variedades
-    erp.CUARTELES_IMPUTACION_DIRECTA = variedades
+    erp.CUARTELES_IMPUTACION_DIRECTA = []
     erp.PRORRATEO_CC_DEFAULT = prorrateo_pct_espino()
     erp.GAP_ESPECIES = ["EL ESPINO"]
     erp.GAP_ESPECIE_CUARTELES = {"EL ESPINO": variedades}
@@ -154,6 +157,37 @@ def _wrap_conectar_db(erp: Any) -> None:
     erp._conectar_db_tenant_wrapped = True
 
 
+def _wrap_clasificar_cc_espino(erp: Any) -> None:
+    """El Espino prorratea por superficie aunque las listas del módulo se crucen.
+
+    ``app_concepcion._clasificar_cc_seleccionados`` rechaza la variedad si está
+    a la vez en imputación directa y en prorrateo, y si encuentra ``ESPINO_CCS``
+    la parte en tercios. Esa función no va en el deploy. Acá se reemplaza: en
+    El Espino la variedad va solo a prorrateo; La Concepción sigue igual.
+    """
+    if getattr(erp, "_clasificar_cc_espino_wrapped", False):
+        return
+    original = getattr(erp, "_clasificar_cc_seleccionados", None)
+    if not callable(original):
+        return
+    erp._clasificar_cc_espino_wrapped = True
+
+    def _clasificar_cc_seleccionados(seleccionados):  # noqa: ANN001
+        from demo_web.services.tenant_scope import is_espino_tenant
+
+        if is_espino_tenant():
+            from demo_web.services.espino_scope import VARIEDADES_ESPINO
+
+            sel = [str(c).strip().upper() for c in (seleccionados or []) if str(c).strip()]
+            valid = {v.upper() for v in VARIEDADES_ESPINO}
+            prorr = [c for c in sel if c in valid]
+            invalid = [c for c in sel if c not in valid]
+            return [], prorr, invalid
+        return original(seleccionados)
+
+    erp._clasificar_cc_seleccionados = _clasificar_cc_seleccionados
+
+
 def _apply_tenant_config(erp: Any, t: dict[str, Any]) -> None:
     erp.NOMBRE_DB = t["db"]
     erp.SECRETS_PATH = t["secrets"]
@@ -193,6 +227,7 @@ def _load_module(erp_app: str) -> Any:
     if erp_app == "concepcion":
         _capture_lc_defaults(erp)
         _wrap_conectar_db(erp)
+        _wrap_clasificar_cc_espino(erp)
     return erp
 
 

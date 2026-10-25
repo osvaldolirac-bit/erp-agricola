@@ -38,6 +38,8 @@ class TestLcDefaultsRestore(unittest.TestCase):
         variedades = ["ROYAL DOWN", "SWEET ARYANA", "SANTINA"]
         self.assertEqual(erp.CENTROS_COSTO, variedades)
         self.assertEqual(erp.CUARTELES_OFICIALES, variedades)
+        self.assertEqual(erp.CUARTELES_PRORRATEO, variedades)
+        self.assertEqual(erp.CUARTELES_IMPUTACION_DIRECTA, [])
         self.assertNotIn("Cerezos", erp.CENTROS_COSTO)
         self.assertNotIn("Cerezos", erp.GAP_ESPECIE_CUARTELES["EL ESPINO"])
         self.assertAlmostEqual(sum(erp.PRORRATEO_CC_DEFAULT.values()), 100.0, places=2)
@@ -51,6 +53,7 @@ class TestLcDefaultsRestore(unittest.TestCase):
         }
         erp_loader._apply_tenant_config(erp, t_lc)
         self.assertEqual(erp.CENTROS_COSTO, ["CIRUELOS", "MANZANOS"])
+        self.assertEqual(erp.CUARTELES_IMPUTACION_DIRECTA, ["CIRUELOS"])
         self.assertEqual(erp.NOMBRE_DB, "/root/erp_concepcion_v6.db")
         t_esp = {
             "slug": "espino",
@@ -79,6 +82,38 @@ class TestLcDefaultsRestore(unittest.TestCase):
             selcc = [c for c in visibles if form.get(f"cc_{c}") == "1"]
         self.assertEqual(visibles, ["ROYAL DOWN", "SWEET ARYANA", "SANTINA"])
         self.assertEqual(selcc, ["SANTINA"])
+
+    def test_cruce_de_listas_no_rechaza_la_variedad_en_espino(self):
+        """La reparación de poner la variedad en las dos listas no puede repetir el rechazo."""
+        variedades = ["ROYAL DOWN", "SWEET ARYANA", "SANTINA"]
+
+        def clasificar_como_vps(seleccionados):
+            sel = [str(c).strip().upper() for c in seleccionados if c]
+            directos = [c for c in sel if c in variedades]
+            prorr = [c for c in sel if c in variedades]
+            invalid = [c for c in sel if c not in directos and c not in prorr]
+            return directos, prorr, invalid
+
+        erp = _FakeConcepcionErp()
+        erp._clasificar_cc_seleccionados = clasificar_como_vps
+        erp_loader._wrap_clasificar_cc_espino(erp)
+        erp_loader._wrap_clasificar_cc_espino(erp)
+        app = Flask(__name__)
+        with app.test_request_context("/rrhh"):
+            g.tenant_slug = "espino"
+            self.assertEqual(
+                erp._clasificar_cc_seleccionados(["SANTINA", "ROYAL DOWN"]),
+                ([], ["SANTINA", "ROYAL DOWN"], []),
+            )
+            self.assertEqual(
+                erp._clasificar_cc_seleccionados(["Cerezos"]),
+                ([], [], ["CEREZOS"]),
+            )
+            g.tenant_slug = "concepcion"
+            self.assertEqual(
+                erp._clasificar_cc_seleccionados(["SANTINA"]),
+                (["SANTINA"], ["SANTINA"], []),
+            )
 
 
 if __name__ == "__main__":

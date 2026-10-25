@@ -35,6 +35,15 @@ def _imports_criticos() -> None:
     assert hasattr(bodega_kardex, "gather_kardex_producto")
     assert hasattr(espino_scope, "centros_costo_bodega_espino")
     assert hasattr(espino_bodega, "_stock_cc_map")
+    from demo_web.services import tenant_scope
+    from demo_web.services.espino_scope import prorrateo_pct_espino
+
+    # Esos nombres hacen que app_concepcion impute en partes iguales.
+    assert not hasattr(tenant_scope, "ESPINO_CCS")
+    assert not hasattr(espino_bodega, "ETIQUETA_BODEGA")
+    pct = prorrateo_pct_espino()
+    assert abs(sum(pct.values()) - 100.0) < 0.05
+    assert pct["SANTINA"] > pct["ROYAL DOWN"] > pct["SWEET ARYANA"]
 
 
 def _abono_y_saldo() -> None:
