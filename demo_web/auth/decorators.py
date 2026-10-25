@@ -115,6 +115,13 @@ def login_required(view: Callable):
     return wrapped
 
 
+def modulo_visible_en_tenant(module_key: str, tenant_slug: str) -> bool:
+    """EL ESPINO es un sector de La Concepción, no un módulo del tenant El Espino."""
+    if module_key != "Espino":
+        return True
+    return (tenant_slug or "").strip().lower() == "concepcion"
+
+
 def module_required(module_key: str):
     def deco(view: Callable):
         @wraps(view)
@@ -123,7 +130,7 @@ def module_required(module_key: str):
             from demo_web.tenants import get_tenant
 
             tenant_slug = (getattr(g, "tenant_slug", None) or session.get("tenant_slug") or "").strip().lower()
-            if module_key == "Espino" and tenant_slug == "demo":
+            if not modulo_visible_en_tenant(module_key, tenant_slug):
                 abort(404)
             demo = g.demo
             bind_user_session(g.user["email"], g.user["rol"])
@@ -192,6 +199,7 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
         ]
         return items
 
+    slug = (session.get("tenant_slug") or "").strip().lower()
     demo = get_demo_module()
     bind_user_session(user_email, rol)
     opts = demo.construir_menu_usuario(user_email, rol)
@@ -251,6 +259,8 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     }
     items = []
     for label, key in opts.items():
+        if not modulo_visible_en_tenant(key, slug):
+            continue
         endpoint = slug_map.get(key)
         if endpoint:
             item = {
