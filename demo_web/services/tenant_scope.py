@@ -20,14 +20,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from demo_web.services.espino_scope import VARIEDADES_ESPINO, cuarteles_espino
+from demo_web.services.espino_scope import cuarteles_espino
 
 RAZON_SOCIAL_ESPINO = "El Espino"
 RAZONES_SOCIALES_ESPINO = [RAZON_SOCIAL_ESPINO]
-# app_concepcion._clasificar_cc_seleccionados importa este nombre.
-# Con él, la variedad marcada se imputa directo. Si falta, la misma variedad
-# cae también en prorrateo y el servicio del contratista se rechaza.
-ESPINO_CCS = VARIEDADES_ESPINO
 
 
 def _espino_variedades_costo() -> list[str]:

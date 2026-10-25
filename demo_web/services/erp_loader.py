@@ -67,8 +67,11 @@ def _apply_espino_tenant_overrides(erp: Any) -> None:
     variedades = list(VARIEDADES_ESPINO)
     erp.CENTROS_COSTO = variedades
     erp.CUARTELES_OFICIALES = variedades
+    # Imputación directa parte el monto en partes iguales. En El Espino el
+    # criterio es la superficie de cada variedad (prorrateo_cc), así que van
+    # solo al listado de prorrateo.
     erp.CUARTELES_PRORRATEO = variedades
-    erp.CUARTELES_IMPUTACION_DIRECTA = variedades
+    erp.CUARTELES_IMPUTACION_DIRECTA = []
     erp.PRORRATEO_CC_DEFAULT = prorrateo_pct_espino()
     erp.GAP_ESPECIES = ["EL ESPINO"]
     erp.GAP_ESPECIE_CUARTELES = {"EL ESPINO": variedades}

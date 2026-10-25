@@ -10,10 +10,9 @@ from unittest.mock import patch
 import pandas as pd
 from flask import Flask
 
-from demo_web.services.espino_scope import VARIEDADES_ESPINO
-from demo_web.services.native.espino_bodega import ETIQUETA_BODEGA
+from demo_web.services.erp_loader import _apply_espino_tenant_overrides
+from demo_web.services.espino_scope import SUPERFICIE_HA_ESPINO, VARIEDADES_ESPINO, prorrateo_pct_espino
 from demo_web.services.native.rrhh import _contratistas_cuenta, _contratistas_por_cc
-from demo_web.services.tenant_scope import ESPINO_CCS
 
 LC_CC = ["CEREZOS CORTE 1", "CEREZOS CORTE 2", "CIRUELOS", "NOGALES"]
 
@@ -136,32 +135,70 @@ def _clasificar_como_vps(seleccionados, directa, prorrateo):
     return directos, prorr, invalid
 
 
+def _partes_por_superficie(total, seleccionados, directa, prorrateo, pcts):
+    """Réplica de _reparto_por_cc cuando el peso sale de la superficie."""
+    directos, prorr, invalid = _clasificar_como_vps(seleccionados, directa, prorrateo)
+    if invalid or directos or not prorr:
+        return directos, prorr, invalid, None
+    sub = {c: float(pcts.get(c, 0.0)) for c in prorr}
+    suma = sum(sub.values())
+    partes = [(c, total * sub[c] / suma) for c in prorr]
+    return directos, prorr, invalid, partes
+
+
+class _ErpListas:
+    CENTROS_COSTO = ["CIRUELOS"]
+    CUARTELES_OFICIALES = ["CIRUELOS"]
+    CUARTELES_PRORRATEO = ["CIRUELOS"]
+    CUARTELES_IMPUTACION_DIRECTA = ["CIRUELOS"]
+    PRORRATEO_CC_DEFAULT = {"CIRUELOS": 100.0}
+    GAP_ESPECIES = ["Ciruelos"]
+    GAP_ESPECIE_CUARTELES = {}
+    LIBRO_CAMPO_ESPECIES = ["Ciruelos"]
+    RAZONES_SOCIALES_COMPRAS = ["La Concepción"]
+
+
 class TestClasificacionCcContratistaEspino(unittest.TestCase):
-    def test_simbolos_que_importa_el_clasificador(self):
-        self.assertEqual(ETIQUETA_BODEGA, "EL ESPINO")
-        self.assertEqual(tuple(ESPINO_CCS), VARIEDADES_ESPINO)
-        self.assertNotIn("CEREZOS", {c.upper() for c in ESPINO_CCS})
+    def test_no_hay_atajo_que_parta_en_partes_iguales(self):
+        with self.assertRaises(ImportError):
+            from demo_web.services.tenant_scope import ESPINO_CCS  # noqa: F401
+        with self.assertRaises(ImportError):
+            from demo_web.services.native.espino_bodega import ETIQUETA_BODEGA  # noqa: F401
 
-    def test_variedad_marcada_queda_solo_en_imputacion_directa(self):
-        variedades = [c.upper() for c in VARIEDADES_ESPINO]
+    def test_varias_variedades_siguen_la_superficie(self):
+        erp = _ErpListas()
+        _apply_espino_tenant_overrides(erp)
+        pcts = prorrateo_pct_espino()
+        self.assertEqual(erp.CUARTELES_IMPUTACION_DIRECTA, [])
+        self.assertEqual(list(erp.CUARTELES_PRORRATEO), list(VARIEDADES_ESPINO))
         with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=True):
-            uno = _clasificar_como_vps(["SANTINA"], variedades, variedades)
-            tres = _clasificar_como_vps(variedades, variedades, variedades)
-            legado = _clasificar_como_vps(["Cerezos"], variedades, variedades)
-        self.assertEqual(uno, (["SANTINA"], [], []))
-        self.assertEqual(tres[0], variedades)
-        self.assertEqual(tres[1], [])
-        self.assertEqual(tres[2], [])
-        self.assertEqual(legado, ([], [], ["CEREZOS"]))
-
-    def test_sin_ramo_espino_la_variedad_cae_en_directo_y_prorrateo(self):
-        variedades = [c.upper() for c in VARIEDADES_ESPINO]
-        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=False):
-            directos, prorr, invalid = _clasificar_como_vps(["SANTINA"], variedades, variedades)
-        self.assertEqual(directos, ["SANTINA"])
-        self.assertEqual(prorr, ["SANTINA"])
+            directos, prorr, invalid, partes = _partes_por_superficie(
+                65000, list(VARIEDADES_ESPINO), erp.CUARTELES_IMPUTACION_DIRECTA, erp.CUARTELES_PRORRATEO, pcts,
+            )
+            una = _partes_por_superficie(
+                75000, ["SANTINA"], erp.CUARTELES_IMPUTACION_DIRECTA, erp.CUARTELES_PRORRATEO, pcts,
+            )
+            legado = _clasificar_como_vps(
+                ["Cerezos"], erp.CUARTELES_IMPUTACION_DIRECTA, erp.CUARTELES_PRORRATEO,
+            )
+        self.assertEqual(directos, [])
         self.assertEqual(invalid, [])
-        self.assertTrue(directos and prorr)
+        self.assertEqual(prorr, [v.upper() for v in VARIEDADES_ESPINO])
+        montos = dict(partes)
+        self.assertAlmostEqual(sum(montos.values()), 65000, places=2)
+        self.assertNotAlmostEqual(montos["SANTINA"], 65000 / 3, delta=1000)
+        self.assertAlmostEqual(
+            montos["SANTINA"] / montos["ROYAL DOWN"],
+            SUPERFICIE_HA_ESPINO["SANTINA"] / SUPERFICIE_HA_ESPINO["ROYAL DOWN"],
+            places=2,
+        )
+        self.assertAlmostEqual(
+            montos["ROYAL DOWN"] / montos["SWEET ARYANA"],
+            SUPERFICIE_HA_ESPINO["ROYAL DOWN"] / SUPERFICIE_HA_ESPINO["SWEET ARYANA"],
+            places=2,
+        )
+        self.assertEqual(una[3], [("SANTINA", 75000.0)])
+        self.assertEqual(legado, ([], [], ["CEREZOS"]))
 
 
 if __name__ == "__main__":

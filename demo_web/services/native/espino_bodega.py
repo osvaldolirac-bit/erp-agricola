@@ -9,8 +9,6 @@ from demo_web.services.native._helpers import hoy_demo
 from demo_web.services.tenant_scope import is_espino_tenant
 
 CC_ESPINO = "EL ESPINO"
-# app_concepcion importa este nombre junto con ESPINO_CCS. No renombrarlo.
-ETIQUETA_BODEGA = CC_ESPINO
 
 
 def _cc_bodega_tuple() -> tuple[str, ...]:

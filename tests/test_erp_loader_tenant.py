@@ -38,6 +38,8 @@ class TestLcDefaultsRestore(unittest.TestCase):
         variedades = ["ROYAL DOWN", "SWEET ARYANA", "SANTINA"]
         self.assertEqual(erp.CENTROS_COSTO, variedades)
         self.assertEqual(erp.CUARTELES_OFICIALES, variedades)
+        self.assertEqual(erp.CUARTELES_PRORRATEO, variedades)
+        self.assertEqual(erp.CUARTELES_IMPUTACION_DIRECTA, [])
         self.assertNotIn("Cerezos", erp.CENTROS_COSTO)
         self.assertNotIn("Cerezos", erp.GAP_ESPECIE_CUARTELES["EL ESPINO"])
         self.assertAlmostEqual(sum(erp.PRORRATEO_CC_DEFAULT.values()), 100.0, places=2)
@@ -51,6 +53,7 @@ class TestLcDefaultsRestore(unittest.TestCase):
         }
         erp_loader._apply_tenant_config(erp, t_lc)
         self.assertEqual(erp.CENTROS_COSTO, ["CIRUELOS", "MANZANOS"])
+        self.assertEqual(erp.CUARTELES_IMPUTACION_DIRECTA, ["CIRUELOS"])
         self.assertEqual(erp.NOMBRE_DB, "/root/erp_concepcion_v6.db")
         t_esp = {
             "slug": "espino",
