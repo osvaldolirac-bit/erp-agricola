@@ -35,6 +35,11 @@ def _imports_criticos() -> None:
     assert hasattr(bodega_kardex, "gather_kardex_producto")
     assert hasattr(espino_scope, "centros_costo_bodega_espino")
     assert hasattr(espino_bodega, "_stock_cc_map")
+    from demo_web.services.tenant_scope import ESPINO_CCS
+
+    assert espino_bodega.ETIQUETA_BODEGA == "EL ESPINO"
+    assert {c.upper() for c in ESPINO_CCS} == {"ROYAL DOWN", "SWEET ARYANA", "SANTINA"}
+    assert "CEREZOS" not in {c.upper() for c in ESPINO_CCS}
 
 
 def _abono_y_saldo() -> None:

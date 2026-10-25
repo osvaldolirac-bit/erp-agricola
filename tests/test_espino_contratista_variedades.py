@@ -11,7 +11,9 @@ import pandas as pd
 from flask import Flask
 
 from demo_web.services.espino_scope import VARIEDADES_ESPINO
+from demo_web.services.native.espino_bodega import ETIQUETA_BODEGA
 from demo_web.services.native.rrhh import _contratistas_cuenta, _contratistas_por_cc
+from demo_web.services.tenant_scope import ESPINO_CCS
 
 LC_CC = ["CEREZOS CORTE 1", "CEREZOS CORTE 2", "CIRUELOS", "NOGALES"]
 
@@ -109,6 +111,57 @@ class TestContratistaVariedadesEspino(unittest.TestCase):
         self.assertEqual(cta["cc_filtro_opts"], LC_CC)
         self.assertEqual(cta["cc_filtro_sel"], "NOGALES")
         self.assertEqual(self.consultas["cuenta"][-1], "NOGALES")
+
+
+def _clasificar_como_vps(seleccionados, directa, prorrateo):
+    """Misma regla que app_concepcion._clasificar_cc_seleccionados."""
+    sel = [str(c).strip().upper() for c in seleccionados if c]
+    try:
+        from demo_web.services.native.espino_bodega import ETIQUETA_BODEGA as etiqueta
+        from demo_web.services.tenant_scope import ESPINO_CCS as ccs
+        from demo_web.services.tenant_scope import is_espino_tenant
+
+        if not etiqueta:
+            raise RuntimeError("etiqueta vacía")
+        if is_espino_tenant():
+            valid = {c.upper() for c in ccs}
+            directos = [c for c in sel if c in valid]
+            invalid = [c for c in sel if c not in valid]
+            return directos, [], invalid
+    except Exception:
+        pass
+    directos = [c for c in sel if c in directa]
+    prorr = [c for c in sel if c in prorrateo]
+    invalid = [c for c in sel if c not in directos and c not in prorr]
+    return directos, prorr, invalid
+
+
+class TestClasificacionCcContratistaEspino(unittest.TestCase):
+    def test_simbolos_que_importa_el_clasificador(self):
+        self.assertEqual(ETIQUETA_BODEGA, "EL ESPINO")
+        self.assertEqual(tuple(ESPINO_CCS), VARIEDADES_ESPINO)
+        self.assertNotIn("CEREZOS", {c.upper() for c in ESPINO_CCS})
+
+    def test_variedad_marcada_queda_solo_en_imputacion_directa(self):
+        variedades = [c.upper() for c in VARIEDADES_ESPINO]
+        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=True):
+            uno = _clasificar_como_vps(["SANTINA"], variedades, variedades)
+            tres = _clasificar_como_vps(variedades, variedades, variedades)
+            legado = _clasificar_como_vps(["Cerezos"], variedades, variedades)
+        self.assertEqual(uno, (["SANTINA"], [], []))
+        self.assertEqual(tres[0], variedades)
+        self.assertEqual(tres[1], [])
+        self.assertEqual(tres[2], [])
+        self.assertEqual(legado, ([], [], ["CEREZOS"]))
+
+    def test_sin_ramo_espino_la_variedad_cae_en_directo_y_prorrateo(self):
+        variedades = [c.upper() for c in VARIEDADES_ESPINO]
+        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=False):
+            directos, prorr, invalid = _clasificar_como_vps(["SANTINA"], variedades, variedades)
+        self.assertEqual(directos, ["SANTINA"])
+        self.assertEqual(prorr, ["SANTINA"])
+        self.assertEqual(invalid, [])
+        self.assertTrue(directos and prorr)
 
 
 if __name__ == "__main__":
