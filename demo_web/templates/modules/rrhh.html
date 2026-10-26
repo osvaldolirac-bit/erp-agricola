@@ -398,7 +398,7 @@
 
   {% if trabajadores %}
   <div class="row g-3 mb-3">
-    <div class="col-lg-5">
+    <div class="col-12">
       <div class="panel-card">
         <h2 class="h6">Sueldo y suple fijo</h2>
         <form method="post" class="row g-2">
@@ -416,24 +416,35 @@
           <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar sueldo y suple</button></div>
         </form>
 
-        {% if info_prestamo and info_prestamo.monto|default(0) > 0 %}
         <hr>
-        <h2 class="h6">Estado del crédito</h2>
-        <div class="row g-2 small mb-2">
-          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Préstamo original</div><strong>{{ info_prestamo.monto_fmt }}</strong></div></div>
-          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Total descontado</div><strong>{{ info_prestamo.descontado_fmt }}</strong></div></div>
-          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Saldo pendiente</div><strong>{{ info_prestamo.saldo_fmt }}</strong></div></div>
-          <div class="col-6"><div class="border rounded p-2"><div class="text-muted">Cuota referencia</div><strong>{{ info_prestamo.cuota_ref_fmt }}</strong></div></div>
+        <h2 class="h6">Libro de préstamos</h2>
+        <p class="small text-muted mb-2">Cada préstamo tiene su saldo. Los descuentos de la planilla se abonan a esa línea, desde el mes de la primera cuota.</p>
+        {% if prestamos_trabajador %}
+        <div class="table-responsive mb-2">
+          <table class="table table-sm table-striped w-100 mb-0">
+            <thead><tr><th>Fecha</th><th>Monto</th><th>Cuotas</th><th>Descontado</th><th>Saldo</th><th>1ª cuota</th><th>Estado</th></tr></thead>
+            <tbody>
+              {% for row in prestamos_trabajador %}
+              <tr>
+                <td>{{ row.fecha }}</td>
+                <td>{{ row.prestamo_total }}</td>
+                <td>{{ row.cuotas_pagadas }}/{{ row.cuotas_pactadas }}</td>
+                <td>{{ row.total_descontado }}</td>
+                <td>{{ row.saldo_pendiente }}</td>
+                <td>{{ row.primera_cuota }}</td>
+                <td>{{ row.estado }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
-        <p class="small text-muted mb-1">Primera cuota: <strong>{{ info_prestamo.primera_cuota_fmt }}</strong>
-          · Cuotas: {{ info_prestamo.cuotas_pagadas }}/{{ info_prestamo.cuotas }} (restan {{ info_prestamo.cuotas_restantes }})</p>
-        {% if info_prestamo.saldado %}
-        <div class="alert alert-success py-2 small mb-2">Préstamo saldado. Puede poner monto en $0 abajo o registrar uno nuevo tras limpiar el crédito.</div>
+        {% else %}
+        <p class="small text-muted">Este trabajador no tiene préstamos.</p>
         {% endif %}
-        {% elif puede_registrar_prestamo %}
+
         <hr>
         <h2 class="h6">Registrar nuevo préstamo</h2>
-        <p class="small text-muted mb-2">Monto total, cuotas pactadas y mes de la primera cuota (descuento en planilla).</p>
+        <p class="small text-muted mb-2">Abre una línea nueva. El préstamo anterior conserva sus descuentos y su saldo.</p>
         <form method="post" class="row g-2">
           <input type="hidden" name="action" value="registrar_prestamo">
           <input type="hidden" name="sec" value="remuneraciones">
@@ -456,35 +467,37 @@
             <button type="submit" class="btn btn-success btn-sm w-100">Registrar préstamo</button>
           </div>
         </form>
-        {% endif %}
 
+        {% if prestamo_editar %}
         <hr>
-        <h2 class="h6">Modificar términos del crédito</h2>
-        <p class="small text-muted mb-2">Ajuste monto, cuotas o primera cuota del contrato. Ponga monto $0 para limpiar y poder registrar uno nuevo.</p>
+        <h2 class="h6">Corregir préstamo del {{ prestamo_editar.fecha }}</h2>
+        <p class="small text-muted mb-2">Cambia el monto, las cuotas o la primera cuota de esa línea ({{ prestamo_editar.estado }}). No crea un préstamo nuevo.</p>
         <form method="post" class="row g-2">
           <input type="hidden" name="action" value="editar_prestamo">
           <input type="hidden" name="sec" value="remuneraciones">
           <input type="hidden" name="mes" value="{{ mes_sel }}">
           <input type="hidden" name="anio" value="{{ anio_sel }}">
           <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+          <input type="hidden" name="prestamo_id" value="{{ prestamo_editar.id }}">
           <div class="col-md-6">
             <label class="form-label small">Monto préstamo total ($)</label>
             <input type="number" name="monto_prestamo" class="form-control form-control-sm"
-                   value="{{ ficha_monto_prestamo|int }}" min="0" step="1">
+                   value="{{ prestamo_editar.monto|int }}" min="0" step="1">
           </div>
           <div class="col-md-6">
             <label class="form-label small">Cuotas pactadas</label>
             <input type="number" name="cuotas" class="form-control form-control-sm"
-                   value="{{ ficha_cuotas_prestamo }}" min="0" step="1">
+                   value="{{ prestamo_editar.cuotas_pactadas }}" min="0" step="1">
           </div>
           <div class="col-md-6">
             <label class="form-label small">Primera cuota (mes)</label>
-            <input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ primera_cuota_def }}">
+            <input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ prestamo_editar.primera_iso }}">
           </div>
           <div class="col-md-6 d-flex align-items-end">
-            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Actualizar crédito</button>
+            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Actualizar esta línea</button>
           </div>
         </form>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -493,10 +506,10 @@
   <div class="panel-card mb-3">
     <h2 class="h6">Registro de préstamos y cuotas</h2>
     {% if prestamos_rows %}
-    <p class="small text-muted">Saldo según descuentos de la planilla de Remuneraciones de cada mes.</p>
+    <p class="small text-muted">Una fila por préstamo. El saldo es el monto de esa línea menos sus propios descuentos.</p>
     <div class="table-responsive"><table class="table table-sm table-striped w-100">
-      <thead><tr><th>Trabajador</th><th>Préstamo</th><th>Cuotas</th><th>Descontado</th><th>Saldo</th><th>1ª cuota</th></tr></thead>
-      <tbody>{% for row in prestamos_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.prestamo_total }}</td><td>{{ row.cuotas_pagadas }}/{{ row.cuotas_pactadas }}</td><td>{{ row.total_descontado }}</td><td>{{ row.saldo_pendiente }}</td><td>{{ row.primera_cuota }}</td></tr>{% endfor %}</tbody>
+      <thead><tr><th>Trabajador</th><th>Fecha</th><th>Préstamo</th><th>Cuotas</th><th>Descontado</th><th>Saldo</th><th>1ª cuota</th><th>Estado</th></tr></thead>
+      <tbody>{% for row in prestamos_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.fecha }}</td><td>{{ row.prestamo_total }}</td><td>{{ row.cuotas_pagadas }}/{{ row.cuotas_pactadas }}</td><td>{{ row.total_descontado }}</td><td>{{ row.saldo_pendiente }}</td><td>{{ row.primera_cuota }}</td><td>{{ row.estado }}</td></tr>{% endfor %}</tbody>
     </table></div>
     {% else %}
     <p class="text-muted mb-0">No hay préstamos registrados.</p>

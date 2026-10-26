@@ -188,6 +188,54 @@ def _wrap_clasificar_cc_espino(erp: Any) -> None:
     erp._clasificar_cc_seleccionados = _clasificar_cc_seleccionados
 
 
+def _wrap_prestamo_rrhh(erp: Any) -> None:
+    """El saldo del préstamo sale del libro mayor, no de la suma histórica.
+
+    ``app_concepcion`` resta todos los descuentos del trabajador al único monto
+    de la ficha. Esas funciones no van en el deploy. Acá se reemplazan para que
+    la planilla y Streamlit abonen el préstamo vigente.
+    """
+    if getattr(erp, "_prestamo_rrhh_wrapped", False):
+        return
+    original_guardar = getattr(erp, "_guardar_remuneracion_mes", None)
+    if not callable(original_guardar):
+        return
+    erp._prestamo_rrhh_wrapped = True
+
+    def _info_prestamo_worker(conn, trabajador_id):  # noqa: ANN001
+        from demo_web.services.prestamo_rrhh import info_prestamo
+
+        return info_prestamo(conn, int(trabajador_id))
+
+    def _saldo_disponible_descuento_remuneracion(conn, trabajador_id, mes, anio):  # noqa: ANN001
+        from demo_web.services.prestamo_rrhh import saldo_disponible_mes
+
+        return saldo_disponible_mes(conn, int(trabajador_id), mes, anio)
+
+    def _actualizar_cuotas_pagadas_desde_descuentos(conn, trabajador_id):  # noqa: ANN001
+        from demo_web.services.prestamo_rrhh import reflejar_cuotas_ficha
+
+        reflejar_cuotas_ficha(conn, int(trabajador_id))
+
+    def _guardar_remuneracion_mes(conn, trabajador_id, mes, anio, liquido_ganado, suple, descuento_prestamo):  # noqa: ANN001
+        from demo_web.services.prestamo_rrhh import reflejar_cuotas_ficha, sincronizar_abono_mes
+
+        resultado = original_guardar(
+            conn, trabajador_id, mes, anio, liquido_ganado, suple, descuento_prestamo
+        )
+        if resultado and resultado[0]:
+            sincronizar_abono_mes(conn, int(trabajador_id), mes, anio, float(descuento_prestamo or 0))
+            reflejar_cuotas_ficha(conn, int(trabajador_id))
+        return resultado
+
+    erp._info_prestamo_worker = _info_prestamo_worker
+    if callable(getattr(erp, "_saldo_disponible_descuento_remuneracion", None)):
+        erp._saldo_disponible_descuento_remuneracion = _saldo_disponible_descuento_remuneracion
+    if callable(getattr(erp, "_actualizar_cuotas_pagadas_desde_descuentos", None)):
+        erp._actualizar_cuotas_pagadas_desde_descuentos = _actualizar_cuotas_pagadas_desde_descuentos
+    erp._guardar_remuneracion_mes = _guardar_remuneracion_mes
+
+
 def _apply_tenant_config(erp: Any, t: dict[str, Any]) -> None:
     erp.NOMBRE_DB = t["db"]
     erp.SECRETS_PATH = t["secrets"]
@@ -228,6 +276,7 @@ def _load_module(erp_app: str) -> Any:
         _capture_lc_defaults(erp)
         _wrap_conectar_db(erp)
         _wrap_clasificar_cc_espino(erp)
+        _wrap_prestamo_rrhh(erp)
     return erp
 
 
