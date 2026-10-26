@@ -43,5 +43,15 @@ class TestRemuneracionExtra(unittest.TestCase):
         self.assertEqual(proyeccion(base, 0), 590000)
 
 
+class TestMontoPeso(unittest.TestCase):
+    def test_el_formulario_lee_el_mismo_formato_que_el_pago_extra(self):
+        from demo_web.services.native.rrhh import _parse_monto_form
+
+        self.assertEqual(_parse_monto_form("$40.000"), 40000)
+        self.assertEqual(_parse_monto_form("$1.234.567"), 1234567)
+        self.assertEqual(_parse_monto_form("800000"), 800000)
+        self.assertEqual(_parse_monto_form(""), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

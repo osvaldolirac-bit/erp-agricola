@@ -957,7 +957,7 @@ def _post_registrar_servicio(demo, conn) -> dict:
     razon = request.form.get("razon_social") or razon_social_compras_default(demo)
     iva_bruto = request.form.get("iva_bruto") == "1"
     try:
-        monto = float(request.form.get("monto") or 0)
+        monto = _parse_monto_form(request.form.get("monto"))
     except ValueError:
         return {"ok": False, "msg": "Monto inválido."}
     selcc = [c for c in centros_costo(demo) if request.form.get(f"cc_{c}") == "1"]
@@ -1002,8 +1002,8 @@ def _post_guardar_ficha(demo, conn) -> dict:
     mes = demo._mes_rrhh_norm(request.form.get("mes") or "")
     anio = int(request.form.get("anio") or demo.hora_chile().year)
     try:
-        sueldo = float(request.form.get("sueldo") or 0)
-        suple = float(request.form.get("suple") or 0)
+        sueldo = _parse_monto_form(request.form.get("sueldo"))
+        suple = _parse_monto_form(request.form.get("suple"))
     except ValueError:
         return {"ok": False, "msg": "Valores inválidos."}
     ficha = conn.execute(
@@ -1098,9 +1098,9 @@ def _post_guardar_planilla(demo, conn) -> dict:
             continue
         tid = int(key.replace("liq_", ""))
         try:
-            liq = float(request.form.get(f"liq_{tid}") or 0)
-            sup = float(request.form.get(f"sup_{tid}") or 0)
-            desc = float(request.form.get(f"desc_{tid}") or 0)
+            liq = _parse_monto_form(request.form.get(f"liq_{tid}"))
+            sup = _parse_monto_form(request.form.get(f"sup_{tid}"))
+            desc = _parse_monto_form(request.form.get(f"desc_{tid}"))
         except ValueError:
             errores.append(f"ID {tid}: valores inválidos")
             continue
@@ -1153,8 +1153,8 @@ def _post_liquidacion(demo, conn) -> dict:
     anio = int(request.form.get("anio") or demo.hora_chile().year)
     licencia = request.form.get("licencia") == "1"
     try:
-        liq = float(request.form.get("liquido") or 0)
-        ley = float(request.form.get("leyes") or 0)
+        liq = _parse_monto_form(request.form.get("liquido"))
+        ley = _parse_monto_form(request.form.get("leyes"))
     except ValueError:
         return {"ok": False, "msg": "Montos inválidos."}
     ok, err = demo._upsert_pago_rrhh(conn, tid, mes, anio, liq, ley, licencia)
