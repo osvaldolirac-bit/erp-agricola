@@ -40,6 +40,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/services/flujo_espino.py",
     "demo_web/services/dashboard.py",
     "demo_web/services/tesoreria_alerta.py",
+    "demo_web/services/prestamo_rrhh.py",
     "demo_web/services/sidebar_badges.py",
     "demo_web/auth/decorators.py",
     "demo_web/auth/login_next.py",
@@ -57,6 +58,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/services/native/espino.py",
     "demo_web/services/native/espino_bodega.py",
     "demo_web/services/native/espino_libro_campo.py",
+    "demo_web/templates/modules/rrhh.html",
     "demo_web/templates/modules/bodega.html",
     "demo_web/templates/modules/compras.html",
     "demo_web/templates/modules/administracion.html",
@@ -68,6 +70,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/templates/partials/espino_libro_campo.html",
     "erp_flujo_financiero.py",
     "scripts/migrate_espino_libro_movimiento_id_vps.py",
+    "scripts/migrate_prestamo_rrhh_vps.py",
     "scripts/alerta_tesoreria_vencimiento.py",
     "scripts/smoke_robustez.py",
     "scripts/verify_agricola_release.py",
@@ -104,6 +107,7 @@ def deploy(root: Path) -> None:
     post = (
         f"cd {REMOTE} && PYTHONPATH={REMOTE} "
         f"{REMOTE}/.venv/bin/python3 scripts/migrate_espino_libro_movimiento_id_vps.py "
+        f"&& PYTHONPATH={REMOTE} {REMOTE}/.venv/bin/python3 scripts/migrate_prestamo_rrhh_vps.py "
         f"&& PYTHONPATH={REMOTE} {REMOTE}/.venv/bin/python3 scripts/smoke_robustez.py "
         f"&& systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web"
     )

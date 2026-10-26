@@ -15,6 +15,16 @@ from demo_web.services.tenant_scope import (
     razones_sociales_compras,
 )
 from demo_web.services.native._helpers import hoy_demo, parse_date
+from demo_web.services.prestamo_rrhh import (
+    actualizar_prestamo,
+    descuento_sugerido,
+    info_prestamo,
+    listar_todos,
+    listar_trabajador,
+    migrar_desde_ficha,
+    prestamo_para_corregir,
+    registrar_prestamo,
+)
 
 SECCIONES = [
     ("personal", "📋 PERSONAL"),
@@ -346,6 +356,41 @@ def _contratistas_cuenta(demo, conn) -> dict:
     }
 
 
+def _fecha_corta(iso: str) -> str:
+    texto = (iso or "")[:10]
+    partes = texto.split("-")
+    if len(partes) != 3:
+        return texto or "—"
+    anio, mes, dia = partes
+    return f"{dia}-{mes}-{anio}"
+
+
+def _fila_prestamo(demo, prestamo: dict, nombre: str) -> dict:
+    pm = prestamo.get("primera_cuota_mes")
+    pa = prestamo.get("primera_cuota_anio")
+    if pm and pa:
+        primera = f"{pm}/{pa}"
+        primera_iso = f"{int(pa):04d}-{pm}-01"
+    else:
+        primera = "Inmediato"
+        primera_iso = ""
+    return {
+        "id": prestamo["id"],
+        "trabajador_id": prestamo["trabajador_id"],
+        "trabajador": nombre,
+        "fecha": _fecha_corta(prestamo.get("fecha") or ""),
+        "prestamo_total": demo.f_peso(prestamo["monto"]),
+        "monto": prestamo["monto"],
+        "cuotas_pactadas": prestamo["cuotas"],
+        "cuotas_pagadas": prestamo["cuotas_pagadas"],
+        "primera_cuota": primera,
+        "primera_iso": primera_iso,
+        "total_descontado": demo.f_peso(prestamo["descontado"]),
+        "saldo_pendiente": demo.f_peso(prestamo["saldo"]),
+        "estado": "Saldado" if prestamo["estado"] == "saldado" else "Vigente",
+    }
+
+
 def _remuneraciones(demo, conn) -> dict:
     h = demo.hora_chile()
     prov_m = demo._mes_rrhh_norm(request.args.get("mes") or h.strftime("%m"))
@@ -357,6 +402,8 @@ def _remuneraciones(demo, conn) -> dict:
     df_act = pd.read_sql_query("SELECT id, nombre FROM personal WHERE estado='Activo'", conn)
     trabajadores = [{"id": int(r["id"]), "nombre": r["nombre"]} for _, r in df_act.iterrows()]
     tid_sel = int(request.args.get("trabajador_id") or (trabajadores[0]["id"] if trabajadores else 0))
+    migrar_desde_ficha(conn)
+    conn.commit()
     if tid_sel and hasattr(demo, "_actualizar_cuotas_pagadas_desde_descuentos"):
         try:
             demo._actualizar_cuotas_pagadas_desde_descuentos(conn, tid_sel)
@@ -369,7 +416,7 @@ def _remuneraciones(demo, conn) -> dict:
            FROM remuneraciones_fichas WHERE trabajador_id=?""",
         (tid_sel,),
     ).fetchone()
-    info_prest_raw = demo._info_prestamo_worker(conn, tid_sel) if tid_sel else {}
+    info_prest_raw = info_prestamo(conn, tid_sel) if tid_sel else {}
     info_prest = {
         "monto": float(info_prest_raw.get("monto") or 0),
         "cuotas": int(info_prest_raw.get("cuotas") or 0),
@@ -396,32 +443,23 @@ def _remuneraciones(demo, conn) -> dict:
     else:
         info_prest["primera_cuota_fmt"] = "Inmediato"
 
-    q_prest = """SELECT p.nombre AS trabajador,
-                        f.monto_prestamo AS prestamo_total,
-                        f.cuotas_prestamo AS cuotas_pactadas,
-                        COALESCE(f.cuotas_pagadas, 0) AS cuotas_pagadas,
-                        CASE WHEN f.primera_cuota_mes IS NOT NULL AND f.primera_cuota_anio IS NOT NULL
-                             THEN printf('%02d', CAST(f.primera_cuota_mes AS INTEGER)) || '/' || f.primera_cuota_anio
-                             ELSE 'Inmediato' END AS primera_cuota,
-                        COALESCE((SELECT SUM(descuento_prestamo) FROM remuneracion_mes WHERE trabajador_id = p.id), 0) AS total_descontado,
-                        MAX(0, f.monto_prestamo - COALESCE((SELECT SUM(descuento_prestamo) FROM remuneracion_mes WHERE trabajador_id = p.id), 0)) AS saldo_pendiente
-                 FROM personal p
-                 JOIN remuneraciones_fichas f ON p.id = f.trabajador_id
-                 WHERE p.estado='Activo' AND f.monto_prestamo > 0
-                 ORDER BY p.nombre"""
-    df_prest = pd.read_sql_query(q_prest, conn)
-    prestamos = []
-    for _, r in df_prest.iterrows():
-        prestamos.append(
-            {
-                "trabajador": r["trabajador"],
-                "prestamo_total": demo.f_peso(r["prestamo_total"]),
-                "cuotas_pactadas": int(r["cuotas_pactadas"] or 0),
-                "cuotas_pagadas": int(r["cuotas_pagadas"] or 0),
-                "primera_cuota": r["primera_cuota"],
-                "total_descontado": demo.f_peso(r["total_descontado"]),
-                "saldo_pendiente": demo.f_peso(r["saldo_pendiente"]),
-            }
+    nombres = {t["id"]: t["nombre"] for t in trabajadores}
+    prestamos = [
+        _fila_prestamo(demo, p, nombres.get(p["trabajador_id"], ""))
+        for p in listar_todos(conn)
+        if p["trabajador_id"] in nombres
+    ]
+    prestamos_sel = [
+        _fila_prestamo(demo, p, nombres.get(tid_sel, ""))
+        for p in (listar_trabajador(conn, tid_sel) if tid_sel else [])
+    ]
+    editar = prestamo_para_corregir(conn, tid_sel) if tid_sel else None
+    prestamo_editar = _fila_prestamo(demo, editar, nombres.get(tid_sel, "")) if editar else None
+    if prestamo_editar:
+        info_prest["cuotas"] = prestamo_editar["cuotas_pactadas"]
+        info_prest["cuotas_pagadas"] = prestamo_editar["cuotas_pagadas"]
+        info_prest["cuotas_restantes"] = max(
+            0, info_prest["cuotas"] - info_prest["cuotas_pagadas"]
         )
 
     q_prov = """SELECT p.id AS trabajador_id, p.nombre AS trabajador,
@@ -442,7 +480,7 @@ def _remuneraciones(demo, conn) -> dict:
         tid = int(row["trabajador_id"])
         desc = float(row["descuento_prestamo"] or 0)
         if desc <= 0:
-            desc = float(demo._descuento_cuota_sugerida(conn, tid, prov_m, prov_a) or 0)
+            desc = descuento_sugerido(conn, tid, prov_m, prov_a)
         liq = float(row["liquido_ganado"] or 0)
         sup = float(row["suple"] or 0)
         prov = max(0, liq - sup - desc)
@@ -462,7 +500,8 @@ def _remuneraciones(demo, conn) -> dict:
             }
         )
 
-    primera_def = demo._primera_cuota_date_default(ficha).isoformat() if ficha else hoy_demo(demo).isoformat()
+    h = demo.hora_chile()
+    primera_nueva = f"{h.year}-{int(h.month):02d}-01"
     return {
         "meses": MESES,
         "mes_sel": prov_m,
@@ -474,9 +513,11 @@ def _remuneraciones(demo, conn) -> dict:
         "ficha_monto_prestamo": float(ficha[1] or 0) if ficha else 0,
         "ficha_cuotas_prestamo": int(ficha[2] or 0) if ficha else 0,
         "info_prestamo": info_prest,
-        "puede_registrar_prestamo": float(info_prest.get("monto") or 0) <= 0,
-        "primera_cuota_def": primera_def,
+        "puede_registrar_prestamo": True,
+        "primera_cuota_def": primera_nueva,
         "prestamos_rows": prestamos,
+        "prestamos_trabajador": prestamos_sel,
+        "prestamo_editar": prestamo_editar,
         "planilla_rows": planilla,
         "total_provision": demo.f_peso(total_prov),
     }
@@ -910,7 +951,7 @@ def _post_guardar_ficha(demo, conn) -> dict:
            VALUES (?,?,?,?,?,?,?,?)""",
         (tid, sueldo, m_prest, c_prest, c_pag, suple, pc_m, pc_a),
     )
-    desc = demo._descuento_cuota_sugerida(conn, tid, mes, anio)
+    desc = descuento_sugerido(conn, tid, mes, anio)
     ok, err = demo._guardar_remuneracion_mes(conn, tid, mes, anio, sueldo, suple, desc)
     if not ok:
         conn.commit()
@@ -935,41 +976,6 @@ def _parse_monto_form(raw: str | None) -> float:
 
 def _post_registrar_prestamo(demo, conn) -> dict:
     tid = int(request.form.get("trabajador_id") or 0)
-    try:
-        monto = _parse_monto_form(request.form.get("monto_prestamo"))
-        cuotas = int(float(str(request.form.get("cuotas") or "0").replace(",", ".")))
-    except ValueError:
-        return {"ok": False, "msg": "Valores inválidos."}
-    if monto <= 0 or cuotas <= 0:
-        return {"ok": False, "msg": "Monto y cuotas deben ser mayores a cero."}
-    info = demo._info_prestamo_worker(conn, tid) if hasattr(demo, "_info_prestamo_worker") else {}
-    if float(info.get("monto") or 0) > 0:
-        return {
-            "ok": False,
-            "msg": "Ya hay un préstamo vigente. Use «Modificar términos del crédito» o póngalo en $0 primero.",
-        }
-    primera = request.form.get("primera_cuota") or str(hoy_demo(demo))
-    pc_m, pc_a = demo._mes_anio_desde_fecha(parse_date(primera, hoy_demo(demo)))
-    ficha = conn.execute(
-        "SELECT sueldo_pactado, suple_fijo FROM remuneraciones_fichas WHERE trabajador_id=?",
-        (tid,),
-    ).fetchone()
-    sueldo = float(ficha[0] or 0) if ficha else 0
-    suple = float(ficha[1] or 0) if ficha else 0
-    conn.execute(
-        """INSERT OR REPLACE INTO remuneraciones_fichas
-           (trabajador_id, sueldo_pactado, monto_prestamo, cuotas_prestamo, cuotas_pagadas, suple_fijo, primera_cuota_mes, primera_cuota_anio)
-           VALUES (?,?,?,?,0,?,?,?)""",
-        (tid, sueldo, monto, cuotas, suple, pc_m, pc_a),
-    )
-    conn.commit()
-    demo.registrar_accion("RRHH PRESTAMO NUEVO", str(tid))
-    return {"ok": True, "msg": "Préstamo registrado."}
-
-
-def _post_editar_prestamo(demo, conn) -> dict:
-    """Actualiza términos del crédito (monto, cuotas, primera cuota), como en Streamlit."""
-    tid = int(request.form.get("trabajador_id") or 0)
     if tid <= 0:
         return {"ok": False, "msg": "Trabajador inválido."}
     try:
@@ -977,35 +983,40 @@ def _post_editar_prestamo(demo, conn) -> dict:
         cuotas = int(float(str(request.form.get("cuotas") or "0").replace(",", ".")))
     except ValueError:
         return {"ok": False, "msg": "Valores inválidos."}
-    if monto < 0 or cuotas < 0:
-        return {"ok": False, "msg": "Monto y cuotas no pueden ser negativos."}
     primera = request.form.get("primera_cuota") or str(hoy_demo(demo))
     pc_m, pc_a = demo._mes_anio_desde_fecha(parse_date(primera, hoy_demo(demo)))
-    ficha = conn.execute(
-        """SELECT sueldo_pactado, cuotas_pagadas, suple_fijo
-           FROM remuneraciones_fichas WHERE trabajador_id=?""",
-        (tid,),
-    ).fetchone()
-    sueldo = float(ficha[0] or 0) if ficha else 0.0
-    c_pag = int(ficha[1] or 0) if ficha else 0
-    suple = float(ficha[2] or 0) if ficha else 0.0
-    if cuotas < c_pag:
-        c_pag = cuotas
-    if monto <= 0:
-        cuotas = 0
-        c_pag = 0
-    conn.execute(
-        """INSERT OR REPLACE INTO remuneraciones_fichas
-           (trabajador_id, sueldo_pactado, monto_prestamo, cuotas_prestamo, cuotas_pagadas,
-            suple_fijo, primera_cuota_mes, primera_cuota_anio)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (tid, sueldo, monto, int(cuotas), c_pag, suple, pc_m, pc_a),
-    )
-    if hasattr(demo, "_actualizar_cuotas_pagadas_desde_descuentos"):
-        demo._actualizar_cuotas_pagadas_desde_descuentos(conn, tid)
+    ok, msg = registrar_prestamo(conn, tid, monto, cuotas, pc_m, pc_a, str(hoy_demo(demo)))
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH PRESTAMO NUEVO", str(tid))
+    return {"ok": True, "msg": msg}
+
+
+def _post_editar_prestamo(demo, conn) -> dict:
+    """Corrige la línea vigente (o la última). No abre un préstamo nuevo."""
+    tid = int(request.form.get("trabajador_id") or 0)
+    if tid <= 0:
+        return {"ok": False, "msg": "Trabajador inválido."}
+    try:
+        monto = _parse_monto_form(request.form.get("monto_prestamo"))
+        cuotas = int(float(str(request.form.get("cuotas") or "0").replace(",", ".")))
+        pid = int(request.form.get("prestamo_id") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Valores inválidos."}
+    if pid <= 0:
+        elegido = prestamo_para_corregir(conn, tid)
+        pid = int(elegido["id"]) if elegido else 0
+    if pid <= 0:
+        return {"ok": False, "msg": "No hay un préstamo para corregir."}
+    primera = request.form.get("primera_cuota") or str(hoy_demo(demo))
+    pc_m, pc_a = demo._mes_anio_desde_fecha(parse_date(primera, hoy_demo(demo)))
+    ok, msg = actualizar_prestamo(conn, pid, monto, cuotas, pc_m, pc_a)
+    if not ok:
+        return {"ok": False, "msg": msg}
     conn.commit()
     demo.registrar_accion("RRHH PRESTAMO EDIT", str(tid))
-    return {"ok": True, "msg": "Crédito actualizado."}
+    return {"ok": True, "msg": msg}
 
 
 def _post_guardar_planilla(demo, conn) -> dict:
@@ -1024,7 +1035,7 @@ def _post_guardar_planilla(demo, conn) -> dict:
             errores.append(f"ID {tid}: valores inválidos")
             continue
         if desc <= 0:
-            desc = demo._descuento_cuota_sugerida(conn, tid, mes, anio)
+            desc = descuento_sugerido(conn, tid, mes, anio)
         ok, err = demo._guardar_remuneracion_mes(conn, tid, mes, anio, liq, sup, desc)
         if not ok:
             errores.append(err or f"Error trabajador {tid}")
