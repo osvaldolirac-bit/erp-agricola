@@ -417,6 +417,60 @@
         </form>
 
         <hr>
+        <h2 class="h6">Pagos extras del mes {{ mes_sel }}/{{ anio_sel }}</h2>
+        <p class="small text-muted mb-2">Un monto con nota, por ejemplo una aplicación domingo. Suma en el líquido a provisionar de este trabajador. La liquidación del mes lee estas líneas.</p>
+        <form method="post" class="row g-2 mb-2">
+          <input type="hidden" name="action" value="agregar_extra">
+          <input type="hidden" name="sec" value="remuneraciones">
+          <input type="hidden" name="mes" value="{{ mes_sel }}">
+          <input type="hidden" name="anio" value="{{ anio_sel }}">
+          <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+          <div class="col-md-4">
+            <label class="form-label small">Monto ($)</label>
+            <input type="number" name="monto" class="form-control form-control-sm" min="1" step="1" required>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label small">Nota</label>
+            <input type="text" name="nota" class="form-control form-control-sm" maxlength="200" placeholder="Aplicación domingo" required>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-success btn-sm w-100">Agregar pago extra</button>
+          </div>
+        </form>
+        {% set extras_ns = namespace(filas=[]) %}
+        {% for row in extras_rows if row.trabajador_id == trabajador_sel %}
+          {% set extras_ns.filas = extras_ns.filas + [row] %}
+        {% endfor %}
+        {% if extras_ns.filas %}
+        <div class="table-responsive">
+          <table class="table table-sm table-striped w-100 mb-0">
+            <thead><tr><th>Nota</th><th>Monto</th><th></th></tr></thead>
+            <tbody>
+              {% for row in extras_ns.filas %}
+              <tr>
+                <td>{{ row.nota }}</td>
+                <td>{{ row.monto_fmt }}</td>
+                <td class="text-end">
+                  <form method="post" class="d-inline">
+                    <input type="hidden" name="action" value="eliminar_extra">
+                    <input type="hidden" name="sec" value="remuneraciones">
+                    <input type="hidden" name="mes" value="{{ mes_sel }}">
+                    <input type="hidden" name="anio" value="{{ anio_sel }}">
+                    <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+                    <input type="hidden" name="extra_id" value="{{ row.id }}">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Quitar</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="small text-muted mb-0">Sin pagos extras de este trabajador en {{ mes_sel }}/{{ anio_sel }}.</p>
+        {% endif %}
+
+        <hr>
         <h2 class="h6">Libro de préstamos</h2>
         <p class="small text-muted mb-2">Cada préstamo tiene su saldo. Los descuentos de la planilla se abonan a esa línea, desde el mes de la primera cuota.</p>
         {% if prestamos_trabajador %}
@@ -519,65 +573,6 @@
   <div class="alert alert-info fw-semibold mb-3">
     TOTAL LÍQUIDO A PROVISIONAR ({{ mes_sel }}/{{ anio_sel }}): {{ total_provision }}
     <span class="fw-normal small d-block">Incluye pagos extras del mes: {{ total_extras }}</span>
-  </div>
-
-  <div class="panel-card mb-3">
-    <h2 class="h6">Pagos extras del mes</h2>
-    <p class="small text-muted mb-2">Un monto con nota, por ejemplo una aplicación domingo. Suma en el líquido a provisionar. La liquidación del mes lee estas mismas líneas.</p>
-    {% if trabajadores %}
-    <form method="post" class="row g-2 mb-3">
-      <input type="hidden" name="action" value="agregar_extra">
-      <input type="hidden" name="sec" value="remuneraciones">
-      <input type="hidden" name="mes" value="{{ mes_sel }}">
-      <input type="hidden" name="anio" value="{{ anio_sel }}">
-      <div class="col-md-4">
-        <label class="form-label small">Trabajador</label>
-        <select name="trabajador_id" class="form-select form-select-sm">
-          {% for t in trabajadores %}<option value="{{ t.id }}" {% if t.id == trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small">Monto ($)</label>
-        <input type="number" name="monto" class="form-control form-control-sm" min="1" step="1" required>
-      </div>
-      <div class="col-md-4">
-        <label class="form-label small">Nota</label>
-        <input type="text" name="nota" class="form-control form-control-sm" maxlength="200" placeholder="Aplicación domingo" required>
-      </div>
-      <div class="col-md-2 d-flex align-items-end">
-        <button type="submit" class="btn btn-success btn-sm w-100">Agregar pago extra</button>
-      </div>
-    </form>
-    {% endif %}
-    {% if extras_rows %}
-    <div class="table-responsive">
-      <table class="table table-sm table-striped w-100 mb-0">
-        <thead><tr><th>Trabajador</th><th>Nota</th><th>Monto</th><th></th></tr></thead>
-        <tbody>
-          {% for row in extras_rows %}
-          <tr>
-            <td>{{ row.trabajador }}</td>
-            <td>{{ row.nota }}</td>
-            <td>{{ row.monto_fmt }}</td>
-            <td class="text-end">
-              <form method="post" class="d-inline">
-                <input type="hidden" name="action" value="eliminar_extra">
-                <input type="hidden" name="sec" value="remuneraciones">
-                <input type="hidden" name="mes" value="{{ mes_sel }}">
-                <input type="hidden" name="anio" value="{{ anio_sel }}">
-                <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
-                <input type="hidden" name="extra_id" value="{{ row.id }}">
-                <button type="submit" class="btn btn-outline-danger btn-sm">Quitar</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="small text-muted mb-0">Sin pagos extras en {{ mes_sel }}/{{ anio_sel }}.</p>
-    {% endif %}
   </div>
 
   <div class="panel-card">
