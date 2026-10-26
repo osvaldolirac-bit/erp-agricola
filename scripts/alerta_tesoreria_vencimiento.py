@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Aviso diario de Tesorería: documentos con saldo que vencen mañana.
+"""Aviso diario de Tesorería: documentos con saldo que vencen hoy.
 
 La Concepción y El Espino, cada uno a sus usuarios con Mail tesorería.
-La hora de envío es las 08:00 de Chile o más tarde el mismo día, por si
-el servidor no estaba a las 08:00. El cron puede correr cada hora: antes
-de las 08:00 no hace nada y, después, no repite un documento ya avisado.
+La hora de envío es las 07:00 de Chile o más tarde el mismo día, por si
+el servidor no estaba a las 07:00. El cron puede correr cada hora desde
+esa hora: antes de las 07:00 no hace nada y, después, no repite un
+documento ya avisado.
 
   python3 scripts/alerta_tesoreria_vencimiento.py
   python3 scripts/alerta_tesoreria_vencimiento.py --ahora
@@ -23,7 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 CHILE = ZoneInfo("America/Santiago")
-HORA_ENVIO = 8
+HORA_ENVIO = 7
 SLUGS = ("concepcion", "espino")
 
 
@@ -116,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--ahora",
         action="store_true",
-        help="Enviar aunque todavía no sean las 08:00 de Chile.",
+        help="Enviar aunque todavía no sean las 07:00 de Chile.",
     )
     parser.add_argument(
         "--dry-run",

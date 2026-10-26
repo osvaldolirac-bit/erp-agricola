@@ -1,4 +1,4 @@
-"""Aviso de Tesorería: documentos con saldo que vencen mañana.
+"""Aviso de Tesorería: documentos con saldo que vencen hoy.
 
 Misma cola que la pantalla de pendientes: estado Pendiente, sin filas de
 imputación (_P) ni gastos de estanque (GE-). El saldo es el monto del
@@ -7,15 +7,11 @@ documento menos los abonos. Cada documento se avisa una vez por fecha.
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, timedelta
+from datetime import date
 
 from erp_correo_html import html_esc, plantilla_correo_html
 
 _TABLA = "alerta_tesoreria_vencimiento"
-
-
-def fecha_manana(hoy: date) -> date:
-    return hoy + timedelta(days=1)
 
 
 def formato_peso(valor: float) -> str:
@@ -60,9 +56,9 @@ def documentos_por_vencer(
     *,
     excluir_razon_social: str | None = None,
 ) -> list[dict]:
-    """Pendientes con saldo cuyo vencimiento es el día siguiente a ``hoy``."""
+    """Pendientes con saldo cuyo vencimiento es el mismo día que ``hoy``."""
     asegurar_tabla(conn)
-    manana = fecha_manana(hoy).isoformat()
+    dia = hoy.isoformat()
     excluir = (excluir_razon_social or "").strip().casefold()
     rows = conn.execute(
         f"""SELECT f.id, f.nro_documento, f.proveedor,
@@ -82,7 +78,7 @@ def documentos_por_vencer(
                       AND a.fecha_vencimiento = date(f.fecha_vencimiento)
               )
             ORDER BY f.proveedor, f.nro_documento, f.id""",
-        (manana,),
+        (dia,),
     ).fetchall()
     salida: list[dict] = []
     for row in rows:
@@ -98,7 +94,7 @@ def documentos_por_vencer(
                 "nro_documento": str(row[1] or "").strip(),
                 "proveedor": str(row[2] or "").strip(),
                 "razon_social": razon,
-                "fecha_vencimiento": str(row[4] or manana)[:10],
+                "fecha_vencimiento": str(row[4] or dia)[:10],
                 "saldo": saldo,
             }
         )
@@ -138,7 +134,7 @@ def armar_correo(nombre_erp: str, docs: list[dict]) -> tuple[str, str]:
     palabra = "documento" if n == 1 else "documentos"
     interior = f"""
         <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
-          Mañana <b>{html_esc(cuando)}</b> vence el saldo de {n} {palabra} en Tesorería.
+          Hoy <b>{html_esc(cuando)}</b> vence el saldo de {n} {palabra} en Tesorería.
         </p>
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           <thead>
@@ -158,10 +154,10 @@ def armar_correo(nombre_erp: str, docs: list[dict]) -> tuple[str, str]:
     """
     cuerpo = plantilla_correo_html(
         "vencimiento",
-        "Documentos que vencen mañana",
+        "Documentos que vencen hoy",
         interior,
         nombre_erp=marca,
         pie="Aviso automático de Tesorería. Quien tiene Mail tesorería recibe este correo.",
     )
-    asunto = f"[{marca}] Vence mañana: {n} {palabra}"
+    asunto = f"[{marca}] Vence hoy: {n} {palabra}"
     return asunto, cuerpo
