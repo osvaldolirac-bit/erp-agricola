@@ -327,7 +327,7 @@
             {% endfor %}
           </div>
         </div>
-        <div class="col-md-3"><label class="form-label">Monto bruto ($)</label><input type="number" name="monto" class="form-control form-control-sm" min="0" step="1000" required></div>
+        <div class="col-md-3"><label class="form-label">Monto bruto</label><input type="text" name="monto" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" placeholder="$100.000" required></div>
         <div class="col-md-3 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="iva_bruto" value="1" id="srvIva" checked><label class="form-check-label small" for="srvIva">Imputar bruto</label></div></div>
         <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Registrar servicio</button></div>
       </div>
@@ -352,7 +352,7 @@
   </p>
   <div class="panel-card"><div class="table-responsive"><table class="table table-sm table-striped demo-datatable w-100">
     <thead><tr><th>Fecha</th><th>Contratista</th><th>Documento</th><th>Concepto</th><th>Monto</th></tr></thead>
-    <tbody>{% for row in por_cc_rows %}<tr><td>{{ row.fecha }}</td><td>{{ row.contratista }}</td><td>{{ row.documento }}</td><td>{{ row.concepto }}</td><td>{{ row.monto }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for row in por_cc_rows %}<tr><td>{{ row.fecha }}</td><td>{{ row.contratista }}</td><td>{{ row.documento }}</td><td>{{ row.concepto }}</td><td class="text-end">{{ row.monto }}</td></tr>{% endfor %}</tbody>
   </table></div></div>
   {% else %}<div class="alert alert-info">Sin servicios en este CC y período.</div>{% endif %}
 
@@ -375,50 +375,178 @@
   </p>
   <div class="panel-card"><div class="table-responsive"><table class="table table-sm table-bordered demo-datatable w-100">
     <thead><tr><th>Fecha</th><th>Tipo</th><th>Documento</th><th>Detalle</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
-    <tbody>{% for row in cta_rows %}<tr><td>{{ row.fecha }}</td><td>{{ row.tipo }}</td><td>{{ row.documento }}</td><td>{{ row.detalle }}</td><td>{{ row.debe }}</td><td>{{ row.haber }}</td><td class="fw-semibold">{{ row.saldo }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for row in cta_rows %}<tr><td>{{ row.fecha }}</td><td>{{ row.tipo }}</td><td>{{ row.documento }}</td><td>{{ row.detalle }}</td><td class="text-end">{{ row.debe }}</td><td class="text-end">{{ row.haber }}</td><td class="fw-semibold text-end">{{ row.saldo }}</td></tr>{% endfor %}</tbody>
   </table></div></div>
   {% else %}<div class="alert alert-info">Sin movimientos para este contratista.</div>{% endif %}
   {% endif %}
   {% endif %}
 
   {% elif sec_activa == 'remuneraciones' %}
+  {% set mes_nombre = {
+    '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
+    '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
+    '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre'
+  } %}
+  {% set ficha_ns = namespace(nombre='') %}
+  {% for t in trabajadores if t.id == trabajador_sel %}{% set ficha_ns.nombre = t.nombre %}{% endfor %}
   <div class="panel-card mb-3">
-    <form method="get" class="row g-2 align-items-end">
-      <input type="hidden" name="sec" value="remuneraciones">
-      <div class="col-md-3"><label class="form-label">Trabajador</label>
-        <select name="trabajador_id" class="form-select form-select-sm" onchange="this.form.submit()">
-          {% for t in trabajadores %}<option value="{{ t.id }}" {% if t.id == trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
-        </select>
+    <div class="row g-3 align-items-center">
+      <div class="col-lg-5">
+        <form method="get" class="row g-2 align-items-end">
+          <input type="hidden" name="sec" value="remuneraciones">
+          <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+          <div class="col-6">
+            <label class="form-label">Mes</label>
+            <select name="mes" class="form-select" onchange="this.form.submit()">
+              {% for m in meses %}<option value="{{ m }}" {% if m == mes_sel %}selected{% endif %}>{{ mes_nombre[m] }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-3">
+            <label class="form-label">Año</label>
+            <input type="number" name="anio" class="form-control" value="{{ anio_sel }}" min="2020" max="2040">
+          </div>
+          <div class="col-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100">Ver</button>
+          </div>
+        </form>
       </div>
-      <div class="col-md-2"><label class="form-label">Mes</label><select name="mes" class="form-select form-select-sm">{% for m in meses %}<option value="{{ m }}" {% if m == mes_sel %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
-      <div class="col-md-2"><label class="form-label">Año</label><input type="number" name="anio" class="form-control form-control-sm" value="{{ anio_sel }}" min="2020" max="2040"></div>
-      <div class="col-md-2"><button type="submit" class="btn btn-primary btn-sm">Ver planilla</button></div>
+      <div class="col-lg-7 text-lg-end">
+        <div class="small text-muted mb-0">Líquido a provisionar · {{ mes_nombre[mes_sel] }} {{ anio_sel }}</div>
+        <div class="h3 mb-0">{{ total_provision }}</div>
+        <div class="small text-muted">Incluye pagos extras: {{ total_extras }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6 mb-1">Planilla de {{ mes_nombre[mes_sel] }} {{ anio_sel }}</h2>
+    <p class="small text-muted mb-2">Líquido − suple − descuento de préstamo + pagos extras. El nombre abre la ficha.</p>
+    {% if planilla_rows %}
+    <form method="post">
+      <input type="hidden" name="action" value="guardar_planilla">
+      <input type="hidden" name="sec" value="remuneraciones">
+      <input type="hidden" name="mes" value="{{ mes_sel }}">
+      <input type="hidden" name="anio" value="{{ anio_sel }}">
+      <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+      <div class="table-responsive mb-2">
+        <table class="table table-sm table-bordered w-100">
+          <thead><tr><th>Trabajador</th><th>Líquido</th><th>Suple</th><th>Desc. préstamo</th><th>Extras</th><th>A provisionar</th></tr></thead>
+          <tbody>
+            {% for row in planilla_rows %}
+            <tr {% if row.trabajador_id == trabajador_sel %}class="table-active"{% endif %}>
+              <td>
+                <a class="link-dark {% if row.trabajador_id == trabajador_sel %}fw-semibold{% endif %}"
+                   href="?sec=remuneraciones&amp;mes={{ mes_sel }}&amp;anio={{ anio_sel }}&amp;trabajador_id={{ row.trabajador_id }}#ficha">{{ row.trabajador }}</a>
+              </td>
+              <td><input type="text" name="liq_{{ row.trabajador_id }}" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" value="{{ row.liquido_ganado|int }}"></td>
+              <td><input type="text" name="sup_{{ row.trabajador_id }}" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" value="{{ row.suple|int }}"></td>
+              <td><input type="text" name="desc_{{ row.trabajador_id }}" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" value="{{ row.descuento_prestamo|int }}"></td>
+              <td class="text-end">
+                <div class="fw-semibold">{{ row.extras_fmt }}</div>
+                {% if row.extras_notas %}<div class="small text-muted">{{ row.extras_notas }}</div>{% endif %}
+              </td>
+              <td class="fw-semibold text-end">{{ row.prov_fmt }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Guardar planilla del mes</button>
     </form>
+    {% else %}<p class="text-muted mb-0">No hay trabajadores activos.</p>{% endif %}
   </div>
 
   {% if trabajadores %}
-  <div class="row g-3 mb-3">
+  <div class="row g-3 mb-3" id="ficha">
     <div class="col-12">
       <div class="panel-card">
-        <h2 class="h6">Sueldo y suple fijo</h2>
-        <form method="post" class="row g-2">
-          <input type="hidden" name="action" value="guardar_ficha">
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+          <h2 class="h6 mb-0">Ficha de {{ ficha_ns.nombre }}</h2>
+          <form method="get" class="d-flex flex-wrap align-items-center gap-2">
+            <input type="hidden" name="sec" value="remuneraciones">
+            <input type="hidden" name="mes" value="{{ mes_sel }}">
+            <input type="hidden" name="anio" value="{{ anio_sel }}">
+            <label class="form-label small mb-0" for="fichaTrabajador">Trabajador</label>
+            <select id="fichaTrabajador" name="trabajador_id" class="form-select form-select-sm" style="min-width:14rem;max-width:100%" onchange="this.form.submit()">
+              {% for t in trabajadores %}<option value="{{ t.id }}" {% if t.id == trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
+            </select>
+          </form>
+        </div>
+        <div class="row g-4">
+          <div class="col-lg-6">
+            <h3 class="h6">Sueldo y suple fijo</h3>
+            <form method="post" class="row g-2">
+              <input type="hidden" name="action" value="guardar_ficha">
+              <input type="hidden" name="sec" value="remuneraciones">
+              <input type="hidden" name="mes" value="{{ mes_sel }}">
+              <input type="hidden" name="anio" value="{{ anio_sel }}">
+              <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+              <div class="col-md-6"><label class="form-label small">Sueldo líquido pactado</label><input type="text" name="sueldo" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" value="{{ ficha_sueldo|int }}"></div>
+              <div class="col-md-6"><label class="form-label small">Suple fijo</label><input type="text" name="suple" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" value="{{ ficha_suple|int }}"></div>
+              <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar sueldo y suple</button></div>
+            </form>
+          </div>
+          <div class="col-lg-6">
+            <h3 class="h6">Pagos extras de {{ mes_nombre[mes_sel] }}</h3>
+            <p class="small text-muted mb-2">Monto y nota, por ejemplo una aplicación domingo. Suma en la proyección y la liquidación del mes lo lee.</p>
+        <form method="post" class="row g-2 mb-2">
+          <input type="hidden" name="action" value="agregar_extra">
           <input type="hidden" name="sec" value="remuneraciones">
           <input type="hidden" name="mes" value="{{ mes_sel }}">
           <input type="hidden" name="anio" value="{{ anio_sel }}">
-          <div class="col-12">
-            <select name="trabajador_id" class="form-select form-select-sm">
-              {% for t in trabajadores %}<option value="{{ t.id }}" {% if t.id == trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
-            </select>
+          <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+          <div class="col-sm-6">
+            <label class="form-label small">Monto ($)</label>
+            <input type="text" name="monto" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" placeholder="$40.000" required>
           </div>
-          <div class="col-md-6"><label class="form-label small">Sueldo líquido pactado ($)</label><input type="number" name="sueldo" class="form-control form-control-sm" value="{{ ficha_sueldo|int }}" min="0" step="1000"></div>
-          <div class="col-md-6"><label class="form-label small">Suple fijo ($)</label><input type="number" name="suple" class="form-control form-control-sm" value="{{ ficha_suple|int }}" min="0" step="1000"></div>
-          <div class="col-12"><button type="submit" class="btn btn-outline-primary btn-sm">Guardar sueldo y suple</button></div>
+          <div class="col-sm-6">
+            <label class="form-label small">Nota</label>
+            <input type="text" name="nota" class="form-control form-control-sm" maxlength="200" placeholder="Aplicación domingo" required>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-success btn-sm">Agregar pago extra</button>
+          </div>
         </form>
-
-        <hr>
-        <h2 class="h6">Libro de préstamos</h2>
-        <p class="small text-muted mb-2">Cada préstamo tiene su saldo. Los descuentos de la planilla se abonan a esa línea, desde el mes de la primera cuota.</p>
+        {% set extras_ns = namespace(filas=[]) %}
+        {% for row in extras_rows if row.trabajador_id == trabajador_sel %}
+          {% set extras_ns.filas = extras_ns.filas + [row] %}
+        {% endfor %}
+        {% if extras_ns.filas %}
+        <div class="table-responsive">
+          <table class="table table-sm table-striped w-100 mb-0">
+            <thead><tr><th>Nota</th><th>Monto</th><th></th></tr></thead>
+            <tbody>
+              {% for row in extras_ns.filas %}
+              <tr>
+                <td>{{ row.nota }}</td>
+                <td class="text-end">{{ row.monto_fmt }}</td>
+                <td class="text-end">
+                  <form method="post" class="d-inline">
+                    <input type="hidden" name="action" value="eliminar_extra">
+                    <input type="hidden" name="sec" value="remuneraciones">
+                    <input type="hidden" name="mes" value="{{ mes_sel }}">
+                    <input type="hidden" name="anio" value="{{ anio_sel }}">
+                    <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+                    <input type="hidden" name="extra_id" value="{{ row.id }}">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Quitar</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="small text-muted mb-0">Sin pagos extras en {{ mes_nombre[mes_sel] }}.</p>
+        {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="panel-card">
+        <h2 class="h6">Préstamos de {{ ficha_ns.nombre }}</h2>
+        <p class="small text-muted mb-2">El descuento de la planilla abona el préstamo vigente, desde el mes de la primera cuota.</p>
         {% if prestamos_trabajador %}
         <div class="table-responsive mb-2">
           <table class="table table-sm table-striped w-100 mb-0">
@@ -427,10 +555,10 @@
               {% for row in prestamos_trabajador %}
               <tr>
                 <td>{{ row.fecha }}</td>
-                <td>{{ row.prestamo_total }}</td>
+                <td class="text-end">{{ row.prestamo_total }}</td>
                 <td>{{ row.cuotas_pagadas }}/{{ row.cuotas_pactadas }}</td>
-                <td>{{ row.total_descontado }}</td>
-                <td>{{ row.saldo_pendiente }}</td>
+                <td class="text-end">{{ row.total_descontado }}</td>
+                <td class="text-end">{{ row.saldo_pendiente }}</td>
                 <td>{{ row.primera_cuota }}</td>
                 <td>{{ row.estado }}</td>
               </tr>
@@ -442,9 +570,10 @@
         <p class="small text-muted">Este trabajador no tiene préstamos.</p>
         {% endif %}
 
-        <hr>
-        <h2 class="h6">Registrar nuevo préstamo</h2>
-        <p class="small text-muted mb-2">Abre una línea nueva. El préstamo anterior conserva sus descuentos y su saldo.</p>
+        <div class="row g-4 mt-1">
+          <div class="col-lg-6">
+        <h3 class="h6">Registrar nuevo préstamo</h3>
+        <p class="small text-muted mb-2">Abre una línea nueva. La anterior conserva su saldo.</p>
         <form method="post" class="row g-2">
           <input type="hidden" name="action" value="registrar_prestamo">
           <input type="hidden" name="sec" value="remuneraciones">
@@ -453,7 +582,7 @@
           <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
           <div class="col-md-6">
             <label class="form-label small">Monto préstamo ($)</label>
-            <input type="number" name="monto_prestamo" class="form-control form-control-sm" min="1" step="1" required>
+            <input type="text" name="monto_prestamo" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" placeholder="$150.000" required>
           </div>
           <div class="col-md-6">
             <label class="form-label small">Cuotas pactadas</label>
@@ -463,15 +592,15 @@
             <label class="form-label small">Primera cuota (mes)</label>
             <input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ primera_cuota_def }}">
           </div>
-          <div class="col-md-6 d-flex align-items-end">
-            <button type="submit" class="btn btn-success btn-sm w-100">Registrar préstamo</button>
+          <div class="col-12 d-flex align-items-end">
+            <button type="submit" class="btn btn-success btn-sm">Registrar préstamo</button>
           </div>
         </form>
-
+          </div>
         {% if prestamo_editar %}
-        <hr>
-        <h2 class="h6">Corregir préstamo del {{ prestamo_editar.fecha }}</h2>
-        <p class="small text-muted mb-2">Cambia el monto, las cuotas o la primera cuota de esa línea ({{ prestamo_editar.estado }}). No crea un préstamo nuevo.</p>
+          <div class="col-lg-6">
+        <h3 class="h6">Corregir préstamo del {{ prestamo_editar.fecha }}</h3>
+        <p class="small text-muted mb-2">Cambia esa línea ({{ prestamo_editar.estado }}). No abre un préstamo nuevo.</p>
         <form method="post" class="row g-2">
           <input type="hidden" name="action" value="editar_prestamo">
           <input type="hidden" name="sec" value="remuneraciones">
@@ -481,8 +610,8 @@
           <input type="hidden" name="prestamo_id" value="{{ prestamo_editar.id }}">
           <div class="col-md-6">
             <label class="form-label small">Monto préstamo total ($)</label>
-            <input type="number" name="monto_prestamo" class="form-control form-control-sm"
-                   value="{{ prestamo_editar.monto|int }}" min="0" step="1">
+            <input type="text" name="monto_prestamo" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off"
+                   value="{{ prestamo_editar.monto|int }}">
           </div>
           <div class="col-md-6">
             <label class="form-label small">Cuotas pactadas</label>
@@ -493,65 +622,45 @@
             <label class="form-label small">Primera cuota (mes)</label>
             <input type="date" name="primera_cuota" class="form-control form-control-sm" value="{{ prestamo_editar.primera_iso }}">
           </div>
-          <div class="col-md-6 d-flex align-items-end">
-            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Actualizar esta línea</button>
+          <div class="col-12">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Actualizar esta línea</button>
           </div>
         </form>
+          </div>
         {% endif %}
+        </div>
       </div>
     </div>
   </div>
   {% endif %}
 
-  <div class="panel-card mb-3">
-    <h2 class="h6">Registro de préstamos y cuotas</h2>
+  <details class="panel-card mb-3">
+    <summary class="h6" style="cursor:pointer">Todos los préstamos ({{ prestamos_rows|length }})</summary>
     {% if prestamos_rows %}
-    <p class="small text-muted">Una fila por préstamo. El saldo es el monto de esa línea menos sus propios descuentos.</p>
+    <p class="small text-muted mt-3">Una fila por préstamo. El saldo es el monto de esa línea menos sus descuentos.</p>
     <div class="table-responsive"><table class="table table-sm table-striped w-100">
       <thead><tr><th>Trabajador</th><th>Fecha</th><th>Préstamo</th><th>Cuotas</th><th>Descontado</th><th>Saldo</th><th>1ª cuota</th><th>Estado</th></tr></thead>
-      <tbody>{% for row in prestamos_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.fecha }}</td><td>{{ row.prestamo_total }}</td><td>{{ row.cuotas_pagadas }}/{{ row.cuotas_pactadas }}</td><td>{{ row.total_descontado }}</td><td>{{ row.saldo_pendiente }}</td><td>{{ row.primera_cuota }}</td><td>{{ row.estado }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for row in prestamos_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.fecha }}</td><td class="text-end">{{ row.prestamo_total }}</td><td>{{ row.cuotas_pagadas }}/{{ row.cuotas_pactadas }}</td><td class="text-end">{{ row.total_descontado }}</td><td class="text-end">{{ row.saldo_pendiente }}</td><td>{{ row.primera_cuota }}</td><td>{{ row.estado }}</td></tr>{% endfor %}</tbody>
     </table></div>
     {% else %}
-    <p class="text-muted mb-0">No hay préstamos registrados.</p>
+    <p class="text-muted mb-0 mt-3">No hay préstamos registrados.</p>
     {% endif %}
-  </div>
-
-  <div class="alert alert-info fw-semibold mb-3">TOTAL LÍQUIDO A PROVISIONAR ({{ mes_sel }}/{{ anio_sel }}): {{ total_provision }}</div>
-  <div class="panel-card">
-    <h2 class="h6">Detalle planilla del mes</h2>
-    {% if planilla_rows %}
-    <form method="post">
-      <input type="hidden" name="action" value="guardar_planilla">
-      <input type="hidden" name="sec" value="remuneraciones">
-      <input type="hidden" name="mes" value="{{ mes_sel }}">
-      <input type="hidden" name="anio" value="{{ anio_sel }}">
-      <div class="table-responsive mb-2">
-        <table class="table table-sm table-bordered w-100">
-          <thead><tr><th>Trabajador</th><th>Líquido ganado</th><th>Suple</th><th>Desc. préstamo</th><th>A provisionar</th></tr></thead>
-          <tbody>
-            {% for row in planilla_rows %}
-            <tr>
-              <td>{{ row.trabajador }}</td>
-              <td><input type="number" name="liq_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.liquido_ganado|int }}" min="0" step="1000"></td>
-              <td><input type="number" name="sup_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.suple|int }}" min="0" step="1000"></td>
-              <td><input type="number" name="desc_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.descuento_prestamo|int }}" min="0" step="1000"></td>
-              <td class="fw-semibold">{{ row.prov_fmt }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <button type="submit" class="btn btn-primary btn-sm">Guardar planilla del mes</button>
-    </form>
-    {% else %}<p class="text-muted mb-0">No hay trabajadores activos.</p>{% endif %}
-  </div>
+  </details>
 
   {% elif sec_activa == 'liquidacion' %}
   {% if sin_trabajadores %}
   <div class="alert alert-warning">Registre trabajadores activos en Personal.</div>
   {% else %}
   <div class="panel-card">
-    <p class="small text-muted">Registro del pago real (líquido + leyes sociales). Independiente de la provisión en Remuneraciones.</p>
+    <h2 class="h6">Liquidación del mes {{ liq_mes }}/{{ liq_anio }}</h2>
+    <p class="small text-muted">El líquido sugerido lee la proyección del mes, incluidos los pagos extras. Si ya hay una liquidación guardada, se mantiene el líquido registrado.</p>
+    <p class="small fw-semibold mb-1">Proyección que lee esta liquidación: {{ liq_proyeccion_fmt }}</p>
+    {% if liq_extras %}
+    <p class="small mb-1">Pagos extras del mes ({{ liq_extras_total }}):</p>
+    <ul class="small mb-2">{% for e in liq_extras %}<li>{{ e.nota }} — {{ e.monto_fmt }}</li>{% endfor %}</ul>
+    {% else %}
+    <p class="small text-muted">Sin pagos extras en este mes.</p>
+    {% endif %}
     {% if liq_existente %}<div class="alert alert-warning small">Ya existe liquidación para este trabajador/mes. Guardar actualizará el registro.</div>{% endif %}
     <form method="get" class="row g-2 mb-3" id="liqFilter">
       <input type="hidden" name="sec" value="liquidacion">
@@ -571,8 +680,8 @@
       <input type="hidden" name="mes" value="{{ liq_mes }}">
       <input type="hidden" name="anio" value="{{ liq_anio }}">
       <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="licencia" value="1" id="liqLic"><label class="form-check-label" for="liqLic">Licencia médica (montos en cero)</label></div></div>
-      <div class="col-md-3"><label class="form-label">Líquido pagado ($)</label><input type="number" name="liquido" class="form-control form-control-sm" value="{{ liq_existente.liquido|int if liq_existente else 0 }}" min="0" step="1"></div>
-      <div class="col-md-3"><label class="form-label">Leyes sociales ($)</label><input type="number" name="leyes" class="form-control form-control-sm" value="{{ liq_existente.leyes|int if liq_existente else 0 }}" min="0" step="1"></div>
+      <div class="col-md-3"><label class="form-label">Líquido pagado</label><input type="text" name="liquido" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" value="{{ liq_liquido_sugerido }}"></div>
+      <div class="col-md-3"><label class="form-label">Leyes sociales</label><input type="text" name="leyes" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" value="{{ liq_existente.leyes|int if liq_existente else 0 }}"></div>
       <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Registrar liquidación</button></div>
     </form>
   </div>
@@ -594,7 +703,7 @@
     <div class="table-responsive">
       <table class="table table-sm table-striped demo-datatable w-100">
         <thead><tr><th>Trabajador</th><th>Mes</th><th>Año</th><th>Líquido</th><th>Previred</th><th>Total</th><th>Registro</th></tr></thead>
-        <tbody>{% for row in historial_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.mes }}</td><td>{{ row.anio }}</td><td>{{ row.liquido_pagado }}</td><td>{{ row.previred }}</td><td class="fw-semibold">{{ row.total_pagado }}</td><td>{{ row.fecha_registro }}</td></tr>{% endfor %}</tbody>
+        <tbody>{% for row in historial_rows %}<tr><td>{{ row.trabajador }}</td><td>{{ row.mes }}</td><td>{{ row.anio }}</td><td class="text-end">{{ row.liquido_pagado }}</td><td class="text-end">{{ row.previred }}</td><td class="fw-semibold text-end">{{ row.total_pagado }}</td><td>{{ row.fecha_registro }}</td></tr>{% endfor %}</tbody>
       </table>
     </div>
     {% if not historial_rows %}<p class="text-muted p-3 mb-0">Sin liquidaciones en el período.</p>{% endif %}
@@ -611,5 +720,16 @@ function toggleSrvDoc(sinDoc) {
   if (sinDoc) { inp.value = 'AUTOGENERADO'; inp.readOnly = true; inp.removeAttribute('required'); }
   else { inp.value = ''; inp.readOnly = false; inp.setAttribute('required', 'required'); }
 }
+function formatoPesoCl(raw) {
+  const digits = String(raw || '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  if (!digits) return '';
+  return '$' + digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+document.querySelectorAll('.js-peso').forEach(function (el) {
+  const apply = function () { el.value = formatoPesoCl(el.value); };
+  el.addEventListener('input', apply);
+  el.addEventListener('blur', apply);
+  if (el.value) apply();
+});
 </script>
 {% endblock %}
