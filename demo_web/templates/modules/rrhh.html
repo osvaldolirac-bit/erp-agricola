@@ -516,7 +516,70 @@
     {% endif %}
   </div>
 
-  <div class="alert alert-info fw-semibold mb-3">TOTAL LÍQUIDO A PROVISIONAR ({{ mes_sel }}/{{ anio_sel }}): {{ total_provision }}</div>
+  <div class="alert alert-info fw-semibold mb-3">
+    TOTAL LÍQUIDO A PROVISIONAR ({{ mes_sel }}/{{ anio_sel }}): {{ total_provision }}
+    <span class="fw-normal small d-block">Incluye pagos extras del mes: {{ total_extras }}</span>
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6">Pagos extras del mes</h2>
+    <p class="small text-muted mb-2">Un monto con nota, por ejemplo una aplicación domingo. Suma en el líquido a provisionar. La liquidación del mes lee estas mismas líneas.</p>
+    {% if trabajadores %}
+    <form method="post" class="row g-2 mb-3">
+      <input type="hidden" name="action" value="agregar_extra">
+      <input type="hidden" name="sec" value="remuneraciones">
+      <input type="hidden" name="mes" value="{{ mes_sel }}">
+      <input type="hidden" name="anio" value="{{ anio_sel }}">
+      <div class="col-md-4">
+        <label class="form-label small">Trabajador</label>
+        <select name="trabajador_id" class="form-select form-select-sm">
+          {% for t in trabajadores %}<option value="{{ t.id }}" {% if t.id == trabajador_sel %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Monto ($)</label>
+        <input type="number" name="monto" class="form-control form-control-sm" min="1" step="1" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Nota</label>
+        <input type="text" name="nota" class="form-control form-control-sm" maxlength="200" placeholder="Aplicación domingo" required>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-success btn-sm w-100">Agregar pago extra</button>
+      </div>
+    </form>
+    {% endif %}
+    {% if extras_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped w-100 mb-0">
+        <thead><tr><th>Trabajador</th><th>Nota</th><th>Monto</th><th></th></tr></thead>
+        <tbody>
+          {% for row in extras_rows %}
+          <tr>
+            <td>{{ row.trabajador }}</td>
+            <td>{{ row.nota }}</td>
+            <td>{{ row.monto_fmt }}</td>
+            <td class="text-end">
+              <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="eliminar_extra">
+                <input type="hidden" name="sec" value="remuneraciones">
+                <input type="hidden" name="mes" value="{{ mes_sel }}">
+                <input type="hidden" name="anio" value="{{ anio_sel }}">
+                <input type="hidden" name="trabajador_id" value="{{ trabajador_sel }}">
+                <input type="hidden" name="extra_id" value="{{ row.id }}">
+                <button type="submit" class="btn btn-outline-danger btn-sm">Quitar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="small text-muted mb-0">Sin pagos extras en {{ mes_sel }}/{{ anio_sel }}.</p>
+    {% endif %}
+  </div>
+
   <div class="panel-card">
     <h2 class="h6">Detalle planilla del mes</h2>
     {% if planilla_rows %}
@@ -527,7 +590,7 @@
       <input type="hidden" name="anio" value="{{ anio_sel }}">
       <div class="table-responsive mb-2">
         <table class="table table-sm table-bordered w-100">
-          <thead><tr><th>Trabajador</th><th>Líquido ganado</th><th>Suple</th><th>Desc. préstamo</th><th>A provisionar</th></tr></thead>
+          <thead><tr><th>Trabajador</th><th>Líquido ganado</th><th>Suple</th><th>Desc. préstamo</th><th>Pagos extras</th><th>A provisionar</th></tr></thead>
           <tbody>
             {% for row in planilla_rows %}
             <tr>
@@ -535,6 +598,10 @@
               <td><input type="number" name="liq_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.liquido_ganado|int }}" min="0" step="1000"></td>
               <td><input type="number" name="sup_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.suple|int }}" min="0" step="1000"></td>
               <td><input type="number" name="desc_{{ row.trabajador_id }}" class="form-control form-control-sm" value="{{ row.descuento_prestamo|int }}" min="0" step="1000"></td>
+              <td>
+                <div class="fw-semibold">{{ row.extras_fmt }}</div>
+                {% if row.extras_notas %}<div class="small text-muted">{{ row.extras_notas }}</div>{% endif %}
+              </td>
               <td class="fw-semibold">{{ row.prov_fmt }}</td>
             </tr>
             {% endfor %}
@@ -551,7 +618,15 @@
   <div class="alert alert-warning">Registre trabajadores activos en Personal.</div>
   {% else %}
   <div class="panel-card">
-    <p class="small text-muted">Registro del pago real (líquido + leyes sociales). Independiente de la provisión en Remuneraciones.</p>
+    <h2 class="h6">Liquidación del mes {{ liq_mes }}/{{ liq_anio }}</h2>
+    <p class="small text-muted">El líquido sugerido lee la proyección del mes, incluidos los pagos extras. Si ya hay una liquidación guardada, se mantiene el líquido registrado.</p>
+    <p class="small fw-semibold mb-1">Proyección que lee esta liquidación: {{ liq_proyeccion_fmt }}</p>
+    {% if liq_extras %}
+    <p class="small mb-1">Pagos extras del mes ({{ liq_extras_total }}):</p>
+    <ul class="small mb-2">{% for e in liq_extras %}<li>{{ e.nota }} — {{ e.monto_fmt }}</li>{% endfor %}</ul>
+    {% else %}
+    <p class="small text-muted">Sin pagos extras en este mes.</p>
+    {% endif %}
     {% if liq_existente %}<div class="alert alert-warning small">Ya existe liquidación para este trabajador/mes. Guardar actualizará el registro.</div>{% endif %}
     <form method="get" class="row g-2 mb-3" id="liqFilter">
       <input type="hidden" name="sec" value="liquidacion">
@@ -571,7 +646,7 @@
       <input type="hidden" name="mes" value="{{ liq_mes }}">
       <input type="hidden" name="anio" value="{{ liq_anio }}">
       <div class="col-md-4 d-flex align-items-end"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="licencia" value="1" id="liqLic"><label class="form-check-label" for="liqLic">Licencia médica (montos en cero)</label></div></div>
-      <div class="col-md-3"><label class="form-label">Líquido pagado ($)</label><input type="number" name="liquido" class="form-control form-control-sm" value="{{ liq_existente.liquido|int if liq_existente else 0 }}" min="0" step="1"></div>
+      <div class="col-md-3"><label class="form-label">Líquido pagado ($)</label><input type="number" name="liquido" class="form-control form-control-sm" value="{{ liq_liquido_sugerido }}" min="0" step="1"></div>
       <div class="col-md-3"><label class="form-label">Leyes sociales ($)</label><input type="number" name="leyes" class="form-control form-control-sm" value="{{ liq_existente.leyes|int if liq_existente else 0 }}" min="0" step="1"></div>
       <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Registrar liquidación</button></div>
     </form>

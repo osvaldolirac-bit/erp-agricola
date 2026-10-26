@@ -25,6 +25,13 @@ from demo_web.services.prestamo_rrhh import (
     prestamo_para_corregir,
     registrar_prestamo,
 )
+from demo_web.services.remuneracion_extra import (
+    agregar as agregar_pago_extra,
+    eliminar as eliminar_pago_extra,
+    listar as listar_pagos_extra,
+    proyeccion as proyeccion_con_extras,
+    total_trabajador as total_pago_extra,
+)
 
 SECCIONES = [
     ("personal", "📋 PERSONAL"),
@@ -391,6 +398,45 @@ def _fila_prestamo(demo, prestamo: dict, nombre: str) -> dict:
     }
 
 
+def _filas_extra(demo, conn, mes, anio, nombres: dict[int, str]) -> list[dict]:
+    filas = []
+    for extra in listar_pagos_extra(conn, mes, anio):
+        if extra["trabajador_id"] not in nombres:
+            continue
+        filas.append(
+            {
+                "id": extra["id"],
+                "trabajador_id": extra["trabajador_id"],
+                "trabajador": nombres.get(extra["trabajador_id"], ""),
+                "nota": extra["nota"],
+                "monto": extra["monto"],
+                "monto_fmt": demo.f_peso(extra["monto"]),
+            }
+        )
+    return filas
+
+
+def _proyeccion_trabajador(demo, conn, tid: int, mes, anio: int) -> float:
+    row = conn.execute(
+        """SELECT CASE WHEN r.trabajador_id IS NOT NULL THEN COALESCE(r.liquido_ganado, 0)
+                       ELSE COALESCE(f.sueldo_pactado, 0) END,
+                  CASE WHEN r.trabajador_id IS NOT NULL THEN COALESCE(r.suple, 0)
+                       ELSE COALESCE(f.suple_fijo, 0) END,
+                  COALESCE(r.descuento_prestamo, 0)
+           FROM personal p
+           LEFT JOIN remuneraciones_fichas f ON p.id = f.trabajador_id
+           LEFT JOIN remuneracion_mes r ON r.trabajador_id = p.id AND r.mes = ? AND r.anio = ?
+           WHERE p.id = ?""",
+        (mes, int(anio), int(tid)),
+    ).fetchone()
+    if not row:
+        return total_pago_extra(conn, tid, mes, anio)
+    liq, sup, desc = float(row[0] or 0), float(row[1] or 0), float(row[2] or 0)
+    if desc <= 0:
+        desc = descuento_sugerido(conn, tid, mes, anio)
+    return proyeccion_con_extras(liq - sup - desc, total_pago_extra(conn, tid, mes, anio))
+
+
 def _remuneraciones(demo, conn) -> dict:
     h = demo.hora_chile()
     prov_m = demo._mes_rrhh_norm(request.args.get("mes") or h.strftime("%m"))
@@ -474,8 +520,13 @@ def _remuneraciones(demo, conn) -> dict:
                 WHERE p.estado = 'Activo'
                 ORDER BY p.nombre"""
     df_prov = pd.read_sql_query(q_prov, conn, params=(prov_m, prov_a)).fillna(0)
+    extras_mes = listar_pagos_extra(conn, prov_m, prov_a)
+    extras_por_tid: dict[int, list[dict]] = {}
+    for extra in extras_mes:
+        extras_por_tid.setdefault(extra["trabajador_id"], []).append(extra)
     planilla = []
     total_prov = 0.0
+    total_extras = 0.0
     for _, row in df_prov.iterrows():
         tid = int(row["trabajador_id"])
         desc = float(row["descuento_prestamo"] or 0)
@@ -483,8 +534,12 @@ def _remuneraciones(demo, conn) -> dict:
             desc = descuento_sugerido(conn, tid, prov_m, prov_a)
         liq = float(row["liquido_ganado"] or 0)
         sup = float(row["suple"] or 0)
-        prov = max(0, liq - sup - desc)
+        extras_tid = extras_por_tid.get(tid, [])
+        extras_monto = sum(e["monto"] for e in extras_tid)
+        notas = [e["nota"] for e in extras_tid]
+        prov = proyeccion_con_extras(liq - sup - desc, extras_monto)
         total_prov += prov
+        total_extras += extras_monto
         planilla.append(
             {
                 "trabajador_id": tid,
@@ -492,10 +547,13 @@ def _remuneraciones(demo, conn) -> dict:
                 "liquido_ganado": liq,
                 "suple": sup,
                 "descuento_prestamo": desc,
+                "extras_monto": extras_monto,
+                "extras_notas": " · ".join(notas),
                 "liquido_a_provisionar": prov,
                 "liquido_fmt": demo.f_peso(liq),
                 "suple_fmt": demo.f_peso(sup),
                 "desc_fmt": demo.f_peso(desc),
+                "extras_fmt": demo.f_peso(extras_monto),
                 "prov_fmt": demo.f_peso(prov),
             }
         )
@@ -520,6 +578,8 @@ def _remuneraciones(demo, conn) -> dict:
         "prestamo_editar": prestamo_editar,
         "planilla_rows": planilla,
         "total_provision": demo.f_peso(total_prov),
+        "total_extras": demo.f_peso(total_extras),
+        "extras_rows": _filas_extra(demo, conn, prov_m, prov_a, nombres),
     }
 
 
@@ -544,6 +604,9 @@ def _liquidacion(demo, conn) -> dict:
         if row:
             existente = {"liquido": float(row[0] or 0), "leyes": float(row[1] or 0)}
 
+    extras = listar_pagos_extra(conn, mes, anio, tid) if tid else []
+    extras_total = sum(e["monto"] for e in extras)
+    proy = _proyeccion_trabajador(demo, conn, tid, mes, anio) if tid else 0.0
     return {
         "meses": MESES,
         "liq_trabajadores": trabajadores,
@@ -552,6 +615,13 @@ def _liquidacion(demo, conn) -> dict:
         "liq_anio": anio,
         "liq_existente": existente,
         "sin_trabajadores": not trabajadores,
+        "liq_extras": [
+            {"id": e["id"], "nota": e["nota"], "monto_fmt": demo.f_peso(e["monto"])} for e in extras
+        ],
+        "liq_extras_total": demo.f_peso(extras_total),
+        "liq_proyeccion": proy,
+        "liq_proyeccion_fmt": demo.f_peso(proy),
+        "liq_liquido_sugerido": int(round(existente["liquido"] if existente else proy)),
     }
 
 
@@ -1046,6 +1116,37 @@ def _post_guardar_planilla(demo, conn) -> dict:
     return {"ok": True, "msg": f"Planilla {mes}/{anio} guardada."}
 
 
+def _post_agregar_extra(demo, conn) -> dict:
+    tid = int(request.form.get("trabajador_id") or 0)
+    mes = demo._mes_rrhh_norm(request.form.get("mes") or "")
+    anio = int(request.form.get("anio") or demo.hora_chile().year)
+    try:
+        monto = _parse_monto_form(request.form.get("monto"))
+    except ValueError:
+        return {"ok": False, "msg": "Monto inválido."}
+    ok, msg = agregar_pago_extra(conn, tid, mes, anio, monto, request.form.get("nota") or "")
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH PAGO EXTRA", f"{tid} {mes}/{anio}")
+    return {"ok": True, "msg": msg}
+
+
+def _post_eliminar_extra(demo, conn) -> dict:
+    mes = demo._mes_rrhh_norm(request.form.get("mes") or "")
+    anio = int(request.form.get("anio") or demo.hora_chile().year)
+    try:
+        extra_id = int(request.form.get("extra_id") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Pago extra inválido."}
+    ok, msg = eliminar_pago_extra(conn, extra_id, mes, anio)
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH PAGO EXTRA", f"elimina {extra_id} {mes}/{anio}")
+    return {"ok": True, "msg": msg}
+
+
 def _post_liquidacion(demo, conn) -> dict:
     tid = int(request.form.get("trabajador_id") or 0)
     mes = demo._mes_rrhh_norm(request.form.get("mes") or "")
@@ -1094,6 +1195,8 @@ def view(user_email: str, user_rol: str):
                 "registrar_prestamo": _post_registrar_prestamo,
                 "editar_prestamo": _post_editar_prestamo,
                 "guardar_planilla": _post_guardar_planilla,
+                "agregar_extra": _post_agregar_extra,
+                "eliminar_extra": _post_eliminar_extra,
                 "liquidacion": _post_liquidacion,
             }
             fn = handlers.get(action)
@@ -1114,6 +1217,8 @@ def view(user_email: str, user_rol: str):
                     "registrar_prestamo",
                     "editar_prestamo",
                     "guardar_planilla",
+                    "agregar_extra",
+                    "eliminar_extra",
                     "liquidacion",
                 ):
                     extra["mes"] = request.form.get("mes", "")

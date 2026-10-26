@@ -41,6 +41,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/services/dashboard.py",
     "demo_web/services/tesoreria_alerta.py",
     "demo_web/services/prestamo_rrhh.py",
+    "demo_web/services/remuneracion_extra.py",
     "demo_web/services/sidebar_badges.py",
     "demo_web/auth/decorators.py",
     "demo_web/auth/login_next.py",
@@ -71,6 +72,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "erp_flujo_financiero.py",
     "scripts/migrate_espino_libro_movimiento_id_vps.py",
     "scripts/migrate_prestamo_rrhh_vps.py",
+    "scripts/migrate_remuneracion_extra_vps.py",
     "scripts/alerta_tesoreria_vencimiento.py",
     "scripts/smoke_robustez.py",
     "scripts/verify_agricola_release.py",
@@ -108,6 +110,7 @@ def deploy(root: Path) -> None:
         f"cd {REMOTE} && PYTHONPATH={REMOTE} "
         f"{REMOTE}/.venv/bin/python3 scripts/migrate_espino_libro_movimiento_id_vps.py "
         f"&& PYTHONPATH={REMOTE} {REMOTE}/.venv/bin/python3 scripts/migrate_prestamo_rrhh_vps.py "
+        f"&& PYTHONPATH={REMOTE} {REMOTE}/.venv/bin/python3 scripts/migrate_remuneracion_extra_vps.py "
         f"&& PYTHONPATH={REMOTE} {REMOTE}/.venv/bin/python3 scripts/smoke_robustez.py "
         f"&& systemctl restart erp-agricola-web && systemctl is-active erp-agricola-web"
     )
