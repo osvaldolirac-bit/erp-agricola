@@ -775,6 +775,17 @@ def url_anotadora(token: str, tenant: str) -> str:
     return f"{base}{prefix}/cosecha/{token}?tenant={slug}"
 
 
+def url_whatsapp(cuartel: str, url: str, marca: str = "") -> str:
+    """Abre WhatsApp con el enlace del cuartel listo para reenviar."""
+    from urllib.parse import quote
+
+    titulo = f"Cosecha {(cuartel or '').strip()}"
+    empresa = (marca or "").strip()
+    if empresa:
+        titulo = f"{titulo} — {empresa}"
+    return "https://wa.me/?text=" + quote(f"{titulo}:\n{url}", safe="")
+
+
 def slug_para_link() -> str:
     from demo_web.services.tenant_scope import is_espino_tenant, tenant_slug
 

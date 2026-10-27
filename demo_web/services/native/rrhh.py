@@ -1158,7 +1158,9 @@ def _contratistas_cosecha(demo, conn) -> dict:
         listar_faenas,
         slug_para_link,
         url_anotadora,
+        url_whatsapp,
     )
+    from demo_web.services.tenant_scope import nombre_erp
 
     df = pd.read_sql_query(
         "SELECT id, razon_social FROM contratistas WHERE estado='Activo' ORDER BY razon_social",
@@ -1179,11 +1181,19 @@ def _contratistas_cosecha(demo, conn) -> dict:
         faena_id = faena_abierta(conn, int(sel)) or (faenas[0]["id"] if faenas else 0)
     panel = armar_panel(conn, faena_id) if faena_id else {}
     slug = slug_para_link()
+    marca = nombre_erp(demo)
     links = []
     filas = []
     if panel:
         for fila in panel["filas"]:
-            links.append({"cuartel": fila["cuartel"], "url": url_anotadora(fila["token"], slug)})
+            url = url_anotadora(fila["token"], slug)
+            links.append(
+                {
+                    "cuartel": fila["cuartel"],
+                    "url": url,
+                    "wa_url": url_whatsapp(fila["cuartel"], url, marca),
+                }
+            )
             filas.append(
                 {
                     "cuartel": fila["cuartel"],

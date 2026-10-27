@@ -21,6 +21,7 @@ from demo_web.services.cosecha import (
     registrar_abono,
     sumar_tote,
     svg_qr,
+    url_whatsapp,
     vista_anotadora,
 )
 
@@ -188,6 +189,30 @@ class TestFaena(unittest.TestCase):
         self.assertNotIn("precio", html.lower())
         self.assertNotIn("abono", html.lower())
         self.assertNotIn("peso", html.lower())
+
+    def test_el_enlace_se_comparte_por_whatsapp(self):
+        from urllib.parse import unquote
+
+        url = "https://erpmaster.cl/agricola/cosecha/abc?tenant=concepcion"
+        wa = url_whatsapp("CEREZOS CORTE 1", url, "La Concepción")
+        self.assertTrue(wa.startswith("https://wa.me/?text="))
+        texto = unquote(wa.split("?text=", 1)[1])
+        self.assertIn(url, texto)
+        self.assertIn("CEREZOS CORTE 1", texto)
+        self.assertIn("tenant=concepcion", texto)
+        self.assertNotIn("precio", texto.lower())
+        espino = unquote(
+            url_whatsapp(
+                "SANTINA",
+                "https://erpmaster.cl/agricola/cosecha/abc?tenant=espino",
+                "El Espino",
+            ).split("?text=", 1)[1]
+        )
+        self.assertIn("tenant=espino", espino)
+        self.assertNotIn("CEREZOS", espino)
+        html = Path("demo_web/templates/modules/rrhh.html").read_text(encoding="utf-8")
+        self.assertIn("link.wa_url", html)
+        self.assertIn(">WhatsApp</a>", html)
 
     def test_el_qr_lleva_solo_el_numero(self):
         self.assertEqual(payload_qr(12), "12")

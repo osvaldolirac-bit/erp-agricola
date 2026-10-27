@@ -425,12 +425,15 @@
     <p class="small text-muted">Cada enlace ya trae el cuartel. La anotadora no lo elige.</p>
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
-        <thead><tr><th>Cuartel</th><th>Enlace</th></tr></thead>
+        <thead><tr><th>Cuartel</th><th>Enlace</th><th></th></tr></thead>
         <tbody>
           {% for link in cosecha_links %}
           <tr>
             <td class="text-nowrap">{{ link.cuartel }}</td>
             <td><input class="form-control form-control-sm" readonly value="{{ link.url }}" onclick="this.select()"></td>
+            <td class="text-nowrap">
+              <a class="btn btn-sm btn-outline-success" href="{{ link.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
