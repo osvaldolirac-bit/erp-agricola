@@ -453,7 +453,7 @@
           <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
           <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
           <div class="col-4"><input type="number" name="cantidad" class="form-control form-control-sm" min="1" max="60" value="10" required></div>
-          <div class="col-8"><button class="btn btn-outline-primary btn-sm w-100" type="submit">Imprimir fundas en blanco</button></div>
+          <div class="col-8"><button class="btn btn-outline-primary btn-sm w-100" type="submit">Crear fundas en blanco</button></div>
         </form>
         <form method="post" class="row g-2 mb-2">
           <input type="hidden" name="action" value="cosecha_alta">
@@ -464,14 +464,22 @@
           <div class="col-4"><button class="btn btn-primary btn-sm w-100" type="submit">Asignar</button></div>
         </form>
         {% endif %}
-        <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id) }}">Imprimir QR</a>
+        {% if cosecha_fundas %}
+        <a class="btn btn-success btn-sm" target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id) }}">Generar QR</a>
+        {% endif %}
       </div>
     </div>
     <div class="col-lg-7">
       <div class="panel-card h-100">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="h6 mb-0">Números de esta faena</h2>
+          {% if cosecha_fundas %}
+          <a class="btn btn-success btn-sm" target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id) }}">Generar QR</a>
+          {% endif %}
+        </div>
         <div class="table-responsive">
-          <table class="table table-sm table-striped mb-0">
-            <thead><tr><th>N°</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+          <table class="table table-sm table-striped align-middle mb-0">
+            <thead><tr><th>N°</th><th>Nombre</th><th>QR</th><th>Estado</th><th></th></tr></thead>
             <tbody>
               {% for funda in cosecha_fundas %}
               <tr>
@@ -489,8 +497,16 @@
                   </form>
                   {% else %}{{ funda.nombre or "—" }}{% endif %}
                 </td>
+                <td>
+                  {% if funda.qr %}
+                  <a target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id, numero=funda.numero) }}" title="Generar QR del {{ funda.numero }}">{{ funda.qr|safe }}</a>
+                  {% endif %}
+                </td>
                 <td>{% if funda.viva %}<span class="badge bg-success">Viva</span>{% else %}<span class="badge bg-secondary">Muerta</span>{% endif %}</td>
-                <td class="text-end">
+                <td class="text-end text-nowrap">
+                  {% if funda.viva %}
+                  <a class="btn btn-success btn-sm mb-1" target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id, numero=funda.numero) }}">Generar QR</a>
+                  {% endif %}
                   {% if cosecha_faena.abierta and funda.viva %}
                   <form method="post">
                     <input type="hidden" name="action" value="cosecha_baja">
@@ -505,7 +521,7 @@
               </tr>
               {% endfor %}
               {% if not cosecha_fundas %}
-              <tr><td colspan="4" class="text-muted">Todavía no hay fundas. El siguiente número es {{ cosecha_siguiente }}.</td></tr>
+              <tr><td colspan="5" class="text-muted">Todavía no hay fundas. El siguiente número es {{ cosecha_siguiente }}.</td></tr>
               {% endif %}
             </tbody>
           </table>

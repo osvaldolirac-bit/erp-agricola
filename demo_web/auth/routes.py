@@ -434,9 +434,12 @@ def cosecha_imprimir(faena_id: int):
     demo = get_demo_module()
     conn = demo.conectar_db()
     try:
+        solo = (request.args.get("numero") or "").strip()
         fundas = []
         for funda in listar_fundas(conn, faena_id):
             if not funda["viva"]:
+                continue
+            if solo.isdigit() and int(funda["numero"]) != int(solo):
                 continue
             fundas.append(
                 {

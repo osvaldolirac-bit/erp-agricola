@@ -220,6 +220,9 @@ class TestFaena(unittest.TestCase):
         self.assertEqual(dibujo, svg_qr("12"))
         self.assertNotIn("Ana", dibujo)
         self.assertIn("<svg", dibujo)
+        self.assertIn('width="72"', svg_qr("1", px=72))
+        html = Path("demo_web/templates/modules/rrhh.html").read_text(encoding="utf-8")
+        self.assertIn(">Generar QR</a>", html)
 
 
 class TestAtender(unittest.TestCase):

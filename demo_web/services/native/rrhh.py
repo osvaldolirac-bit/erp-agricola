@@ -1157,6 +1157,8 @@ def _contratistas_cosecha(demo, conn) -> dict:
         faena_abierta,
         listar_faenas,
         slug_para_link,
+        payload_qr,
+        svg_qr,
         url_anotadora,
         url_whatsapp,
     )
@@ -1222,7 +1224,13 @@ def _contratistas_cosecha(demo, conn) -> dict:
         "cosecha_faena": panel or None,
         "cosecha_links": links,
         "cosecha_filas": filas,
-        "cosecha_fundas": panel.get("fundas", []) if panel else [],
+        "cosecha_fundas": [
+            {
+                **funda,
+                "qr": svg_qr(payload_qr(funda["numero"]), px=72) if funda["viva"] else "",
+            }
+            for funda in (panel.get("fundas") or [])
+        ] if panel else [],
         "cosecha_siguiente": panel.get("siguiente", 1) if panel else 1,
         "hoy": hoy_demo(demo).isoformat(),
     }

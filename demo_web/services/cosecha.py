@@ -504,14 +504,15 @@ def payload_qr(numero: int) -> str:
     return str(n)
 
 
-def svg_qr(texto: str) -> str:
+def svg_qr(texto: str, px: int | None = None) -> str:
     from demo_web.services.qrcodegen import QrCode
 
     qr = QrCode.encode_text(texto, QrCode.Ecc.MEDIUM)
     borde = 2
     lado = qr.get_size() + borde * 2
+    medida = f' width="{int(px)}" height="{int(px)}"' if px else ""
     partes = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {lado} {lado}" shape-rendering="crispEdges">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {lado} {lado}"{medida} shape-rendering="crispEdges">',
         f'<rect width="{lado}" height="{lado}" fill="#fff"/>',
     ]
     for y in range(qr.get_size()):
