@@ -420,6 +420,26 @@
     <p class="small text-muted mt-2 mb-0">Los números parten de 1. Los cuarteles de esta empresa son: {{ cosecha_cuarteles|join(', ') }}.</p>
   </form>
   {% else %}
+  {% if cosecha_enlace %}
+  <div class="panel-card mb-3">
+    <h2 class="h6">Enlace de todos los cuarteles</h2>
+    <p class="small text-muted">Un solo enlace, con selector de cuartel. Los de abajo siguen fijos, uno por cuartel.</p>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Cuartel</th><th>Enlace</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="text-nowrap">Todos</td>
+            <td><input class="form-control form-control-sm" readonly value="{{ cosecha_enlace.url }}" onclick="this.select()"></td>
+            <td class="text-nowrap">
+              <a class="btn btn-sm btn-outline-success" href="{{ cosecha_enlace.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
   <div class="panel-card mb-3">
     <h2 class="h6">Enlace por cuartel</h2>
     <p class="small text-muted">Cada enlace ya trae el cuartel. La anotadora no lo elige.</p>
