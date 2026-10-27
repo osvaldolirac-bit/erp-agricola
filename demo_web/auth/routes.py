@@ -402,7 +402,11 @@ def cosecha_formulario(token: str):
                 ahora = demo.hora_chile()
                 cuando = ahora.strftime("%Y-%m-%d %H:%M:%S")
                 hoy = ahora.strftime("%Y-%m-%d")
-            fecha = (request.form.get("fecha") or hoy).strip()
+            from demo_web.services.cosecha import _dia
+
+            ok_dia, _, fecha = _dia((request.form.get("fecha") or "").strip(), hoy)
+            if not ok_dia:
+                fecha = hoy
             ok, msg, n = atender_anotadora(
                 conn,
                 token,
@@ -431,15 +435,18 @@ def cosecha_formulario(token: str):
                 tenant,
                 request.form.get("tab") or tab,
                 volver,
-                fecha if (request.form.get("tab") or tab) != "ingresado" else "",
+                fecha,
             )
         raw_n = (request.args.get("n") or "").strip()
         numero = int(raw_n) if raw_n.isdigit() else None
-        ctx = vista_anotadora(conn, token, tab, numero)
+        hoy = demo.hora_chile().strftime("%Y-%m-%d") if hasattr(demo, "hora_chile") else ""
+        from demo_web.services.cosecha import _dia
+
+        ok_dia, _, dia = _dia((request.args.get("fecha") or "").strip(), hoy)
+        if not ok_dia:
+            dia = hoy
+        ctx = vista_anotadora(conn, token, tab, numero, dia)
         if ctx is not None:
-            hoy = demo.hora_chile().strftime("%Y-%m-%d") if hasattr(demo, "hora_chile") else ""
-            pedida = (request.args.get("fecha") or "").strip()
-            ctx["fecha"] = pedida or hoy
             borrador = session.pop("cosecha_borrador", None)
             if isinstance(borrador, dict):
                 for fila in ctx["filas"]:

@@ -15,14 +15,16 @@
   <div class="container py-3" style="max-width: 32rem;">
     <p class="text-uppercase small text-muted mb-1">{{ estado_cuenta }}</p>
     <h1 class="h4 mb-2">{{ cuartel }}</h1>
+    <label class="form-label" for="fecha">Fecha</label>
+    <input id="fecha" type="date" class="form-control form-control-lg mb-3" required value="{{ fecha }}">
     <ul class="nav nav-pills mb-3">
       <li class="nav-item flex-fill">
-        <a class="nav-link text-center {% if tab == 'ingreso' %}active{% endif %}"
-           href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingreso') }}">Ingreso</a>
+        <a class="nav-link text-center js-dia {% if tab == 'ingreso' %}active{% endif %}"
+           href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingreso', fecha=fecha) }}">Ingreso</a>
       </li>
       <li class="nav-item flex-fill">
-        <a class="nav-link text-center {% if tab == 'ingresado' %}active{% endif %}"
-           href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingresado') }}">Ingresado</a>
+        <a class="nav-link text-center js-dia {% if tab == 'ingresado' %}active{% endif %}"
+           href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingresado', fecha=fecha) }}">Ingresado</a>
       </li>
     </ul>
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -32,11 +34,13 @@
     {% endwith %}
 
     {% if tab == 'ingresado' %}
+    <p class="small text-muted mb-1">{{ fecha_txt }}</p>
     <p class="tote-grande mb-2">{{ total_totes }} totes</p>
     {% for fila in filas %}
     <form method="post" class="card card-body mb-2">
       <input type="hidden" name="tenant" value="{{ tenant }}">
       <input type="hidden" name="tab" value="ingresado">
+      <input type="hidden" name="fecha" value="{{ fecha }}">
       <input type="hidden" name="accion" value="persona">
       <input type="hidden" name="numero" value="{{ fila.numero }}">
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -53,18 +57,17 @@
     </form>
     {% endfor %}
     {% if not filas %}
-    <p class="text-muted">Todavía no hay números en esta faena.</p>
+    <p class="text-muted">Este día no tiene ingresos.</p>
     {% endif %}
 
     {% else %}
     {% if cerrado %}
     <div class="alert alert-secondary">Este cuartel ya está cerrado. Los totales quedaron en Ingresado.</div>
     {% else %}
-    <form method="post" class="mb-3">
+    <form method="post" class="mb-3" id="form-ingreso">
       <input type="hidden" name="tenant" value="{{ tenant }}">
       <input type="hidden" name="tab" value="ingreso">
-      <label class="form-label" for="fecha">Fecha</label>
-      <input id="fecha" name="fecha" type="date" class="form-control form-control-lg mb-3" required value="{{ fecha }}">
+      <input type="hidden" name="fecha" id="fecha-post" value="{{ fecha }}">
       <label class="form-label" for="numero">Número del cosechero</label>
       <input id="numero" name="numero" inputmode="numeric" autocomplete="off" class="form-control form-control-lg text-center num-grande mb-3">
       <button type="submit" name="accion" value="sumar" class="btn btn-success btn-lg w-100 py-3">+ 1 tote</button>
@@ -73,5 +76,35 @@
     {% endif %}
     {% endif %}
   </div>
+  <script>
+    const fecha = document.getElementById('fecha');
+    const tabActual = {{ tab|tojson }};
+    const tenant = {{ tenant|tojson }};
+    function irConFecha(tab) {
+      const u = new URL(window.location.href);
+      u.searchParams.set('tenant', tenant);
+      u.searchParams.set('tab', tab);
+      u.searchParams.set('fecha', fecha.value);
+      u.searchParams.delete('n');
+      window.location.href = u.pathname + u.search;
+    }
+    if (fecha) {
+      fecha.addEventListener('change', function () { irConFecha(tabActual); });
+    }
+    document.querySelectorAll('a.js-dia').forEach(function (a) {
+      a.addEventListener('click', function (ev) {
+        if (!fecha || !fecha.value) return;
+        ev.preventDefault();
+        const tab = a.href.indexOf('tab=ingresado') >= 0 ? 'ingresado' : 'ingreso';
+        irConFecha(tab);
+      });
+    });
+    const form = document.getElementById('form-ingreso');
+    if (form && fecha) {
+      form.addEventListener('submit', function () {
+        document.getElementById('fecha-post').value = fecha.value;
+      });
+    }
+  </script>
 </body>
 </html>

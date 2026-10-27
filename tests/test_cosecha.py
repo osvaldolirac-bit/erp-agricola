@@ -172,6 +172,9 @@ class TestFaena(unittest.TestCase):
         self.assertIn("Deshacer el último", html)
         self.assertIn('type="date"', html)
         self.assertIn('name="fecha"', html)
+        self.assertIn("fecha=fecha", html)
+        self.assertIn("Este día no tiene ingresos.", html)
+        self.assertIn("irConFecha", html)
         self.assertNotIn("precio", html.lower())
         self.assertNotIn("abono", html.lower())
         self.assertNotIn("peso", html.lower())
@@ -360,6 +363,34 @@ class TestAtender(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertEqual(persona, 4)
         self.assertEqual(listar_fundas(conn, faena)[-1]["rut"], "12.345.678-5")
+
+    def test_ingresado_de_otro_dia_queda_en_cero(self):
+        conn = _conn()
+        _ok, _msg, faena = abrir_faena(conn, 1, ["CEREZOS CORTE 1", "CIRUELOS"], "2026-11-20")
+        links = {x["cuartel"]: x["token"] for x in listar_links(conn, faena)}
+        ok, msg, n = sumar_tote(
+            conn, links["CEREZOS CORTE 1"], 1, "2026-11-20 08:00:00", "2026-11-20"
+        )
+        self.assertTrue(ok, msg)
+        sumar_tote(conn, links["CEREZOS CORTE 1"], 1, "2026-11-20 08:05:00", "2026-11-20")
+        sumar_tote(conn, links["CIRUELOS"], 1, "2026-11-20 09:00:00", "2026-11-20")
+        guardar_persona(conn, faena, 1, "Ana Soto", "12.345.678-5")
+        mismo = vista_anotadora(conn, links["CEREZOS CORTE 1"], "ingresado", None, "2026-11-20")
+        self.assertEqual(mismo["total_totes"], 2)
+        self.assertEqual(mismo["fecha"], "2026-11-20")
+        self.assertEqual(mismo["fecha_txt"], "20-11-2026")
+        self.assertEqual([(f["numero"], f["totes"]) for f in mismo["filas"]], [(1, 2)])
+        otro = vista_anotadora(conn, links["CEREZOS CORTE 1"], "ingresado", None, "2026-11-22")
+        self.assertEqual(otro["total_totes"], 0)
+        self.assertEqual(otro["filas"], [])
+        self.assertEqual(otro["fecha"], "2026-11-22")
+        self.assertEqual(otro["fecha_txt"], "22-11-2026")
+        ciruelos = vista_anotadora(conn, links["CIRUELOS"], "ingresado", None, "2026-11-22")
+        self.assertEqual(ciruelos["total_totes"], 0)
+        self.assertEqual(ciruelos["filas"], [])
+        ciruelos_dia = vista_anotadora(conn, links["CIRUELOS"], "ingresado", None, "2026-11-20")
+        self.assertEqual(ciruelos_dia["total_totes"], 1)
+        self.assertEqual(contar_totes(conn, faena, "CEREZOS CORTE 1"), 2)
 
 
 if __name__ == "__main__":

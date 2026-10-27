@@ -389,13 +389,21 @@ def contar_totes(conn: sqlite3.Connection, faena_id: int, cuartel: str, funda_id
     return int(row[0] or 0)
 
 
-def _totes_por_funda(conn: sqlite3.Connection, faena_id: int, cuartel: str) -> dict[int, int]:
-    rows = conn.execute(
-        """SELECT funda_id, COUNT(*) FROM cosecha_tote
-           WHERE faena_id=? AND cuartel=? AND anulado=0
-           GROUP BY funda_id""",
-        (int(faena_id), cuartel),
-    ).fetchall()
+def _totes_por_funda(
+    conn: sqlite3.Connection,
+    faena_id: int,
+    cuartel: str,
+    fecha: str = "",
+) -> dict[int, int]:
+    expr = _fecha_sql()
+    sql = """SELECT funda_id, COUNT(*) FROM cosecha_tote
+             WHERE faena_id=? AND cuartel=? AND anulado=0"""
+    params: list[Any] = [int(faena_id), cuartel]
+    if fecha:
+        sql += f" AND ({expr})=?"
+        params.append(fecha)
+    sql += " GROUP BY funda_id"
+    rows = conn.execute(sql, params).fetchall()
     return {int(r[0]): int(r[1]) for r in rows}
 
 
@@ -750,17 +758,26 @@ def svg_qr(texto: str, px: int | None = None) -> str:
     return "".join(partes)
 
 
-def vista_anotadora(conn: sqlite3.Connection, token: str, tab: str, numero: int | None) -> dict | None:
+def vista_anotadora(
+    conn: sqlite3.Connection,
+    token: str,
+    tab: str,
+    numero: int | None,
+    fecha: str = "",
+) -> dict | None:
     link = _link_por_token(conn, token)
     if not link:
         return None
     faena_id = int(link["faena_id"])
     cuartel = str(link["cuartel"])
     cerrado = _cerrado(conn, faena_id, cuartel)
-    por_funda = _totes_por_funda(conn, faena_id, cuartel)
+    dia = (fecha or "").strip()
+    por_funda = _totes_por_funda(conn, faena_id, cuartel, dia)
     filas = []
     for funda in listar_fundas(conn, faena_id):
         totes = por_funda.get(int(funda["id"]), 0)
+        if dia and totes <= 0:
+            continue
         if not funda["viva"] and totes <= 0:
             continue
         filas.append(
@@ -784,6 +801,7 @@ def vista_anotadora(conn: sqlite3.Connection, token: str, tab: str, numero: int 
                 "totes": por_funda.get(int(funda["id"]), 0),
             }
     pestana = "ingresado" if (tab or "").strip() == "ingresado" else "ingreso"
+    visible = f"{dia[8:10]}-{dia[5:7]}-{dia[0:4]}" if len(dia) == 10 else ""
     return {
         "cuartel": cuartel,
         "tab": pestana,
@@ -793,6 +811,8 @@ def vista_anotadora(conn: sqlite3.Connection, token: str, tab: str, numero: int 
         "total_totes": sum(f["totes"] for f in filas),
         "preview": preview,
         "siguiente": _siguiente_numero(conn, faena_id),
+        "fecha": dia,
+        "fecha_txt": visible,
     }
 
 
