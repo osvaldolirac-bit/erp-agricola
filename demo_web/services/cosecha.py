@@ -438,6 +438,11 @@ def _funda(conn: sqlite3.Connection, faena_id: int, numero: int) -> dict | None:
     )
 
 
+def _faena_abierta_row(conn: sqlite3.Connection, faena_id: int) -> bool:
+    faena = _faena(conn, faena_id)
+    return bool(faena and faena["estado"] == "abierta")
+
+
 def _cerrado(conn: sqlite3.Connection, faena_id: int, cuartel: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM cosecha_cierre WHERE faena_id=? AND cuartel=?",
@@ -740,6 +745,8 @@ def sumar_tote(
         return False, "Este enlace no corresponde a la faena.", 0
     if not link["cuartel"]:
         return False, "Elija el cuartel.", int(numero or 0)
+    if not _faena_abierta_row(conn, int(link["faena_id"])):
+        return False, "Esta faena ya está cerrada.", int(numero or 0)
     if _cerrado(conn, int(link["faena_id"]), link["cuartel"]):
         return False, "Este cuartel ya está cerrado.", int(numero or 0)
     try:
@@ -784,6 +791,8 @@ def deshacer_ultimo(
         return False, "Este enlace no corresponde a la faena.", 0
     if not link["cuartel"]:
         return False, "Elija el cuartel.", 0
+    if not _faena_abierta_row(conn, int(link["faena_id"])):
+        return False, "Esta faena ya está cerrada.", 0
     if _cerrado(conn, int(link["faena_id"]), link["cuartel"]):
         return False, "Este cuartel ya está cerrado.", 0
     dia = ""
@@ -849,7 +858,8 @@ def vista_anotadora(
         return None
     faena_id = int(link["faena_id"])
     cuartel = str(link["cuartel"])
-    cerrado = _cerrado(conn, faena_id, cuartel)
+    faena_cerrada = not _faena_abierta_row(conn, faena_id)
+    cerrado = faena_cerrada or _cerrado(conn, faena_id, cuartel)
     dia = (fecha or "").strip()
     por_funda = _totes_por_funda(conn, faena_id, cuartel, dia)
     filas = []
@@ -894,6 +904,7 @@ def vista_anotadora(
         "fecha_txt": visible,
         "todos": bool(link["todos"]),
         "cuarteles": list(link["cuarteles"]),
+        "faena_cerrada": faena_cerrada,
     }
 
 
@@ -914,6 +925,8 @@ def atender_anotadora(
     if accion != "persona" and not link["cuartel"]:
         return False, "Elija el cuartel.", int(numero or 0)
     faena_id = int(link["faena_id"])
+    if not _faena_abierta_row(conn, faena_id):
+        return False, "Esta faena ya está cerrada.", int(numero or 0)
     if accion == "persona":
         ok, msg = guardar_persona(conn, faena_id, int(numero or 0), nombre, rut)
         return ok, msg, int(numero or 0)

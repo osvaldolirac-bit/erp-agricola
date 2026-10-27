@@ -71,7 +71,7 @@
 
     {% else %}
     {% if cerrado %}
-    <div class="alert alert-secondary">Este cuartel ya está cerrado. Los totales quedaron en Ingresado.</div>
+    <div class="alert alert-secondary">{% if faena_cerrada %}Esta faena ya está cerrada. Los totales quedaron en Ingresado.{% else %}Este cuartel ya está cerrado. Los totales quedaron en Ingresado.{% endif %}</div>
     {% else %}
     <form method="post" class="mb-3" id="form-ingreso">
       <input type="hidden" name="tenant" value="{{ tenant }}">
