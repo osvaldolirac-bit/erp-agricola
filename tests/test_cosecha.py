@@ -185,6 +185,7 @@ class TestFaena(unittest.TestCase):
         self.assertIn("irConFecha", html)
         self.assertIn('id="cuartel"', html)
         self.assertIn("{% if todos %}", html)
+        self.assertIn("Todos los cuarteles", html)
         self.assertNotIn("precio", html.lower())
         self.assertNotIn("abono", html.lower())
         self.assertNotIn("peso", html.lower())
