@@ -398,13 +398,15 @@ def cosecha_formulario(token: str):
                 numero,
                 request.form.get("nombre") or "",
                 cuando,
+                request.form.get("rut") or "",
             )
             if ok:
                 conn.commit()
             else:
                 conn.rollback()
             flash(msg, "success" if ok else "danger")
-            return _volver_cosecha(token, tenant, tab, n or numero)
+            volver = None if ok and accion == "sumar" else (n or numero)
+            return _volver_cosecha(token, tenant, request.form.get("tab") or tab, volver)
         raw_n = (request.args.get("n") or "").strip()
         numero = int(raw_n) if raw_n.isdigit() else None
         ctx = vista_anotadora(conn, token, tab, numero)

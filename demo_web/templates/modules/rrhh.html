@@ -441,93 +441,63 @@
     </div>
   </div>
 
-  <div class="row g-3 mb-3">
-    <div class="col-lg-5">
-      <div class="panel-card h-100">
-        <h2 class="h6">Fundas</h2>
-        <p class="small text-muted">El QR lleva solo el número. El nombre se asocia acá, o en el teléfono cuando llega alguien nuevo. Si se va, el número muere.</p>
-        {% if cosecha_faena.abierta %}
-        <form method="post" class="row g-2 mb-2">
-          <input type="hidden" name="action" value="cosecha_blanco">
-          <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
-          <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
-          <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
-          <div class="col-4"><input type="number" name="cantidad" class="form-control form-control-sm" min="1" max="60" value="10" required></div>
-          <div class="col-8"><button class="btn btn-outline-primary btn-sm w-100" type="submit">Crear fundas en blanco</button></div>
-        </form>
-        <form method="post" class="row g-2 mb-2">
-          <input type="hidden" name="action" value="cosecha_alta">
-          <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
-          <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
-          <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
-          <div class="col-8"><input name="nombre" class="form-control form-control-sm" placeholder="Nombre del cosechero" required maxlength="80"></div>
-          <div class="col-4"><button class="btn btn-primary btn-sm w-100" type="submit">Asignar</button></div>
-        </form>
-        {% endif %}
-        {% if cosecha_fundas %}
-        <a class="btn btn-success btn-sm" target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id) }}">Generar QR</a>
-        {% endif %}
-      </div>
+  <div class="panel-card mb-3">
+    <h2 class="h6">Planilla de la faena</h2>
+    <p class="small text-muted">Los totes entran por el enlace de cada cuartel. Acá se leen y se completa el nombre y el RUT del número.</p>
+    {% if cosecha_numeros %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>Nombre y RUT</th>
+            {% for link in cosecha_links %}<th class="text-end">{{ link.cuartel }}</th>{% endfor %}
+            <th class="text-end">Total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for persona in cosecha_numeros %}
+          <tr>
+            <td class="fw-semibold">{{ persona.numero }}</td>
+            <td style="min-width: 16rem;">
+              {% if cosecha_faena.abierta and persona.viva %}
+              <form method="post" class="d-flex flex-wrap gap-1">
+                <input type="hidden" name="action" value="cosecha_persona">
+                <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
+                <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+                <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
+                <input type="hidden" name="numero" value="{{ persona.numero }}">
+                <input name="nombre" class="form-control form-control-sm" style="max-width: 10rem;" value="{{ persona.nombre }}" placeholder="Nombre" maxlength="80">
+                <input name="rut" class="form-control form-control-sm" style="max-width: 8rem;" value="{{ persona.rut }}" placeholder="RUT" maxlength="12">
+                <button class="btn btn-outline-primary btn-sm" type="submit">Guardar</button>
+              </form>
+              {% else %}{{ persona.nombre or "—" }}{% if persona.rut %} · {{ persona.rut }}{% endif %}{% endif %}
+            </td>
+            {% for link in cosecha_links %}
+            <td class="text-end">{{ persona.totes[link.cuartel] }}</td>
+            {% endfor %}
+            <td class="text-end fw-semibold">{{ persona.total }}</td>
+            <td class="text-end">
+              {% if cosecha_faena.abierta and persona.viva %}
+              <form method="post">
+                <input type="hidden" name="action" value="cosecha_baja">
+                <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
+                <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+                <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
+                <input type="hidden" name="numero" value="{{ persona.numero }}">
+                <button class="btn btn-outline-danger btn-sm" type="submit">Dar de baja</button>
+              </form>
+              {% elif not persona.viva %}<span class="badge bg-secondary">Muerta</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    <div class="col-lg-7">
-      <div class="panel-card h-100">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h2 class="h6 mb-0">Números de esta faena</h2>
-          {% if cosecha_fundas %}
-          <a class="btn btn-success btn-sm" target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id) }}">Generar QR</a>
-          {% endif %}
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm table-striped align-middle mb-0">
-            <thead><tr><th>N°</th><th>Nombre</th><th>QR</th><th>Estado</th><th></th></tr></thead>
-            <tbody>
-              {% for funda in cosecha_fundas %}
-              <tr>
-                <td class="fw-semibold">{{ funda.numero }}</td>
-                <td>
-                  {% if cosecha_faena.abierta and funda.viva %}
-                  <form method="post" class="d-flex gap-1">
-                    <input type="hidden" name="action" value="cosecha_nombre">
-                    <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
-                    <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
-                    <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
-                    <input type="hidden" name="numero" value="{{ funda.numero }}">
-                    <input name="nombre" class="form-control form-control-sm" value="{{ funda.nombre }}" maxlength="80">
-                    <button class="btn btn-outline-primary btn-sm" type="submit">Ok</button>
-                  </form>
-                  {% else %}{{ funda.nombre or "—" }}{% endif %}
-                </td>
-                <td>
-                  {% if funda.qr %}
-                  <a target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id, numero=funda.numero) }}" title="Generar QR del {{ funda.numero }}">{{ funda.qr|safe }}</a>
-                  {% endif %}
-                </td>
-                <td>{% if funda.viva %}<span class="badge bg-success">Viva</span>{% else %}<span class="badge bg-secondary">Muerta</span>{% endif %}</td>
-                <td class="text-end text-nowrap">
-                  {% if funda.viva %}
-                  <a class="btn btn-success btn-sm mb-1" target="_blank" href="{{ url_for('auth.cosecha_imprimir', faena_id=cosecha_faena_id, numero=funda.numero) }}">Generar QR</a>
-                  {% endif %}
-                  {% if cosecha_faena.abierta and funda.viva %}
-                  <form method="post">
-                    <input type="hidden" name="action" value="cosecha_baja">
-                    <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
-                    <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
-                    <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
-                    <input type="hidden" name="numero" value="{{ funda.numero }}">
-                    <button class="btn btn-outline-danger btn-sm" type="submit">Dar de baja</button>
-                  </form>
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-              {% if not cosecha_fundas %}
-              <tr><td colspan="5" class="text-muted">Todavía no hay fundas. El siguiente número es {{ cosecha_siguiente }}.</td></tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    {% else %}
+    <p class="text-muted mb-0">Cuando la anotadora anote un número en el enlace, aparece en esta planilla.</p>
+    {% endif %}
   </div>
 
   <div class="panel-card mb-3">

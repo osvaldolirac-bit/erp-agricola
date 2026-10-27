@@ -59,6 +59,7 @@ _TABLAS_COSECHA = (
             faena_id INTEGER NOT NULL,
             numero INTEGER NOT NULL,
             nombre TEXT NOT NULL DEFAULT '',
+            rut TEXT NOT NULL DEFAULT '',
             estado TEXT NOT NULL DEFAULT 'activa',
             UNIQUE(faena_id, numero)
         );
@@ -115,6 +116,9 @@ def asegurar_tablas(conn: sqlite3.Connection) -> None:
             stmt = parte.strip()
             if stmt:
                 conn.execute(stmt)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cosecha_funda)")}
+    if cols and "rut" not in cols:
+        conn.execute("ALTER TABLE cosecha_funda ADD COLUMN rut TEXT NOT NULL DEFAULT ''")
 
 
 def _nombre(raw: str, *, obligatorio: bool) -> tuple[bool, str, str]:
@@ -360,7 +364,7 @@ def listar_links(conn: sqlite3.Connection, faena_id: int) -> list[dict]:
 def listar_fundas(conn: sqlite3.Connection, faena_id: int) -> list[dict]:
     asegurar_tablas(conn)
     rows = conn.execute(
-        """SELECT id, numero, nombre, estado FROM cosecha_funda
+        """SELECT id, numero, nombre, COALESCE(rut, ''), estado FROM cosecha_funda
            WHERE faena_id=? ORDER BY numero""",
         (int(faena_id),),
     ).fetchall()
@@ -369,11 +373,93 @@ def listar_fundas(conn: sqlite3.Connection, faena_id: int) -> list[dict]:
             "id": int(r[0]),
             "numero": int(r[1]),
             "nombre": r[2] or "",
-            "estado": r[3],
-            "viva": r[3] == "activa",
+            "rut": r[3] or "",
+            "estado": r[4],
+            "viva": r[4] == "activa",
         }
         for r in rows
     ]
+
+
+def validar_rut_cosecha(raw: str) -> tuple[bool, str, str]:
+    """El mismo criterio que el resto del ERP. Vacío se permite."""
+    try:
+        from erp_rut import validar_rut_campo
+    except ImportError:
+        return _validar_rut_local(raw)
+    return validar_rut_campo(raw or "", obligatorio=False)
+
+
+def _validar_rut_local(raw: str) -> tuple[bool, str, str]:
+    texto = (raw or "").strip().upper().replace(".", "").replace("-", "").replace(" ", "")
+    if not texto:
+        return True, "", ""
+    if len(texto) < 2 or not texto[:-1].isdigit() or texto[-1] not in "0123456789K":
+        return False, "RUT incorrecto. Verifique el número y el dígito verificador.", ""
+    cuerpo, dv = texto[:-1], texto[-1]
+    suma = 0
+    factor = 2
+    for digito in reversed(cuerpo):
+        suma += int(digito) * factor
+        factor = 2 if factor == 7 else factor + 1
+    resto = 11 - (suma % 11)
+    esperado = "0" if resto == 11 else "K" if resto == 10 else str(resto)
+    if dv != esperado:
+        return False, "RUT incorrecto. Verifique el número y el dígito verificador.", ""
+    grupos = []
+    while cuerpo:
+        grupos.append(cuerpo[-3:])
+        cuerpo = cuerpo[:-3]
+    return True, "", ".".join(reversed(grupos)) + "-" + dv
+
+
+def guardar_persona(
+    conn: sqlite3.Connection,
+    faena_id: int,
+    numero: int,
+    nombre_raw: str,
+    rut_raw: str,
+) -> tuple[bool, str]:
+    asegurar_tablas(conn)
+    try:
+        n = int(numero)
+    except (TypeError, ValueError):
+        return False, "El número no es válido."
+    funda = _funda(conn, faena_id, n)
+    if not funda:
+        return False, "Ese número todavía no entra por el enlace."
+    if funda["estado"] != "activa":
+        return False, f"El número {n} ya no se usa."
+    _ok, _msg, nombre = _nombre(nombre_raw, obligatorio=False)
+    ok_rut, msg_rut, rut = validar_rut_cosecha(rut_raw)
+    if not ok_rut:
+        return False, msg_rut
+    conn.execute(
+        "UPDATE cosecha_funda SET nombre=?, rut=? WHERE id=?",
+        (nombre, rut, int(funda["id"])),
+    )
+    return True, f"Número {n} actualizado."
+
+
+def planilla_numeros(conn: sqlite3.Connection, faena_id: int) -> list[dict]:
+    """Lo que la anotadora ingresó por los enlaces, por número y cuartel."""
+    asegurar_tablas(conn)
+    cuarteles = [x["cuartel"] for x in listar_links(conn, faena_id)]
+    cuentas: dict[int, dict[str, int]] = {}
+    filas_db = conn.execute(
+        """SELECT funda_id, cuartel, COUNT(*) FROM cosecha_tote
+           WHERE faena_id=? AND anulado=0
+           GROUP BY funda_id, cuartel""",
+        (int(faena_id),),
+    ).fetchall()
+    for funda_id, cuartel, n in filas_db:
+        cuentas.setdefault(int(funda_id), {})[str(cuartel)] = int(n)
+    salida = []
+    for funda in listar_fundas(conn, faena_id):
+        por = cuentas.get(int(funda["id"]), {})
+        totes = {cc: int(por.get(cc, 0)) for cc in cuarteles}
+        salida.append({**funda, "totes": totes, "total": sum(totes.values())})
+    return salida
 
 
 def guardar_precio(conn: sqlite3.Connection, faena_id: int, cuartel: str, precio: float) -> tuple[bool, str]:
@@ -461,20 +547,27 @@ def sumar_tote(
         n = int(numero)
     except (TypeError, ValueError):
         return False, "El número de la funda no es válido.", 0
+    if n < 1 or n > 999:
+        return False, "El número del cosechero no es válido.", 0
     funda = _funda(conn, int(link["faena_id"]), n)
-    if not funda:
-        return False, "Ese número no está en esta faena. Al cosechero nuevo se le da el siguiente.", 0
-    if funda["estado"] != "activa":
+    if funda and funda["estado"] != "activa":
         return False, f"El número {n} ya no se usa.", n
-    if not (funda["nombre"] or "").strip():
-        return False, "Esta funda todavía no tiene nombre.", n
+    if not funda:
+        conn.execute(
+            """INSERT INTO cosecha_funda (faena_id, numero, nombre, rut, estado)
+               VALUES (?,?, '', '', 'activa')""",
+            (int(link["faena_id"]), n),
+        )
+        funda = _funda(conn, int(link["faena_id"]), n)
     conn.execute(
         """INSERT INTO cosecha_tote (faena_id, funda_id, cuartel, anulado, creado)
            VALUES (?,?,?,0,?)""",
         (int(link["faena_id"]), int(funda["id"]), link["cuartel"], fecha_hora),
     )
     total = contar_totes(conn, int(link["faena_id"]), link["cuartel"], int(funda["id"]))
-    return True, f"{funda['nombre']} lleva {total} totes.", n
+    quien = (funda["nombre"] or "").strip()
+    texto = f"Número {n}" + (f" · {quien}" if quien else "")
+    return True, f"{texto} lleva {total} totes.", n
 
 
 def deshacer_ultimo(conn: sqlite3.Connection, token: str) -> tuple[bool, str, int]:
@@ -541,7 +634,8 @@ def vista_anotadora(conn: sqlite3.Connection, token: str, tab: str, numero: int 
         filas.append(
             {
                 "numero": funda["numero"],
-                "nombre": funda["nombre"] or "Sin nombre",
+                "nombre": funda["nombre"] or "",
+                "rut": funda["rut"] or "",
                 "totes": totes,
                 "viva": funda["viva"],
             }
@@ -576,16 +670,14 @@ def atender_anotadora(
     numero: int | None,
     nombre: str,
     fecha_hora: str,
+    rut: str = "",
 ) -> tuple[bool, str, int]:
     link = _link_por_token(conn, token)
     if not link:
         return False, "Este enlace no corresponde a la faena.", 0
     faena_id = int(link["faena_id"])
-    if accion == "nuevo":
-        ok, msg, n = entregar_funda(conn, faena_id, nombre)
-        return ok, msg, n
-    if accion == "nombre":
-        ok, msg = poner_nombre(conn, faena_id, int(numero or 0), nombre, permitir_cambio=False)
+    if accion == "persona":
+        ok, msg = guardar_persona(conn, faena_id, int(numero or 0), nombre, rut)
         return ok, msg, int(numero or 0)
     if accion == "deshacer":
         return deshacer_ultimo(conn, token)
@@ -837,6 +929,7 @@ def armar_panel(conn: sqlite3.Connection, faena_id: int) -> dict:
         "creada": faena["creada"] or "",
         "filas": filas,
         "fundas": fundas,
+        "numeros": planilla_numeros(conn, int(faena_id)),
         "siguiente": _siguiente_numero(conn, int(faena_id)),
         "puede_nueva": bool(faena["estado"] == "abierta" and ok_nueva),
         "aviso_nueva": msg_nueva,

@@ -8,20 +8,24 @@ from pathlib import Path
 from demo_web.services.cosecha import (
     abrir_faena,
     aplicar_en_compras,
+    asegurar_tablas,
     atender_anotadora,
     contar_totes,
     dar_de_baja,
     entregar_funda,
     filtrar_cuarteles_cosecha,
+    guardar_persona,
+    guardar_precio,
+    listar_fundas,
     listar_links,
     nueva_faena,
     payload_qr,
     plan_cierre,
-    guardar_precio,
+    planilla_numeros,
     registrar_abono,
     sumar_tote,
-    svg_qr,
     url_whatsapp,
+    validar_rut_cosecha,
     vista_anotadora,
 )
 
@@ -186,9 +190,16 @@ class TestFaena(unittest.TestCase):
         self.assertNotIn("bruto", ctx)
         self.assertEqual(ctx["filas"][0]["nombre"], "Ana")
         html = Path("demo_web/templates/cosecha_anotadora.html").read_text(encoding="utf-8")
+        self.assertIn("+ 1 tote", html)
+        self.assertIn('name="nombre"', html)
+        self.assertIn('name="rut"', html)
+        self.assertIn("Deshacer el último", html)
         self.assertNotIn("precio", html.lower())
         self.assertNotIn("abono", html.lower())
         self.assertNotIn("peso", html.lower())
+        self.assertNotIn("Escanear", html)
+        self.assertNotIn("QR", html)
+        self.assertNotIn("Generar", html)
 
     def test_el_enlace_se_comparte_por_whatsapp(self):
         from urllib.parse import unquote
@@ -214,15 +225,84 @@ class TestFaena(unittest.TestCase):
         self.assertIn("link.wa_url", html)
         self.assertIn(">WhatsApp</a>", html)
 
-    def test_el_qr_lleva_solo_el_numero(self):
+    def test_la_oficina_arma_la_planilla_sin_qr(self):
         self.assertEqual(payload_qr(12), "12")
-        dibujo = svg_qr(payload_qr(12))
-        self.assertEqual(dibujo, svg_qr("12"))
-        self.assertNotIn("Ana", dibujo)
-        self.assertIn("<svg", dibujo)
-        self.assertIn('width="72"', svg_qr("1", px=72))
         html = Path("demo_web/templates/modules/rrhh.html").read_text(encoding="utf-8")
-        self.assertIn(">Generar QR</a>", html)
+        self.assertIn("Planilla de la faena", html)
+        self.assertIn("cosecha_persona", html)
+        self.assertIn("Pasar a compras", html)
+        self.assertNotIn("Generar QR", html)
+        self.assertNotIn("cosecha_imprimir", html)
+
+
+class TestNumeroYRut(unittest.TestCase):
+    def test_mas_uno_crea_el_numero_y_la_planilla_separa_cuarteles(self):
+        conn = _conn()
+        _ok, _msg, faena = abrir_faena(
+            conn, 1, filtrar_cuarteles_cosecha(LC, espino=False), "2026-11-20"
+        )
+        links = {x["cuartel"]: x["token"] for x in listar_links(conn, faena)}
+        ok, msg, n = sumar_tote(conn, links["CEREZOS CORTE 1"], 7, "2026-11-20 08:00:00")
+        self.assertTrue(ok, msg)
+        self.assertEqual(n, 7)
+        self.assertIn("lleva 1", msg)
+        ok, msg = guardar_persona(conn, faena, 7, "Ana Soto", "12.345.678-5")
+        self.assertTrue(ok, msg)
+        ok, msg = guardar_persona(conn, faena, 7, "Ana Soto", "12.345.678-9")
+        self.assertFalse(ok)
+        self.assertIn("RUT", msg)
+        sumar_tote(conn, links["CIRUELOS"], 7, "2026-11-20 09:00:00")
+        sumar_tote(conn, links["CIRUELOS"], 7, "2026-11-20 09:10:00")
+        planilla = planilla_numeros(conn, faena)
+        self.assertEqual(len(planilla), 1)
+        self.assertEqual(planilla[0]["numero"], 7)
+        self.assertEqual(planilla[0]["nombre"], "Ana Soto")
+        self.assertEqual(planilla[0]["rut"], "12.345.678-5")
+        self.assertEqual(planilla[0]["totes"]["CEREZOS CORTE 1"], 1)
+        self.assertEqual(planilla[0]["totes"]["CIRUELOS"], 2)
+        self.assertEqual(planilla[0]["totes"]["NOGALES APARICION"], 0)
+        self.assertNotIn("SANTINA", planilla[0]["totes"])
+        self.assertNotIn("EL ESPINO", planilla[0]["totes"])
+        self.assertEqual(planilla[0]["total"], 3)
+        ok, _msg = dar_de_baja(conn, faena, 7)
+        self.assertTrue(ok)
+        ok, msg, _n = sumar_tote(conn, links["CEREZOS CORTE 1"], 7, "2026-11-20 10:00:00")
+        self.assertFalse(ok)
+        self.assertIn("ya no se usa", msg)
+
+    def test_el_rut_chileno_y_la_columna_nueva_conservan_el_nombre(self):
+        ok, _msg, fmt = validar_rut_cosecha("12345678-5")
+        self.assertTrue(ok)
+        self.assertEqual(fmt, "12.345.678-5")
+        ok, _msg, vacio = validar_rut_cosecha("  ")
+        self.assertTrue(ok)
+        self.assertEqual(vacio, "")
+        ok, _msg, _fmt = validar_rut_cosecha("12.345.678-9")
+        self.assertFalse(ok)
+        conn = sqlite3.connect(":memory:")
+        conn.execute(
+            """CREATE TABLE cosecha_funda (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                faena_id INTEGER NOT NULL,
+                numero INTEGER NOT NULL,
+                nombre TEXT NOT NULL DEFAULT '',
+                estado TEXT NOT NULL DEFAULT 'activa'
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO cosecha_funda (faena_id, numero, nombre, estado) VALUES (1, 1, 'Ana', 'activa')"
+        )
+        conn.execute(
+            "INSERT INTO cosecha_funda (faena_id, numero, nombre, estado) VALUES (1, 2, 'Luis', 'activa')"
+        )
+        conn.execute(
+            "INSERT INTO cosecha_funda (faena_id, numero, nombre, estado) VALUES (1, 3, 'María', 'activa')"
+        )
+        asegurar_tablas(conn)
+        fundas = listar_fundas(conn, 1)
+        self.assertEqual([f["nombre"] for f in fundas], ["Ana", "Luis", "María"])
+        self.assertEqual([f["numero"] for f in fundas], [1, 2, 3])
+        self.assertEqual([f["rut"] for f in fundas], ["", "", ""])
 
 
 class TestAtender(unittest.TestCase):
@@ -237,6 +317,15 @@ class TestAtender(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(n, 1)
         self.assertEqual(contar_totes(conn, faena, "CEREZOS CORTE 2"), 1)
+        ok, msg, creado = atender_anotadora(conn, token, "sumar", 4, "", "2026-11-20 11:00:00")
+        self.assertTrue(ok, msg)
+        self.assertEqual(creado, 4)
+        ok, msg, persona = atender_anotadora(
+            conn, token, "persona", 4, "Pedro", "2026-11-20 11:01:00", "12345678-5"
+        )
+        self.assertTrue(ok, msg)
+        self.assertEqual(persona, 4)
+        self.assertEqual(listar_fundas(conn, faena)[-1]["rut"], "12.345.678-5")
 
 
 if __name__ == "__main__":

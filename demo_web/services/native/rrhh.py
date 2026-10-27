@@ -1157,8 +1157,6 @@ def _contratistas_cosecha(demo, conn) -> dict:
         faena_abierta,
         listar_faenas,
         slug_para_link,
-        payload_qr,
-        svg_qr,
         url_anotadora,
         url_whatsapp,
     )
@@ -1224,13 +1222,7 @@ def _contratistas_cosecha(demo, conn) -> dict:
         "cosecha_faena": panel or None,
         "cosecha_links": links,
         "cosecha_filas": filas,
-        "cosecha_fundas": [
-            {
-                **funda,
-                "qr": svg_qr(payload_qr(funda["numero"]), px=72) if funda["viva"] else "",
-            }
-            for funda in (panel.get("fundas") or [])
-        ] if panel else [],
+        "cosecha_numeros": panel.get("numeros") or [] if panel else [],
         "cosecha_siguiente": panel.get("siguiente", 1) if panel else 1,
         "hoy": hoy_demo(demo).isoformat(),
     }
@@ -1250,6 +1242,28 @@ def _post_cosecha_abrir(demo, conn) -> dict:
     conn.commit()
     demo.registrar_accion("RRHH COSECHA", f"abre faena contratista {cid}")
     return {"ok": True, "msg": msg, "faena_id": nuevo}
+
+
+def _post_cosecha_persona(demo, conn) -> dict:
+    from demo_web.services.cosecha import guardar_persona
+
+    _cid, fid = _ids_cosecha()
+    try:
+        numero = int(request.form.get("numero") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Número inválido."}
+    ok, msg = guardar_persona(
+        conn,
+        fid,
+        numero,
+        request.form.get("nombre") or "",
+        request.form.get("rut") or "",
+    )
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH COSECHA", f"persona número {numero}")
+    return {"ok": True, "msg": msg}
 
 
 def _post_cosecha_blanco(demo, conn) -> dict:
@@ -1464,6 +1478,7 @@ def view(user_email: str, user_rol: str):
                 "eliminar_extra": _post_eliminar_extra,
                 "liquidacion": _post_liquidacion,
                 "cosecha_abrir": _post_cosecha_abrir,
+                "cosecha_persona": _post_cosecha_persona,
                 "cosecha_blanco": _post_cosecha_blanco,
                 "cosecha_alta": _post_cosecha_alta,
                 "cosecha_nombre": _post_cosecha_nombre,
