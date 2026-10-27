@@ -43,10 +43,12 @@
         <span class="num-grande">{{ fila.numero }}</span>
         <span class="tote-grande">{{ fila.totes }}</span>
       </div>
-      <input name="nombre" class="form-control mb-2" placeholder="Nombre" maxlength="80" autocomplete="off" value="{{ fila.nombre }}" {% if cerrado or not fila.viva %}readonly{% endif %}>
-      <input name="rut" class="form-control mb-2" placeholder="RUT" maxlength="20" autocomplete="off" value="{{ fila.rut }}" {% if cerrado or not fila.viva %}readonly{% endif %}>
-      {% if not cerrado and fila.viva %}
+      {% if not cerrado and fila.viva and not fila.asignado %}
+      <input name="nombre" class="form-control mb-2" placeholder="Nombre" maxlength="80" autocomplete="off" value="{{ fila.nombre }}">
+      <input name="rut" class="form-control mb-2" placeholder="RUT" maxlength="20" autocomplete="off" value="{{ fila.rut }}">
       <button class="btn btn-outline-primary" type="submit">Guardar</button>
+      {% else %}
+      <p class="mb-0">{{ fila.nombre or "Sin nombre" }}{% if fila.rut %} · {{ fila.rut }}{% endif %}</p>
       {% endif %}
     </form>
     {% endfor %}

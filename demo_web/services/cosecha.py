@@ -62,6 +62,7 @@ _TABLAS_COSECHA = (
             nombre TEXT NOT NULL DEFAULT '',
             rut TEXT NOT NULL DEFAULT '',
             estado TEXT NOT NULL DEFAULT 'activa',
+            asignado INTEGER NOT NULL DEFAULT 0,
             UNIQUE(faena_id, numero)
         );
         CREATE TABLE IF NOT EXISTS cosecha_link (
@@ -121,6 +122,16 @@ def asegurar_tablas(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(cosecha_funda)")}
     if cols and "rut" not in cols:
         conn.execute("ALTER TABLE cosecha_funda ADD COLUMN rut TEXT NOT NULL DEFAULT ''")
+    if cols and "asignado" not in cols:
+        conn.execute("ALTER TABLE cosecha_funda ADD COLUMN asignado INTEGER NOT NULL DEFAULT 0")
+    if cols:
+        conn.execute(
+            """UPDATE cosecha_funda
+               SET asignado=1
+               WHERE asignado=0
+                 AND TRIM(COALESCE(nombre, '')) <> ''
+                 AND TRIM(COALESCE(rut, '')) <> ''"""
+        )
     tote_cols = {r[1] for r in conn.execute("PRAGMA table_info(cosecha_tote)")}
     if tote_cols and "fecha" not in tote_cols:
         conn.execute("ALTER TABLE cosecha_tote ADD COLUMN fecha TEXT NOT NULL DEFAULT ''")
@@ -400,7 +411,8 @@ def listar_links(conn: sqlite3.Connection, faena_id: int) -> list[dict]:
 def listar_fundas(conn: sqlite3.Connection, faena_id: int) -> list[dict]:
     asegurar_tablas(conn)
     rows = conn.execute(
-        """SELECT id, numero, nombre, COALESCE(rut, ''), estado FROM cosecha_funda
+        """SELECT id, numero, nombre, COALESCE(rut, ''), estado, COALESCE(asignado, 0)
+           FROM cosecha_funda
            WHERE faena_id=? ORDER BY numero""",
         (int(faena_id),),
     ).fetchall()
@@ -412,6 +424,7 @@ def listar_fundas(conn: sqlite3.Connection, faena_id: int) -> list[dict]:
             "rut": r[3] or "",
             "estado": r[4],
             "viva": r[4] == "activa",
+            "asignado": int(r[5] or 0) == 1,
         }
         for r in rows
     ]
@@ -466,19 +479,24 @@ def guardar_persona(
         return False, "Ese número todavía no entra por el enlace."
     if funda["estado"] != "activa":
         return False, f"El número {n} ya no se usa."
+    if int(funda.get("asignado") or 0) == 1:
+        return False, f"El número {n} ya está asignado."
     _ok, _msg, nombre = _nombre(nombre_raw, obligatorio=False)
     ok_rut, msg_rut, rut = validar_rut_cosecha(rut_raw)
     if not ok_rut:
         return False, msg_rut
+    asignado = 1 if nombre and rut else 0
     conn.execute(
-        "UPDATE cosecha_funda SET nombre=?, rut=? WHERE id=?",
-        (nombre, rut, int(funda["id"])),
+        "UPDATE cosecha_funda SET nombre=?, rut=?, asignado=? WHERE id=?",
+        (nombre, rut, asignado, int(funda["id"])),
     )
     quien = nombre or "sin nombre"
     texto = f"Número {n} · {quien}"
     if rut:
         texto += f" · {rut}"
-    return True, f"{texto} quedó guardado."
+    if asignado:
+        return True, f"{texto} quedó asignado."
+    return True, f"{texto} quedó guardado. Falta el RUT para cerrar este número."
 
 
 def planilla_numeros(
@@ -752,6 +770,7 @@ def vista_anotadora(conn: sqlite3.Connection, token: str, tab: str, numero: int 
                 "rut": funda["rut"] or "",
                 "totes": totes,
                 "viva": funda["viva"],
+                "asignado": funda["asignado"],
             }
         )
     preview = None

@@ -522,7 +522,7 @@
           <tr>
             <td class="fw-semibold">{{ persona.numero }}</td>
             <td style="min-width: 16rem;">
-              {% if cosecha_faena.abierta and persona.viva %}
+              {% if cosecha_faena.abierta and persona.viva and not persona.asignado %}
               <form method="post" class="d-flex flex-wrap gap-1">
                 <input type="hidden" name="action" value="cosecha_persona">
                 <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
