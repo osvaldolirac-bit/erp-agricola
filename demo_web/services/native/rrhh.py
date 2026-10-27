@@ -1208,18 +1208,6 @@ def _contratistas_cosecha(demo, conn) -> dict:
                 {
                     "cuartel": fila["cuartel"],
                     "totes": fila["totes"],
-                    "precio": fila["precio"],
-                    "cerrado": fila["cerrado"],
-                    "abonos_detalle": [
-                        {**abono, "monto_txt": demo.f_peso(abono["monto"])}
-                        for abono in fila["abonos_detalle"]
-                    ],
-                    "bruto_txt": demo.f_peso(fila["bruto"]) if fila["precio"] else "—",
-                    "abonos_txt": demo.f_peso(fila["abonos"]),
-                    "saldo_txt": demo.f_peso(fila["saldo"]) if fila["precio"] else "—",
-                    "puede_migrar": bool(
-                        panel["abierta"] and not fila["cerrado"] and fila["totes"] > 0 and fila["precio"] > 0
-                    ),
                 }
             )
     return {
@@ -1347,94 +1335,6 @@ def _post_cosecha_baja(demo, conn) -> dict:
     return {"ok": True, "msg": msg}
 
 
-def _post_cosecha_precio(demo, conn) -> dict:
-    from demo_web.services.cosecha import guardar_precio
-
-    _cid, fid = _ids_cosecha()
-    cuartel = (request.form.get("cuartel") or "").strip()
-    try:
-        precio = _parse_monto_form(request.form.get("precio"))
-    except ValueError:
-        return {"ok": False, "msg": "Precio inválido."}
-    ok, msg = guardar_precio(conn, fid, cuartel, precio)
-    if not ok:
-        return {"ok": False, "msg": msg}
-    conn.commit()
-    demo.registrar_accion("RRHH COSECHA", f"precio {cuartel}")
-    return {"ok": True, "msg": msg}
-
-
-def _post_cosecha_abono(demo, conn) -> dict:
-    from demo_web.services.cosecha import registrar_abono
-
-    _cid, fid = _ids_cosecha()
-    cuartel = (request.form.get("cuartel") or "").strip()
-    try:
-        monto = _parse_monto_form(request.form.get("monto"))
-    except ValueError:
-        return {"ok": False, "msg": "Monto inválido."}
-    ok, msg = registrar_abono(
-        conn, fid, cuartel, monto, request.form.get("nota") or "", str(hoy_demo(demo)),
-    )
-    if not ok:
-        return {"ok": False, "msg": msg}
-    conn.commit()
-    demo.registrar_accion("RRHH COSECHA", f"abono {cuartel}")
-    return {"ok": True, "msg": msg}
-
-
-def _post_cosecha_migrar(demo, conn) -> dict:
-    import sqlite3
-
-    from demo_web.services.cosecha import aplicar_en_compras, plan_cierre
-    from demo_web.services.native.compras import _es_documento_interno
-
-    _cid, fid = _ids_cosecha()
-    cuartel = (request.form.get("cuartel") or "").strip()
-    fecha = str(hoy_demo(demo))
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-    except sqlite3.OperationalError:
-        pass
-    ok, msg, plan = plan_cierre(conn, fid, cuartel)
-    if not ok or not plan:
-        conn.rollback()
-        return {"ok": False, "msg": msg}
-    ndoc = demo._siguiente_folio_contratista(conn, fecha)
-    razon = razon_social_compras_default(demo)
-
-    def registrar(cid, proveedor, nro, f_compra, f_vence, monto, concepto, selcc):
-        return demo._registrar_servicio_contratista(
-            conn,
-            cid,
-            proveedor,
-            nro,
-            f_compra,
-            f_vence,
-            monto,
-            concepto,
-            selcc,
-            razon,
-            imputar_bruto=True,
-        )
-
-    ok, err = aplicar_en_compras(conn, plan, registrar, ndoc, fecha, session.get("email") or "")
-    if not ok:
-        conn.rollback()
-        return {"ok": False, "msg": err}
-    if _es_documento_interno(ndoc):
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)")}
-        if "folio_interno" in cols:
-            conn.execute(
-                """UPDATE facturas SET folio_interno=''
-                   WHERE proveedor=? AND nro_documento IN (?, ?)""",
-                (plan["proveedor"], ndoc, f"{ndoc}_P"),
-            )
-    conn.commit()
-    demo.registrar_accion("RRHH COSECHA", f"{plan['cuartel']} {plan['totes']} totes {ndoc}")
-    return {"ok": True, "msg": f"Cosecha de {plan['cuartel']} pasó a compras ({ndoc})."}
-
-
 def _post_cosecha_nueva(demo, conn) -> dict:
     from demo_web.services.cosecha import cuarteles_de_cosecha, nueva_faena
 
@@ -1504,9 +1404,6 @@ def view(user_email: str, user_rol: str):
                 "cosecha_alta": _post_cosecha_alta,
                 "cosecha_nombre": _post_cosecha_nombre,
                 "cosecha_baja": _post_cosecha_baja,
-                "cosecha_precio": _post_cosecha_precio,
-                "cosecha_abono": _post_cosecha_abono,
-                "cosecha_migrar": _post_cosecha_migrar,
                 "cosecha_nueva": _post_cosecha_nueva,
             }
             fn = handlers.get(action)

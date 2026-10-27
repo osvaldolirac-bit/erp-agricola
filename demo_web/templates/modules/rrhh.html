@@ -404,7 +404,7 @@
       </div>
       {% endif %}
     </form>
-    <p class="small text-muted mb-0 mt-2">El precio y los abonos quedan en esta planilla. El teléfono de la anotadora solo cuenta totes, en el enlace de cada cuartel.</p>
+    <p class="small text-muted mb-0 mt-2">Esta pantalla solo cuenta totes. El gasto se anota en Registrar servicio, no en compras ni en la cuenta corriente.</p>
   </div>
   {% if cosecha_sin %}
   <div class="alert alert-warning">Registre un contratista activo en Maestro.</div>
@@ -443,7 +443,7 @@
 
   <div class="panel-card mb-3">
     <h2 class="h6">Ingresos del enlace</h2>
-    <p class="small text-muted">Lo que la anotadora carga en el teléfono: fecha, número, nombre, RUT y totes del cuartel. La liquidación de más abajo sigue contando todos los totes de la faena.</p>
+    <p class="small text-muted">Lo que la anotadora carga en el teléfono: fecha, número, nombre, RUT y totes del cuartel.</p>
     <form method="get" class="row g-2 align-items-end mb-3">
       <input type="hidden" name="sec" value="contratistas">
       <input type="hidden" name="sub" value="cosecha">
@@ -562,62 +562,13 @@
   </div>
 
   <div class="panel-card mb-3">
-    <h2 class="h6">Planilla por cuartel</h2>
-    {% for fila in cosecha_filas %}
-    <div class="border rounded p-3 mb-3">
-      <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
-        <strong>{{ fila.cuartel }}</strong>
-        <span>{% if fila.cerrado %}<span class="badge bg-dark">En compras</span>{% else %}<span class="badge bg-warning text-dark">Abierta</span>{% endif %}</span>
-      </div>
-      <p class="mb-2">{{ fila.totes }} totes · {{ fila.bruto_txt }} · Abonos {{ fila.abonos_txt }} · Saldo {{ fila.saldo_txt }}</p>
-      {% if cosecha_faena.abierta and not fila.cerrado %}
-      <div class="row g-2">
-        <div class="col-md-4">
-          <form method="post" class="d-flex gap-1">
-            <input type="hidden" name="action" value="cosecha_precio">
-            <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
-            <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
-            <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
-            <input type="hidden" name="cuartel" value="{{ fila.cuartel }}">
-            <input name="precio" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" placeholder="Precio por tote" value="{{ fila.precio if fila.precio else '' }}">
-            <button class="btn btn-outline-primary btn-sm text-nowrap" type="submit">Precio</button>
-          </form>
-        </div>
-        <div class="col-md-5">
-          <form method="post" class="d-flex gap-1">
-            <input type="hidden" name="action" value="cosecha_abono">
-            <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
-            <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
-            <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
-            <input type="hidden" name="cuartel" value="{{ fila.cuartel }}">
-            <input name="monto" class="form-control form-control-sm text-end js-peso" inputmode="numeric" autocomplete="off" placeholder="$40.000" required>
-            <input name="nota" class="form-control form-control-sm" placeholder="Nota" maxlength="200">
-            <button class="btn btn-outline-secondary btn-sm" type="submit">Abonar</button>
-          </form>
-        </div>
-        <div class="col-md-3">
-          {% if fila.puede_migrar %}
-          <form method="post" onsubmit="return confirm('Pasa a compras el total bruto de {{ fila.cuartel }}, una sola vez.');">
-            <input type="hidden" name="action" value="cosecha_migrar">
-            <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
-            <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
-            <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
-            <input type="hidden" name="cuartel" value="{{ fila.cuartel }}">
-            <button class="btn btn-primary btn-sm w-100" type="submit">Pasar a compras</button>
-          </form>
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
-      {% if fila.abonos_detalle %}
-      <ul class="small text-muted mb-0 mt-2">
-        {% for abono in fila.abonos_detalle %}
-        <li>{{ abono.fecha }} · {{ abono.monto_txt }}{% if abono.nota %} · {{ abono.nota }}{% endif %}</li>
-        {% endfor %}
-      </ul>
-      {% endif %}
-    </div>
-    {% endfor %}
+    <h2 class="h6">Totes por cuartel</h2>
+    <p class="small text-muted">Sirve para armar el monto en Registrar servicio. Cosecha no crea el gasto.</p>
+    <ul class="mb-0">
+      {% for fila in cosecha_filas %}
+      <li>{{ fila.cuartel }} · {{ fila.totes }} totes</li>
+      {% endfor %}
+    </ul>
   </div>
   {% if cosecha_faena.abierta %}
   <form method="post">

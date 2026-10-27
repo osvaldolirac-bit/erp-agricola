@@ -7,7 +7,6 @@ from pathlib import Path
 
 from demo_web.services.cosecha import (
     abrir_faena,
-    aplicar_en_compras,
     asegurar_tablas,
     atender_anotadora,
     contar_totes,
@@ -17,14 +16,11 @@ from demo_web.services.cosecha import (
     entregar_funda,
     filtrar_cuarteles_cosecha,
     guardar_persona,
-    guardar_precio,
     listar_fundas,
     listar_links,
     nueva_faena,
     payload_qr,
-    plan_cierre,
     planilla_numeros,
-    registrar_abono,
     sumar_tote,
     url_whatsapp,
     validar_rut_cosecha,
@@ -138,47 +134,24 @@ class TestFaena(unittest.TestCase):
         self.assertEqual(primero, 1)
         self.assertEqual(contar_totes(conn, faena, "CEREZOS CORTE 1"), 2)
 
-    def test_el_pase_a_compras_es_el_bruto_de_un_cuartel_y_no_se_repite(self):
+    def test_cerrar_la_faena_no_escribe_en_compras(self):
         conn = _conn()
         _ok, _msg, faena = abrir_faena(conn, 1, ["CIRUELOS"], "2026-11-20")
-        _ok, _msg, _n = entregar_funda(conn, faena, "Ana")
         token = listar_links(conn, faena)[0]["token"]
         for hora in ("08:00:00", "08:10:00", "08:20:00"):
             sumar_tote(conn, token, 1, f"2026-11-20 {hora}")
-        guardar_precio(conn, faena, "CIRUELOS", 1000)
-        registrar_abono(conn, faena, "CIRUELOS", 1500, "Adelanto", "2026-11-20")
-        ok, msg, plan = plan_cierre(conn, faena, "CIRUELOS")
+        ok, msg, nueva = nueva_faena(conn, faena, ["CIRUELOS"], "2026-11-21")
         self.assertTrue(ok, msg)
-        self.assertEqual(plan["selcc"], ["CIRUELOS"])
-        self.assertEqual(plan["totes"], 3)
-        self.assertEqual(plan["bruto"], 3000)
-        self.assertEqual(sum(a["monto"] for a in plan["abonos"]), 1500)
-        self.assertNotIn("1500", plan["concepto"])
-
-        llamadas = []
-
-        def registrar(cid, proveedor, nro, f_compra, f_vence, monto, concepto, selcc):
-            llamadas.append({"monto": monto, "selcc": list(selcc), "concepto": concepto})
-            conn.execute(
-                """INSERT INTO facturas (nro_documento, proveedor, monto_total, contratista_id, concepto)
-                   VALUES (?,?,?,?,?)""",
-                (nro, proveedor, monto, cid, concepto),
-            )
-            return True, None
-
-        ok, doc = aplicar_en_compras(conn, plan, registrar, "CONTR-20261120-01", "2026-11-20", "oficina")
-        self.assertTrue(ok, doc)
-        self.assertEqual(len(llamadas), 1)
-        self.assertEqual(llamadas[0]["monto"], 3000)
-        self.assertEqual(llamadas[0]["selcc"], ["CIRUELOS"])
-        abonos = conn.execute("SELECT factura_id, monto, metodo_pago FROM facturas_abonos").fetchall()
-        self.assertEqual(abonos, [(1, 1500, "Abono cosecha")])
-        ok, msg, _plan = plan_cierre(conn, faena, "CIRUELOS")
-        self.assertFalse(ok)
-        self.assertIn("ya pasó", msg)
-        self.assertEqual(len(llamadas), 1)
-        marca = conn.execute("SELECT factura_abono_id FROM cosecha_abono").fetchone()
-        self.assertEqual(marca[0], 1)
+        self.assertNotEqual(nueva, faena)
+        self.assertEqual(contar_totes(conn, faena, "CIRUELOS"), 3)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM facturas").fetchone()[0], 0)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM facturas_abonos").fetchone()[0], 0)
+        html = Path("demo_web/templates/modules/rrhh.html").read_text(encoding="utf-8")
+        self.assertNotIn("Pasar a compras", html)
+        self.assertNotIn("cosecha_migrar", html)
+        self.assertNotIn("cosecha_precio", html)
+        self.assertNotIn("cosecha_abono", html)
+        self.assertIn("Registrar servicio", html)
 
     def test_el_telefono_no_lleva_precios(self):
         conn = _conn()
@@ -238,7 +211,7 @@ class TestFaena(unittest.TestCase):
         self.assertIn('name="cosechero"', html)
         self.assertIn("not persona.asignado", html)
         self.assertIn("cosecha_persona", html)
-        self.assertIn("Pasar a compras", html)
+        self.assertIn("Totes por cuartel", html)
         self.assertNotIn("Generar QR", html)
         self.assertNotIn("cosecha_imprimir", html)
 

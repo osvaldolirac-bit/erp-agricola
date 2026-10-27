@@ -1,9 +1,9 @@
-"""Cosecha de contratistas: fundas, totes por cuartel y pase a compras.
+"""Cosecha de contratistas: fundas y totes por cuartel.
 
 La faena cuelga de un contratista. El número de funda es de esa faena:
 si el cosechero se va, el número muere y el siguiente usa el correlativo.
-Cada cuartel tiene su propio enlace. El precio vive solo en la planilla
-de oficina; el teléfono cuenta totes.
+Cada cuartel tiene su propio enlace. El gasto no sale de aquí: se anota
+en Registrar servicio.
 """
 from __future__ import annotations
 
@@ -942,13 +942,10 @@ def aplicar_en_compras(
 
 
 def puede_cerrar_faena(conn: sqlite3.Connection, faena_id: int) -> tuple[bool, str]:
-    links = listar_links(conn, faena_id)
-    for link in links:
-        totes = contar_totes(conn, faena_id, link["cuartel"])
-        if totes <= 0:
-            continue
-        if not _cerrado(conn, faena_id, link["cuartel"]):
-            return False, f"{link['cuartel']} todavía no pasa a compras."
+    """Cerrar la faena no pasa por compras ni por la cuenta corriente."""
+    faena = _faena(conn, faena_id)
+    if not faena or faena["estado"] != "abierta":
+        return False, "La faena no está abierta."
     return True, ""
 
 
