@@ -359,7 +359,13 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
-def _volver_cosecha(token: str, tenant: str, tab: str, numero: int | None = None):
+def _volver_cosecha(
+    token: str,
+    tenant: str,
+    tab: str,
+    numero: int | None = None,
+    fecha: str = "",
+):
     args = {
         "token": token,
         "tenant": (tenant or "concepcion").strip().lower(),
@@ -367,6 +373,8 @@ def _volver_cosecha(token: str, tenant: str, tab: str, numero: int | None = None
     }
     if numero:
         args["n"] = numero
+    if fecha:
+        args["fecha"] = fecha
     return redirect(url_for("auth.cosecha_formulario", **args))
 
 
@@ -389,8 +397,12 @@ def cosecha_formulario(token: str):
             raw = (request.form.get("numero") or "").strip()
             numero = int(raw) if raw.isdigit() else None
             cuando = ""
+            hoy = ""
             if hasattr(demo, "hora_chile"):
-                cuando = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+                ahora = demo.hora_chile()
+                cuando = ahora.strftime("%Y-%m-%d %H:%M:%S")
+                hoy = ahora.strftime("%Y-%m-%d")
+            fecha = (request.form.get("fecha") or hoy).strip()
             ok, msg, n = atender_anotadora(
                 conn,
                 token,
@@ -399,17 +411,41 @@ def cosecha_formulario(token: str):
                 request.form.get("nombre") or "",
                 cuando,
                 request.form.get("rut") or "",
+                fecha,
             )
             if ok:
                 conn.commit()
+                session.pop("cosecha_borrador", None)
             else:
                 conn.rollback()
+                if accion == "persona":
+                    session["cosecha_borrador"] = {
+                        "numero": n or numero or 0,
+                        "nombre": request.form.get("nombre") or "",
+                        "rut": request.form.get("rut") or "",
+                    }
             flash(msg, "success" if ok else "danger")
             volver = None if ok and accion == "sumar" else (n or numero)
-            return _volver_cosecha(token, tenant, request.form.get("tab") or tab, volver)
+            return _volver_cosecha(
+                token,
+                tenant,
+                request.form.get("tab") or tab,
+                volver,
+                fecha if (request.form.get("tab") or tab) != "ingresado" else "",
+            )
         raw_n = (request.args.get("n") or "").strip()
         numero = int(raw_n) if raw_n.isdigit() else None
         ctx = vista_anotadora(conn, token, tab, numero)
+        if ctx is not None:
+            hoy = demo.hora_chile().strftime("%Y-%m-%d") if hasattr(demo, "hora_chile") else ""
+            pedida = (request.args.get("fecha") or "").strip()
+            ctx["fecha"] = pedida or hoy
+            borrador = session.pop("cosecha_borrador", None)
+            if isinstance(borrador, dict):
+                for fila in ctx["filas"]:
+                    if int(fila["numero"]) == int(borrador.get("numero") or 0):
+                        fila["nombre"] = borrador.get("nombre") or ""
+                        fila["rut"] = borrador.get("rut") or ""
     finally:
         conn.close()
     if not ctx:

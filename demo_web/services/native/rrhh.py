@@ -1154,8 +1154,10 @@ def _contratistas_cosecha(demo, conn) -> dict:
     from demo_web.services.cosecha import (
         armar_panel,
         cuarteles_de_cosecha,
+        detalle_ingresos,
         faena_abierta,
         listar_faenas,
+        planilla_numeros,
         slug_para_link,
         url_anotadora,
         url_whatsapp,
@@ -1180,6 +1182,14 @@ def _contratistas_cosecha(demo, conn) -> dict:
     if not faena_id and str(sel).isdigit():
         faena_id = faena_abierta(conn, int(sel)) or (faenas[0]["id"] if faenas else 0)
     panel = armar_panel(conn, faena_id) if faena_id else {}
+    filtro_numero = request.args.get("cosechero") or ""
+    numero_filtro = int(filtro_numero) if str(filtro_numero).isdigit() else None
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    if len(desde) != 10:
+        desde = ""
+    if len(hasta) != 10:
+        hasta = ""
     slug = slug_para_link()
     marca = nombre_erp(demo)
     links = []
@@ -1222,7 +1232,18 @@ def _contratistas_cosecha(demo, conn) -> dict:
         "cosecha_faena": panel or None,
         "cosecha_links": links,
         "cosecha_filas": filas,
-        "cosecha_numeros": panel.get("numeros") or [] if panel else [],
+        "cosecha_numeros": (
+            planilla_numeros(conn, faena_id, numero=numero_filtro, desde=desde, hasta=hasta)
+            if panel else []
+        ),
+        "cosecha_personas": panel.get("numeros") or [] if panel else [],
+        "cosecha_detalle": (
+            detalle_ingresos(conn, faena_id, numero=numero_filtro, desde=desde, hasta=hasta)
+            if panel else []
+        ),
+        "cosecha_filtro_numero": numero_filtro or "",
+        "cosecha_desde": desde,
+        "cosecha_hasta": hasta,
         "cosecha_siguiente": panel.get("siguiente", 1) if panel else 1,
         "hoy": hoy_demo(demo).isoformat(),
     }

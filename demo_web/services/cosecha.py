@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import secrets
 import sqlite3
+from datetime import datetime
 from typing import Any, Callable
 
 from demo_web.services.espino_scope import VARIEDADES_ESPINO
@@ -83,7 +84,8 @@ _TABLAS_COSECHA = (
             funda_id INTEGER NOT NULL,
             cuartel TEXT NOT NULL,
             anulado INTEGER NOT NULL DEFAULT 0,
-            creado TEXT NOT NULL
+            creado TEXT NOT NULL,
+            fecha TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS cosecha_abono (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,6 +121,40 @@ def asegurar_tablas(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(cosecha_funda)")}
     if cols and "rut" not in cols:
         conn.execute("ALTER TABLE cosecha_funda ADD COLUMN rut TEXT NOT NULL DEFAULT ''")
+    tote_cols = {r[1] for r in conn.execute("PRAGMA table_info(cosecha_tote)")}
+    if tote_cols and "fecha" not in tote_cols:
+        conn.execute("ALTER TABLE cosecha_tote ADD COLUMN fecha TEXT NOT NULL DEFAULT ''")
+    if tote_cols or "fecha" in {r[1] for r in conn.execute("PRAGMA table_info(cosecha_tote)")}:
+        conn.execute(
+            """UPDATE cosecha_tote
+               SET fecha = substr(creado, 1, 10)
+               WHERE COALESCE(fecha, '') = '' AND length(COALESCE(creado, '')) >= 10"""
+        )
+
+
+def _dia(fecha: str, fecha_hora: str = "") -> tuple[bool, str, str]:
+    texto = (fecha or "").strip()
+    if not texto and len(fecha_hora or "") >= 10:
+        texto = fecha_hora[:10]
+    partes = texto.split("-")
+    if len(partes) != 3 or any(not p.isdigit() for p in partes):
+        return False, "Elija la fecha.", ""
+    anio, mes, dia = (int(p) for p in partes)
+    try:
+        datetime(anio, mes, dia)
+    except ValueError:
+        return False, "La fecha no es válida.", ""
+    if anio < 2020 or anio > 2100:
+        return False, "La fecha no es válida.", ""
+    return True, "", f"{anio:04d}-{mes:02d}-{dia:02d}"
+
+
+def _fecha_sql(alias: str = "") -> str:
+    col = f"{alias}fecha" if alias else "fecha"
+    creado = f"{alias}creado" if alias else "creado"
+    return (
+        f"CASE WHEN COALESCE({col}, '') <> '' THEN {col} ELSE substr({creado}, 1, 10) END"
+    )
 
 
 def _nombre(raw: str, *, obligatorio: bool) -> tuple[bool, str, str]:
@@ -438,28 +474,93 @@ def guardar_persona(
         "UPDATE cosecha_funda SET nombre=?, rut=? WHERE id=?",
         (nombre, rut, int(funda["id"])),
     )
-    return True, f"Número {n} actualizado."
+    quien = nombre or "sin nombre"
+    texto = f"Número {n} · {quien}"
+    if rut:
+        texto += f" · {rut}"
+    return True, f"{texto} quedó guardado."
 
 
-def planilla_numeros(conn: sqlite3.Connection, faena_id: int) -> list[dict]:
+def planilla_numeros(
+    conn: sqlite3.Connection,
+    faena_id: int,
+    *,
+    numero: int | None = None,
+    desde: str = "",
+    hasta: str = "",
+) -> list[dict]:
     """Lo que la anotadora ingresó por los enlaces, por número y cuartel."""
     asegurar_tablas(conn)
     cuarteles = [x["cuartel"] for x in listar_links(conn, faena_id)]
+    expr = _fecha_sql()
+    sql = f"""SELECT funda_id, cuartel, COUNT(*) FROM cosecha_tote
+              WHERE faena_id=? AND anulado=0"""
+    params: list[Any] = [int(faena_id)]
+    if desde:
+        sql += f" AND ({expr}) >= ?"
+        params.append(desde)
+    if hasta:
+        sql += f" AND ({expr}) <= ?"
+        params.append(hasta)
+    sql += " GROUP BY funda_id, cuartel"
     cuentas: dict[int, dict[str, int]] = {}
-    filas_db = conn.execute(
-        """SELECT funda_id, cuartel, COUNT(*) FROM cosecha_tote
-           WHERE faena_id=? AND anulado=0
-           GROUP BY funda_id, cuartel""",
-        (int(faena_id),),
-    ).fetchall()
-    for funda_id, cuartel, n in filas_db:
+    for funda_id, cuartel, n in conn.execute(sql, params).fetchall():
         cuentas.setdefault(int(funda_id), {})[str(cuartel)] = int(n)
     salida = []
     for funda in listar_fundas(conn, faena_id):
+        if numero is not None and int(funda["numero"]) != int(numero):
+            continue
         por = cuentas.get(int(funda["id"]), {})
         totes = {cc: int(por.get(cc, 0)) for cc in cuarteles}
-        salida.append({**funda, "totes": totes, "total": sum(totes.values())})
+        total = sum(totes.values())
+        if numero is None and (desde or hasta) and total <= 0:
+            continue
+        salida.append({**funda, "totes": totes, "total": total})
     return salida
+
+
+def detalle_ingresos(
+    conn: sqlite3.Connection,
+    faena_id: int,
+    *,
+    numero: int | None = None,
+    desde: str = "",
+    hasta: str = "",
+) -> list[dict]:
+    """Una fila por fecha, cosechero y cuartel. Es lo que anotó el enlace."""
+    asegurar_tablas(conn)
+    expr = _fecha_sql("t.")
+    sql = f"""SELECT f.numero, f.nombre, COALESCE(f.rut, ''), t.cuartel, {expr} AS dia, COUNT(*)
+              FROM cosecha_tote t
+              JOIN cosecha_funda f ON f.id = t.funda_id
+              WHERE t.faena_id=? AND t.anulado=0"""
+    params: list[Any] = [int(faena_id)]
+    if numero is not None:
+        sql += " AND f.numero=?"
+        params.append(int(numero))
+    if desde:
+        sql += f" AND ({expr}) >= ?"
+        params.append(desde)
+    if hasta:
+        sql += f" AND ({expr}) <= ?"
+        params.append(hasta)
+    sql += f" GROUP BY f.numero, t.cuartel, {expr} ORDER BY dia DESC, f.numero, t.cuartel"
+    filas = []
+    for numero_f, nombre, rut, cuartel, dia, n in conn.execute(sql, params).fetchall():
+        iso = str(dia or "")
+        visible = f"{iso[8:10]}-{iso[5:7]}-{iso[0:4]}" if len(iso) == 10 else iso
+        filas.append(
+            {
+                "numero": int(numero_f),
+                "nombre": nombre or "",
+                "rut": rut or "",
+                "cuartel": cuartel or "",
+                "fecha": iso,
+                "fecha_txt": visible,
+                "totes": int(n),
+            }
+        )
+    return filas
 
 
 def guardar_precio(conn: sqlite3.Connection, faena_id: int, cuartel: str, precio: float) -> tuple[bool, str]:
@@ -537,6 +638,7 @@ def sumar_tote(
     token: str,
     numero: int,
     fecha_hora: str,
+    fecha: str = "",
 ) -> tuple[bool, str, int]:
     link = _link_por_token(conn, token)
     if not link:
@@ -552,6 +654,9 @@ def sumar_tote(
     funda = _funda(conn, int(link["faena_id"]), n)
     if funda and funda["estado"] != "activa":
         return False, f"El número {n} ya no se usa.", n
+    ok_dia, msg_dia, dia = _dia(fecha, fecha_hora)
+    if not ok_dia:
+        return False, msg_dia, n
     if not funda:
         conn.execute(
             """INSERT INTO cosecha_funda (faena_id, numero, nombre, rut, estado)
@@ -560,29 +665,38 @@ def sumar_tote(
         )
         funda = _funda(conn, int(link["faena_id"]), n)
     conn.execute(
-        """INSERT INTO cosecha_tote (faena_id, funda_id, cuartel, anulado, creado)
-           VALUES (?,?,?,0,?)""",
-        (int(link["faena_id"]), int(funda["id"]), link["cuartel"], fecha_hora),
+        """INSERT INTO cosecha_tote (faena_id, funda_id, cuartel, anulado, creado, fecha)
+           VALUES (?,?,?,0,?,?)""",
+        (int(link["faena_id"]), int(funda["id"]), link["cuartel"], fecha_hora, dia),
     )
     total = contar_totes(conn, int(link["faena_id"]), link["cuartel"], int(funda["id"]))
     quien = (funda["nombre"] or "").strip()
     texto = f"Número {n}" + (f" · {quien}" if quien else "")
-    return True, f"{texto} lleva {total} totes.", n
+    visible = f"{dia[8:10]}-{dia[5:7]}-{dia[0:4]}"
+    return True, f"{texto} lleva {total} totes el {visible}.", n
 
 
-def deshacer_ultimo(conn: sqlite3.Connection, token: str) -> tuple[bool, str, int]:
+def deshacer_ultimo(conn: sqlite3.Connection, token: str, fecha: str = "") -> tuple[bool, str, int]:
     link = _link_por_token(conn, token)
     if not link:
         return False, "Este enlace no corresponde a la faena.", 0
     if _cerrado(conn, int(link["faena_id"]), link["cuartel"]):
         return False, "Este cuartel ya está cerrado.", 0
-    row = conn.execute(
-        """SELECT t.id, f.numero, f.nombre FROM cosecha_tote t
-           JOIN cosecha_funda f ON f.id=t.funda_id
-           WHERE t.faena_id=? AND t.cuartel=? AND t.anulado=0
-           ORDER BY t.id DESC LIMIT 1""",
-        (int(link["faena_id"]), link["cuartel"]),
-    ).fetchone()
+    dia = ""
+    if (fecha or "").strip():
+        ok_dia, msg_dia, dia = _dia(fecha, "")
+        if not ok_dia:
+            return False, msg_dia, 0
+    expr = _fecha_sql("t.")
+    sql = """SELECT t.id, f.numero, f.nombre FROM cosecha_tote t
+             JOIN cosecha_funda f ON f.id=t.funda_id
+             WHERE t.faena_id=? AND t.cuartel=? AND t.anulado=0"""
+    params: list[Any] = [int(link["faena_id"]), link["cuartel"]]
+    if dia:
+        sql += f" AND ({expr})=?"
+        params.append(dia)
+    sql += " ORDER BY t.id DESC LIMIT 1"
+    row = conn.execute(sql, params).fetchone()
     if not row:
         return False, "No hay un tote para deshacer.", 0
     conn.execute("UPDATE cosecha_tote SET anulado=1 WHERE id=?", (int(row[0]),))
@@ -671,6 +785,7 @@ def atender_anotadora(
     nombre: str,
     fecha_hora: str,
     rut: str = "",
+    fecha: str = "",
 ) -> tuple[bool, str, int]:
     link = _link_por_token(conn, token)
     if not link:
@@ -680,8 +795,8 @@ def atender_anotadora(
         ok, msg = guardar_persona(conn, faena_id, int(numero or 0), nombre, rut)
         return ok, msg, int(numero or 0)
     if accion == "deshacer":
-        return deshacer_ultimo(conn, token)
-    return sumar_tote(conn, token, int(numero or 0), fecha_hora)
+        return deshacer_ultimo(conn, token, fecha)
+    return sumar_tote(conn, token, int(numero or 0), fecha_hora, fecha)
 
 
 def plan_cierre(conn: sqlite3.Connection, faena_id: int, cuartel: str) -> tuple[bool, str, dict | None]:

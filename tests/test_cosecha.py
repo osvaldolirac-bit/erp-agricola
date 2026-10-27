@@ -12,6 +12,8 @@ from demo_web.services.cosecha import (
     atender_anotadora,
     contar_totes,
     dar_de_baja,
+    deshacer_ultimo,
+    detalle_ingresos,
     entregar_funda,
     filtrar_cuarteles_cosecha,
     guardar_persona,
@@ -194,6 +196,8 @@ class TestFaena(unittest.TestCase):
         self.assertIn('name="nombre"', html)
         self.assertIn('name="rut"', html)
         self.assertIn("Deshacer el último", html)
+        self.assertIn('type="date"', html)
+        self.assertIn('name="fecha"', html)
         self.assertNotIn("precio", html.lower())
         self.assertNotIn("abono", html.lower())
         self.assertNotIn("peso", html.lower())
@@ -229,6 +233,8 @@ class TestFaena(unittest.TestCase):
         self.assertEqual(payload_qr(12), "12")
         html = Path("demo_web/templates/modules/rrhh.html").read_text(encoding="utf-8")
         self.assertIn("Planilla de la faena", html)
+        self.assertIn("Ingresos del enlace", html)
+        self.assertIn('name="cosechero"', html)
         self.assertIn("cosecha_persona", html)
         self.assertIn("Pasar a compras", html)
         self.assertNotIn("Generar QR", html)
@@ -264,6 +270,28 @@ class TestNumeroYRut(unittest.TestCase):
         self.assertNotIn("SANTINA", planilla[0]["totes"])
         self.assertNotIn("EL ESPINO", planilla[0]["totes"])
         self.assertEqual(planilla[0]["total"], 3)
+        sumar_tote(conn, links["CEREZOS CORTE 1"], 7, "2026-11-21 08:00:00", "2026-11-21")
+        solo_dia = planilla_numeros(conn, faena, numero=7, desde="2026-11-21", hasta="2026-11-21")
+        self.assertEqual(solo_dia[0]["totes"]["CEREZOS CORTE 1"], 1)
+        self.assertEqual(solo_dia[0]["totes"]["CIRUELOS"], 0)
+        self.assertEqual(solo_dia[0]["total"], 1)
+        detalle = detalle_ingresos(conn, faena, numero=7)
+        self.assertEqual(
+            [(f["fecha"], f["cuartel"], f["totes"]) for f in detalle],
+            [
+                ("2026-11-21", "CEREZOS CORTE 1", 1),
+                ("2026-11-20", "CEREZOS CORTE 1", 1),
+                ("2026-11-20", "CIRUELOS", 2),
+            ],
+        )
+        self.assertTrue(all(f["nombre"] == "Ana Soto" and f["rut"] == "12.345.678-5" for f in detalle))
+        self.assertNotIn("SANTINA", {f["cuartel"] for f in detalle})
+        ok, msg, _n = deshacer_ultimo(conn, links["CEREZOS CORTE 1"], "2026-11-21")
+        self.assertTrue(ok, msg)
+        self.assertEqual(
+            contar_totes(conn, faena, "CEREZOS CORTE 1"),
+            1,
+        )
         ok, _msg = dar_de_baja(conn, faena, 7)
         self.assertTrue(ok)
         ok, msg, _n = sumar_tote(conn, links["CEREZOS CORTE 1"], 7, "2026-11-20 10:00:00")
@@ -298,7 +326,25 @@ class TestNumeroYRut(unittest.TestCase):
         conn.execute(
             "INSERT INTO cosecha_funda (faena_id, numero, nombre, estado) VALUES (1, 3, 'María', 'activa')"
         )
+        conn.execute(
+            """CREATE TABLE cosecha_tote (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                faena_id INTEGER NOT NULL,
+                funda_id INTEGER NOT NULL,
+                cuartel TEXT NOT NULL,
+                anulado INTEGER NOT NULL DEFAULT 0,
+                creado TEXT NOT NULL
+            )"""
+        )
+        conn.execute(
+            """INSERT INTO cosecha_tote (faena_id, funda_id, cuartel, anulado, creado)
+               VALUES (1, 1, 'CIRUELOS', 0, '2026-10-27 10:51:08')"""
+        )
         asegurar_tablas(conn)
+        self.assertEqual(
+            conn.execute("SELECT fecha FROM cosecha_tote").fetchone()[0],
+            "2026-10-27",
+        )
         fundas = listar_fundas(conn, 1)
         self.assertEqual([f["nombre"] for f in fundas], ["Ana", "Luis", "María"])
         self.assertEqual([f["numero"] for f in fundas], [1, 2, 3])
