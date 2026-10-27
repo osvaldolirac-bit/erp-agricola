@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fundas de cosecha</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; color: #111; }
+    .hoja { display: flex; flex-wrap: wrap; gap: 12px; }
+    .funda {
+      width: 240px;
+      border: 2px solid #222;
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .numero { font-size: 72px; font-weight: 800; line-height: 0.95; margin: 0; }
+    .nombre { min-height: 1.4rem; font-size: 16px; margin: 4px 0 8px; }
+    svg { width: 180px; height: 180px; }
+    @media print {
+      .no-print { display: none; }
+      body { margin: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <p class="no-print"><button type="button" onclick="window.print()">Imprimir</button></p>
+  <div class="hoja">
+    {% for funda in fundas %}
+    <article class="funda">
+      <p class="numero">{{ funda.numero }}</p>
+      <p class="nombre">{{ funda.nombre }}</p>
+      {{ funda.qr|safe }}
+    </article>
+    {% endfor %}
+  </div>
+</body>
+</html>

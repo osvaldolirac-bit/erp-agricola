@@ -379,6 +379,212 @@
   </table></div></div>
   {% else %}<div class="alert alert-info">Sin movimientos para este contratista.</div>{% endif %}
   {% endif %}
+
+  {% elif sub_activa == 'cosecha' %}
+  <div class="panel-card mb-3">
+    <form method="get" class="row g-2 align-items-end">
+      <input type="hidden" name="sec" value="contratistas">
+      <input type="hidden" name="sub" value="cosecha">
+      <div class="col-md-5">
+        <label class="form-label">Contratista</label>
+        <select name="contratista_id" class="form-select" onchange="this.form.submit()">
+          {% for c in cosecha_contratistas %}
+          <option value="{{ c.id }}" {% if c.id|string == cosecha_sel_id %}selected{% endif %}>{{ c.razon_social }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if cosecha_faenas|length > 1 %}
+      <div class="col-md-4">
+        <label class="form-label">Faena</label>
+        <select name="faena_id" class="form-select" onchange="this.form.submit()">
+          {% for f in cosecha_faenas %}
+          <option value="{{ f.id }}" {% if f.id == cosecha_faena_id %}selected{% endif %}>{{ f.creada }} · {{ f.estado }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+    </form>
+    <p class="small text-muted mb-0 mt-2">Esta pantalla solo cuenta totes. El gasto se anota en Registrar servicio, no en compras ni en la cuenta corriente.</p>
+  </div>
+  {% if cosecha_sin %}
+  <div class="alert alert-warning">Registre un contratista activo en Maestro.</div>
+  {% elif not cosecha_cuarteles %}
+  <div class="alert alert-warning">Esta empresa no tiene cuarteles de cosecha.</div>
+  {% elif not cosecha_faena %}
+  <form method="post">
+    <input type="hidden" name="action" value="cosecha_abrir">
+    <input type="hidden" name="sec" value="contratistas">
+    <input type="hidden" name="sub" value="cosecha">
+    <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+    <button type="submit" class="btn btn-primary">Abrir faena</button>
+    <p class="small text-muted mt-2 mb-0">Los números parten de 1. Los cuarteles de esta empresa son: {{ cosecha_cuarteles|join(', ') }}.</p>
+  </form>
+  {% else %}
+  <div class="panel-card mb-3">
+    <h2 class="h6">Enlace por cuartel</h2>
+    <p class="small text-muted">Cada enlace ya trae el cuartel. La anotadora no lo elige.</p>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Cuartel</th><th>Enlace</th><th></th></tr></thead>
+        <tbody>
+          {% for link in cosecha_links %}
+          <tr>
+            <td class="text-nowrap">{{ link.cuartel }}</td>
+            <td><input class="form-control form-control-sm" readonly value="{{ link.url }}" onclick="this.select()"></td>
+            <td class="text-nowrap">
+              <a class="btn btn-sm btn-outline-success" href="{{ link.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6">Ingresos del enlace</h2>
+    <p class="small text-muted">Lo que la anotadora carga en el teléfono: fecha, número, nombre, RUT y totes del cuartel.</p>
+    <form method="get" class="row g-2 align-items-end mb-3">
+      <input type="hidden" name="sec" value="contratistas">
+      <input type="hidden" name="sub" value="cosecha">
+      <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+      <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
+      <div class="col-md-4">
+        <label class="form-label">Cosechero</label>
+        <select name="cosechero" class="form-select form-select-sm">
+          <option value="">Todos</option>
+          {% for persona in cosecha_personas %}
+          <option value="{{ persona.numero }}" {% if cosecha_filtro_numero == persona.numero %}selected{% endif %}>{{ persona.numero }}{% if persona.nombre %} · {{ persona.nombre }}{% endif %}{% if persona.rut %} · {{ persona.rut }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Desde</label>
+        <input type="date" name="desde" class="form-control form-control-sm" value="{{ cosecha_desde }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="hasta" class="form-control form-control-sm" value="{{ cosecha_hasta }}">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-outline-primary btn-sm w-100" type="submit">Filtrar</button>
+      </div>
+    </form>
+    {% if cosecha_detalle %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>N°</th>
+            <th>Nombre</th>
+            <th>RUT</th>
+            <th>Cuartel</th>
+            <th class="text-end">Totes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fila in cosecha_detalle %}
+          <tr>
+            <td class="text-nowrap">{{ fila.fecha_txt }}</td>
+            <td>{{ fila.numero }}</td>
+            <td>{{ fila.nombre or "—" }}</td>
+            <td>{{ fila.rut or "—" }}</td>
+            <td>{{ fila.cuartel }}</td>
+            <td class="text-end fw-semibold">{{ fila.totes }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Todavía no hay totes del enlace en este filtro.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6">Planilla de la faena</h2>
+    <p class="small text-muted">Los totes entran por el enlace de cada cuartel. Acá se leen y se completa el nombre y el RUT del número.</p>
+    {% if cosecha_numeros %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>Nombre y RUT</th>
+            {% for link in cosecha_links %}<th class="text-end">{{ link.cuartel }}</th>{% endfor %}
+            <th class="text-end">Total</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for persona in cosecha_numeros %}
+          <tr>
+            <td class="fw-semibold">{{ persona.numero }}</td>
+            <td style="min-width: 16rem;">
+              {% if cosecha_faena.abierta and persona.viva and not persona.asignado %}
+              <form method="post" class="d-flex flex-wrap gap-1">
+                <input type="hidden" name="action" value="cosecha_persona">
+                <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
+                <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+                <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
+                <input type="hidden" name="numero" value="{{ persona.numero }}">
+                <input name="nombre" class="form-control form-control-sm" style="max-width: 10rem;" value="{{ persona.nombre }}" placeholder="Nombre" maxlength="80">
+                <input name="rut" class="form-control form-control-sm" style="max-width: 9rem;" value="{{ persona.rut }}" placeholder="RUT" maxlength="20" autocomplete="off">
+                <button class="btn btn-outline-primary btn-sm" type="submit">Guardar</button>
+              </form>
+              {% else %}{{ persona.nombre or "—" }}{% if persona.rut %} · {{ persona.rut }}{% endif %}{% endif %}
+            </td>
+            {% for link in cosecha_links %}
+            <td class="text-end">{{ persona.totes[link.cuartel] }}</td>
+            {% endfor %}
+            <td class="text-end fw-semibold">{{ persona.total }}</td>
+            <td class="text-end">
+              {% if cosecha_faena.abierta and persona.viva %}
+              <form method="post">
+                <input type="hidden" name="action" value="cosecha_baja">
+                <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
+                <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+                <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
+                <input type="hidden" name="numero" value="{{ persona.numero }}">
+                <button class="btn btn-outline-danger btn-sm" type="submit">Dar de baja</button>
+              </form>
+              {% elif not persona.viva %}<span class="badge bg-secondary">Muerta</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Cuando la anotadora anote un número en el enlace, aparece en esta planilla.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel-card mb-3">
+    <h2 class="h6">Totes por cuartel</h2>
+    <p class="small text-muted">Sirve para armar el monto en Registrar servicio. Cosecha no crea el gasto.</p>
+    <ul class="mb-0">
+      {% for fila in cosecha_filas %}
+      <li>{{ fila.cuartel }} · {{ fila.totes }} totes</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% if cosecha_faena.abierta %}
+  <form method="post">
+    <input type="hidden" name="action" value="cosecha_nueva">
+    <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
+    <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+    <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
+    <button class="btn btn-outline-dark btn-sm" type="submit" {% if not cosecha_faena.puede_nueva %}disabled{% endif %}>Cerrar faena y abrir otra</button>
+    {% if not cosecha_faena.puede_nueva and cosecha_faena.aviso_nueva %}
+    <span class="small text-muted ms-2">{{ cosecha_faena.aviso_nueva }}</span>
+    {% else %}
+    <span class="small text-muted ms-2">Los números parten de nuevo. El detalle de cada cosechero se queda en esta faena.</span>
+    {% endif %}
+  </form>
+  {% endif %}
+  {% endif %}
   {% endif %}
 
   {% elif sec_activa == 'remuneraciones' %}

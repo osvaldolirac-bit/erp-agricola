@@ -21,6 +21,7 @@ def _imports_criticos() -> None:
     assert hasattr(sidebar_badges, "conteos_sidebar")
     from demo_web.services import tenant_rules  # noqa: F401
     from demo_web.services import prestamo_rrhh  # noqa: F401
+    from demo_web.services import cosecha  # noqa: F401
     from demo_web.services import remuneracion_extra  # noqa: F401
     from demo_web.services import tesoreria_alerta  # noqa: F401
 
@@ -28,6 +29,31 @@ def _imports_criticos() -> None:
     assert hasattr(prestamo_rrhh, "registrar_prestamo")
     assert hasattr(remuneracion_extra, "agregar")
     assert hasattr(remuneracion_extra, "proyeccion")
+    assert hasattr(cosecha, "filtrar_cuarteles_cosecha")
+    assert hasattr(cosecha, "asegurar_tablas")
+    lc = cosecha.filtrar_cuarteles_cosecha(
+        [
+            "CEREZOS CORTE 1",
+            "CEREZOS CORTE 2",
+            "CIRUELOS",
+            "NOGALES APARICION",
+            "NOGALES CRUZ DEL SUR",
+            "EL ESPINO",
+        ],
+        espino=False,
+    )
+    assert lc == [
+        "CEREZOS CORTE 1",
+        "CEREZOS CORTE 2",
+        "CIRUELOS",
+        "NOGALES APARICION",
+        "NOGALES CRUZ DEL SUR",
+    ]
+    assert cosecha.filtrar_cuarteles_cosecha(
+        ["ROYAL DOWN", "SWEET ARYANA", "SANTINA"],
+        espino=True,
+    ) == ["ROYAL DOWN", "SWEET ARYANA", "SANTINA"]
+    assert cosecha.filtrar_cuarteles_cosecha(lc, espino=True) == []
 
     assert tenant_rules.verify_tenant_registry_errors() == []
     from demo_web.services.native import (  # noqa: F401

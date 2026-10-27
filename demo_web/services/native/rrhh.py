@@ -43,6 +43,7 @@ SECCIONES = [
 
 CONTRATISTAS_SEC = [
     ("maestro", "📇 Maestro"),
+    ("cosecha", "🧺 Cosecha"),
     ("servicio", "📝 Registrar servicio"),
     ("por_cc", "📊 Por centro de costo"),
     ("cuenta", "📒 Cuenta corriente"),
@@ -709,6 +710,8 @@ def gather_rrhh(user_email: str, user_rol: str) -> dict:
                 ctx.update(_contratistas_por_cc(demo, conn))
             elif sub == "cuenta":
                 ctx.update(_contratistas_cuenta(demo, conn))
+            elif sub == "cosecha":
+                ctx.update(_contratistas_cosecha(demo, conn))
         elif sec == "remuneraciones":
             ctx.update(_remuneraciones(demo, conn))
         elif sec == "liquidacion":
@@ -1147,6 +1150,203 @@ def _post_eliminar_extra(demo, conn) -> dict:
     return {"ok": True, "msg": msg}
 
 
+def _contratistas_cosecha(demo, conn) -> dict:
+    from demo_web.services.cosecha import (
+        armar_panel,
+        cuarteles_de_cosecha,
+        detalle_ingresos,
+        faena_abierta,
+        listar_faenas,
+        planilla_numeros,
+        slug_para_link,
+        url_anotadora,
+        url_whatsapp,
+    )
+    from demo_web.services.tenant_scope import nombre_erp
+
+    df = pd.read_sql_query(
+        "SELECT id, razon_social FROM contratistas WHERE estado='Activo' ORDER BY razon_social",
+        conn,
+    )
+    contratistas = [
+        {"id": int(r["id"]), "razon_social": r["razon_social"]}
+        for _, r in df.iterrows()
+    ]
+    sel = request.args.get("contratista_id") or (str(contratistas[0]["id"]) if contratistas else "")
+    cuarteles = cuarteles_de_cosecha(demo)
+    faenas = listar_faenas(conn, int(sel)) if str(sel).isdigit() else []
+    pedida = request.args.get("faena_id") or ""
+    faena_id = int(pedida) if str(pedida).isdigit() else 0
+    if faena_id and not any(f["id"] == faena_id for f in faenas):
+        faena_id = 0
+    if not faena_id and str(sel).isdigit():
+        faena_id = faena_abierta(conn, int(sel)) or (faenas[0]["id"] if faenas else 0)
+    panel = armar_panel(conn, faena_id) if faena_id else {}
+    filtro_numero = request.args.get("cosechero") or ""
+    numero_filtro = int(filtro_numero) if str(filtro_numero).isdigit() else None
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    if len(desde) != 10:
+        desde = ""
+    if len(hasta) != 10:
+        hasta = ""
+    slug = slug_para_link()
+    marca = nombre_erp(demo)
+    links = []
+    filas = []
+    if panel:
+        for fila in panel["filas"]:
+            url = url_anotadora(fila["token"], slug)
+            links.append(
+                {
+                    "cuartel": fila["cuartel"],
+                    "url": url,
+                    "wa_url": url_whatsapp(fila["cuartel"], url, marca),
+                }
+            )
+            filas.append(
+                {
+                    "cuartel": fila["cuartel"],
+                    "totes": fila["totes"],
+                }
+            )
+    return {
+        "cosecha_contratistas": contratistas,
+        "cosecha_sel_id": sel,
+        "cosecha_sin": not contratistas,
+        "cosecha_cuarteles": cuarteles,
+        "cosecha_faenas": faenas,
+        "cosecha_faena_id": faena_id,
+        "cosecha_faena": panel or None,
+        "cosecha_links": links,
+        "cosecha_filas": filas,
+        "cosecha_numeros": (
+            planilla_numeros(conn, faena_id, numero=numero_filtro, desde=desde, hasta=hasta)
+            if panel else []
+        ),
+        "cosecha_personas": panel.get("numeros") or [] if panel else [],
+        "cosecha_detalle": (
+            detalle_ingresos(conn, faena_id, numero=numero_filtro, desde=desde, hasta=hasta)
+            if panel else []
+        ),
+        "cosecha_filtro_numero": numero_filtro or "",
+        "cosecha_desde": desde,
+        "cosecha_hasta": hasta,
+        "cosecha_siguiente": panel.get("siguiente", 1) if panel else 1,
+        "hoy": hoy_demo(demo).isoformat(),
+    }
+
+
+def _ids_cosecha() -> tuple[int, int]:
+    return int(request.form.get("contratista_id") or 0), int(request.form.get("faena_id") or 0)
+
+
+def _post_cosecha_abrir(demo, conn) -> dict:
+    from demo_web.services.cosecha import abrir_faena, cuarteles_de_cosecha
+
+    cid, _fid = _ids_cosecha()
+    ok, msg, nuevo = abrir_faena(conn, cid, cuarteles_de_cosecha(demo), str(hoy_demo(demo)))
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH COSECHA", f"abre faena contratista {cid}")
+    return {"ok": True, "msg": msg, "faena_id": nuevo}
+
+
+def _post_cosecha_persona(demo, conn) -> dict:
+    from demo_web.services.cosecha import guardar_persona
+
+    _cid, fid = _ids_cosecha()
+    try:
+        numero = int(request.form.get("numero") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Número inválido."}
+    ok, msg = guardar_persona(
+        conn,
+        fid,
+        numero,
+        request.form.get("nombre") or "",
+        request.form.get("rut") or "",
+    )
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH COSECHA", f"persona número {numero}")
+    return {"ok": True, "msg": msg}
+
+
+def _post_cosecha_blanco(demo, conn) -> dict:
+    from demo_web.services.cosecha import fundas_en_blanco
+
+    _cid, fid = _ids_cosecha()
+    try:
+        cantidad = int(request.form.get("cantidad") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Cantidad inválida."}
+    ok, msg = fundas_en_blanco(conn, fid, cantidad)
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH COSECHA", f"fundas en blanco faena {fid}")
+    return {"ok": True, "msg": msg}
+
+
+def _post_cosecha_alta(demo, conn) -> dict:
+    from demo_web.services.cosecha import entregar_funda
+
+    _cid, fid = _ids_cosecha()
+    ok, msg, _numero = entregar_funda(conn, fid, request.form.get("nombre") or "")
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH COSECHA", f"alta funda faena {fid}")
+    return {"ok": True, "msg": msg}
+
+
+def _post_cosecha_nombre(demo, conn) -> dict:
+    from demo_web.services.cosecha import poner_nombre
+
+    _cid, fid = _ids_cosecha()
+    try:
+        numero = int(request.form.get("numero") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Número inválido."}
+    ok, msg = poner_nombre(conn, fid, numero, request.form.get("nombre") or "", permitir_cambio=True)
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH COSECHA", f"nombre funda {numero}")
+    return {"ok": True, "msg": msg}
+
+
+def _post_cosecha_baja(demo, conn) -> dict:
+    from demo_web.services.cosecha import dar_de_baja
+
+    _cid, fid = _ids_cosecha()
+    try:
+        numero = int(request.form.get("numero") or 0)
+    except ValueError:
+        return {"ok": False, "msg": "Número inválido."}
+    ok, msg = dar_de_baja(conn, fid, numero)
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH COSECHA", f"baja funda {numero}")
+    return {"ok": True, "msg": msg}
+
+
+def _post_cosecha_nueva(demo, conn) -> dict:
+    from demo_web.services.cosecha import cuarteles_de_cosecha, nueva_faena
+
+    _cid, fid = _ids_cosecha()
+    ok, msg, nuevo = nueva_faena(conn, fid, cuarteles_de_cosecha(demo), str(hoy_demo(demo)))
+    if not ok:
+        return {"ok": False, "msg": msg}
+    conn.commit()
+    demo.registrar_accion("RRHH COSECHA", f"nueva faena {nuevo}")
+    return {"ok": True, "msg": msg, "faena_id": nuevo}
+
+
 def _post_liquidacion(demo, conn) -> dict:
     tid = int(request.form.get("trabajador_id") or 0)
     mes = demo._mes_rrhh_norm(request.form.get("mes") or "")
@@ -1198,6 +1398,13 @@ def view(user_email: str, user_rol: str):
                 "agregar_extra": _post_agregar_extra,
                 "eliminar_extra": _post_eliminar_extra,
                 "liquidacion": _post_liquidacion,
+                "cosecha_abrir": _post_cosecha_abrir,
+                "cosecha_persona": _post_cosecha_persona,
+                "cosecha_blanco": _post_cosecha_blanco,
+                "cosecha_alta": _post_cosecha_alta,
+                "cosecha_nombre": _post_cosecha_nombre,
+                "cosecha_baja": _post_cosecha_baja,
+                "cosecha_nueva": _post_cosecha_nueva,
             }
             fn = handlers.get(action)
             if fn:
@@ -1212,6 +1419,9 @@ def view(user_email: str, user_rol: str):
                     extra["edit_id"] = request.form.get("contratista_id", "")
                 if action == "registrar_servicio":
                     extra["contratista_id"] = request.form.get("contratista_id", "")
+                if action.startswith("cosecha_"):
+                    extra["contratista_id"] = request.form.get("contratista_id", "")
+                    extra["faena_id"] = result.get("faena_id") or request.form.get("faena_id", "")
                 if action in (
                     "guardar_ficha",
                     "registrar_prestamo",

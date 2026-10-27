@@ -14,7 +14,7 @@ from flask import (
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from demo_web.auth.decorators import login_required
+from demo_web.auth.decorators import login_required, module_required
 from demo_web.auth.login_next import (
     default_landing_url,
     pop_login_next,
@@ -357,3 +357,142 @@ def logout():
     session.clear()
     flash("Sesión cerrada.", "info")
     return redirect(url_for("auth.login"))
+
+
+def _volver_cosecha(
+    token: str,
+    tenant: str,
+    tab: str,
+    numero: int | None = None,
+    fecha: str = "",
+):
+    args = {
+        "token": token,
+        "tenant": (tenant or "concepcion").strip().lower(),
+        "tab": "ingresado" if tab == "ingresado" else "ingreso",
+    }
+    if numero:
+        args["n"] = numero
+    if fecha:
+        args["fecha"] = fecha
+    return redirect(url_for("auth.cosecha_formulario", **args))
+
+
+@bp.route("/cosecha/<token>", methods=["GET", "POST"])
+def cosecha_formulario(token: str):
+    """Teléfono de la anotadora: ingreso e ingresado, sin precios."""
+    from demo_web.services.cosecha import atender_anotadora, vista_anotadora
+    from demo_web.services.demo_loader import get_demo_module
+
+    demo = get_demo_module()
+    tenant = (request.values.get("tenant") or "concepcion").strip().lower()
+    tab = (request.values.get("tab") or "ingreso").strip()
+    conn = demo.conectar_db()
+    try:
+        if request.method == "POST":
+            if hasattr(demo, "es_solo_lectura") and demo.es_solo_lectura():
+                flash("Modo solo lectura.", "warning")
+                return _volver_cosecha(token, tenant, tab)
+            accion = (request.form.get("accion") or "sumar").strip()
+            raw = (request.form.get("numero") or "").strip()
+            numero = int(raw) if raw.isdigit() else None
+            cuando = ""
+            hoy = ""
+            if hasattr(demo, "hora_chile"):
+                ahora = demo.hora_chile()
+                cuando = ahora.strftime("%Y-%m-%d %H:%M:%S")
+                hoy = ahora.strftime("%Y-%m-%d")
+            from demo_web.services.cosecha import _dia
+
+            ok_dia, _, fecha = _dia((request.form.get("fecha") or "").strip(), hoy)
+            if not ok_dia:
+                fecha = hoy
+            ok, msg, n = atender_anotadora(
+                conn,
+                token,
+                accion,
+                numero,
+                request.form.get("nombre") or "",
+                cuando,
+                request.form.get("rut") or "",
+                fecha,
+            )
+            if ok:
+                conn.commit()
+                session.pop("cosecha_borrador", None)
+            else:
+                conn.rollback()
+                if accion == "persona":
+                    session["cosecha_borrador"] = {
+                        "numero": n or numero or 0,
+                        "nombre": request.form.get("nombre") or "",
+                        "rut": request.form.get("rut") or "",
+                    }
+            flash(msg, "success" if ok else "danger")
+            volver = None if ok and accion == "sumar" else (n or numero)
+            return _volver_cosecha(
+                token,
+                tenant,
+                request.form.get("tab") or tab,
+                volver,
+                fecha,
+            )
+        raw_n = (request.args.get("n") or "").strip()
+        numero = int(raw_n) if raw_n.isdigit() else None
+        hoy = demo.hora_chile().strftime("%Y-%m-%d") if hasattr(demo, "hora_chile") else ""
+        from demo_web.services.cosecha import _dia
+
+        ok_dia, _, dia = _dia((request.args.get("fecha") or "").strip(), hoy)
+        if not ok_dia:
+            dia = hoy
+        ctx = vista_anotadora(conn, token, tab, numero, dia)
+        if ctx is not None:
+            borrador = session.pop("cosecha_borrador", None)
+            if isinstance(borrador, dict):
+                for fila in ctx["filas"]:
+                    if int(fila["numero"]) == int(borrador.get("numero") or 0):
+                        fila["nombre"] = borrador.get("nombre") or ""
+                        fila["rut"] = borrador.get("rut") or ""
+    finally:
+        conn.close()
+    if not ctx:
+        return (
+            "<!DOCTYPE html><meta charset='utf-8'><title>Cosecha</title>"
+            "<p>Este enlace no corresponde a la faena de esta empresa.</p>",
+            404,
+        )
+    return render_template(
+        "cosecha_anotadora.html",
+        token=token,
+        tenant=tenant,
+        **ctx,
+    )
+
+
+@bp.route("/cosecha/faena/<int:faena_id>/fundas")
+@login_required
+@module_required("RRHH")
+def cosecha_imprimir(faena_id: int):
+    from demo_web.services.cosecha import listar_fundas, payload_qr, svg_qr
+    from demo_web.services.demo_loader import get_demo_module
+
+    demo = get_demo_module()
+    conn = demo.conectar_db()
+    try:
+        solo = (request.args.get("numero") or "").strip()
+        fundas = []
+        for funda in listar_fundas(conn, faena_id):
+            if not funda["viva"]:
+                continue
+            if solo.isdigit() and int(funda["numero"]) != int(solo):
+                continue
+            fundas.append(
+                {
+                    "numero": funda["numero"],
+                    "nombre": funda["nombre"],
+                    "qr": svg_qr(payload_qr(funda["numero"])),
+                }
+            )
+    finally:
+        conn.close()
+    return render_template("cosecha_fundas_print.html", fundas=fundas)
