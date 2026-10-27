@@ -16,6 +16,7 @@ from demo_web.services.cosecha import (
     entregar_funda,
     filtrar_cuarteles_cosecha,
     guardar_persona,
+    enlace_todos,
     listar_fundas,
     listar_links,
     nueva_faena,
@@ -175,6 +176,8 @@ class TestFaena(unittest.TestCase):
         self.assertIn("fecha=fecha", html)
         self.assertIn("Este día no tiene ingresos.", html)
         self.assertIn("irConFecha", html)
+        self.assertIn('id="cuartel"', html)
+        self.assertIn("{% if todos %}", html)
         self.assertNotIn("precio", html.lower())
         self.assertNotIn("abono", html.lower())
         self.assertNotIn("peso", html.lower())
@@ -215,6 +218,9 @@ class TestFaena(unittest.TestCase):
         self.assertIn("not persona.asignado", html)
         self.assertIn("cosecha_persona", html)
         self.assertIn("Totes por cuartel", html)
+        self.assertIn("Enlace de todos los cuarteles", html)
+        self.assertIn("cosecha_enlace.url", html)
+        self.assertIn("Enlace por cuartel", html)
         self.assertNotIn("Generar QR", html)
         self.assertNotIn("cosecha_imprimir", html)
 
@@ -391,6 +397,55 @@ class TestAtender(unittest.TestCase):
         ciruelos_dia = vista_anotadora(conn, links["CIRUELOS"], "ingresado", None, "2026-11-20")
         self.assertEqual(ciruelos_dia["total_totes"], 1)
         self.assertEqual(contar_totes(conn, faena, "CEREZOS CORTE 1"), 2)
+
+    def test_el_enlace_de_todos_elige_el_cuartel(self):
+        conn = _conn()
+        ok, msg, faena = abrir_faena(conn, 1, ["CEREZOS CORTE 1", "CIRUELOS"], "2026-11-20")
+        self.assertTrue(ok, msg)
+        links = {x["cuartel"]: x["token"] for x in listar_links(conn, faena)}
+        self.assertEqual(set(links), {"CEREZOS CORTE 1", "CIRUELOS"})
+        token = enlace_todos(conn, faena)
+        self.assertTrue(token)
+        self.assertNotIn(token, set(links.values()))
+        asegurar_tablas(conn)
+        self.assertEqual(enlace_todos(conn, faena), token)
+        ok, msg, _n = sumar_tote(
+            conn, links["CEREZOS CORTE 1"], 1, "2026-11-20 08:00:00", "2026-11-20", "CIRUELOS"
+        )
+        self.assertTrue(ok, msg)
+        self.assertEqual(contar_totes(conn, faena, "CEREZOS CORTE 1"), 1)
+        self.assertEqual(contar_totes(conn, faena, "CIRUELOS"), 0)
+        ok, msg, _n = sumar_tote(
+            conn, token, 1, "2026-11-20 09:00:00", "2026-11-20", "CIRUELOS"
+        )
+        self.assertTrue(ok, msg)
+        self.assertIn("CIRUELOS", msg)
+        self.assertEqual(contar_totes(conn, faena, "CIRUELOS"), 1)
+        self.assertEqual(contar_totes(conn, faena, "CEREZOS CORTE 1"), 1)
+        ok, msg, _n = sumar_tote(conn, token, 2, "2026-11-20 09:05:00", "2026-11-20", "NOGALES")
+        self.assertFalse(ok)
+        self.assertIn("cuartel", msg.lower())
+        self.assertEqual(contar_totes(conn, faena, "CEREZOS CORTE 1"), 1)
+        cerezos = vista_anotadora(conn, token, "ingresado", None, "2026-11-20", "CEREZOS CORTE 1")
+        self.assertTrue(cerezos["todos"])
+        self.assertEqual(cerezos["cuarteles"], ["CEREZOS CORTE 1", "CIRUELOS"])
+        self.assertEqual(cerezos["total_totes"], 1)
+        vacio = vista_anotadora(conn, token, "ingresado", None, "2026-11-22", "CIRUELOS")
+        self.assertEqual(vacio["total_totes"], 0)
+        self.assertEqual(vacio["filas"], [])
+        self.assertEqual(vacio["cuartel"], "CIRUELOS")
+        self.assertEqual(
+            vista_anotadora(conn, token, "ingreso", None, "2026-11-20")["cuartel"],
+            "CEREZOS CORTE 1",
+        )
+        _ok, _msg, faena_e = abrir_faena(
+            conn, 2, filtrar_cuarteles_cosecha(ESPINO, espino=True), "2026-11-20"
+        )
+        from demo_web.services.cosecha import resolver_enlace
+
+        espino = resolver_enlace(conn, enlace_todos(conn, faena_e))
+        self.assertEqual(espino["cuarteles"], ESPINO)
+        self.assertNotIn("CEREZOS CORTE 1", espino["cuarteles"])
 
 
 if __name__ == "__main__":

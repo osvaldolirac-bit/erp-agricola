@@ -365,6 +365,7 @@ def _volver_cosecha(
     tab: str,
     numero: int | None = None,
     fecha: str = "",
+    cuartel: str = "",
 ):
     args = {
         "token": token,
@@ -375,6 +376,8 @@ def _volver_cosecha(
         args["n"] = numero
     if fecha:
         args["fecha"] = fecha
+    if cuartel:
+        args["cuartel"] = cuartel
     return redirect(url_for("auth.cosecha_formulario", **args))
 
 
@@ -407,6 +410,7 @@ def cosecha_formulario(token: str):
             ok_dia, _, fecha = _dia((request.form.get("fecha") or "").strip(), hoy)
             if not ok_dia:
                 fecha = hoy
+            cuartel = (request.form.get("cuartel") or "").strip()
             ok, msg, n = atender_anotadora(
                 conn,
                 token,
@@ -416,6 +420,7 @@ def cosecha_formulario(token: str):
                 cuando,
                 request.form.get("rut") or "",
                 fecha,
+                cuartel,
             )
             if ok:
                 conn.commit()
@@ -436,6 +441,7 @@ def cosecha_formulario(token: str):
                 request.form.get("tab") or tab,
                 volver,
                 fecha,
+                cuartel,
             )
         raw_n = (request.args.get("n") or "").strip()
         numero = int(raw_n) if raw_n.isdigit() else None
@@ -445,7 +451,14 @@ def cosecha_formulario(token: str):
         ok_dia, _, dia = _dia((request.args.get("fecha") or "").strip(), hoy)
         if not ok_dia:
             dia = hoy
-        ctx = vista_anotadora(conn, token, tab, numero, dia)
+        ctx = vista_anotadora(
+            conn,
+            token,
+            tab,
+            numero,
+            dia,
+            (request.args.get("cuartel") or "").strip(),
+        )
         if ctx is not None:
             borrador = session.pop("cosecha_borrador", None)
             if isinstance(borrador, dict):

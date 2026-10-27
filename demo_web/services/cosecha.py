@@ -108,6 +108,11 @@ _TABLAS_COSECHA = (
             bruto REAL NOT NULL,
             cerrado TEXT NOT NULL,
             UNIQUE(faena_id, cuartel)
+        );
+        CREATE TABLE IF NOT EXISTS cosecha_enlace (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            faena_id INTEGER NOT NULL UNIQUE,
+            token TEXT NOT NULL UNIQUE
         )""",
 )
 
@@ -141,6 +146,7 @@ def asegurar_tablas(conn: sqlite3.Connection) -> None:
                SET fecha = substr(creado, 1, 10)
                WHERE COALESCE(fecha, '') = '' AND length(COALESCE(creado, '')) >= 10"""
         )
+    _asegurar_enlaces(conn)
 
 
 def _dia(fecha: str, fecha_hora: str = "") -> tuple[bool, str, str]:
@@ -224,6 +230,30 @@ def _token_link() -> str:
     return secrets.token_urlsafe(16)
 
 
+def _asegurar_enlaces(conn: sqlite3.Connection) -> None:
+    """Un token por faena, distinto de los enlaces de un solo cuartel."""
+    faltan = conn.execute(
+        """SELECT f.id FROM cosecha_faena f
+           WHERE NOT EXISTS (
+               SELECT 1 FROM cosecha_enlace e WHERE e.faena_id = f.id
+           )"""
+    ).fetchall()
+    for fila in faltan:
+        conn.execute(
+            "INSERT OR IGNORE INTO cosecha_enlace (faena_id, token) VALUES (?,?)",
+            (int(fila[0]), _token_link()),
+        )
+
+
+def enlace_todos(conn: sqlite3.Connection, faena_id: int) -> str:
+    asegurar_tablas(conn)
+    row = conn.execute(
+        "SELECT token FROM cosecha_enlace WHERE faena_id=?",
+        (int(faena_id),),
+    ).fetchone()
+    return str(row[0]) if row else ""
+
+
 def asegurar_links(conn: sqlite3.Connection, faena_id: int, cuarteles: list[str]) -> None:
     asegurar_tablas(conn)
     for cuartel in cuarteles:
@@ -257,6 +287,7 @@ def abrir_faena(
     )
     faena_id = int(cur.lastrowid)
     asegurar_links(conn, faena_id, bloques)
+    _asegurar_enlaces(conn)
     return True, "Faena abierta. Los números parten de 1.", faena_id
 
 
@@ -360,6 +391,43 @@ def _link_por_token(conn: sqlite3.Connection, token: str) -> dict | None:
     if not tok:
         return None
     return _una(conn, "SELECT * FROM cosecha_link WHERE token=?", (tok,))
+
+
+def resolver_enlace(
+    conn: sqlite3.Connection,
+    token: str,
+    cuartel: str = "",
+    *,
+    exigir_cuartel: bool = False,
+) -> dict | None:
+    """El enlace de un cuartel ignora otro nombre. El enlace de todos exige uno de la faena."""
+    link = _link_por_token(conn, token)
+    if link:
+        nombre = str(link["cuartel"])
+        return {
+            "faena_id": int(link["faena_id"]),
+            "cuartel": nombre,
+            "todos": False,
+            "cuarteles": [nombre],
+        }
+    tok = (token or "").strip()
+    maestro = _una(conn, "SELECT * FROM cosecha_enlace WHERE token=?", (tok,)) if tok else None
+    if not maestro:
+        return None
+    nombres = [x["cuartel"] for x in listar_links(conn, int(maestro["faena_id"]))]
+    pedido = (cuartel or "").strip()
+    if pedido in nombres:
+        elegido = pedido
+    elif exigir_cuartel or not nombres:
+        elegido = ""
+    else:
+        elegido = nombres[0]
+    return {
+        "faena_id": int(maestro["faena_id"]),
+        "cuartel": elegido,
+        "todos": True,
+        "cuarteles": nombres,
+    }
 
 
 def _funda(conn: sqlite3.Connection, faena_id: int, numero: int) -> dict | None:
@@ -665,10 +733,13 @@ def sumar_tote(
     numero: int,
     fecha_hora: str,
     fecha: str = "",
+    cuartel: str = "",
 ) -> tuple[bool, str, int]:
-    link = _link_por_token(conn, token)
+    link = resolver_enlace(conn, token, cuartel, exigir_cuartel=True)
     if not link:
         return False, "Este enlace no corresponde a la faena.", 0
+    if not link["cuartel"]:
+        return False, "Elija el cuartel.", int(numero or 0)
     if _cerrado(conn, int(link["faena_id"]), link["cuartel"]):
         return False, "Este cuartel ya está cerrado.", int(numero or 0)
     try:
@@ -699,13 +770,20 @@ def sumar_tote(
     quien = (funda["nombre"] or "").strip()
     texto = f"Número {n}" + (f" · {quien}" if quien else "")
     visible = f"{dia[8:10]}-{dia[5:7]}-{dia[0:4]}"
-    return True, f"{texto} lleva {total} totes el {visible}.", n
+    return True, f"{texto} lleva {total} totes en {link['cuartel']} el {visible}.", n
 
 
-def deshacer_ultimo(conn: sqlite3.Connection, token: str, fecha: str = "") -> tuple[bool, str, int]:
-    link = _link_por_token(conn, token)
+def deshacer_ultimo(
+    conn: sqlite3.Connection,
+    token: str,
+    fecha: str = "",
+    cuartel: str = "",
+) -> tuple[bool, str, int]:
+    link = resolver_enlace(conn, token, cuartel, exigir_cuartel=True)
     if not link:
         return False, "Este enlace no corresponde a la faena.", 0
+    if not link["cuartel"]:
+        return False, "Elija el cuartel.", 0
     if _cerrado(conn, int(link["faena_id"]), link["cuartel"]):
         return False, "Este cuartel ya está cerrado.", 0
     dia = ""
@@ -764,9 +842,10 @@ def vista_anotadora(
     tab: str,
     numero: int | None,
     fecha: str = "",
+    cuartel: str = "",
 ) -> dict | None:
-    link = _link_por_token(conn, token)
-    if not link:
+    link = resolver_enlace(conn, token, cuartel, exigir_cuartel=False)
+    if not link or not link["cuartel"]:
         return None
     faena_id = int(link["faena_id"])
     cuartel = str(link["cuartel"])
@@ -813,6 +892,8 @@ def vista_anotadora(
         "siguiente": _siguiente_numero(conn, faena_id),
         "fecha": dia,
         "fecha_txt": visible,
+        "todos": bool(link["todos"]),
+        "cuarteles": list(link["cuarteles"]),
     }
 
 
@@ -825,17 +906,20 @@ def atender_anotadora(
     fecha_hora: str,
     rut: str = "",
     fecha: str = "",
+    cuartel: str = "",
 ) -> tuple[bool, str, int]:
-    link = _link_por_token(conn, token)
+    link = resolver_enlace(conn, token, cuartel, exigir_cuartel=accion != "persona")
     if not link:
         return False, "Este enlace no corresponde a la faena.", 0
+    if accion != "persona" and not link["cuartel"]:
+        return False, "Elija el cuartel.", int(numero or 0)
     faena_id = int(link["faena_id"])
     if accion == "persona":
         ok, msg = guardar_persona(conn, faena_id, int(numero or 0), nombre, rut)
         return ok, msg, int(numero or 0)
     if accion == "deshacer":
-        return deshacer_ultimo(conn, token, fecha)
-    return sumar_tote(conn, token, int(numero or 0), fecha_hora, fecha)
+        return deshacer_ultimo(conn, token, fecha, cuartel)
+    return sumar_tote(conn, token, int(numero or 0), fecha_hora, fecha, cuartel)
 
 
 def plan_cierre(conn: sqlite3.Connection, faena_id: int, cuartel: str) -> tuple[bool, str, dict | None]:
@@ -1084,4 +1168,5 @@ def armar_panel(conn: sqlite3.Connection, faena_id: int) -> dict:
         "siguiente": _siguiente_numero(conn, int(faena_id)),
         "puede_nueva": bool(faena["estado"] == "abierta" and ok_nueva),
         "aviso_nueva": msg_nueva,
+        "enlace_todos": enlace_todos(conn, int(faena_id)),
     }

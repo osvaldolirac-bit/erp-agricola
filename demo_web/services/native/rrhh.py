@@ -1194,6 +1194,7 @@ def _contratistas_cosecha(demo, conn) -> dict:
     marca = nombre_erp(demo)
     links = []
     filas = []
+    enlace = None
     if panel:
         for fila in panel["filas"]:
             url = url_anotadora(fila["token"], slug)
@@ -1210,6 +1211,13 @@ def _contratistas_cosecha(demo, conn) -> dict:
                     "totes": fila["totes"],
                 }
             )
+        token_todos = panel.get("enlace_todos") or ""
+        if token_todos:
+            url_todos = url_anotadora(token_todos, slug)
+            enlace = {
+                "url": url_todos,
+                "wa_url": url_whatsapp("todos los cuarteles", url_todos, marca),
+            }
     return {
         "cosecha_contratistas": contratistas,
         "cosecha_sel_id": sel,
@@ -1219,6 +1227,7 @@ def _contratistas_cosecha(demo, conn) -> dict:
         "cosecha_faena_id": faena_id,
         "cosecha_faena": panel or None,
         "cosecha_links": links,
+        "cosecha_enlace": enlace,
         "cosecha_filas": filas,
         "cosecha_numeros": (
             planilla_numeros(conn, faena_id, numero=numero_filtro, desde=desde, hasta=hasta)
