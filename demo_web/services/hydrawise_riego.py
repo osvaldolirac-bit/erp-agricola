@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from demo_web.services.demo_loader import get_demo_module
-from demo_web.services.hydrawise_cola_item import partes_item
+from demo_web.services.hydrawise_cola_item import ficha_zona_corriendo, partes_item
 from demo_web.services.hydrawise_client import (
     customer_details,
     flatten_relays,
@@ -1862,6 +1862,32 @@ def _inicio_estimado_pendiente(
     return t
 
 
+def _fert_ui_lineas(
+    fert_src: list[dict[str, Any]], nombres: dict[int, str]
+) -> list[dict[str, Any]]:
+    fert_lines: list[dict[str, Any]] = []
+    for f in fert_src:
+        pid = int(f.get("producto_id") or 0)
+        cant = float(f.get("cantidad") or 0)
+        if pid <= 0 or cant <= 0:
+            continue
+        um = str(f.get("unidad") or "kg")
+        dosis = f.get("dosis_ha")
+        line: dict[str, Any] = {
+            "nombre": nombres.get(pid) or f"Producto #{pid}",
+            "cantidad": cant,
+            "cantidad_fmt": f"{cant:g} {um}",
+            "dosis_ha": dosis,
+        }
+        if dosis not in (None, ""):
+            try:
+                line["dosis_fmt"] = f"{float(dosis):g} / ha"
+            except (TypeError, ValueError):
+                line["dosis_fmt"] = ""
+        fert_lines.append(line)
+    return fert_lines
+
+
 def programa_por_relay_en_cola(
     conn: sqlite3.Connection,
     cola: dict[str, Any] | None,
@@ -1886,26 +1912,7 @@ def programa_por_relay_en_cola(
         fert_src = _fert_lineas_item_cola(
             conn, str(it.get("fert_json") or ""), rid
         )
-        fert_lines: list[dict[str, Any]] = []
-        for f in fert_src:
-            pid = int(f.get("producto_id") or 0)
-            cant = float(f.get("cantidad") or 0)
-            if pid <= 0 or cant <= 0:
-                continue
-            um = str(f.get("unidad") or "kg")
-            dosis = f.get("dosis_ha")
-            line = {
-                "nombre": nombres.get(pid) or f"Producto #{pid}",
-                "cantidad": cant,
-                "cantidad_fmt": f"{cant:g} {um}",
-                "dosis_ha": dosis,
-            }
-            if dosis not in (None, ""):
-                try:
-                    line["dosis_fmt"] = f"{float(dosis):g} / ha"
-                except (TypeError, ValueError):
-                    line["dosis_fmt"] = ""
-            fert_lines.append(line)
+        fert_lines = _fert_ui_lineas(fert_src, nombres)
         est_dt = _inicio_estimado_pendiente(cola, items, it, ahora)
         out[rid] = {
             "orden": int(it["orden"]),
@@ -1920,6 +1927,45 @@ def programa_por_relay_en_cola(
     return out
 
 
+def ejecucion_por_relay_en_cola(
+    conn: sqlite3.Connection,
+    cola: dict[str, Any] | None,
+    sectores: list[dict[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Ficha de la zona que está regando, lista para el sheet del celular."""
+    if not cola:
+        return {}
+    demo = get_demo_module()
+    ahora = demo.hora_chile()
+    if sectores is None:
+        sectores = sectores_para_link_riego(conn)
+    por_relay = {int(s["relay_id"]): s for s in sectores}
+    nombres = _map_nombres_fertilizante(conn)
+    out: dict[str, dict[str, Any]] = {}
+    for it in _cola_turnos(cola):
+        if str(it.get("estado") or "") != "corriendo":
+            continue
+        rid = int(it["relay_id"])
+        sec = por_relay.get(rid) or {}
+        fert_src = _fert_lineas_item_cola(
+            conn, str(it.get("fert_json") or ""), rid
+        )
+        label = str(sec.get("label") or it.get("label") or "").strip()
+        out[str(rid)] = ficha_zona_corriendo(
+            label=label,
+            huerto_cc=str(sec.get("huerto_cc") or ""),
+            cola_id=int(cola.get("id") or 0) or None,
+            tipo=str(cola.get("tipo") or ""),
+            inicio_programa=str(cola.get("inicio_programa") or ""),
+            creado_por=str(cola.get("creado_por") or ""),
+            minutos=float(it.get("minutos") or 0),
+            run_inicio=str(it.get("run_inicio") or ""),
+            fertilizantes=_fert_ui_lineas(fert_src, nombres),
+            ahora=ahora,
+        )
+    return out
+
+
 def contexto_control_hydra_ui(
     conn: sqlite3.Connection,
     usuario: str,
@@ -1930,6 +1976,9 @@ def contexto_control_hydra_ui(
     hydra_sectores = sectores_para_link_riego(conn)
     hydra_cola = cola_activa_en_link(conn)
     programa_por_relay = programa_por_relay_en_cola(conn, hydra_cola)
+    ejecucion_por_relay = ejecucion_por_relay_en_cola(
+        conn, hydra_cola, hydra_sectores
+    )
     hydra_mostrar_apagar = cola_permite_apagar(hydra_cola)
     hydra_sync_cooldown = cooldown_restante_segundos(conn)
 
@@ -1974,6 +2023,7 @@ def contexto_control_hydra_ui(
         "hydra_sectores": hydra_sectores,
         "hydra_cola": hydra_cola,
         "programa_por_relay": programa_por_relay,
+        "ejecucion_por_relay": ejecucion_por_relay,
         "hydra_mostrar_apagar": hydra_mostrar_apagar,
         "hydra_cola_programada": bool(
             hydra_cola
