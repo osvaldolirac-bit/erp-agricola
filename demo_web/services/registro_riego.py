@@ -1433,12 +1433,12 @@ def enviar_alerta_hydra_sector_ok(
     """
     cuerpo = plantilla_correo_html(
         "vencimiento",
-        f"HYDRA — {codigo} para autorizar",
+        f"💧 HYDRA — {codigo} para autorizar",
         interior,
         nombre_erp=_nombre_erp(),
         pie="Alerta automática HYDRA — pendiente en Link riego.",
     )
-    asunto = f"HYDRA {codigo} para autorizar | {huerto[:18]} | {sector_label[:18]}"
+    asunto = f"💧 HYDRA {codigo} para autorizar | {huerto[:18]} | {sector_label[:18]}"
     return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
 
 
@@ -1499,12 +1499,12 @@ def enviar_alerta_hydra_cola_inicio(
     """
     cuerpo = plantilla_correo_html(
         "vencimiento",
-        f"HYDRA — Cola #{cola_id} ({tipo_txt})",
+        f"💧 HYDRA — Cola #{cola_id} ({tipo_txt})",
         interior,
         nombre_erp=_nombre_erp(),
         pie="Informativo — fertirriego editable en cola hasta que riegue el sector.",
     )
-    asunto = f"HYDRA cola #{cola_id} | {regador[:24]} | {tipo_txt}"
+    asunto = f"💧 HYDRA cola #{cola_id} | {regador[:24]} | {tipo_txt}"
     return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
 
 
@@ -1551,12 +1551,12 @@ def enviar_alerta_hydra_interrupcion(
     """
     cuerpo = plantilla_correo_html(
         "vencimiento",
-        f"⚠ HYDRA — riego interrumpido (cola #{cola_id})",
+        f"💧 ⚠ HYDRA — riego interrumpido (cola #{cola_id})",
         interior,
         nombre_erp=_nombre_erp(),
         pie="Alerta adicional — interrupción manual HYDRA.",
     )
-    asunto = f"⚠ HYDRA parada | {operador[:20]} | cola #{cola_id}"
+    asunto = f"💧 ⚠ HYDRA parada | {operador[:20]} | cola #{cola_id}"
     return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
 
 
