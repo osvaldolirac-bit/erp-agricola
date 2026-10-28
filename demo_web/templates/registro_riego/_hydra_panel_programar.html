@@ -19,7 +19,7 @@
             </select>
           </div>
           <div class="col-md-5 col-5">
-            <input type="number" name="hw_minutos" class="form-control" min="1" step="1" placeholder="Minutos" value="30" required {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>
+            <input type="number" name="hw_minutos" class="form-control" min="1" step="1" placeholder="Ingresar minutos" value="" required {% if not hydra_puede_operar|default(true) %}disabled{% endif %}>
           </div>
         </div>
         {% include "registro_riego/_hydra_fert_en_linea.html" %}
