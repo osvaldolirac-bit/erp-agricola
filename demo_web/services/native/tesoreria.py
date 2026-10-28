@@ -329,6 +329,28 @@ def _redirect_tesoreria(sec: str, **extra):
     return redirect_module("tesoreria", **params)
 
 
+def asunto_pago_tesoreria(marca: str, proveedor: str, n_docs: int) -> str:
+    return f"💸 [{marca}] Pago Procesado: {proveedor} ({n_docs} doc.)"
+
+
+def con_billete_pago(asunto: str, cuerpo: str) -> tuple[str, str]:
+    """El correo de pago abre con el billete con alas, en el asunto y en el título."""
+    asunto = str(asunto or "").strip()
+    if asunto.startswith("🚨"):
+        asunto = asunto[1:].strip()
+    if not asunto.startswith("💸"):
+        asunto = f"💸 {asunto}"
+    cuerpo = str(cuerpo or "")
+    titulo = cuerpo.split("</h2>", 1)[0]
+    if "💸" not in titulo:
+        cuerpo = cuerpo.replace(
+            "Comprobante de pago registrado",
+            "💸 Comprobante de pago registrado",
+            1,
+        )
+    return asunto, cuerpo
+
+
 def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, metodo, usuario_operador, banco="", razon_social=""):
     from erp_correo_html import html_esc, plantilla_correo_html
     from erp_proveedores import razones_sociales_desde_docs
@@ -369,7 +391,7 @@ def _enviar_correo_pago_interno(demo, conn, proveedor, documentos, monto_total, 
         pie="Respaldo automático de auditoría — Tesorería.",
     )
     return demo._enviar_correo_html(
-        f"🚨 [{marca_erp}] Pago Procesado: {proveedor} ({n_docs} doc.)",
+        asunto_pago_tesoreria(marca_erp, proveedor, n_docs),
         cuerpo_html,
         destinatarios,
     )
@@ -435,6 +457,10 @@ def _avisos_pago(demo, conn, proveedor, lineas, monto_total, metodo, fecha_pago,
         mail_ok = _enviar_correo_pago_interno(
             demo, conn, proveedor, lineas, monto_total, metodo, usuario, banco=banco, razon_social=razon,
         )
+    def _enviar_al_proveedor(asunto, cuerpo, destinatarios, _fn=demo._enviar_correo_html):
+        asunto, cuerpo = con_billete_pago(asunto, cuerpo)
+        return _fn(asunto, cuerpo, destinatarios)
+
     mail_prov_ok, mail_prov = enviar_correo_pago_proveedor_si_corresponde(
         conn,
         proveedor,
@@ -443,7 +469,7 @@ def _avisos_pago(demo, conn, proveedor, lineas, monto_total, metodo, fecha_pago,
         metodo,
         fecha_pago,
         demo.NOMBRE_ERP,
-        demo._enviar_correo_html,
+        _enviar_al_proveedor,
         registrar_accion=demo.registrar_accion,
         razon_social=razon,
     )
