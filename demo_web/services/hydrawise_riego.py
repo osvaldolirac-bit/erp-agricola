@@ -996,6 +996,7 @@ def _imputar_item_cola(
         modo_riego=z.get("modo_riego") or "horas",
         hydrawise_event_key=key,
         defer_bodega_fert=bool(fert),
+        hydrawise_relay_id=int(relay_id),
     )
     if not res.get("ok"):
         return res
@@ -1033,7 +1034,7 @@ def _imputar_item_cola(
             cola_id=cola_id,
             fert_pendiente_confirmacion=bool(fert),
         )
-    return {"ok": True, "msg": f"{cod} imputado ({huerto}).", "codigo": cod}
+    return {"ok": True, "msg": f"{cod} pendiente de autorizar en Link riego ({huerto}).", "codigo": cod}
 
 
 def _abortar_cola_activa(
