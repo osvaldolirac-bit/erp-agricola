@@ -493,13 +493,13 @@ def enviar_alerta(registro: dict[str, Any]) -> bool:
     """
     cuerpo = plantilla_correo_html(
         "vencimiento",
-        f"⛽ {codigo} — Salida Link petróleo",
+        f"⛽️ {codigo} — Salida Link petróleo",
         interior,
         nombre_erp=_nombre_erp(),
         pie="Registro informativo vía link personal. No descuenta stock del estanque.",
     )
     asunto = (
-        f"⛽ {codigo} | {registro.get('litros_fmt', '')} L | "
+        f"⛽️ {codigo} | {registro.get('litros_fmt', '')} L | "
         f"{registro.get('maquinaria', '')[:25]} | {registro.get('responsable', '')[:20]}"
     )
     return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
@@ -660,13 +660,13 @@ def enviar_alerta_autorizacion(registro: dict[str, Any], usuario: str) -> bool:
     """
     cuerpo = plantilla_correo_html(
         "vencimiento",
-        f"✅ {codigo} — Autorización salida petróleo",
+        f"⛽️ {codigo} — Autorización salida petróleo",
         interior,
         nombre_erp=_nombre_erp(),
         pie="Salida autorizada e imputada al estanque / historial de Petróleo.",
     )
     asunto = (
-        f"✅ {codigo} autorizado | {registro.get('litros_fmt', '')} L | "
+        f"⛽️ {codigo} autorizado | {registro.get('litros_fmt', '')} L | "
         f"{registro.get('maquinaria', '')[:25]}"
     )
     return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
@@ -986,10 +986,8 @@ def contar_pendientes(conn) -> int:
 
 
 def aplicar_badge_menu_petroleo(opts, conn):
-    """Streamlit: (N) en label. Flask: build_menu + sidebar_badges.badge_count."""
-    from demo_web.services.sidebar_badges import aplicar_badges_labels_menu
-
-    return aplicar_badges_labels_menu(opts, conn)
+    """Legacy no-op: el contador lo arma build_menu (badge_count en sidebar)."""
+    return opts
 
 
 def datos_compartir() -> dict[str, str]:
@@ -1030,5 +1028,7 @@ def habilitado() -> bool:
 
 
 def _nombre_erp() -> str:
+    from demo_web.services.tenant_scope import nombre_erp
+
     demo = get_demo_module()
-    return str(getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola")
+    return nombre_erp(demo)

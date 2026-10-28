@@ -43,6 +43,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/services/prestamo_rrhh.py",
     "demo_web/services/remuneracion_extra.py",
     "demo_web/services/cosecha.py",
+    "demo_web/services/salida_petroleo.py",
     "demo_web/services/hydrawise_cola_item.py",
     "demo_web/services/hydrawise_riego.py",
     "demo_web/services/registro_riego.py",
