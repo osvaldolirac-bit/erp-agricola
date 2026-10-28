@@ -40,6 +40,16 @@ MODOS_INGRESO = [
     ("pet", "Petróleo"),
 ]
 
+
+def etiqueta_insumo_bodega(producto: str, um: str, ingrediente: str = "") -> str:
+    """Nombre del insumo en Compras, con el ingrediente activo cuando existe."""
+    nombre = (producto or "").strip()
+    unidad = (um or "").strip()
+    ia = (ingrediente or "").strip()
+    if ia:
+        return f"{nombre} — {ia} ({unidad})"
+    return f"{nombre} ({unidad})"
+
 SQL_ETIQUETA_TIPO = """
     CASE
         WHEN tipo IN ('Gasto Operacional', 'Gasto Vario') THEN 'Gasto Operacional'
@@ -326,16 +336,20 @@ def _gather_ingreso(demo, conn) -> dict:
         modo = "gastos"
 
     dfi = pd.read_sql_query(
-        "SELECT id, producto, familia, COALESCE(unidad_medida, 'kg') AS unidad_medida "
+        "SELECT id, producto, familia, COALESCE(unidad_medida, 'kg') AS unidad_medida, "
+        "COALESCE(ingrediente_activo, '') AS ingrediente_activo "
         "FROM inventario ORDER BY producto",
         conn,
     )
     productos = [
         {
             "id": int(r["id"]),
-            "label": f"{r['producto']} ({r['unidad_medida']})",
+            "label": etiqueta_insumo_bodega(
+                r["producto"], r["unidad_medida"], r["ingrediente_activo"],
+            ),
             "producto": r["producto"],
             "um": r["unidad_medida"],
+            "ingrediente_activo": str(r["ingrediente_activo"] or "").strip(),
         }
         for _, r in dfi.iterrows()
     ]
@@ -345,6 +359,7 @@ def _gather_ingreso(demo, conn) -> dict:
             "producto": i["n"],
             "cantidad": i["c"],
             "um": i.get("um", demo.DEFAULT_UNIDAD_INSUMO),
+            "ingrediente": (i.get("ingrediente_activo") or "").strip(),
             "neto": demo.f_peso(i["p"]),
             "total": demo.f_peso(i["t"]),
         }
@@ -482,7 +497,9 @@ def _post_add_car(demo) -> dict:
         conn = demo_mod.conectar_db()
         try:
             row = conn.execute(
-                "SELECT producto, COALESCE(unidad_medida, ?) FROM inventario WHERE id=?",
+                """SELECT producto, COALESCE(unidad_medida, ?),
+                          COALESCE(ingrediente_activo, '')
+                   FROM inventario WHERE id=?""",
                 (demo_mod.DEFAULT_UNIDAD_INSUMO, pid),
             ).fetchone()
         finally:
@@ -498,6 +515,7 @@ def _post_add_car(demo) -> dict:
                 "t": cant * neto,
                 "nuevo": False,
                 "um": row[1],
+                "ingrediente_activo": (row[2] or "").strip(),
             }
         )
     else:
@@ -517,7 +535,7 @@ def _post_add_car(demo) -> dict:
             "nuevo": True,
             "um": request.form.get("um") or demo.DEFAULT_UNIDAD_INSUMO,
         }
-        if is_espino_tenant():
+        if nia:
             item["ingrediente_activo"] = nia
         car.append(item)
     _set_car(car)
@@ -596,12 +614,25 @@ def _post_save_agro(demo, conn) -> dict:
                         demo, conn, new_id, float(i["c"]), float(i["p"]), fe,
                     )
                 else:
-                    cur_ins = conn.execute(
-                        "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
-                        (i["n"], nf, i["c"], i["p"], i.get("um", demo.DEFAULT_UNIDAD_INSUMO)),
-                    )
-                    new_id = int(cur_ins.lastrowid)
-                    poblar_ingredientes_inventario(conn, new_id)
+                    um = i.get("um", demo.DEFAULT_UNIDAD_INSUMO)
+                    if nia:
+                        cur_ins = conn.execute(
+                            """INSERT INTO inventario
+                               (producto, familia, stock, precio_medio, unidad_medida, ingrediente_activo)
+                               VALUES (?,?,?,?,?,?)""",
+                            (i["n"], nf, i["c"], i["p"], um, nia),
+                        )
+                        new_id = int(cur_ins.lastrowid)
+                        from erp_inventario_ia import guardar_ingrediente_producto
+
+                        guardar_ingrediente_producto(conn, new_id, nia)
+                    else:
+                        cur_ins = conn.execute(
+                            "INSERT INTO inventario (producto, familia, stock, precio_medio, unidad_medida) VALUES (?,?,?,?,?)",
+                            (i["n"], nf, i["c"], i["p"], um),
+                        )
+                        new_id = int(cur_ins.lastrowid)
+                        poblar_ingredientes_inventario(conn, new_id)
                     _registrar_compra_en_kardex_lc(demo, conn, new_id, i["c"], i["p"], fe)
             else:
                 pid = int(i["id"])

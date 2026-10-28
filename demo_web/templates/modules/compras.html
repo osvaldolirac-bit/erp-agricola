@@ -413,6 +413,13 @@
                   {% for u in unidades %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
                 </select>
               </div>
+              <div class="col-12">
+                <label class="form-label small" for="ingredienteActivo">Ingrediente activo</label>
+                <input type="text" name="ingrediente_activo" id="ingredienteActivo"
+                       class="form-control form-control-sm" autocomplete="off"
+                       placeholder="Ej. Tebuconazol, Glifosato"
+                       {% if is_espino_tenant %}data-exigido="1"{% endif %}>
+              </div>
             </div>
           </div>
           <div class="col-6">
@@ -440,10 +447,17 @@
         {% if car_rows %}
         <div class="table-responsive mb-2">
           <table class="table table-sm table-bordered mb-0">
-            <thead><tr><th>Producto</th><th>Cant.</th><th>UM</th><th>Neto</th><th>Total neto</th></tr></thead>
+            <thead><tr><th>Producto</th><th>Ing. activo</th><th>Cant.</th><th>UM</th><th>Neto</th><th>Total neto</th></tr></thead>
             <tbody>
               {% for r in car_rows %}
-              <tr><td>{{ r.producto }}</td><td>{{ r.cantidad }}</td><td>{{ r.um }}</td><td>{{ r.neto }}</td><td>{{ r.total }}</td></tr>
+              <tr>
+                <td>{{ r.producto }}</td>
+                <td>{{ r.ingrediente or '—' }}</td>
+                <td>{{ r.cantidad }}</td>
+                <td>{{ r.um }}</td>
+                <td>{{ r.neto }}</td>
+                <td>{{ r.total }}</td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>
@@ -626,6 +640,13 @@ function toggleNroDoc(sinDoc) {
     inp.setAttribute('required', 'required');
   }
 }
+function syncIngredienteActivo() {
+  const nuevo = document.getElementById('prodNuevo');
+  const ia = document.getElementById('ingredienteActivo');
+  if (!ia) return;
+  const visible = !!(nuevo && nuevo.checked);
+  ia.required = visible && ia.dataset.exigido === '1';
+}
 document.querySelectorAll('input[name="modo_prod"]').forEach(function(r) {
   r.addEventListener('change', function() {
     const ex = document.getElementById('blkExistente');
@@ -638,8 +659,10 @@ document.querySelectorAll('input[name="modo_prod"]').forEach(function(r) {
       ex.classList.remove('d-none');
       nu.classList.add('d-none');
     }
+    syncIngredienteActivo();
   });
 });
+syncIngredienteActivo();
 
 function toggleCajaProveedor() {
   const sel = document.getElementById('cajaTipoMov');
