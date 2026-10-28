@@ -714,6 +714,41 @@ def _fmt_modo_riego(modo: str | None, surcos: float | None, demo) -> str:
     return "Tecnificado"
 
 
+def ids_fertilizante_bodega(conn: sqlite3.Connection) -> set[int]:
+    placeholders = ",".join("?" * len(_FAMILIAS_FERTILIZANTE))
+    rows = conn.execute(
+        f"""SELECT id FROM inventario
+            WHERE UPPER(TRIM(COALESCE(familia, ''))) IN ({placeholders})""",
+        _FAMILIAS_FERTILIZANTE,
+    ).fetchall()
+    return {int(r[0]) for r in rows}
+
+
+def filtrar_fert_lineas_bodega(
+    conn: sqlite3.Connection, lineas: list[dict[str, Any]] | None
+) -> list[dict[str, Any]]:
+    """Mantiene solo producto_id que existen hoy en bodega (familia fertilizante)."""
+    if not lineas:
+        return []
+    valid = ids_fertilizante_bodega(conn)
+    out: list[dict[str, Any]] = []
+    for ln in lineas:
+        if not isinstance(ln, dict):
+            continue
+        pid = int(ln.get("producto_id") or 0)
+        cant = float(ln.get("cantidad") or 0)
+        if pid not in valid or cant <= 0:
+            continue
+        out.append(
+            {
+                "producto_id": pid,
+                "cantidad": cant,
+                "dosis_ha": ln.get("dosis_ha"),
+            }
+        )
+    return out
+
+
 def fertilizantes_bodega_para_formulario() -> list[dict[str, Any]]:
     """Productos de bodega (familia fertilizante) para el formulario link."""
     demo = get_demo_module()
@@ -954,6 +989,68 @@ def _migrar_personal_regador(conn: sqlite3.Connection) -> None:
     )
 
 
+def reencolar_hydra_sin_autorizar(conn: sqlite3.Connection) -> int:
+    """Devuelve a Link riego los HYDRA que se imputaron solos y siguen sin autorizar.
+
+    No mueve riegos ya cerrados. El fertirriego queda en riego_fertilizantes
+    con el mismo código. Esos registros aún no descontaron bodega.
+    """
+    try:
+        rows = conn.execute(
+            """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
+                      COALESCE(regador, ''), creado_en, COALESCE(modo_riego, 'horas'), surcos
+               FROM riego
+               WHERE origen='hydrawise'
+                 AND LOWER(COALESCE(fert_estado, ''))='pendiente'"""
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return 0
+    n = 0
+    for row in rows:
+        codigo = str(row[0] or "").strip()
+        if not codigo:
+            continue
+        ya = conn.execute(
+            "SELECT 1 FROM riego_bitacora WHERE codigo=?", (codigo,)
+        ).fetchone()
+        if ya:
+            continue
+        relay_id = None
+        try:
+            relay = conn.execute(
+                "SELECT relay_id FROM hydrawise_cola_item WHERE codigo_riego=? LIMIT 1",
+                (codigo,),
+            ).fetchone()
+            if relay and relay[0]:
+                relay_id = int(relay[0])
+        except sqlite3.OperationalError:
+            relay_id = None
+        regador = (row[7] or "Hydrawise").strip() or "Hydrawise"
+        conn.execute(
+            """INSERT INTO riego_bitacora
+               (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
+                regador, creado_en, estado, modo_riego, surcos, hydrawise_relay_id)
+               VALUES (?,?,?,?,?,?,?,?,?,'pendiente',?,?,?)""",
+            (
+                codigo,
+                row[1],
+                row[2],
+                row[3],
+                row[4],
+                row[5],
+                row[6],
+                regador,
+                row[8],
+                row[9],
+                row[10],
+                relay_id,
+            ),
+        )
+        conn.execute("DELETE FROM riego WHERE codigo=?", (codigo,))
+        n += 1
+    return n
+
+
 def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -1026,12 +1123,22 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
                 )
             if "surcos" not in cols:
                 conn.execute(f"ALTER TABLE {tabla} ADD COLUMN surcos REAL")
+            if "hydrawise_relay_id" not in cols:
+                conn.execute(
+                    f"ALTER TABLE {tabla} ADD COLUMN hydrawise_relay_id INTEGER"
+                )
+        riego_cols = {r[1] for r in conn.execute("PRAGMA table_info(riego)").fetchall()}
+        if "fert_estado" not in riego_cols:
+            conn.execute(
+                "ALTER TABLE riego ADD COLUMN fert_estado TEXT DEFAULT ''"
+            )
         _ensure_riego_config_cc(conn)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"
         )
         _migrar_personal_regador(conn)
         _ensure_mail_riego_usuarios(conn)
+        reencolar_hydra_sin_autorizar(conn)
         row = conn.execute(
             "SELECT valor FROM schema_meta WHERE clave='registro_riego_token_v1'"
         ).fetchone()
@@ -1172,6 +1279,13 @@ def url_publica(token: str | None = None, op: str | None = None) -> str:
     op_id = (op or "").strip()
     if op_id:
         url += f"&op={quote(op_id, safe='')}"
+    try:
+        from demo_web.services.tenant_scope import is_concepcion_tenant
+
+        if is_concepcion_tenant():
+            url += "&tenant=concepcion"
+    except Exception:
+        pass
     return url
 
 
@@ -1205,8 +1319,10 @@ def _destinatario_alerta() -> list[str]:
 
 
 def _nombre_erp() -> str:
+    from demo_web.services.tenant_scope import nombre_erp
+
     demo = get_demo_module()
-    return str(getattr(demo, "NOMBRE_ERP", None) or "ERP Agrícola")
+    return nombre_erp(demo)
 
 
 def _fmt_fert(dosis, total, demo) -> str:
@@ -1278,6 +1394,149 @@ def enviar_alerta(registro: dict[str, Any]) -> bool:
     return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
 
 
+def enviar_alerta_hydra_sector_ok(
+    *,
+    codigo: str,
+    huerto: str,
+    horas_fmt: str,
+    m3_fmt: str,
+    fert_txt: str,
+    sector_label: str,
+    cola_id: int,
+    fert_pendiente_confirmacion: bool = False,
+) -> bool:
+    demo = get_demo_module()
+    if not hasattr(demo, "_enviar_correo_html"):
+        return False
+    from erp_correo_html import html_esc, plantilla_correo_html
+
+    dest = _destinatario_alerta()
+    if not dest:
+        return False
+    interior = f"""
+        <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
+          Un sector de riego <b>HYDRA / Hydrawise</b> terminó y quedó
+          <b>pendiente de autorizar</b> en Riego → Link riego.
+          Al autorizar pasa al historial del huerto
+          {" y el fertirriego descuenta bodega." if fert_pendiente_confirmacion else "."}
+        </p>
+        <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;padding:16px 18px;">
+          <p style="margin:6px 0;"><b>Código:</b> {html_esc(codigo)}</p>
+          <p style="margin:6px 0;"><b>Cola HYDRA:</b> #{cola_id}</p>
+          <p style="margin:6px 0;"><b>Sector:</b> {html_esc(sector_label)}</p>
+          <p style="margin:6px 0;"><b>Huerto (CC):</b> {html_esc(huerto)}</p>
+          <p style="margin:6px 0;"><b>Horas:</b> {html_esc(horas_fmt)}</p>
+          <p style="margin:6px 0;"><b>m³:</b> {html_esc(m3_fmt)}</p>
+          <p style="margin:6px 0;"><b>Fertirriego:</b> {html_esc(fert_txt or '—')}</p>
+        </div>
+    """
+    cuerpo = plantilla_correo_html(
+        "vencimiento",
+        f"HYDRA — {codigo} para autorizar",
+        interior,
+        nombre_erp=_nombre_erp(),
+        pie="Alerta automática HYDRA — pendiente en Link riego.",
+    )
+    asunto = f"HYDRA {codigo} para autorizar | {huerto[:18]} | {sector_label[:18]}"
+    return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
+
+
+def enviar_alerta_hydra_cola_inicio(
+    *,
+    cola_id: int,
+    tipo: str,
+    inicio_programa: str,
+    regador: str,
+    items: list[dict[str, str]],
+) -> bool:
+    demo = get_demo_module()
+    if not hasattr(demo, "_enviar_correo_html"):
+        return False
+    from erp_correo_html import html_esc, plantilla_correo_html
+
+    dest = _destinatario_alerta()
+    if not dest:
+        return False
+    tipo_txt = "Programado" if str(tipo) == "programado" else "Regar ahora"
+    filas = ""
+    for it in items:
+        filas += (
+            f"<li style='margin:4px 0;'>{html_esc(it.get('label', ''))} — "
+            f"{html_esc(it.get('minutos', ''))} · Fert: {html_esc(it.get('fert_txt', '—'))}</li>"
+        )
+    interior = f"""
+        <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
+          <b>{html_esc(regador)}</b> inició o programó riego vía <b>HYDRA</b>.
+        </p>
+        <div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:10px;padding:16px 18px;">
+          <p style="margin:6px 0;"><b>Cola:</b> #{cola_id} · {html_esc(tipo_txt)}</p>
+          <p style="margin:6px 0;"><b>Inicio:</b> {html_esc(str(inicio_programa)[:16])}</p>
+          <ul style="margin:8px 0 0 18px;padding:0;">{filas}</ul>
+        </div>
+    """
+    cuerpo = plantilla_correo_html(
+        "vencimiento",
+        f"HYDRA — Cola #{cola_id} ({tipo_txt})",
+        interior,
+        nombre_erp=_nombre_erp(),
+        pie="Informativo — fertirriego editable en cola hasta que riegue el sector.",
+    )
+    asunto = f"HYDRA cola #{cola_id} | {regador[:24]} | {tipo_txt}"
+    return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
+
+
+def enviar_alerta_hydra_interrupcion(
+    *,
+    operador: str,
+    cola_id: int,
+    sector_label: str,
+    huerto: str,
+    horas_fmt: str,
+    m3_fmt: str,
+    fert_txt: str,
+    codigo: str,
+    motivo: str,
+) -> bool:
+    demo = get_demo_module()
+    if not hasattr(demo, "_enviar_correo_html"):
+        return False
+    from erp_correo_html import html_esc, plantilla_correo_html
+
+    dest = _destinatario_alerta()
+    if not dest:
+        return False
+    cod_line = (
+        f'<p style="margin:6px 0;"><b>Registro parcial:</b> {html_esc(codigo)}</p>'
+        if codigo
+        else "<p style=\"margin:6px 0;\"><b>Registro parcial:</b> — (sin imputación)</p>"
+    )
+    interior = f"""
+        <p style="color:#1F2933;line-height:1.55;margin:0 0 12px;">
+          Se <b>interrumpió manualmente</b> un riego HYDRA desde el link del regador.
+        </p>
+        <div style="background:#FFF3E0;border:1px solid #FFCC80;border-radius:10px;padding:16px 18px;">
+          <p style="margin:6px 0;"><b>Operador:</b> {html_esc(operador)}</p>
+          <p style="margin:6px 0;"><b>Acción:</b> {html_esc(motivo)}</p>
+          <p style="margin:6px 0;"><b>Cola HYDRA:</b> #{cola_id}</p>
+          <p style="margin:6px 0;"><b>Sector:</b> {html_esc(sector_label)}</p>
+          <p style="margin:6px 0;"><b>Huerto (CC):</b> {html_esc(huerto or '—')}</p>
+          {cod_line}
+          <p style="margin:6px 0;"><b>Horas reales:</b> {html_esc(horas_fmt)}</p>
+          <p style="margin:6px 0;"><b>m³:</b> {html_esc(m3_fmt)}</p>
+          <p style="margin:6px 0;"><b>Fertirriego (aplicado al inicio):</b> {html_esc(fert_txt or '—')}</p>
+        </div>
+    """
+    cuerpo = plantilla_correo_html(
+        "vencimiento",
+        f"⚠ HYDRA — riego interrumpido (cola #{cola_id})",
+        interior,
+        nombre_erp=_nombre_erp(),
+        pie="Alerta adicional — interrupción manual HYDRA.",
+    )
+    asunto = f"⚠ HYDRA parada | {operador[:20]} | cola #{cola_id}"
+    return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
+
+
 def registrar_link(
     fecha: str,
     huerto: str,
@@ -1290,6 +1549,7 @@ def registrar_link(
     fertilizantes: list[dict[str, Any]] | None = None,
     modo_riego: str = "horas",
     surcos: float | None = None,
+    hydrawise_relay_id: int | None = None,
 ) -> dict[str, Any]:
     demo = get_demo_module()
     huerto = _norm_cc(huerto)
@@ -1321,8 +1581,9 @@ def registrar_link(
         conn.execute(
             """INSERT INTO riego_bitacora
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, ip_origen, creado_en, estado, modo_riego, surcos)
-               VALUES (?,?,?,?,?,?,?,?,?,?,'pendiente',?,?)""",
+                regador, ip_origen, creado_en, estado, modo_riego, surcos,
+                hydrawise_relay_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,'pendiente',?,?,?)""",
             (
                 codigo,
                 fecha,
@@ -1336,6 +1597,7 @@ def registrar_link(
                 fh,
                 modo_riego,
                 None,
+                hydrawise_relay_id,
             ),
         )
         if lineas_fert:
@@ -1398,7 +1660,8 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
         migrar_tabla(conn)
         row = conn.execute(
             """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                      regador, COALESCE(estado, 'pendiente'), modo_riego, surcos
+                      regador, COALESCE(estado, 'pendiente'), modo_riego, surcos,
+                      hydrawise_relay_id
                FROM riego_bitacora WHERE codigo=?""",
             (codigo,),
         ).fetchone()
@@ -1416,6 +1679,7 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
             estado,
             modo_riego,
             surcos,
+            hw_relay,
         ) = row
         est = str(estado or "pendiente").lower()
         if est == "autorizado":
@@ -1437,11 +1701,18 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
         if not ok_bod:
             conn.rollback()
             return {"ok": False, "msg": msg_bod}
+        n_fert = conn.execute(
+            "SELECT COUNT(*) FROM riego_fertilizantes WHERE codigo=?",
+            (codigo,),
+        ).fetchone()
+        origen = "hydrawise" if hw_relay else "link"
+        fert_estado = "confirmado" if hw_relay and n_fert and int(n_fert[0]) else ""
         conn.execute(
             """INSERT INTO riego
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, origen, bitacora_codigo, creado_por, creado_en, modo_riego, surcos)
-               VALUES (?,?,?,?,?,?,?,?, 'link', ?, ?, ?, ?, ?)""",
+                regador, origen, bitacora_codigo, creado_por, creado_en, modo_riego, surcos,
+                hydrawise_relay_id, fert_estado)
+               VALUES (?,?,?,?,?,?,?,?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 codigo,
                 str(fecha)[:10],
@@ -1451,11 +1722,14 @@ def autorizar_registro(codigo: str, usuario: str) -> dict[str, Any]:
                 fert_dosis_ha,
                 fert_total,
                 regador,
+                origen,
                 codigo,
                 usuario,
                 fh_auth,
                 modo_riego or "horas",
                 surcos,
+                hw_relay,
+                fert_estado,
             ),
         )
         conn.execute(
@@ -1645,10 +1919,22 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
                   COALESCE(estado, 'pendiente'), COALESCE(autorizado_por, ''),
                   COALESCE(autorizado_en, ''), COALESCE(rechazado_por, ''),
                   COALESCE(rechazado_en, ''), COALESCE(rechazo_motivo, ''), creado_en,
-                  COALESCE(modo_riego, 'horas'), surcos
+                  COALESCE(modo_riego, 'horas'), surcos, hydrawise_relay_id
            FROM riego_bitacora ORDER BY id DESC LIMIT ?""",
         (limite,),
     ).fetchall()
+    hw_labels: dict[int, str] = {}
+    try:
+        from demo_web.services.tenant_scope import is_concepcion_tenant
+
+        if is_concepcion_tenant():
+            from demo_web.services.hydrawise_riego import listar_zonas
+
+            for z in listar_zonas(conn):
+                rid = int(z["relay_id"])
+                hw_labels[rid] = (z.get("alias") or z.get("nombre_hw") or f"Zona {rid}").strip()
+    except Exception:
+        pass
     out = []
     for row in rows:
         (
@@ -1669,6 +1955,7 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
             creado,
             modo_riego,
             surcos,
+            hw_relay,
         ) = row
         est = (estado or "pendiente").lower()
         modo_txt = _fmt_modo_riego(modo_riego, surcos, demo)
@@ -1692,19 +1979,21 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
                 "rechazado_en": rej_en,
                 "rechazo_motivo": rej_mot,
                 "creado_en": creado,
+                "hydra_sector": hw_labels.get(int(hw_relay)) if hw_relay else "",
             }
         )
     return out
 
 
-def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
-    demo = get_demo_module()
+def listar_historial(conn, limite: int = 100, demo=None) -> list[dict[str, Any]]:
+    if demo is None:
+        demo = get_demo_module()
     migrar_tabla(conn)
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
     rows = conn.execute(
         """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
                   regador, origen, bitacora_codigo, creado_por, creado_en,
-                  COALESCE(modo_riego, 'horas'), surcos
+                  COALESCE(modo_riego, 'horas'), surcos, COALESCE(fert_estado, '')
            FROM riego ORDER BY fecha DESC, id DESC LIMIT ?""",
         (limite,),
     ).fetchall()
@@ -1727,6 +2016,7 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
             creado_en,
             modo_riego,
             surcos,
+            fert_estado,
         ) = row
         cod = str(codigo or "").strip()
         npk = (
@@ -1734,6 +2024,8 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
             if cod
             else {}
         )
+        orig = str(origen or "manual")
+        fest = str(fert_estado or "").lower()
         out.append(
             {
                 "num": i,
@@ -1745,14 +2037,154 @@ def listar_historial(conn, limite: int = 100) -> list[dict[str, Any]]:
                 "modo_txt": _fmt_modo_riego(modo_riego, surcos, demo),
                 "fert_txt": _fmt_fertilizantes(conn, codigo or "", demo, dosis, total),
                 "regador": regador or "—",
-                "origen": origen or "manual",
+                "origen": orig,
                 "bitacora_codigo": bit_cod or "",
                 "creado_por": creado_por or "",
                 "creado_en": creado_en or "",
+                "fert_estado": fest,
+                "fert_pendiente_hydra": orig == "hydrawise" and fest == "pendiente",
+                "fertilizantes_lineas": [
+                    {
+                        "producto": t[0],
+                        "producto_id": int(t[1] or 0),
+                        "cantidad": float(t[2] or 0),
+                        "unidad": t[3],
+                    }
+                    for t in fert_por_codigo.get(cod, [])
+                ],
                 **npk,
             }
         )
     return out
+
+
+def confirmar_fert_hydra(codigo: str, usuario: str) -> dict[str, Any]:
+    demo = get_demo_module()
+    codigo = (codigo or "").strip()
+    usuario = (usuario or "").strip() or "admin"
+    if not codigo:
+        return {"ok": False, "msg": "Código inválido."}
+    conn = _conn()
+    try:
+        migrar_tabla(conn)
+        row = conn.execute(
+            """SELECT codigo, fecha, huerto, origen, COALESCE(fert_estado, '')
+               FROM riego WHERE codigo=?""",
+            (codigo,),
+        ).fetchone()
+        if not row:
+            return {"ok": False, "msg": f"No se encontró {codigo}."}
+        if str(row[3] or "") != "hydrawise":
+            return {"ok": False, "msg": "Solo aplica a riegos HYDRA."}
+        fest = str(row[4] or "").lower()
+        if fest == "confirmado":
+            return {"ok": False, "msg": "Fertirriego ya confirmado."}
+        if fest != "pendiente":
+            return {"ok": False, "msg": "Este registro no tiene fertirriego pendiente."}
+        huerto_cc = str(row[2] or "").strip().upper()
+        fecha = str(row[1] or "")[:10]
+        fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("BEGIN IMMEDIATE")
+        lineas = _listar_fertilizantes(conn, codigo)
+        if lineas:
+            ok_bod, msg_bod = _aplicar_salidas_bodega_fertilizantes(
+                conn, codigo, huerto_cc, fecha, demo
+            )
+            if not ok_bod:
+                conn.rollback()
+                return {"ok": False, "msg": msg_bod}
+        conn.execute(
+            "UPDATE riego SET fert_estado='confirmado' WHERE codigo=?",
+            (codigo,),
+        )
+        conn.execute(
+            "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
+            (
+                usuario,
+                "HYDRA FERT CONFIRMAR",
+                f"{codigo} | {huerto_cc} | bodega OK",
+                fh,
+            ),
+        )
+        conn.commit()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "msg": f"Error al confirmar: {exc}"}
+    finally:
+        conn.close()
+    return {"ok": True, "msg": f"Fertirriego de {codigo} confirmado (bodega actualizada)."}
+
+
+def modificar_fert_hydra(
+    codigo: str,
+    usuario: str,
+    fertilizantes: list[dict[str, Any]] | None,
+    *,
+    con_fertilizacion: bool,
+) -> dict[str, Any]:
+    demo = get_demo_module()
+    codigo = (codigo or "").strip()
+    usuario = (usuario or "").strip() or "admin"
+    if not codigo:
+        return {"ok": False, "msg": "Código inválido."}
+    conn = _conn()
+    try:
+        migrar_tabla(conn)
+        row = conn.execute(
+            """SELECT codigo, huerto, origen, COALESCE(fert_estado, ''), fert_total
+               FROM riego WHERE codigo=?""",
+            (codigo,),
+        ).fetchone()
+        if not row:
+            return {"ok": False, "msg": f"No se encontró {codigo}."}
+        if str(row[2] or "") != "hydrawise":
+            return {"ok": False, "msg": "Solo aplica a riegos HYDRA."}
+        if str(row[3] or "").lower() != "pendiente":
+            return {"ok": False, "msg": "Solo puede modificar fertirriego pendiente de confirmación."}
+        huerto_cc = str(row[1] or "").strip().upper()
+        conn.execute("BEGIN IMMEDIATE")
+        if not con_fertilizacion:
+            conn.execute("DELETE FROM riego_fertilizantes WHERE codigo=?", (codigo,))
+            conn.execute(
+                "UPDATE riego SET fert_total=NULL, fert_dosis_ha=NULL WHERE codigo=?",
+                (codigo,),
+            )
+        else:
+            ok_f, msg_f, lineas_fert = _validar_lineas_fertilizantes(
+                conn, fertilizantes or []
+            )
+            if not ok_f:
+                conn.rollback()
+                return {"ok": False, "msg": msg_f}
+            fert_total = sum(float(ln["cantidad"]) for ln in lineas_fert)
+            _guardar_fertilizantes(conn, codigo, lineas_fert)
+            conn.execute(
+                "UPDATE riego SET fert_total=? WHERE codigo=?",
+                (fert_total, codigo),
+            )
+        fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
+            (
+                usuario,
+                "HYDRA FERT MODIFICAR",
+                f"{codigo} | {huerto_cc}",
+                fh,
+            ),
+        )
+        conn.commit()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "msg": f"Error al modificar: {exc}"}
+    finally:
+        conn.close()
+    return {"ok": True, "msg": f"Fertirriego de {codigo} actualizado (sigue pendiente de confirmar)."}
 
 
 def contar_pendientes(conn) -> int:
@@ -1808,6 +2240,119 @@ def links_personales_regadores() -> list[dict[str, str]]:
             }
         )
     return out
+
+
+def registrar_desde_hydrawise(
+    fecha: str,
+    huerto: str,
+    horas: float,
+    regador: str,
+    usuario: str,
+    *,
+    fertilizantes: list[dict[str, Any]] | None = None,
+    modo_riego: str = "horas",
+    surcos: float | None = None,
+    hydrawise_event_key: str = "",
+    defer_bodega_fert: bool = False,
+    hydrawise_relay_id: int | None = None,
+) -> dict[str, Any]:
+    """Deja el riego HYDRA pendiente en Link riego. Historial y bodega al autorizar."""
+    demo = get_demo_module()
+    huerto_cc = _norm_cc(huerto)
+    if not huerto_cc:
+        return {"ok": False, "msg": "Huerto/CC inválido en mapeo Hydrawise."}
+    modo_riego = _modo_efectivo(huerto_cc, modo_riego)
+
+    conn = _conn()
+    codigo = ""
+    try:
+        migrar_tabla(conn)
+        if hydrawise_event_key:
+            from demo_web.services.hydrawise_riego import migrar_hydrawise
+
+            migrar_hydrawise(conn)
+            row = conn.execute(
+                "SELECT codigo_riego FROM hydrawise_importados WHERE event_key=?",
+                (hydrawise_event_key,),
+            ).fetchone()
+            if row:
+                return {
+                    "ok": True,
+                    "msg": f"Evento ya importado ({row[0]}).",
+                    "codigo": str(row[0]),
+                }
+        m3_final, err_m3 = resolver_m3_registro(
+            conn,
+            huerto_cc,
+            float(horas or 0),
+            0.0,
+            modo=modo_riego,
+            surcos=surcos,
+        )
+        if err_m3:
+            return {"ok": False, "msg": err_m3}
+        m3 = m3_final
+        lineas_fert: list[dict[str, Any]] = []
+        if fertilizantes:
+            ok_f, msg_f, lineas_fert = _validar_lineas_fertilizantes(conn, fertilizantes)
+            if not ok_f:
+                return {"ok": False, "msg": msg_f}
+            fert_total = sum(float(ln["cantidad"]) for ln in lineas_fert)
+        else:
+            fert_total = None
+
+        conn.execute("BEGIN IMMEDIATE")
+        codigo = _siguiente_codigo(conn, "riego_bitacora")
+        fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            """INSERT INTO riego_bitacora
+               (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
+                regador, creado_en, estado, modo_riego, surcos, hydrawise_relay_id)
+               VALUES (?,?,?,?,?,?,?,?,?,'pendiente',?,?,?)""",
+            (
+                codigo,
+                str(fecha)[:10],
+                huerto_cc,
+                float(horas or 0),
+                float(m3 or 0),
+                None,
+                fert_total,
+                (regador or "Hydrawise").strip() or "Hydrawise",
+                fh,
+                modo_riego,
+                surcos,
+                hydrawise_relay_id,
+            ),
+        )
+        if lineas_fert:
+            _guardar_fertilizantes(conn, codigo, lineas_fert)
+
+        fert_resumen = _fmt_fertilizantes(conn, codigo, demo, None, fert_total)
+        conn.execute(
+            "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
+            (
+                usuario or "HYDRAWISE",
+                "RIEGO HYDRA PENDIENTE",
+                f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | "
+                f"{demo.f_decimal(m3)} m3 | {fert_resumen[:80]}",
+                fh,
+            ),
+        )
+        conn.commit()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"ok": False, "msg": f"No se pudo registrar Hydrawise: {exc}"}
+    finally:
+        conn.close()
+
+    return {
+        "ok": True,
+        "msg": f"{codigo} pendiente de autorizar en Link riego ({huerto_cc}).",
+        "codigo": codigo,
+    }
 
 
 def habilitado() -> bool:
