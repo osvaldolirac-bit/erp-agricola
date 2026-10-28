@@ -5,8 +5,9 @@ import os
 import re
 import secrets
 import sqlite3
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from flask import current_app, request
 
@@ -1441,6 +1442,27 @@ def enviar_alerta_hydra_sector_ok(
     return bool(demo._enviar_correo_html(asunto, cuerpo, dest))
 
 
+_SANTIAGO = ZoneInfo("America/Santiago")
+
+
+def inicio_visible_mail(tipo: str, inicio_programa: str) -> str:
+    """Hora de Inicio que se imprime en el correo de la cola.
+
+    Programar guarda la hora que eligió el teléfono, ya en hora de Santiago.
+    Regar ahora guarda demo.hora_chile(), que está fijo en UTC−4. En horario
+    de verano eso es una hora menos que Santiago. El correo muestra Santiago.
+    """
+    raw = str(inicio_programa or "").strip()
+    if str(tipo) == "programado":
+        return raw[:16]
+    try:
+        naive = datetime.fromisoformat(raw.replace(" ", "T")[:19])
+    except ValueError:
+        return datetime.now(_SANTIAGO).strftime("%Y-%m-%d %H:%M")
+    utc = (naive + timedelta(hours=4)).replace(tzinfo=timezone.utc)
+    return utc.astimezone(_SANTIAGO).strftime("%Y-%m-%d %H:%M")
+
+
 def enviar_alerta_hydra_cola_inicio(
     *,
     cola_id: int,
@@ -1458,6 +1480,7 @@ def enviar_alerta_hydra_cola_inicio(
     if not dest:
         return False
     tipo_txt = "Programado" if str(tipo) == "programado" else "Regar ahora"
+    inicio_txt = inicio_visible_mail(tipo, inicio_programa)
     filas = ""
     for it in items:
         filas += (
@@ -1470,7 +1493,7 @@ def enviar_alerta_hydra_cola_inicio(
         </p>
         <div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:10px;padding:16px 18px;">
           <p style="margin:6px 0;"><b>Cola:</b> #{cola_id} · {html_esc(tipo_txt)}</p>
-          <p style="margin:6px 0;"><b>Inicio:</b> {html_esc(str(inicio_programa)[:16])}</p>
+          <p style="margin:6px 0;"><b>Inicio:</b> {html_esc(inicio_txt)}</p>
           <ul style="margin:8px 0 0 18px;padding:0;">{filas}</ul>
         </div>
     """
