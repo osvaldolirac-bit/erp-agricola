@@ -5,7 +5,11 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from demo_web.services.hydrawise_cola_item import ficha_zona_corriendo, partes_item
+from demo_web.services.hydrawise_cola_item import (
+    corte_al_pausar,
+    ficha_zona_corriendo,
+    partes_item,
+)
 
 
 class TestItemColaHydra(unittest.TestCase):
@@ -70,3 +74,35 @@ class TestItemColaHydra(unittest.TestCase):
         )
         self.assertIn("ejecucion_por_relay_en_cola", enlace)
         self.assertIn("ejecucion_por_relay=ejecucion_por_relay", enlace)
+        self.assertIn("hydra_pausar", enlace)
+        self.assertIn("hydra_detener_sector", enlace)
+        self.assertIn("hydra_cancelar_sector", enlace)
+
+    def test_pausar_guarda_lo_que_falta(self):
+        ahora = datetime(2026, 10, 28, 8, 30, 26)
+        corte = corte_al_pausar(120, "2026-10-28 08:00:26", ahora, 0)
+        self.assertIsNotNone(corte)
+        self.assertAlmostEqual(corte["previos"], 30.0, places=2)
+        self.assertAlmostEqual(corte["restantes_min"], 90.0, places=2)
+        self.assertIsNone(
+            corte_al_pausar(0.5, "2026-10-28 08:30:00", ahora, 0)
+        )
+        panel = Path(
+            "demo_web/templates/registro_riego/_hydra_panel_control.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("hydra_pausar", panel)
+        self.assertIn("hydra_detener_sector", panel)
+        self.assertIn("hydra_cancelar_sector", panel)
+        self.assertNotIn("_hydra_cola_actions.html", panel)
+        self.assertLess(
+            panel.index("hydra-zone-card--tappable"),
+            panel.index("hydra_pausar"),
+        )
+        regar = Path(
+            "demo_web/templates/registro_riego/_hydra_panel_regar.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("relays_en_ejecucion", regar)
+        self.assertIn("en ejecución", regar)
+        js = Path("demo_web/static/js/hydra_link_control.js").read_text(encoding="utf-8")
+        self.assertIn("relayOcupado", js)
+        self.assertIn("Ese sector está en ejecución", js)

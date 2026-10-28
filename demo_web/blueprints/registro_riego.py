@@ -139,6 +139,20 @@ def _handle_hydra_action(
         return hw.parar_riego_manual(conn, usuario, operador_nombre)
     if action == "hydra_cancelar_cola":
         return hw.cancelar_cola_manual(conn, usuario, operador_nombre)
+    if action in (
+        "hydra_pausar",
+        "hydra_reanudar",
+        "hydra_detener_sector",
+        "hydra_cancelar_sector",
+    ):
+        item_id = int(request.form.get("cola_item_id") or 0)
+        if action == "hydra_pausar":
+            return hw.pausar_sector_cola(conn, item_id, usuario, operador_nombre)
+        if action == "hydra_reanudar":
+            return hw.reanudar_sector_cola(conn, item_id, usuario, operador_nombre)
+        if action == "hydra_detener_sector":
+            return hw.detener_sector_cola(conn, item_id, usuario, operador_nombre)
+        return hw.cancelar_sector_en_cola(conn, item_id, usuario, operador_nombre)
     return {"ok": False, "msg": "Acción Hydra no reconocida."}
 
 
@@ -361,6 +375,7 @@ def formulario():
     ejecucion_por_relay: dict = {}
     hydra_mostrar_apagar = False
     running_relay_ids: set[int] = set()
+    paused_relay_ids: set[int] = set()
     queued_relay_ids: set[int] = set()
     if use_hydra_ui:
         conn = demo.conectar_db()
@@ -414,13 +429,17 @@ def formulario():
                 item_est = str(it.get("estado") or "")
                 if item_est == "corriendo":
                     running_relay_ids.add(rid)
+                elif item_est == "pausado":
+                    paused_relay_ids.add(rid)
                 elif cola_viva and item_est == "pendiente":
                     queued_relay_ids.add(rid)
         queued_relay_ids -= running_relay_ids
+        queued_relay_ids -= paused_relay_ids
         for rid, st in (live_zonas or {}).items():
             if isinstance(st, dict) and st.get("running"):
                 rid_i = int(rid)
                 running_relay_ids.add(rid_i)
+                paused_relay_ids.discard(rid_i)
                 queued_relay_ids.discard(rid_i)
 
     ctx = dict(
@@ -446,7 +465,9 @@ def formulario():
         hydra_sync_cooldown=hydra_sync_cooldown,
         live_zonas=live_zonas,
         running_relay_ids=sorted(running_relay_ids),
+        paused_relay_ids=sorted(paused_relay_ids),
         queued_relay_ids=sorted(queued_relay_ids),
+        relays_en_ejecucion=sorted(running_relay_ids | paused_relay_ids),
         programa_por_relay=programa_por_relay,
         ejecucion_por_relay=ejecucion_por_relay,
         hydra_tiene_corriendo=bool(running_relay_ids),

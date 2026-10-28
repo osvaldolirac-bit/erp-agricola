@@ -1,5 +1,29 @@
 {# Testigos conexión + sectores + cola (pestaña Control) #}
-{% include "registro_riego/_hydra_cola_actions.html" %}
+<style>
+  button.hydra-zone-card-main {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  .hydra-zone-card.is-paused {
+    border-color: #f9a825;
+    box-shadow: 0 0 0 2px rgba(249, 168, 37, 0.25);
+    background: #fff8e1;
+  }
+  .hydra-zone-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.55rem;
+  }
+  .hydra-zone-actions form { flex: 1; margin: 0; }
+  .hydra-zone-actions .btn { width: 100%; }
+</style>
 
 <div class="hydra-conn-witness hydra-conn-witness--{{ 'ok' if hydra_conn_online else 'fail' }}" role="status">
   <span class="hydra-conn-dot" aria-hidden="true"></span>
@@ -16,9 +40,12 @@
     {% set ej_map = ejecucion_por_relay|default({}) %}
     {% set ej = ej_map.get(s.relay_id|string) %}
     {% set corriendo = s.relay_id in running_relay_ids %}
+    {% set en_pausa = s.relay_id in (paused_relay_ids|default([])) %}
     {% set en_cola = s.relay_id in queued_relay_ids %}
-    {% if corriendo and ej %}
-    <button type="button" class="hydra-zone-card hydra-zone-card--tappable is-running" data-relay="{{ s.relay_id }}">
+    {% set activo = (corriendo or en_pausa) and ej %}
+    {% if activo %}
+    <article class="hydra-zone-card {% if ej.pausado %}is-paused{% else %}is-running{% endif %}" data-relay="{{ s.relay_id }}">
+      <button type="button" class="hydra-zone-card-main hydra-zone-card--tappable" data-relay="{{ s.relay_id }}">
     {% else %}
     <article class="hydra-zone-card{% if corriendo %} is-running{% elif en_cola %} is-queued{% endif %}" data-relay="{{ s.relay_id }}">
     {% endif %}
@@ -27,12 +54,18 @@
         <h3>{{ s.label }}</h3>
       </div>
       <p class="hydra-zone-cc">{{ s.huerto_cc }}</p>
-      {% if corriendo %}
-      <span class="hydra-zone-status">Regando</span>
+      {% if corriendo or en_pausa %}
+      <span class="hydra-zone-status">{{ 'Pausado' if en_pausa else 'Regando' }}</span>
       {% if ej %}
+      {% if ej.pausado %}
+      <p class="hydra-zone-timer hydra-zone-timer--done mb-0">
+        <span class="hydra-zone-timer-value">{{ ej.remaining_clock }}</span>
+      </p>
+      {% else %}
       <p class="hydra-zone-timer mb-0" data-remaining-sec="{{ ej.remaining_sec }}">
         <span class="hydra-zone-timer-value">{{ ej.remaining_clock }}</span>
       </p>
+      {% endif %}
       <p class="hydra-zone-tap-hint small mb-0">Toque para ver el detalle</p>
       {% endif %}
       {% elif en_cola %}
@@ -57,12 +90,46 @@
         <p class="hydra-zone-program-line hydra-zone-program-line--muted"><span>Fertirriego</span> Sin fert en cola</p>
         {% endif %}
       </div>
+      {% if prog.item_id and hydra_puede_operar|default(true) %}
+      <form method="post" class="mt-2" onsubmit="return confirm('¿Sacar este sector de la cola?');">
+        {% include "registro_riego/_hydra_scope_fields.html" %}
+        <input type="hidden" name="action" value="hydra_cancelar_sector">
+        <input type="hidden" name="cola_item_id" value="{{ prog.item_id }}">
+        <button type="submit" class="btn hydra-btn-cancel btn-sm w-100">Cancelar</button>
+      </form>
+      {% endif %}
       {% endif %}
       {% else %}
       <span class="hydra-zone-status hydra-zone-status--idle">En reposo</span>
       {% endif %}
-    {% if corriendo and ej %}
-    </button>
+    {% if activo %}
+      </button>
+      {% if hydra_puede_operar|default(true) %}
+      <div class="hydra-zone-actions">
+        {% if ej.pausado %}
+        <form method="post">
+          {% include "registro_riego/_hydra_scope_fields.html" %}
+          <input type="hidden" name="action" value="hydra_reanudar">
+          <input type="hidden" name="cola_item_id" value="{{ ej.item_id }}">
+          <button type="submit" class="btn hydra-btn-run btn-sm">Reanudar</button>
+        </form>
+        {% else %}
+        <form method="post" onsubmit="return confirm('¿Pausar este sector? El agua se corta y el tiempo que falta queda guardado.');">
+          {% include "registro_riego/_hydra_scope_fields.html" %}
+          <input type="hidden" name="action" value="hydra_pausar">
+          <input type="hidden" name="cola_item_id" value="{{ ej.item_id }}">
+          <button type="submit" class="btn btn-warning btn-sm">Pausar</button>
+        </form>
+        {% endif %}
+        <form method="post" onsubmit="return confirm('¿Detener este sector? Se anota el tiempo ya regado y sigue el próximo de la cola.');">
+          {% include "registro_riego/_hydra_scope_fields.html" %}
+          <input type="hidden" name="action" value="hydra_detener_sector">
+          <input type="hidden" name="cola_item_id" value="{{ ej.item_id }}">
+          <button type="submit" class="btn hydra-btn-stop btn-sm">Detener</button>
+        </form>
+      </div>
+      {% endif %}
+    </article>
     {% else %}
     </article>
     {% endif %}
