@@ -47,6 +47,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/services/hydrawise_riego.py",
     "demo_web/templates/registro_riego/_hydra_panel_control.html",
     "demo_web/templates/registro_riego/_hydra_control_ui.html",
+    "demo_web/blueprints/registro_riego.py",
     "demo_web/services/qrcodegen.py",
     "demo_web/services/public_link_tenant.py",
     "demo_web/services/sidebar_badges.py",

@@ -65,3 +65,8 @@ class TestItemColaHydra(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("hydra_link_running_detail.js", oficina)
         self.assertIn("_hydra_running_detail_modal.html", oficina)
+        enlace = Path("demo_web/blueprints/registro_riego.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("ejecucion_por_relay_en_cola", enlace)
+        self.assertIn("ejecucion_por_relay=ejecucion_por_relay", enlace)
