@@ -242,7 +242,7 @@
     document.querySelector(addSel)?.addEventListener("click", function () {
       var row = tpl.cloneNode(true);
       row.querySelectorAll('input[type="number"]').forEach(function (i) {
-        if (i.name === "hw_minutos") i.value = "30";
+        if (i.name === "hw_minutos") i.value = "";
       });
       row.querySelectorAll("select").forEach(function (s) {
         if (s.name === "hw_relay_id") s.selectedIndex = 0;

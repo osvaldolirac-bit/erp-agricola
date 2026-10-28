@@ -103,6 +103,15 @@ class TestItemColaHydra(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("relays_en_ejecucion", regar)
         self.assertIn("en ejecución", regar)
+        self.assertIn('placeholder="Ingresar minutos"', regar)
+        self.assertNotIn('value="30"', regar)
+        programar = Path(
+            "demo_web/templates/registro_riego/_hydra_panel_programar.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn('placeholder="Ingresar minutos"', programar)
+        self.assertNotIn('value="30"', programar)
         js = Path("demo_web/static/js/hydra_link_control.js").read_text(encoding="utf-8")
         self.assertIn("relayOcupado", js)
         self.assertIn("Ese sector está en ejecución", js)
+        self.assertIn('i.value = ""', js)
+        self.assertNotIn('i.value = "30"', js)
