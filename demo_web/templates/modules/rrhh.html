@@ -381,6 +381,13 @@
   {% endif %}
 
   {% elif sub_activa == 'cosecha' %}
+  {% if cosecha_super %}
+  <div class="panel-card mb-3">
+    <h2 class="h6">Súper enlace</h2>
+    <p class="small text-muted">Uno solo, para ver toda la cosecha. La anotadora de cada contratista sigue con su enlace.</p>
+    <input class="form-control form-control-sm" readonly value="{{ cosecha_super.url }}" onclick="this.select()">
+  </div>
+  {% endif %}
   <div class="panel-card mb-3">
     <form method="get" class="row g-2 align-items-end">
       <input type="hidden" name="sec" value="contratistas">

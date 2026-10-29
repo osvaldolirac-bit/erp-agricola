@@ -16,6 +16,8 @@ from demo_web.services.cosecha import (
     entregar_funda,
     filtrar_cuarteles_cosecha,
     guardar_persona,
+    cerrar_faena,
+    enlace_super,
     enlace_todos,
     listar_fundas,
     listar_links,
@@ -186,6 +188,9 @@ class TestFaena(unittest.TestCase):
         self.assertIn('id="cuartel"', html)
         self.assertIn("{% if todos %}", html)
         self.assertIn("Todos los cuarteles", html)
+        self.assertIn("{% if resumen %}", html)
+        self.assertIn("Toda la cosecha", html)
+        self.assertIn('name="faena"', html)
         self.assertNotIn("precio", html.lower())
         self.assertNotIn("abono", html.lower())
         self.assertNotIn("peso", html.lower())
@@ -229,6 +234,9 @@ class TestFaena(unittest.TestCase):
         self.assertIn("Enlace de todos los cuarteles", html)
         self.assertIn("cosecha_enlace.url", html)
         self.assertIn("Enlace por cuartel", html)
+        self.assertIn("Súper enlace", html)
+        self.assertIn("cosecha_super", html)
+        self.assertIn("es_super_admin()", Path("demo_web/services/native/rrhh.py").read_text(encoding="utf-8"))
         self.assertNotIn("Generar QR", html)
         self.assertNotIn("cosecha_imprimir", html)
 
@@ -454,6 +462,60 @@ class TestAtender(unittest.TestCase):
         espino = resolver_enlace(conn, enlace_todos(conn, faena_e))
         self.assertEqual(espino["cuarteles"], ESPINO)
         self.assertNotIn("CEREZOS CORTE 1", espino["cuarteles"])
+
+    def test_el_super_enlace_es_uno_y_la_anotadora_conserva_el_suyo(self):
+        conn = _conn()
+        _ok, _msg, faena_a = abrir_faena(
+            conn, 1, ["CEREZOS CORTE 1", "CIRUELOS"], "2026-11-20"
+        )
+        _ok, _msg, faena_b = abrir_faena(conn, 2, ["NOGALES"], "2026-11-21")
+        token = enlace_super(conn)
+        self.assertEqual(enlace_super(conn), token)
+        self.assertNotEqual(token, enlace_todos(conn, faena_a))
+        self.assertNotEqual(token, enlace_todos(conn, faena_b))
+        links_a = {x["cuartel"]: x["token"] for x in listar_links(conn, faena_a)}
+        links_b = {x["cuartel"]: x["token"] for x in listar_links(conn, faena_b)}
+        self.assertNotIn(token, set(links_a.values()) | set(links_b.values()))
+        sumar_tote(conn, links_a["CEREZOS CORTE 1"], 1, "2026-11-20 08:00:00", "2026-11-20")
+        for _ in range(4):
+            sumar_tote(conn, links_b["NOGALES"], 4, "2026-11-21 08:00:00", "2026-11-21")
+        resumen = vista_anotadora(conn, token, "ingresado", None, "2026-11-22")
+        self.assertTrue(resumen["resumen"])
+        self.assertEqual(resumen["total_totes"], 5)
+        por_nombre = {f["contratista"]: f["totes"] for f in resumen["faenas"]}
+        self.assertEqual(por_nombre["Cuadrilla Sur"], 1)
+        self.assertEqual(por_nombre["Cuadrilla Espino"], 4)
+        propio = vista_anotadora(
+            conn, enlace_todos(conn, faena_a), "ingresado", None, "2026-11-20", "CEREZOS CORTE 1"
+        )
+        self.assertFalse(propio["super"])
+        self.assertEqual(propio["cuarteles"], ["CEREZOS CORTE 1", "CIRUELOS"])
+        ok, msg, _n = atender_anotadora(
+            conn, token, "sumar", 3, "", "2026-11-21 09:00:00", "", "2026-11-21", "NOGALES", faena_b
+        )
+        self.assertTrue(ok, msg)
+        self.assertEqual(contar_totes(conn, faena_b, "NOGALES"), 5)
+        self.assertEqual(contar_totes(conn, faena_a, "CEREZOS CORTE 1"), 1)
+        ok, msg, _n = sumar_tote(
+            conn, links_a["CEREZOS CORTE 1"], 1, "2026-11-20 10:00:00", "2026-11-20", "", faena_b
+        )
+        self.assertTrue(ok, msg)
+        self.assertEqual(contar_totes(conn, faena_a, "CEREZOS CORTE 1"), 2)
+        self.assertEqual(contar_totes(conn, faena_b, "NOGALES"), 5)
+        self.assertTrue(cerrar_faena(conn, faena_a, "2026-11-22")[0])
+        cerrada = vista_anotadora(
+            conn, token, "ingresado", None, "2026-11-20", "CEREZOS CORTE 1", faena_a
+        )
+        self.assertTrue(cerrada["super"])
+        self.assertTrue(cerrada["faena_cerrada"])
+        self.assertEqual(cerrada["contratista"], "Cuadrilla Sur")
+        self.assertEqual(cerrada["total_totes"], 2)
+        ok, msg, _n = atender_anotadora(
+            conn, token, "sumar", 1, "", "2026-11-22 11:00:00", "", "2026-11-22", "CIRUELOS", faena_a
+        )
+        self.assertFalse(ok)
+        self.assertIn("cerrada", msg.lower())
+        self.assertEqual(contar_totes(conn, faena_a, "CIRUELOS"), 0)
 
 
 if __name__ == "__main__":
