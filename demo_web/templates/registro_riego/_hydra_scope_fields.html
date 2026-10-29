@@ -1,0 +1,6 @@
+{% if hydra_ui_scope|default('link') == 'link' %}
+<input type="hidden" name="t" value="{{ token }}">
+<input type="hidden" name="tab" value="{{ tab|default('control') }}">
+{% else %}
+<input type="hidden" name="sec" value="{{ hydra_ui_sec|default('hydra') }}">
+{% endif %}
