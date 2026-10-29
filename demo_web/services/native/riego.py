@@ -13,7 +13,8 @@ SECCIONES = [
     ("manual", "✏️ REGISTRO MANUAL"),
     ("bitacora", "🔗 LINK RIEGO"),
 ]
-SECCION_HYDRA = ("hydra", "🌐 HYDRA")
+SECCION_HYDRA = ("hydra", "💧 HYDRA RIEGO")
+SECCION_HYDRA_CONFIG = ("hydra_config", "⚙️ HYDRA CONFIG")
 
 
 def gather_riego(user_email: str, user_rol: str) -> dict:
@@ -38,7 +39,7 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
     if not habilitado():
         secciones = [s for s in secciones if s[0] != "bitacora"]
     if is_concepcion_tenant():
-        secciones.append(SECCION_HYDRA)
+        secciones.extend((SECCION_HYDRA, SECCION_HYDRA_CONFIG))
     if sec not in {k for k, _ in secciones}:
         sec = "historial"
 
@@ -88,19 +89,19 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             )
         elif sec == "manual":
             ctx["form_fecha"] = hoy_demo(demo).isoformat()
-            if is_concepcion_tenant():
-                from demo_web.services.hydrawise_riego import contexto_control_hydra_ui
-
-                puede = demo.es_admin() and not demo.es_solo_lectura()
-                ctx.update(
-                    contexto_control_hydra_ui(
-                        conn, user_email or "admin", auto_sync=True
-                    )
-                )
-                ctx["hydra_puede_operar"] = puede
-                ctx["hydra_ui_scope"] = "module"
-                ctx["hydra_ui_sec"] = "manual"
         elif sec == "hydra" and is_concepcion_tenant():
+            from demo_web.services.hydrawise_riego import contexto_control_hydra_ui
+
+            puede = demo.es_admin() and not demo.es_solo_lectura()
+            ctx.update(
+                contexto_control_hydra_ui(
+                    conn, user_email or "admin", auto_sync=True
+                )
+            )
+            ctx["hydra_puede_operar"] = puede
+            ctx["hydra_ui_scope"] = "module"
+            ctx["hydra_ui_sec"] = "hydra"
+        elif sec == "hydra_config" and is_concepcion_tenant():
             import json
 
             from demo_web.services.hydrawise_riego import (
@@ -260,7 +261,9 @@ def view(user_email: str, user_rol: str):
 
         if is_concepcion_tenant() and action.startswith("hydra_"):
             sec_hydra = (request.form.get("sec") or "hydra").strip()
-            if sec_hydra not in ("manual", "hydra"):
+            if sec_hydra == "manual":
+                sec_hydra = "hydra"
+            if sec_hydra not in ("hydra", "hydra_config"):
                 sec_hydra = "hydra"
             if not demo.es_admin():
                 flash("Solo administradores pueden operar Hydra.", "danger")
