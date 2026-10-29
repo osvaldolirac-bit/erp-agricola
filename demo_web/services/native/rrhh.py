@@ -1192,6 +1192,13 @@ def _contratistas_cosecha(demo, conn) -> dict:
         hasta = ""
     slug = slug_para_link()
     marca = nombre_erp(demo)
+    cosecha_super = None
+    if demo.es_super_admin():
+        from demo_web.services.cosecha import enlace_super
+
+        token_super = enlace_super(conn)
+        if token_super:
+            cosecha_super = {"url": url_anotadora(token_super, slug)}
     links = []
     filas = []
     enlace = None
@@ -1228,6 +1235,7 @@ def _contratistas_cosecha(demo, conn) -> dict:
         "cosecha_faena": panel or None,
         "cosecha_links": links,
         "cosecha_enlace": enlace,
+        "cosecha_super": cosecha_super,
         "cosecha_filas": filas,
         "cosecha_numeros": (
             planilla_numeros(conn, faena_id, numero=numero_filtro, desde=desde, hasta=hasta)

@@ -359,6 +359,11 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
+def _faena_id_pedido() -> int:
+    raw = (request.values.get("faena") or "").strip()
+    return int(raw) if raw.isdigit() else 0
+
+
 def _volver_cosecha(
     token: str,
     tenant: str,
@@ -366,6 +371,7 @@ def _volver_cosecha(
     numero: int | None = None,
     fecha: str = "",
     cuartel: str = "",
+    faena_id: int = 0,
 ):
     args = {
         "token": token,
@@ -378,6 +384,8 @@ def _volver_cosecha(
         args["fecha"] = fecha
     if cuartel:
         args["cuartel"] = cuartel
+    if faena_id:
+        args["faena"] = int(faena_id)
     return redirect(url_for("auth.cosecha_formulario", **args))
 
 
@@ -390,12 +398,13 @@ def cosecha_formulario(token: str):
     demo = get_demo_module()
     tenant = (request.values.get("tenant") or "concepcion").strip().lower()
     tab = (request.values.get("tab") or "ingreso").strip()
+    faena_id = _faena_id_pedido()
     conn = demo.conectar_db()
     try:
         if request.method == "POST":
             if hasattr(demo, "es_solo_lectura") and demo.es_solo_lectura():
                 flash("Modo solo lectura.", "warning")
-                return _volver_cosecha(token, tenant, tab)
+                return _volver_cosecha(token, tenant, tab, faena_id=faena_id)
             accion = (request.form.get("accion") or "sumar").strip()
             raw = (request.form.get("numero") or "").strip()
             numero = int(raw) if raw.isdigit() else None
@@ -421,6 +430,7 @@ def cosecha_formulario(token: str):
                 request.form.get("rut") or "",
                 fecha,
                 cuartel,
+                faena_id,
             )
             if ok:
                 conn.commit()
@@ -442,6 +452,7 @@ def cosecha_formulario(token: str):
                 volver,
                 fecha,
                 cuartel,
+                faena_id,
             )
         raw_n = (request.args.get("n") or "").strip()
         numero = int(raw_n) if raw_n.isdigit() else None
@@ -458,6 +469,7 @@ def cosecha_formulario(token: str):
             numero,
             dia,
             (request.args.get("cuartel") or "").strip(),
+            faena_id,
         )
         if ctx is not None:
             borrador = session.pop("cosecha_borrador", None)
