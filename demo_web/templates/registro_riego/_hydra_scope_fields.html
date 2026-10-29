@@ -3,4 +3,7 @@
 <input type="hidden" name="tab" value="{{ tab|default('control') }}">
 {% else %}
 <input type="hidden" name="sec" value="{{ hydra_ui_sec|default('hydra') }}">
+{% if hydra_ui_sub %}
+<input type="hidden" name="sub" value="{{ hydra_ui_sub }}">
+{% endif %}
 {% endif %}

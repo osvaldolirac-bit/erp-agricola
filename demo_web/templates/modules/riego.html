@@ -251,12 +251,21 @@
   </div>
 
   {% elif sec_activa == 'hydra' %}
+  <ul class="nav nav-pills flex-wrap gap-1 mb-3">
+    {% for key, label in hydra_sub %}
+    <li class="nav-item">
+      <a class="nav-link {% if sub_activa == key %}active{% endif %}"
+         href="{{ url_for('modules.riego', sec='hydra', sub=key) }}">{{ label }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if sub_activa == 'riego' %}
   <div class="panel-card hydra-module-control mb-3">
-    <h2 class="h6">HYDRA riego</h2>
+    <h2 class="h6">Riego HYDRA</h2>
     <p class="small text-muted mb-3">
       La app de riego: sectores, cola, regar ahora, programar y fertirriego.
       En el celular sigue el link del regador.
-      Los sectores se arman en <a href="{{ url_for('modules.riego', sec='hydra_config') }}">HYDRA CONFIG</a>.
+      Los sectores se arman en <a href="{{ url_for('modules.riego', sec='hydra', sub='config') }}">Config</a>.
     </p>
     {% if not hydra_puede_operar %}
     <div class="alert alert-warning py-2 small">Solo administradores pueden iniciar o programar riego desde aquí.</div>
@@ -266,12 +275,13 @@
     {% else %}
     <div class="alert alert-secondary py-2 small mb-0">
       Falta un sector activo con centro de costo y marcado en el link.
-      Eso se define en <a href="{{ url_for('modules.riego', sec='hydra_config') }}">HYDRA CONFIG</a>.
+      Eso se define en <a href="{{ url_for('modules.riego', sec='hydra', sub='config') }}">Config</a>.
     </div>
     {% endif %}
   </div>
   {% if hydra_control_activo|default(false) %}
   <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}-min0" defer></script>
+  {% endif %}
   {% endif %}
 
   {% elif sec_activa == 'bitacora' %}
@@ -288,11 +298,11 @@
       <strong>pendiente de autorizar</strong> (con su sector). Al autorizar pasa al historial
       y, si trae fertirriego, descuenta bodega.
       <strong>{{ hydra_link_sectores }}</strong> sector(es) mapeados a CC en
-      <a href="{{ url_for('modules.riego', sec='hydra_config') }}">HYDRA CONFIG</a>.
+      <a href="{{ url_for('modules.riego', sec='hydra', sub='config') }}">Config</a>.
     </div>
     {% elif hydra_link_sectores is defined %}
     <div class="alert alert-secondary py-2 small mb-3">
-      Importe sectores en <a href="{{ url_for('modules.riego', sec='hydra_config') }}">HYDRA CONFIG</a> y asigne CC a cada uno;
+      Importe sectores en <a href="{{ url_for('modules.riego', sec='hydra', sub='config') }}">Config</a> y asigne CC a cada uno;
       el link del regador copia esa lista de Hydrawise.
     </div>
     {% endif %}
