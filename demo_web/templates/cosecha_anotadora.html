@@ -9,41 +9,61 @@
     body { background: #f4f7f4; font-family: system-ui, sans-serif; }
     .num-grande { font-size: 2.8rem; font-weight: 800; line-height: 1; }
     .tote-grande { font-size: 1.8rem; font-weight: 800; }
+    .nav-atras { display: inline-flex; align-items: center; gap: .25rem; margin-bottom: .75rem; color: #1f6b3a; font-weight: 600; text-decoration: none; }
+    .nav-cosecha { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 3.6rem; margin-bottom: .5rem; padding: .8rem 1rem; background: #fff; border: 1px solid #d5e0d5; border-radius: .85rem; color: #172417; text-decoration: none; }
+    .nav-cosecha:active { background: #e7f2e8; }
+    .chip-cuartel { display: inline-block; padding: .4rem .75rem; border-radius: 999px; border: 1px solid #c5d4c5; background: #fff; color: #172417; text-decoration: none; font-size: .9rem; }
+    .chip-cuartel.active { background: #1f6b3a; border-color: #1f6b3a; color: #fff; }
   </style>
 </head>
 <body class="pb-5">
   <div class="container py-3" style="max-width: 32rem;">
     {% if resumen %}
-    <h1 class="h4 mb-2">Toda la cosecha</h1>
+    <h1 class="h4 mb-1">Cosecha</h1>
+    <p class="text-muted mb-3">Toda la cosecha · {{ total_totes }} totes</p>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
       <div class="alert alert-{{ cat }} py-2">{{ msg }}</div>
       {% endfor %}
     {% endwith %}
-    <p class="tote-grande mb-3">{{ total_totes }} totes</p>
     {% for faena in faenas %}
-    <div class="card card-body mb-2">
-      <div class="fw-semibold">{{ faena.contratista }}</div>
-      <p class="small text-muted mb-2">{{ faena.estado_txt }}{% if faena.creada %} · {{ faena.creada }}{% endif %} · {{ faena.totes }} totes</p>
-      {% for corte in faena.cuarteles %}
-      <a class="d-flex justify-content-between align-items-center text-decoration-none py-2 border-top"
-         href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingresado', fecha=fecha, faena=faena.id, cuartel=corte.nombre) }}">
-        <span>{{ corte.nombre }}</span>
-        <span class="fw-semibold">{{ corte.totes }}</span>
-      </a>
-      {% endfor %}
-    </div>
+    <a class="nav-cosecha" href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, fecha=fecha, faena=faena.id) }}">
+      <span>
+        <span class="d-block fw-semibold">{{ faena.contratista }}</span>
+        <span class="small text-muted">{{ faena.estado_txt }}{% if faena.creada %} · {{ faena.creada }}{% endif %}</span>
+      </span>
+      <span class="fw-semibold text-nowrap">{{ faena.totes }} ›</span>
+    </a>
     {% endfor %}
     {% if not faenas %}
     <p class="text-muted">Aún no hay cosecha.</p>
     {% endif %}
+    {% elif menu %}
+    <a class="nav-atras" href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, fecha=fecha) }}">‹ Cosecha</a>
+    <h1 class="h4 mb-1">{{ contratista }}</h1>
+    <p class="text-muted mb-3">{{ faena_estado }} · {{ total_totes }} totes</p>
+    {% for corte in menu_cuarteles %}
+    <a class="nav-cosecha" href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingresado', fecha=fecha, faena=faena_id, cuartel=corte.nombre) }}">
+      <span class="fw-semibold">{{ corte.nombre }}</span>
+      <span class="fw-semibold text-nowrap">{{ corte.totes }} ›</span>
+    </a>
+    {% endfor %}
+    {% else %}
+    {% if super %}
+    <a class="nav-atras" href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, fecha=fecha, faena=faena_id) }}">‹ {{ contratista }}</a>
+    <h1 class="h4 mb-1">{{ cuartel }}</h1>
+    <p class="small text-muted mb-2">{{ faena_estado }}{% if estado_cuenta %} · {{ estado_cuenta }}{% endif %}</p>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for nombre in cuarteles %}
+      <a class="chip-cuartel {% if nombre == cuartel %}active{% endif %}"
+         href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab=tab, fecha=fecha, faena=faena_id, cuartel=nombre) }}">{{ nombre }}</a>
+      {% endfor %}
+    </div>
     {% else %}
     <p class="text-uppercase small text-muted mb-1">{{ estado_cuenta }}</p>
-    <h1 class="h4 mb-2">{% if super %}{{ contratista }}{% elif todos %}Todos los cuarteles{% else %}{{ cuartel }}{% endif %}</h1>
-    {% if super %}
-    <p class="small text-muted mb-2">{{ faena_estado }} · <a href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, fecha=fecha) }}">Toda la cosecha</a></p>
+    <h1 class="h4 mb-2">{% if todos %}Todos los cuarteles{% else %}{{ cuartel }}{% endif %}</h1>
     {% endif %}
-    {% if todos %}
+    {% if todos and not super %}
     <label class="form-label" for="cuartel">Cuartel</label>
     <select id="cuartel" class="form-select form-select-lg mb-3">
       {% for nombre in cuarteles %}
