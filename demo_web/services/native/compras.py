@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import pandas as pd
-from flask import flash, render_template, request, session, url_for
+from flask import flash, render_template, request, send_file, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.lc_query_scope import (
@@ -167,7 +169,8 @@ def _proveedores_options(conn) -> list[dict]:
     ]
 
 
-def _historial(demo, conn) -> dict:
+def _df_historial(demo, conn):
+    """Facturas del historial según el filtro de la pantalla. Sin armar el PDF."""
     _ensure_folio_interno_col(conn)
     hoy = hoy_demo(demo)
     fi_def = demo._fecha_minima_facturas_compras(conn)
@@ -201,6 +204,49 @@ def _historial(demo, conn) -> dict:
     sql += " ORDER BY id DESC"
     df = pd.read_sql_query(sql, conn, params=params)
     df = filtrar_df_facturas_espino_lc(df)
+    return df, fi, ff, q
+
+
+def _blob_historial(demo, conn) -> bytes | None:
+    """PDF del historial. Solo cuando se pide descargar, no al abrir Compras."""
+    df, _, _, _ = _df_historial(demo, conn)
+    if df.empty:
+        return None
+    df_pdf = df.rename(
+        columns={
+            "folio_interno": "CORRELATIVO",
+            "nro_documento": "N° DOCUMENTO",
+            "proveedor": "PROVEEDOR",
+            "razon_social": "RAZÓN SOCIAL",
+            "fecha_compra": "FECHA COMPRA",
+            "tipo": "TIPO",
+            "tipo_gasto_cc": "TIPO GASTO CC",
+            "concepto": "DETALLE / CONCEPTO",
+            "monto_total": "MONTO BRUTO",
+        }
+    ).copy()
+    cols_pdf = [
+        "CORRELATIVO",
+        "N° DOCUMENTO",
+        "PROVEEDOR",
+        "RAZÓN SOCIAL",
+        "FECHA COMPRA",
+        "TIPO",
+        "TIPO GASTO CC",
+        "DETALLE / CONCEPTO",
+        "MONTO BRUTO",
+    ]
+    cols_pdf = [c for c in cols_pdf if c in df_pdf.columns]
+    blob = demo.generar_pdf_blob(
+        df_pdf[cols_pdf],
+        "HISTORIAL CONSOLIDADO DE COMPRAS",
+        campo_suma_forzado="MONTO BRUTO",
+    )
+    return blob or None
+
+
+def _historial(demo, conn) -> dict:
+    df, fi, ff, q = _df_historial(demo, conn)
 
     siguientes_por_razon: dict[str, str] = {}
     rows = []
@@ -233,38 +279,10 @@ def _historial(demo, conn) -> dict:
         )
     pdf_url = None
     if not df.empty:
-        df_pdf = df.rename(
-            columns={
-                "folio_interno": "CORRELATIVO",
-                "nro_documento": "N° DOCUMENTO",
-                "proveedor": "PROVEEDOR",
-                "razon_social": "RAZÓN SOCIAL",
-                "fecha_compra": "FECHA COMPRA",
-                "tipo": "TIPO",
-                "tipo_gasto_cc": "TIPO GASTO CC",
-                "concepto": "DETALLE / CONCEPTO",
-                "monto_total": "MONTO BRUTO",
-            }
-        ).copy()
-        cols_pdf = [
-            "CORRELATIVO",
-            "N° DOCUMENTO",
-            "PROVEEDOR",
-            "RAZÓN SOCIAL",
-            "FECHA COMPRA",
-            "TIPO",
-            "TIPO GASTO CC",
-            "DETALLE / CONCEPTO",
-            "MONTO BRUTO",
-        ]
-        cols_pdf = [c for c in cols_pdf if c in df_pdf.columns]
-        blob = demo.generar_pdf_blob(
-            df_pdf[cols_pdf],
-            "HISTORIAL CONSOLIDADO DE COMPRAS",
-            campo_suma_forzado="MONTO BRUTO",
-        )
-        if blob:
-            pdf_url = url_for("modules.pdf_download", token=store_pdf(blob, "historial_compras.pdf"))
+        pdf_args = {"sec": "historial", "pdf": "1", "desde": fi.isoformat(), "hasta": ff.isoformat()}
+        if q:
+            pdf_args["q"] = q
+        pdf_url = url_for("modules.compras", **pdf_args)
 
     es_admin = bool(demo.es_admin()) and not bool(demo.es_solo_lectura())
     factura_edit = None
@@ -1117,6 +1135,28 @@ def view(user_email: str, user_rol: str):
                 return redirect_module("compras", **extra)
         finally:
             conn.close()
+
+    if request.args.get("pdf") == "1" and sec == "historial":
+        conn = demo.conectar_db()
+        try:
+            blob = _blob_historial(demo, conn)
+        finally:
+            conn.close()
+        if not blob:
+            flash("No hay registros para el PDF.", "warning")
+            extra = {"sec": "historial"}
+            for k in ("q", "desde", "hasta"):
+                v = (request.args.get(k) or "").strip()
+                if v:
+                    extra[k] = v
+            return redirect_module("compras", **extra)
+        return send_file(
+            BytesIO(blob),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name="historial_compras.pdf",
+            max_age=0,
+        )
 
     ctx = gather_compras(user_email, user_rol)
     return render_template(

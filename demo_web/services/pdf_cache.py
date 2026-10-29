@@ -17,7 +17,26 @@ def _cache_dir() -> Path:
     return root
 
 
+def purge_expired(now: float | None = None) -> int:
+    """Borra PDFs vencidos. Si no, la caché crece aunque nadie vuelva a abrirlos."""
+    base = _cache_dir()
+    ahora = time.time() if now is None else now
+    borrados = 0
+    for path in base.iterdir():
+        if not path.is_file():
+            continue
+        try:
+            if ahora - path.stat().st_mtime <= _TTL_SEC:
+                continue
+            path.unlink(missing_ok=True)
+            borrados += 1
+        except OSError:
+            continue
+    return borrados
+
+
 def store_pdf(blob: bytes, filename: str) -> str:
+    purge_expired()
     token = secrets.token_hex(10)
     base = _cache_dir()
     (base / token).write_bytes(blob)
