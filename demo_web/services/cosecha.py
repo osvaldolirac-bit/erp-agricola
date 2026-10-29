@@ -520,6 +520,20 @@ def resolver_enlace(
             "faena_estado": "",
         }
     nombres = [c["nombre"] for c in elegida["cuarteles"]]
+    if not pedido:
+        return {
+            "faena_id": elegida["id"],
+            "cuartel": "",
+            "todos": False,
+            "cuarteles": nombres,
+            "super": True,
+            "resumen": False,
+            "menu": True,
+            "menu_cuarteles": list(elegida["cuarteles"]),
+            "faenas": faenas,
+            "contratista": elegida["contratista"],
+            "faena_estado": elegida["estado_txt"],
+        }
     return {
         "faena_id": elegida["id"],
         "cuartel": _elegir_cuartel(nombres, pedido, exigir_cuartel=exigir_cuartel),
@@ -527,6 +541,7 @@ def resolver_enlace(
         "cuarteles": nombres,
         "super": True,
         "resumen": False,
+        "menu": False,
         "faenas": faenas,
         "contratista": elegida["contratista"],
         "faena_estado": elegida["estado_txt"],
@@ -978,6 +993,36 @@ def _vista_resumen(link: dict, fecha: str) -> dict:
         "faena_id": 0,
         "contratista": "",
         "faena_estado": "",
+        "menu": False,
+        "menu_cuarteles": [],
+    }
+
+
+def _vista_menu(link: dict, fecha: str) -> dict:
+    dia = (fecha or "").strip()
+    visible = f"{dia[8:10]}-{dia[5:7]}-{dia[0:4]}" if len(dia) == 10 else ""
+    return {
+        "resumen": False,
+        "menu": True,
+        "super": True,
+        "faenas": [],
+        "menu_cuarteles": list(link.get("menu_cuarteles") or []),
+        "total_totes": sum(int(c.get("totes") or 0) for c in link.get("menu_cuarteles") or []),
+        "fecha": dia,
+        "fecha_txt": visible,
+        "tab": "ingresado",
+        "cuartel": "",
+        "cuarteles": list(link.get("cuarteles") or []),
+        "todos": False,
+        "cerrado": True,
+        "faena_cerrada": False,
+        "filas": [],
+        "preview": None,
+        "siguiente": 1,
+        "estado_cuenta": "",
+        "faena_id": int(link.get("faena_id") or 0),
+        "contratista": link.get("contratista") or "",
+        "faena_estado": link.get("faena_estado") or "",
     }
 
 
@@ -997,6 +1042,8 @@ def vista_anotadora(
         return None
     if link.get("resumen"):
         return _vista_resumen(link, fecha)
+    if link.get("menu"):
+        return _vista_menu(link, fecha)
     if not link["cuartel"]:
         return None
     faena_id = int(link["faena_id"])
@@ -1050,6 +1097,8 @@ def vista_anotadora(
         "faena_cerrada": faena_cerrada,
         "super": bool(link.get("super")),
         "resumen": False,
+        "menu": False,
+        "menu_cuarteles": [],
         "faena_id": int(link["faena_id"]) if link.get("super") else 0,
         "contratista": link.get("contratista") or "",
         "faena_estado": link.get("faena_estado") or "",
@@ -1081,6 +1130,8 @@ def atender_anotadora(
             "Elija el contratista." if link and link.get("resumen") else "Este enlace no corresponde a la faena.",
             int(numero or 0),
         )
+    if link.get("menu") and accion != "persona":
+        return False, "Elija el cuartel.", int(numero or 0)
     if accion != "persona" and not link["cuartel"]:
         return False, "Elija el cuartel.", int(numero or 0)
     faena_real = int(link["faena_id"])

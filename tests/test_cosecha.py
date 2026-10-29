@@ -189,6 +189,8 @@ class TestFaena(unittest.TestCase):
         self.assertIn("{% if todos %}", html)
         self.assertIn("Todos los cuarteles", html)
         self.assertIn("{% if resumen %}", html)
+        self.assertIn("{% elif menu %}", html)
+        self.assertIn("nav-cosecha", html)
         self.assertIn("Toda la cosecha", html)
         self.assertIn('name="faena"', html)
         self.assertNotIn("precio", html.lower())
@@ -481,7 +483,16 @@ class TestAtender(unittest.TestCase):
             sumar_tote(conn, links_b["NOGALES"], 4, "2026-11-21 08:00:00", "2026-11-21")
         resumen = vista_anotadora(conn, token, "ingresado", None, "2026-11-22")
         self.assertTrue(resumen["resumen"])
+        self.assertFalse(resumen["menu"])
         self.assertEqual(resumen["total_totes"], 5)
+        menu = vista_anotadora(conn, token, "ingresado", None, "2026-11-22", "", faena_a)
+        self.assertTrue(menu["menu"])
+        self.assertEqual(menu["contratista"], "Cuadrilla Sur")
+        self.assertEqual(menu["cuartel"], "")
+        self.assertEqual(
+            [c["nombre"] for c in menu["menu_cuarteles"]],
+            ["CEREZOS CORTE 1", "CIRUELOS"],
+        )
         por_nombre = {f["contratista"]: f["totes"] for f in resumen["faenas"]}
         self.assertEqual(por_nombre["Cuadrilla Sur"], 1)
         self.assertEqual(por_nombre["Cuadrilla Espino"], 4)
