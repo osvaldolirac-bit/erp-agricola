@@ -87,7 +87,8 @@ def huertos_para_formulario() -> list[str]:
     return resto + otros
 
 
-# m³/h·ha por huerto — riego todo el huerto (horas × coef × ha prorrateo)
+# m³/h·ha por huerto. La ha es la del prorrateo; si el CC tiene varios
+# sectores Hydrawise activos, cada riego usa prorrateo ÷ sectores.
 RIEGO_M3_HR_HA: dict[str, float] = {
     "CEREZOS CORTE 1": 18.0,
     "CEREZOS CORTE 2": 18.0,
@@ -134,6 +135,36 @@ def _cargar_superficie_ha(conn: sqlite3.Connection, huerto: str) -> float:
     except sqlite3.OperationalError:
         pass
     return 0.0
+
+
+def sectores_activos_cc(conn: sqlite3.Connection, huerto: str) -> int:
+    """Sectores Hydrawise activos mapeados al centro de costo. 0 si no hay tabla."""
+    cc = _norm_cc(huerto)
+    if not cc:
+        return 0
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*) FROM hydrawise_zona
+               WHERE COALESCE(activo, 0) = 1
+                 AND UPPER(TRIM(huerto_cc)) = ?""",
+            (cc,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return 0
+    return int(row[0] or 0) if row else 0
+
+
+def superficie_ha_evento_riego(conn: sqlite3.Connection, huerto: str) -> float:
+    """Superficie de un riego: ha del prorrateo, o esa ha ÷ sectores si hay más de uno.
+
+    El prorrateo del huerto no cambia. NOGALES APARICION sigue en 7 ha y, con
+    4 sectores activos, cada evento riega 1,75 ha.
+    """
+    ha = _cargar_superficie_ha(conn, huerto)
+    n = sectores_activos_cc(conn, huerto)
+    if ha > 0 and n > 1:
+        return ha / n
+    return ha
 
 
 def _cargar_surcos_total(conn: sqlite3.Connection, huerto: str) -> int:
@@ -187,10 +218,15 @@ def config_riego_cc_para_formulario() -> dict[str, dict[str, float | bool]]:
         out: dict[str, dict[str, float | bool]] = {}
         for cc in sorted(_huertos_riego_auto()):
             solo = cc in RIEGO_SOLO_SURCO
+            ha_huerto = _cargar_superficie_ha(conn, cc)
+            n = sectores_activos_cc(conn, cc)
+            ha = (ha_huerto / n) if ha_huerto > 0 and n > 1 else ha_huerto
             out[cc] = {
                 "m3_hr_ha": float(RIEGO_M3_HR_HA.get(cc, 0)),
                 "m3_hr_surco": float(RIEGO_M3_HR_SURCO),
-                "ha": _cargar_superficie_ha(conn, cc),
+                "ha": ha,
+                "ha_huerto": ha_huerto,
+                "sectores": n,
                 "solo_surco": solo,
             }
         return out
@@ -205,12 +241,17 @@ def listar_config_riego_cc() -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for cc in sorted(_huertos_riego_auto()):
             solo = cc in RIEGO_SOLO_SURCO
+            ha_huerto = _cargar_superficie_ha(conn, cc)
+            n = sectores_activos_cc(conn, cc)
+            ha_sector = (ha_huerto / n) if ha_huerto > 0 and n > 1 else ha_huerto
             rows.append(
                 {
                     "centro_costo": cc,
                     "m3_hr_ha": RIEGO_M3_HR_HA.get(cc),
                     "m3_hr_surco": RIEGO_M3_HR_SURCO,
-                    "superficie_ha": _cargar_superficie_ha(conn, cc),
+                    "superficie_ha": ha_huerto,
+                    "ha_sector": ha_sector,
+                    "sectores": n,
                     "solo_surco": solo,
                 }
             )
@@ -232,7 +273,7 @@ def calcular_m3_riego(
         return 0.0, ""
     if horas <= 0:
         return 0.0, "Indique horas de riego mayores a cero."
-    ha = _cargar_superficie_ha(conn, cc)
+    ha = superficie_ha_evento_riego(conn, cc)
     if ha <= 0:
         return 0.0, f"No hay superficie (ha) en prorrateo de costos para {cc}."
     modo_n = _modo_efectivo(cc, modo)
@@ -544,10 +585,10 @@ def _npk_evento_fmt(
     fert_rows: list[tuple],
     f_cant,
 ) -> dict[str, Any]:
-    """Nutrientes totales y kg/ha de un evento (superficie desde prorrateo_cc)."""
+    """Nutrientes del evento. kg/ha usa la superficie regada (sector si el CC está partido)."""
     n_kg, p_kg, k_kg = _sumar_npk_fertilizante_rows(conn, fert_rows)
     tiene_fert = n_kg > 0 or p_kg > 0 or k_kg > 0
-    ha = _cargar_superficie_ha(conn, huerto)
+    ha = superficie_ha_evento_riego(conn, huerto)
     n_ha = (n_kg / ha) if ha > 0 and tiene_fert else None
     p_ha = (p_kg / ha) if ha > 0 and tiene_fert else None
     k_ha = (k_kg / ha) if ha > 0 and tiene_fert else None
@@ -1075,6 +1116,61 @@ def reencolar_hydra_sin_autorizar(conn: sqlite3.Connection) -> int:
     return n
 
 
+_TOL_M3_SECTOR = 0.02
+
+
+def corregir_m3_por_sector(conn: sqlite3.Connection) -> int:
+    """Reescribe m³ calculados con la ha del huerto cuando el CC tiene varios sectores.
+
+    Solo cambia la fila si el m³ guardado sigue siendo horas × coef × ha del prorrateo.
+    No toca fertilizantes, dosis, stock ni la superficie del prorrateo. Si el m³ ya
+    es el del sector, la pasada no escribe nada.
+    """
+    n_upd = 0
+    for cc in sorted(_huertos_riego_auto()):
+        n = sectores_activos_cc(conn, cc)
+        if n <= 1:
+            continue
+        ha = _cargar_superficie_ha(conn, cc)
+        if ha <= 0:
+            continue
+        ha_sector = ha / n
+        for tabla in ("riego", "riego_bitacora"):
+            try:
+                rows = conn.execute(
+                    f"""SELECT id, COALESCE(horas, 0), COALESCE(m3, 0),
+                               COALESCE(modo_riego, 'horas')
+                        FROM {tabla}
+                        WHERE UPPER(TRIM(huerto)) = ?""",
+                    (cc,),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                continue
+            for rid, horas, m3, modo in rows:
+                horas_f = float(horas or 0)
+                if horas_f <= 0:
+                    continue
+                modo_n = _modo_efectivo(cc, modo)
+                if modo_n == "surcos":
+                    coef = RIEGO_M3_HR_SURCO
+                else:
+                    coef = RIEGO_M3_HR_HA.get(cc)
+                    if coef is None:
+                        continue
+                viejo = round(horas_f * float(coef) * ha, 2)
+                nuevo = round(horas_f * float(coef) * ha_sector, 2)
+                if abs(float(m3 or 0) - viejo) > _TOL_M3_SECTOR:
+                    continue
+                if abs(nuevo - viejo) <= _TOL_M3_SECTOR:
+                    continue
+                conn.execute(
+                    f"UPDATE {tabla} SET m3=? WHERE id=?",
+                    (nuevo, int(rid)),
+                )
+                n_upd += 1
+    return n_upd
+
+
 def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -1157,6 +1253,7 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
                 "ALTER TABLE riego ADD COLUMN fert_estado TEXT DEFAULT ''"
             )
         _ensure_riego_config_cc(conn)
+        corregir_m3_por_sector(conn)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"
         )

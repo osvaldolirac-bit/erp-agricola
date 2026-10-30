@@ -145,6 +145,7 @@ def _blob_historial(demo, rows, fi, ff, huerto: str) -> bytes | None:
                 "N°": r["codigo"],
                 "Fecha": r["fecha"],
                 "Huerto": r["huerto"],
+                "ha": r.get("ha_fmt") or "",
                 "Modo": r["modo_txt"],
                 "Horas": r["horas"],
                 "m3": r["m3"],
