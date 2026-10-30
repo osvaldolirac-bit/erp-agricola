@@ -1,0 +1,57 @@
+<p class="small text-muted">Pendientes: {{ riego_pendientes|default(0) }}</p>
+{% if bitacora_registros %}
+<div class="table-responsive">
+  <table class="table table-sm table-bordered align-middle demo-datatable w-100">
+    <thead>
+      <tr>
+        <th>N°</th><th>Fecha</th>{% if hydra_link_sectores|default(0) %}<th>Sector Hydra</th>{% endif %}<th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
+        <th>Fertilización</th><th>Regador</th><th>Estado</th><th>Recibido</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in bitacora_registros %}
+      <tr class="{% if r.pendiente %}table-warning{% elif r.rechazado %}table-secondary{% endif %}">
+        <td><strong>{{ r.codigo }}</strong></td>
+        <td>{{ r.fecha }}</td>
+        {% if hydra_link_sectores|default(0) %}<td class="small">{{ r.hydra_sector or '—' }}</td>{% endif %}
+        <td>{{ r.huerto }}</td>
+        <td class="small">{{ r.modo_txt|default('Tecnificado') }}</td>
+        <td>{{ r.horas }}</td>
+        <td>{{ r.m3 }}</td>
+        <td class="small">{{ r.fert_txt }}</td>
+        <td>{{ r.regador }}</td>
+        <td>
+          {% if r.pendiente %}<span class="badge bg-warning text-dark">Pendiente</span>
+          {% elif r.rechazado %}<span class="badge bg-secondary">Rechazado</span>
+          {% else %}<span class="badge bg-success">Autorizado</span>{% endif %}
+        </td>
+        <td class="small text-muted">{{ r.creado_en[:16] if r.creado_en else '—' }}</td>
+        <td class="text-nowrap">
+          {% if r.pendiente and bitacora_puede_autorizar %}
+          <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="autorizar_riego">
+            <input type="hidden" name="sec" value="{{ sec_activa }}">
+            <input type="hidden" name="codigo" value="{{ r.codigo }}">
+            <button type="submit" class="btn btn-success btn-sm">Autorizar</button>
+          </form>
+          <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="rechazar_riego">
+            <input type="hidden" name="sec" value="{{ sec_activa }}">
+            <input type="hidden" name="codigo" value="{{ r.codigo }}">
+            <input type="hidden" name="motivo" value="">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Rechazar</button>
+          </form>
+          {% elif r.autorizado %}
+          <span class="small text-muted">{{ r.autorizado_por or '' }}</span>
+          {% elif r.rechazado and r.rechazo_motivo %}
+          <span class="small text-muted" title="{{ r.rechazo_motivo }}">Rechazado</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted mb-0">Sin registros en link riego.</p>
+{% endif %}

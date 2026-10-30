@@ -1,0 +1,31 @@
+<div class="mb-3{% if bitacora_links_demo %} riego-links-demo{% endif %}">
+  <h3 class="h6">Enlaces personales regador</h3>
+  {% if bitacora_links_demo %}
+  <p class="small text-muted mb-2">Vista demo: enlaces ficticios (solo referencia visual).</p>
+  {% endif %}
+  {% if bitacora_links %}
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle mb-0">
+      <thead><tr><th>Regador</th><th>Enlace</th><th></th></tr></thead>
+      <tbody>
+        {% for op in bitacora_links %}
+        <tr class="{% if bitacora_links_demo %}riego-link-demo-row{% endif %}">
+          <td><strong>{{ op.nombre }}</strong></td>
+          <td><input type="text" class="form-control form-control-sm font-monospace js-link-personal" id="linkRie-{{ loop.index }}" value="{{ op.url }}" readonly{% if bitacora_links_demo %} tabindex="-1"{% endif %}></td>
+          <td class="text-nowrap">
+            <button type="button" class="btn btn-sm btn-outline-primary js-copiar-link" data-target="linkRie-{{ loop.index }}"{% if bitacora_links_demo %} disabled title="Solo demo"{% endif %}>Copiar</button>
+            {% if bitacora_links_demo %}
+            <span class="btn btn-sm btn-outline-success disabled" aria-disabled="true">WhatsApp</span>
+            {% else %}
+            <a class="btn btn-sm btn-outline-success" href="{{ op.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-warning py-2 small mb-0">En RRHH marque trabajadores como regador o agregue extras.</div>
+  {% endif %}
+</div>

@@ -13,28 +13,60 @@ SECCIONES = [
     ("manual", "✏️ REGISTRO MANUAL"),
     ("bitacora", "🔗 LINK RIEGO"),
 ]
-SECCION_HYDRA = ("hydra", "💧 HYDRA")
-HYDRA_SUB = (
-    ("riego", "Riego HYDRA"),
-    ("config", "Config"),
+SECCIONES_LC = [
+    ("hoy", "Hoy"),
+    ("regar", "Regar"),
+    ("historial", "Historial"),
+    ("armado", "Armado"),
+]
+REGAR_SUB = (
+    ("ahora", "Ahora"),
+    ("programar", "Programar"),
+)
+ARMADO_SUB = (
+    ("sectores", "Sectores"),
+    ("enlaces", "Enlaces"),
+    ("parametros", "Parámetros"),
+    ("manual", "A mano"),
 )
 
 
-def _destino_hydra(sec: str, sub: str) -> tuple[str, str]:
-    """Una etiqueta HYDRA. hydra_config (enlace viejo) abre la subetiqueta Config."""
-    sec = (sec or "hydra").strip()
+def _canon_lc(sec: str, sub: str) -> tuple[str, str]:
+    """La Concepción: las URLs viejas abren la pantalla nueva. El resto cae en Historial."""
+    sec = (sec or "").strip()
     sub = (sub or "").strip()
+    if sec == "hydra_config" or (sec == "hydra" and sub == "config"):
+        return "armado", "sectores"
+    if sec in ("hydra", "hydra_riego"):
+        return "hoy", ""
     if sec == "manual":
-        sec = "hydra"
-    if sec == "hydra_config":
-        sec = "hydra"
-        if sub not in {k for k, _ in HYDRA_SUB}:
-            sub = "config"
-    if sec != "hydra":
-        sec = "hydra"
-    if sub not in {k for k, _ in HYDRA_SUB}:
-        sub = "riego"
-    return sec, sub
+        return "armado", "manual"
+    if sec == "bitacora":
+        return "hoy", ""
+    if sec == "regar":
+        if sub not in {k for k, _ in REGAR_SUB}:
+            sub = "ahora"
+        return "regar", sub
+    if sec == "armado":
+        if sub not in {k for k, _ in ARMADO_SUB}:
+            sub = "sectores"
+        return "armado", sub
+    if sec == "hoy":
+        return "hoy", ""
+    if sec == "historial":
+        return "historial", ""
+    return "historial", ""
+
+
+def _canon_post_hydra(sec: str, sub: str) -> tuple[str, str]:
+    """Un POST de riego con el sec viejo «manual» vuelve a Hoy."""
+    if (sec or "").strip() == "manual":
+        return "hoy", ""
+    return _canon_lc(sec or "hydra", sub)
+
+
+def _volver(sec: str, sub: str = ""):
+    return redirect_module("riego", sec=sec, sub=sub)
 
 
 def gather_riego(user_email: str, user_rol: str) -> dict:
@@ -54,17 +86,18 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         resumen_npk_por_huerto,
     )
 
-    sec = request.values.get("sec") or request.args.get("sec", "historial")
-    sub = (request.values.get("sub") or "").strip()
-    if sec == "hydra_config":
-        sec, sub = _destino_hydra(sec, sub)
-    secciones = list(SECCIONES)
-    if not habilitado():
-        secciones = [s for s in secciones if s[0] != "bitacora"]
-    if is_concepcion_tenant():
-        secciones.append(SECCION_HYDRA)
-    if sec not in {k for k, _ in secciones}:
-        sec = "historial"
+    sec_in = (request.values.get("sec") or request.args.get("sec") or "historial").strip()
+    sub_in = (request.values.get("sub") or "").strip()
+    lc = is_concepcion_tenant()
+    if lc:
+        secciones = list(SECCIONES_LC)
+        sec, sub = _canon_lc(sec_in, sub_in)
+    else:
+        secciones = list(SECCIONES)
+        if not habilitado():
+            secciones = [s for s in secciones if s[0] != "bitacora"]
+        sec = sec_in if sec_in in {k for k, _ in secciones} else "historial"
+        sub = ""
 
     conn = demo.conectar_db()
     try:
@@ -76,6 +109,10 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             "form_fecha": hoy_demo(demo).isoformat(),
             "fertilizantes": fertilizantes_bodega_para_formulario(),
             "riego_cc_config": config_riego_cc_para_formulario(),
+            "sub_activa": sub,
+            "riego_lc": lc,
+            "regar_sub": REGAR_SUB if lc else (),
+            "armado_sub": ARMADO_SUB if lc else (),
         }
         n_pend = contar_pendientes(conn) if habilitado() else 0
         ctx["riego_pendientes"] = n_pend
@@ -85,6 +122,115 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             ctx["historial_rows"] = listar_historial(conn)
             ctx["npk_resumen"] = resumen_npk_por_huerto(conn)
             ctx["bitacora_puede_autorizar"] = demo.es_admin() and not demo.es_solo_lectura()
+        elif sec == "hoy":
+            from demo_web.services.hydrawise_riego import (
+                contexto_control_hydra_ui,
+                sectores_para_link_riego,
+            )
+
+            puede = demo.es_admin() and not demo.es_solo_lectura()
+            ctx.update(
+                contexto_control_hydra_ui(
+                    conn, user_email or "admin", auto_sync=True
+                )
+            )
+            ctx.update(
+                {
+                    "hydra_ui_scope": "module",
+                    "hydra_ui_sec": "hoy",
+                    "hydra_vista": "hoy",
+                    "hydra_puede_operar": puede,
+                    "bitacora_habilitada": True,
+                    "hydra_link_sectores": len(sectores_para_link_riego(conn)),
+                    "bitacora_puede_autorizar": puede,
+                    "bitacora_registros": listar_bitacora(conn),
+                }
+            )
+        elif sec == "regar":
+            from demo_web.services.hydrawise_riego import contexto_control_hydra_ui
+
+            puede = demo.es_admin() and not demo.es_solo_lectura()
+            ctx.update(
+                contexto_control_hydra_ui(
+                    conn, user_email or "admin", auto_sync=False
+                )
+            )
+            ctx.update(
+                {
+                    "hydra_ui_scope": "module",
+                    "hydra_ui_sec": "regar",
+                    "hydra_ui_sub": sub,
+                    "hydra_vista": sub,
+                    "hydra_puede_operar": puede,
+                }
+            )
+        elif sec == "armado" and sub == "sectores":
+            import json
+
+            from demo_web.services.hydrawise_riego import (
+                get_api_key,
+                get_controller_id,
+                listar_colas_recientes,
+                listar_zonas,
+            )
+
+            puede = demo.es_admin() and not demo.es_solo_lectura()
+            zonas = listar_zonas(conn)
+            for z in zonas:
+                z["fert_json"] = json.dumps(
+                    [
+                        {
+                            "producto_id": f["producto_id"],
+                            "cantidad": f["cantidad"],
+                            "dosis_ha": f.get("dosis_ha"),
+                        }
+                        for f in z.get("fertilizantes") or []
+                    ],
+                    ensure_ascii=False,
+                )
+            tiene_key = bool(get_api_key(conn))
+            cid = get_controller_id(conn)
+            ctx.update(
+                {
+                    "hydra_puede_editar": puede,
+                    "hydra_zonas": zonas,
+                    "hydra_zonas_activas": [
+                        z
+                        for z in zonas
+                        if z.get("activo") and (z.get("huerto_cc") or "").strip()
+                    ],
+                    "hydra_colas": listar_colas_recientes(conn),
+                    "hydra_api_ok": tiene_key,
+                    "hydra_api_msg": (
+                        "API key guardada. Use «Probar conexión» en Admin o acciones aquí "
+                        "(no se consulta Hydrawise al abrir esta pestaña)."
+                        if tiene_key
+                        else "Configure API key en Administración → Hydrawise."
+                    ),
+                    "hydra_controller_id": cid,
+                }
+            )
+        elif sec == "armado" and sub == "enlaces":
+            es_demo = get_erp_app() == "demo"
+            ctx.update(
+                {
+                    "bitacora_admin_links": demo.es_super_admin(),
+                    "bitacora_links": (
+                        links_personales_regadores_demo()
+                        if es_demo and demo.es_super_admin()
+                        else links_personales_regadores()
+                        if demo.es_super_admin()
+                        else []
+                    ),
+                    "bitacora_links_demo": es_demo,
+                }
+            )
+        elif sec == "armado" and sub == "parametros":
+            ctx["riego_config_rows"] = (
+                listar_config_riego_cc() if demo.es_super_admin() else []
+            )
+        elif sec == "armado" and sub == "manual":
+            ctx["form_fecha"] = hoy_demo(demo).isoformat()
         elif sec == "bitacora" and habilitado():
             es_demo = get_erp_app() == "demo"
             hydra_link_n = 0
@@ -112,68 +258,6 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             )
         elif sec == "manual":
             ctx["form_fecha"] = hoy_demo(demo).isoformat()
-        elif sec == "hydra" and is_concepcion_tenant():
-            sec, sub = _destino_hydra("hydra", sub)
-            ctx["hydra_sub"] = HYDRA_SUB
-            ctx["sub_activa"] = sub
-            ctx["hydra_ui_scope"] = "module"
-            ctx["hydra_ui_sec"] = "hydra"
-            ctx["hydra_ui_sub"] = sub
-            puede = demo.es_admin() and not demo.es_solo_lectura()
-            if sub == "config":
-                import json
-
-                from demo_web.services.hydrawise_riego import (
-                    get_api_key,
-                    get_controller_id,
-                    listar_colas_recientes,
-                    listar_zonas,
-                )
-
-                zonas = listar_zonas(conn)
-                for z in zonas:
-                    z["fert_json"] = json.dumps(
-                        [
-                            {
-                                "producto_id": f["producto_id"],
-                                "cantidad": f["cantidad"],
-                                "dosis_ha": f.get("dosis_ha"),
-                            }
-                            for f in z.get("fertilizantes") or []
-                        ],
-                        ensure_ascii=False,
-                    )
-                tiene_key = bool(get_api_key(conn))
-                cid = get_controller_id(conn)
-                ctx.update(
-                    {
-                        "hydra_puede_editar": puede,
-                        "hydra_zonas": zonas,
-                        "hydra_zonas_activas": [
-                            z
-                            for z in zonas
-                            if z.get("activo") and (z.get("huerto_cc") or "").strip()
-                        ],
-                        "hydra_colas": listar_colas_recientes(conn),
-                        "hydra_api_ok": tiene_key,
-                        "hydra_api_msg": (
-                            "API key guardada. Use «Probar conexión» en Admin o acciones aquí "
-                            "(no se consulta Hydrawise al abrir esta pestaña)."
-                            if tiene_key
-                            else "Configure API key en Administración → Hydrawise."
-                        ),
-                        "hydra_controller_id": cid,
-                    }
-                )
-            else:
-                from demo_web.services.hydrawise_riego import contexto_control_hydra_ui
-
-                ctx.update(
-                    contexto_control_hydra_ui(
-                        conn, user_email or "admin", auto_sync=True
-                    )
-                )
-                ctx["hydra_puede_operar"] = puede
 
         return ctx
     finally:
@@ -222,7 +306,12 @@ def view(user_email: str, user_rol: str):
         if demo.es_solo_lectura():
             flash("Modo solo lectura: no puede modificar datos.", "warning")
             sec = request.form.get("sec") or "historial"
-            return redirect_module("riego", sec=sec)
+            sub = request.form.get("sub") or ""
+            if is_concepcion_tenant():
+                sec, sub = _canon_lc(sec, sub)
+            else:
+                sub = ""
+            return _volver(sec, sub)
 
         if action == "registrar_manual":
             conn = demo.conectar_db()
@@ -231,7 +320,9 @@ def view(user_email: str, user_rol: str):
             finally:
                 conn.close()
             flash(result["msg"], "success" if result["ok"] else "danger")
-            return redirect_module("riego", sec="manual")
+            if is_concepcion_tenant():
+                return _volver("armado", "manual")
+            return _volver("manual")
 
         if action == "autorizar_riego":
             if not demo.es_admin():
@@ -242,7 +333,9 @@ def view(user_email: str, user_rol: str):
                 codigo = (request.form.get("codigo") or "").strip()
                 result = autorizar_registro(codigo, user_email)
                 flash(result["msg"], "success" if result["ok"] else "danger")
-            return redirect_module("riego", sec="bitacora")
+            if is_concepcion_tenant():
+                return _volver("hoy")
+            return _volver("bitacora")
 
         if action == "rechazar_riego":
             if not demo.es_admin():
@@ -254,7 +347,9 @@ def view(user_email: str, user_rol: str):
                 motivo = (request.form.get("motivo") or "").strip()
                 result = rechazar_registro(codigo, user_email, motivo=motivo)
                 flash(result["msg"], "success" if result["ok"] else "danger")
-            return redirect_module("riego", sec="bitacora")
+            if is_concepcion_tenant():
+                return _volver("hoy")
+            return _volver("bitacora")
 
         if action == "confirmar_fert_hydra":
             if not demo.es_admin():
@@ -265,7 +360,7 @@ def view(user_email: str, user_rol: str):
                 codigo = (request.form.get("codigo") or "").strip()
                 result = confirmar_fert_hydra(codigo, user_email)
                 flash(result["msg"], "success" if result["ok"] else "danger")
-            return redirect_module("riego", sec="historial")
+            return _volver("historial")
 
         if action == "modificar_fert_hydra":
             if not demo.es_admin():
@@ -286,16 +381,16 @@ def view(user_email: str, user_rol: str):
                     con_fertilizacion=con_fert,
                 )
                 flash(result["msg"], "success" if result["ok"] else "danger")
-            return redirect_module("riego", sec="historial")
+            return _volver("historial")
 
         if is_concepcion_tenant() and action.startswith("hydra_"):
-            sec_hydra, sub_hydra = _destino_hydra(
+            sec_hydra, sub_hydra = _canon_post_hydra(
                 request.form.get("sec") or "hydra",
                 request.form.get("sub") or "",
             )
             if not demo.es_admin():
                 flash("Solo administradores pueden operar Hydra.", "danger")
-                return redirect_module("riego", sec=sec_hydra, sub=sub_hydra)
+                return _volver(sec_hydra, sub_hydra)
             conn = demo.conectar_db()
             try:
                 from demo_web.services import hydrawise_riego as hw
@@ -388,7 +483,7 @@ def view(user_email: str, user_rol: str):
             finally:
                 conn.close()
             flash(result.get("msg", ""), "success" if result.get("ok") else "danger")
-            return redirect_module("riego", sec=sec_hydra, sub=sub_hydra)
+            return _volver(sec_hydra, sub_hydra)
 
     ctx = gather_riego(user_email, user_rol)
     return render_template(
