@@ -158,6 +158,10 @@
         modoInputs.forEach(function (inp) { if (inp.checked) m = inp.value; });
         return m;
       }
+      function etiquetaHa(conf) {
+        if (conf && conf.sectores > 1) return conf.ha + ' ha/sector';
+        return conf.ha + ' ha (prorrateo)';
+      }
       function recalcM3() {
         var conf = confSel();
         var horas = parseFloat(horasEl && horasEl.value) || 0;
@@ -175,8 +179,8 @@
         m3El.value = m3 > 0 ? (Math.round(m3 * 100) / 100) : 0;
         if (m3Hint) {
           var hint = (modoSel() === 'surcos')
-            ? conf.ha + ' ha × ' + (conf.m3_hr_surco || 40) + ' m³/h·ha × ' + horas + ' h'
-            : conf.m3_hr_ha + ' m³/h·ha × ' + conf.ha + ' ha (prorrateo) × ' + horas + ' h';
+            ? etiquetaHa(conf) + ' × ' + (conf.m3_hr_surco || 40) + ' m³/h·ha × ' + horas + ' h'
+            : conf.m3_hr_ha + ' m³/h·ha × ' + etiquetaHa(conf) + ' × ' + horas + ' h';
           m3Hint.textContent = 'Calculado: ' + hint;
           m3Hint.style.display = horas > 0 ? 'block' : 'none';
         }
@@ -189,8 +193,8 @@
         if (soloSurcoHint) soloSurcoHint.style.display = solo ? 'block' : 'none';
         if (coefHint && conf && !solo) {
           coefHint.textContent = (modoSel() === 'surcos')
-            ? (conf.m3_hr_surco || 40) + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)'
-            : conf.m3_hr_ha + ' m³/h·ha · ' + conf.ha + ' ha (prorrateo)';
+            ? (conf.m3_hr_surco || 40) + ' m³/h·ha · ' + etiquetaHa(conf)
+            : conf.m3_hr_ha + ' m³/h·ha · ' + etiquetaHa(conf);
         }
         recalcM3();
       }
@@ -478,8 +482,9 @@
       <span class="small text-muted">{{ n_registros|default(0) }} registro(s)</span>
     </div>
     <p class="small text-muted mb-2">
-      Columnas N/P/K: kg nutriente del evento (riqueza del producto) y kg/ha según superficie del CC en
-      <strong>prorrateo</strong> (Administración o Consola master).
+      Columnas N/P/K: kg nutriente del evento y kg/ha según la superficie regada.
+      Si el huerto tiene varios sectores, cada fila usa la ha del sector (prorrateo ÷ sectores).
+      El balance de arriba sigue con la ha del huerto en prorrateo.
     </p>
     {% if historial_rows %}
     <div class="table-responsive">

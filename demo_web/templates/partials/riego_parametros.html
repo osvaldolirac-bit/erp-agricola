@@ -2,8 +2,9 @@
 <div class="mb-3">
   <h3 class="h6">Parámetros de riego por huerto</h3>
   <p class="small text-muted mb-2">
-    <strong>Tecnificado:</strong> m³ = horas × m³/h·ha × ha (prorrateo).
-    <strong>Por surcos:</strong> m³ = horas × 40 m³/h·ha × ha (prorrateo).
+    <strong>Tecnificado:</strong> m³ = horas × m³/h·ha × ha de riego.
+    <strong>Por surcos:</strong> m³ = horas × 40 m³/h·ha × ha de riego.
+    Si el huerto tiene varios sectores, la ha de riego es la del prorrateo dividida entre esos sectores.
   </p>
   <div class="table-responsive">
     <table class="table table-sm table-bordered align-middle mb-0">
@@ -22,7 +23,14 @@
               {{ row.m3_hr_ha }} m³/h·ha (tecnificado) · 40 m³/h·ha (surcos)
             {% endif %}
           </td>
-          <td>{{ row.superficie_ha }}</td>
+          <td>
+            {% if row.sectores and row.sectores > 1 %}
+              {{ row.superficie_ha }} ha del huerto
+              <span class="small d-block">{{ row.sectores }} sectores · {{ row.ha_sector }} ha/sector</span>
+            {% else %}
+              {{ row.superficie_ha }}
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
