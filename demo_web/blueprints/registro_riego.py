@@ -502,4 +502,8 @@ def links_admin():
     demo = get_demo_module()
     if not demo.es_super_admin():
         abort(403)
+    from demo_web.services.tenant_scope import is_concepcion_tenant
+
+    if is_concepcion_tenant():
+        return redirect(url_for("modules.riego", sec="armado", sub="enlaces"))
     return redirect(url_for("modules.riego", sec="bitacora"))

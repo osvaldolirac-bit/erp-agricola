@@ -1,0 +1,32 @@
+{% if riego_config_rows %}
+<div class="mb-3">
+  <h3 class="h6">Parámetros de riego por huerto</h3>
+  <p class="small text-muted mb-2">
+    <strong>Tecnificado:</strong> m³ = horas × m³/h·ha × ha (prorrateo).
+    <strong>Por surcos:</strong> m³ = horas × 40 m³/h·ha × ha (prorrateo).
+  </p>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle mb-0">
+      <thead>
+        <tr><th>Huerto</th><th>Modo</th><th>Parámetro</th><th>Superficie ha</th></tr>
+      </thead>
+      <tbody>
+        {% for row in riego_config_rows %}
+        <tr>
+          <td><strong>{{ row.centro_costo }}</strong></td>
+          <td class="small">{% if row.solo_surco %}Solo surcos{% else %}Tecnificado y surcos{% endif %}</td>
+          <td class="small">
+            {% if row.solo_surco %}
+              40 m³/h·ha
+            {% else %}
+              {{ row.m3_hr_ha }} m³/h·ha (tecnificado) · 40 m³/h·ha (surcos)
+            {% endif %}
+          </td>
+          <td>{{ row.superficie_ha }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}

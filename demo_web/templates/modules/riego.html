@@ -13,20 +13,39 @@
 
   {{ nav_modulo('modules.riego', secciones, sec_activa) }}
 
+  {% macro nav_sub(items, sec) %}
+  <ul class="nav nav-pills flex-wrap gap-1 mb-3">
+    {% for key, label in items %}
+    <li class="nav-item">
+      <a class="nav-link {% if sub_activa == key %}active{% endif %}"
+         href="{{ url_for('modules.riego', sec=sec, sub=key) }}">{{ label }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endmacro %}
+
   {% if riego_desfase %}
   <div class="alert alert-warning py-2 mb-3">
     Hay <strong>{{ riego_pendientes }}</strong> registro(s) de link pendientes de autorizar.
+    {% if riego_lc %}
+    Revise en <a href="{{ url_for('modules.riego', sec='hoy') }}" class="alert-link">Hoy</a>.
+    {% else %}
     Revise en <a href="{{ url_for('modules.riego', sec='bitacora') }}" class="alert-link">Link riego</a>.
+    {% endif %}
   </div>
   {% endif %}
 
-  {% if sec_activa == 'manual' %}
+  {% if sec_activa == 'manual' or (sec_activa == 'armado' and sub_activa == 'manual') %}
+  {% if sec_activa == 'armado' %}
+  {{ nav_sub(armado_sub, 'armado') }}
+  {% endif %}
   <div class="panel-card">
     <h2 class="h6">Registro manual</h2>
     <p class="small text-muted">Imputa directamente al huerto (CC). Fertilización opcional desde bodega (familia FERTILIZANTE).</p>
     <form method="post" class="row g-2" id="formManualRiego">
       <input type="hidden" name="action" value="registrar_manual">
-      <input type="hidden" name="sec" value="manual">
+      <input type="hidden" name="sec" value="{% if sec_activa == 'armado' %}armado{% else %}manual{% endif %}">
+      {% if sec_activa == 'armado' %}<input type="hidden" name="sub" value="manual">{% endif %}
       <div class="col-md-2">
         <label class="form-label small">N° (auto)</label>
         <input type="text" class="form-control form-control-sm" value="Correlativo al guardar" disabled>
@@ -250,22 +269,51 @@
     {% endif %}
   </div>
 
-  {% elif sec_activa == 'hydra' %}
-  <ul class="nav nav-pills flex-wrap gap-1 mb-3">
-    {% for key, label in hydra_sub %}
-    <li class="nav-item">
-      <a class="nav-link {% if sub_activa == key %}active{% endif %}"
-         href="{{ url_for('modules.riego', sec='hydra', sub=key) }}">{{ label }}</a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% if sub_activa == 'riego' %}
+  {% elif sec_activa == 'hoy' %}
   <div class="panel-card hydra-module-control mb-3">
-    <h2 class="h6">Riego HYDRA</h2>
+    <h2 class="h6">Hoy</h2>
     <p class="small text-muted mb-3">
-      La app de riego: sectores, cola, regar ahora, programar y fertirriego.
+      Sector en curso, cola, pausa y detener.
+      El riego se parte en <a href="{{ url_for('modules.riego', sec='regar', sub='ahora') }}">Regar</a>.
       En el celular sigue el link del regador.
-      Los sectores se arman en <a href="{{ url_for('modules.riego', sec='hydra', sub='config') }}">Config</a>.
+    </p>
+    {% if not hydra_puede_operar %}
+    <div class="alert alert-warning py-2 small">Solo administradores pueden pausar o detener desde aquí.</div>
+    {% endif %}
+    {% if hydra_control_activo|default(false) %}
+    {% include 'registro_riego/_hydra_control_ui.html' %}
+    {% else %}
+    <div class="alert alert-secondary py-2 small mb-0">
+      Falta un sector activo con centro de costo y marcado en el link.
+      Eso se define en <a href="{{ url_for('modules.riego', sec='armado', sub='sectores') }}">Sectores</a>.
+    </div>
+    {% endif %}
+  </div>
+  {% if hydra_control_activo|default(false) %}
+  <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}-min0" defer></script>
+  {% endif %}
+  <div class="panel-card">
+    <h2 class="h6">Para autorizar</h2>
+    <p class="small text-muted">Riegos terminados que todavía no pasan al historial.</p>
+    {% if hydra_link_sectores|default(0) > 0 %}
+    <div class="alert alert-success py-2 small mb-3">
+      <strong>{{ hydra_link_sectores }}</strong> sector(es) en
+      <a href="{{ url_for('modules.riego', sec='armado', sub='sectores') }}">Sectores</a>.
+    </div>
+    {% endif %}
+    {% include 'partials/riego_tabla_autorizar.html' %}
+  </div>
+
+  {% elif sec_activa == 'regar' %}
+  {{ nav_sub(regar_sub, 'regar') }}
+  <div class="panel-card hydra-module-control mb-3">
+    <h2 class="h6">{% if sub_activa == 'programar' %}Programar{% else %}Ahora{% endif %}</h2>
+    <p class="small text-muted mb-3">
+      {% if sub_activa == 'programar' %}
+      Deja el sector en cola para la hora indicada. El seguimiento queda en Hoy.
+      {% else %}
+      Parte el sector ahora. El seguimiento queda en Hoy.
+      {% endif %}
     </p>
     {% if not hydra_puede_operar %}
     <div class="alert alert-warning py-2 small">Solo administradores pueden iniciar o programar riego desde aquí.</div>
@@ -275,13 +323,36 @@
     {% else %}
     <div class="alert alert-secondary py-2 small mb-0">
       Falta un sector activo con centro de costo y marcado en el link.
-      Eso se define en <a href="{{ url_for('modules.riego', sec='hydra', sub='config') }}">Config</a>.
+      Eso se define en <a href="{{ url_for('modules.riego', sec='armado', sub='sectores') }}">Sectores</a>.
     </div>
     {% endif %}
   </div>
   {% if hydra_control_activo|default(false) %}
   <script src="{{ url_for('static', filename='js/hydra_link_control.js') }}?v={{ static_version }}-min0" defer></script>
   {% endif %}
+
+  {% elif sec_activa == 'armado' %}
+  {{ nav_sub(armado_sub, 'armado') }}
+  {% if sub_activa == 'enlaces' %}
+  <div class="panel-card">
+    <h2 class="h6">Enlaces</h2>
+    {% if bitacora_admin_links %}
+    {% include 'partials/riego_enlaces.html' %}
+    {% else %}
+    <p class="text-muted small mb-0">Los enlaces personales los ve el administrador.</p>
+    {% endif %}
+  </div>
+  {% elif sub_activa == 'parametros' %}
+  <div class="panel-card">
+    <h2 class="h6">Parámetros</h2>
+    {% if riego_config_rows %}
+    {% include 'partials/riego_parametros.html' %}
+    {% else %}
+    <p class="text-muted small mb-0">Sin parámetros para mostrar.</p>
+    {% endif %}
+  </div>
+  {% elif sub_activa == 'sectores' %}
+  {% include 'partials/riego_hydrawise.html' %}
   {% endif %}
 
   {% elif sec_activa == 'bitacora' %}
@@ -298,138 +369,21 @@
       <strong>pendiente de autorizar</strong> (con su sector). Al autorizar pasa al historial
       y, si trae fertirriego, descuenta bodega.
       <strong>{{ hydra_link_sectores }}</strong> sector(es) mapeados a CC en
-      <a href="{{ url_for('modules.riego', sec='hydra', sub='config') }}">Config</a>.
+      <a href="{{ url_for('modules.riego', sec='armado', sub='sectores') }}">Sectores</a>.
     </div>
     {% elif hydra_link_sectores is defined %}
     <div class="alert alert-secondary py-2 small mb-3">
-      Importe sectores en <a href="{{ url_for('modules.riego', sec='hydra', sub='config') }}">Config</a> y asigne CC a cada uno;
+      Importe sectores en <a href="{{ url_for('modules.riego', sec='armado', sub='sectores') }}">Sectores</a> y asigne CC a cada uno;
       el link del regador copia esa lista de Hydrawise.
     </div>
     {% endif %}
     {% if bitacora_admin_links %}
-    <div class="mb-3{% if bitacora_links_demo %} riego-links-demo{% endif %}">
-      <h3 class="h6">Enlaces personales regador</h3>
-      {% if bitacora_links_demo %}
-      <p class="small text-muted mb-2">Vista demo: enlaces ficticios (solo referencia visual).</p>
-      {% endif %}
-      {% if bitacora_links %}
-      <div class="table-responsive">
-        <table class="table table-sm table-bordered align-middle mb-0">
-          <thead><tr><th>Regador</th><th>Enlace</th><th></th></tr></thead>
-          <tbody>
-            {% for op in bitacora_links %}
-            <tr class="{% if bitacora_links_demo %}riego-link-demo-row{% endif %}">
-              <td><strong>{{ op.nombre }}</strong></td>
-              <td><input type="text" class="form-control form-control-sm font-monospace js-link-personal" id="linkRie-{{ loop.index }}" value="{{ op.url }}" readonly{% if bitacora_links_demo %} tabindex="-1"{% endif %}></td>
-              <td class="text-nowrap">
-                <button type="button" class="btn btn-sm btn-outline-primary js-copiar-link" data-target="linkRie-{{ loop.index }}"{% if bitacora_links_demo %} disabled title="Solo demo"{% endif %}>Copiar</button>
-                {% if bitacora_links_demo %}
-                <span class="btn btn-sm btn-outline-success disabled" aria-disabled="true">WhatsApp</span>
-                {% else %}
-                <a class="btn btn-sm btn-outline-success" href="{{ op.wa_url }}" target="_blank" rel="noopener">WhatsApp</a>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="alert alert-warning py-2 small mb-0">En RRHH marque trabajadores como regador o agregue extras.</div>
-      {% endif %}
-    </div>
-    {% if riego_config_rows %}
-    <div class="mb-3">
-      <h3 class="h6">Parámetros de riego por huerto</h3>
-      <p class="small text-muted mb-2">
-        <strong>Tecnificado:</strong> m³ = horas × m³/h·ha × ha (prorrateo).
-        <strong>Por surcos:</strong> m³ = horas × 40 m³/h·ha × ha (prorrateo).
-      </p>
-      <div class="table-responsive">
-        <table class="table table-sm table-bordered align-middle mb-0">
-          <thead>
-            <tr><th>Huerto</th><th>Modo</th><th>Parámetro</th><th>Superficie ha</th></tr>
-          </thead>
-          <tbody>
-            {% for row in riego_config_rows %}
-            <tr>
-              <td><strong>{{ row.centro_costo }}</strong></td>
-              <td class="small">{% if row.solo_surco %}Solo surcos{% else %}Tecnificado y surcos{% endif %}</td>
-              <td class="small">
-                {% if row.solo_surco %}
-                  40 m³/h·ha
-                {% else %}
-                  {{ row.m3_hr_ha }} m³/h·ha (tecnificado) · 40 m³/h·ha (surcos)
-                {% endif %}
-              </td>
-              <td>{{ row.superficie_ha }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    {% endif %}
+    {% include 'partials/riego_enlaces.html' %}
+    {% include 'partials/riego_parametros.html' %}
     <hr>
     {% endif %}
     <h3 class="h6">Registros link</h3>
-    <p class="small text-muted">Pendientes: {{ riego_pendientes|default(0) }}</p>
-    {% if bitacora_registros %}
-    <div class="table-responsive">
-      <table class="table table-sm table-bordered align-middle demo-datatable w-100">
-        <thead>
-          <tr>
-            <th>N°</th><th>Fecha</th>{% if hydra_link_sectores|default(0) %}<th>Sector Hydra</th>{% endif %}<th>Huerto</th><th>Modo</th><th>Horas</th><th>m³</th>
-            <th>Fertilización</th><th>Regador</th><th>Estado</th><th>Recibido</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in bitacora_registros %}
-          <tr class="{% if r.pendiente %}table-warning{% elif r.rechazado %}table-secondary{% endif %}">
-            <td><strong>{{ r.codigo }}</strong></td>
-            <td>{{ r.fecha }}</td>
-            {% if hydra_link_sectores|default(0) %}<td class="small">{{ r.hydra_sector or '—' }}</td>{% endif %}
-            <td>{{ r.huerto }}</td>
-            <td class="small">{{ r.modo_txt|default('Tecnificado') }}</td>
-            <td>{{ r.horas }}</td>
-            <td>{{ r.m3 }}</td>
-            <td class="small">{{ r.fert_txt }}</td>
-            <td>{{ r.regador }}</td>
-            <td>
-              {% if r.pendiente %}<span class="badge bg-warning text-dark">Pendiente</span>
-              {% elif r.rechazado %}<span class="badge bg-secondary">Rechazado</span>
-              {% else %}<span class="badge bg-success">Autorizado</span>{% endif %}
-            </td>
-            <td class="small text-muted">{{ r.creado_en[:16] if r.creado_en else '—' }}</td>
-            <td class="text-nowrap">
-              {% if r.pendiente and bitacora_puede_autorizar %}
-              <form method="post" class="d-inline">
-                <input type="hidden" name="action" value="autorizar_riego">
-                <input type="hidden" name="sec" value="bitacora">
-                <input type="hidden" name="codigo" value="{{ r.codigo }}">
-                <button type="submit" class="btn btn-success btn-sm">Autorizar</button>
-              </form>
-              <form method="post" class="d-inline">
-                <input type="hidden" name="action" value="rechazar_riego">
-                <input type="hidden" name="sec" value="bitacora">
-                <input type="hidden" name="codigo" value="{{ r.codigo }}">
-                <input type="hidden" name="motivo" value="">
-                <button type="submit" class="btn btn-outline-danger btn-sm">Rechazar</button>
-              </form>
-              {% elif r.autorizado %}
-              <span class="small text-muted">{{ r.autorizado_por or '' }}</span>
-              {% elif r.rechazado and r.rechazo_motivo %}
-              <span class="small text-muted" title="{{ r.rechazo_motivo }}">Rechazado</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="text-muted mb-0">Sin registros en link riego.</p>
-    {% endif %}
+    {% include 'partials/riego_tabla_autorizar.html' %}
   </div>
 
   {% elif sec_activa == 'historial' %}
@@ -581,10 +535,8 @@
     {% endif %}
   </div>
   {% endif %}
-
-  {% include 'partials/riego_hydrawise.html' %}
 </div>
-{% if sec_activa == 'bitacora' %}
+{% if sec_activa == 'bitacora' or (sec_activa == 'armado' and sub_activa == 'enlaces') %}
 <script>
 document.querySelectorAll('.js-copiar-link').forEach(function(btn) {
   btn.addEventListener('click', function() {

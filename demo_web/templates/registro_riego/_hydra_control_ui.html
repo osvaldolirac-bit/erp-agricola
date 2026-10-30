@@ -4,16 +4,23 @@
 <div class="alert alert-{{ 'success' if hydra_ok else 'danger' }} hydra-link-alert py-2" role="status">{{ hydra_msg }}</div>
 {% endif %}
 
-{% if hydra_ui_scope|default('link') == 'module' and hydra_puede_operar %}
+{% set vista = hydra_vista|default('') %}
+{% if hydra_ui_scope|default('link') == 'module' and hydra_puede_operar and (vista == 'hoy' or not vista) %}
 <form method="post" class="d-flex flex-wrap gap-2 mb-3">
   {% include "registro_riego/_hydra_scope_fields.html" %}
-  <button type="submit" name="action" value="hydra_sync" class="btn btn-primary btn-sm">Sincronizar cola</button>
+  <button type="submit" name="action" value="hydra_sync" class="btn btn-primary btn-sm">{% if vista == 'hoy' %}Actualizar con Hydrawise{% else %}Sincronizar cola{% endif %}</button>
 </form>
 {% endif %}
 
+{% if vista == 'hoy' or not vista %}
 {% include "registro_riego/_hydra_panel_control.html" %}
+{% endif %}
+{% if vista == 'ahora' or not vista %}
 {% include "registro_riego/_hydra_panel_regar.html" %}
+{% endif %}
+{% if vista == 'programar' or not vista %}
 {% include "registro_riego/_hydra_panel_programar.html" %}
+{% endif %}
 
 <script id="hydraSectorsJson" type="application/json">{{ hydra_sectores|tojson }}</script>
 <script id="hydraFertOptsJson" type="application/json">{{ fertilizantes|tojson }}</script>
