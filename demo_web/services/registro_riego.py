@@ -601,17 +601,36 @@ def _fertilizantes_por_codigos(
     return out
 
 
-def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
+def resumen_npk_por_huerto(
+    conn: sqlite3.Connection,
+    *,
+    desde: str | None = None,
+    hasta: str | None = None,
+    huerto: str | None = None,
+) -> dict[str, Any]:
     """N, P₂O₅ y K₂O acumulados por CC expresados en kg/ha (superficie prorrateo_cc)."""
     migrar_tabla(conn)
     demo = get_demo_module()
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
+    where = ["COALESCE(rf.cantidad, 0) > 0"]
+    params: list[Any] = []
+    if desde:
+        where.append("r.fecha >= ?")
+        params.append(str(desde)[:10])
+    if hasta:
+        where.append("r.fecha <= ?")
+        params.append(str(hasta)[:10])
+    huerto_n = _norm_cc(huerto or "")
+    if huerto_n:
+        where.append("UPPER(TRIM(r.huerto)) = ?")
+        params.append(huerto_n)
     rows = conn.execute(
-        """SELECT r.huerto, rf.producto, rf.producto_id, rf.cantidad, rf.unidad,
+        f"""SELECT r.huerto, rf.producto, rf.producto_id, rf.cantidad, rf.unidad,
                   rf.n_pct, rf.p_pct, rf.k_pct, COALESCE(rf.npk_reconocido, 0)
            FROM riego r
            INNER JOIN riego_fertilizantes rf ON rf.codigo = r.codigo
-           WHERE COALESCE(rf.cantidad, 0) > 0"""
+           WHERE {' AND '.join(where)}""",
+        params,
     ).fetchall()
     por_huerto: dict[str, dict[str, float]] = {}
     sin_analisis: dict[str, float] = {}
@@ -644,6 +663,8 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
     sum_n_kg = sum_p_kg = sum_k_kg = 0.0
     for cc, ha in cc_list:
         cc_n = _norm_cc(cc)
+        if huerto_n and cc_n != huerto_n:
+            continue
         kg = por_huerto.get(cc_n, {"n": 0.0, "p": 0.0, "k": 0.0})
         n_ha = (kg["n"] / ha) if ha > 0 else None
         p_ha = (kg["p"] / ha) if ha > 0 else None
@@ -671,6 +692,8 @@ def resumen_npk_por_huerto(conn: sqlite3.Connection) -> dict[str, Any]:
         )
 
     for cc_n, kg in por_huerto.items():
+        if huerto_n and cc_n != huerto_n:
+            continue
         if cc_n in cc_norms:
             continue
         if kg["n"] <= 0 and kg["p"] <= 0 and kg["k"] <= 0:
@@ -2008,18 +2031,42 @@ def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
     return out
 
 
-def listar_historial(conn, limite: int = 100, demo=None) -> list[dict[str, Any]]:
+def listar_historial(
+    conn,
+    limite: int | None = 100,
+    demo=None,
+    *,
+    desde: str | None = None,
+    hasta: str | None = None,
+    huerto: str | None = None,
+) -> list[dict[str, Any]]:
     if demo is None:
         demo = get_demo_module()
     migrar_tabla(conn)
     f_cant = getattr(demo, "f_cantidad", demo.f_decimal)
-    rows = conn.execute(
-        """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
+    where: list[str] = []
+    params: list[Any] = []
+    if desde:
+        where.append("fecha >= ?")
+        params.append(str(desde)[:10])
+    if hasta:
+        where.append("fecha <= ?")
+        params.append(str(hasta)[:10])
+    huerto_n = (huerto or "").strip().upper()
+    if huerto_n:
+        where.append("UPPER(TRIM(huerto)) = ?")
+        params.append(huerto_n)
+    sql = """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
                   regador, origen, bitacora_codigo, creado_por, creado_en,
                   COALESCE(modo_riego, 'horas'), surcos, COALESCE(fert_estado, '')
-           FROM riego ORDER BY fecha DESC, id DESC LIMIT ?""",
-        (limite,),
-    ).fetchall()
+           FROM riego"""
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY fecha DESC, id DESC"
+    if limite:
+        sql += " LIMIT ?"
+        params.append(int(limite))
+    rows = conn.execute(sql, params).fetchall()
     codigos = [str(r[0] or "").strip() for r in rows if str(r[0] or "").strip()]
     fert_por_codigo = _fertilizantes_por_codigos(conn, codigos)
     out = []

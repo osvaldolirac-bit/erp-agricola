@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from flask import flash, render_template, request
+from io import BytesIO
+
+from flask import flash, render_template, request, send_file, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
@@ -69,6 +71,131 @@ def _volver(sec: str, sub: str = ""):
     return redirect_module("riego", sec=sec, sub=sub)
 
 
+def _volver_historial():
+    """Vuelve al historial con el filtro de la pantalla, sin repetir el PDF."""
+    return redirect_module(
+        "riego",
+        sec="historial",
+        sub="",
+        pdf="",
+        desde=(request.values.get("desde") or "").strip(),
+        hasta=(request.values.get("hasta") or "").strip(),
+        huerto=(request.values.get("huerto") or "").strip(),
+    )
+
+
+def _rango_historial(demo, conn):
+    """Desde, hasta y huerto del filtro. Sin fechas, cubre todo el historial."""
+    from demo_web.services.registro_riego import migrar_tabla
+
+    hoy = hoy_demo(demo)
+    migrar_tabla(conn)
+    row = conn.execute("SELECT MIN(fecha), MAX(fecha) FROM riego").fetchone()
+    fmin = parse_date(str(row[0])[:10] if row and row[0] else "", hoy)
+    fmax = parse_date(str(row[1])[:10] if row and row[1] else "", hoy)
+    fi = parse_date(request.args.get("desde"), fmin)
+    ff = parse_date(request.args.get("hasta"), max(hoy, fmax))
+    if fi > ff:
+        fi, ff = ff, fi
+    huerto = (request.args.get("huerto") or "").strip()
+    return fi, ff, huerto
+
+
+def _huertos_filtro(conn) -> list[str]:
+    from demo_web.services.registro_riego import huertos_para_formulario
+
+    vistos: dict[str, str] = {}
+    for h in huertos_para_formulario():
+        nombre = str(h or "").strip()
+        clave = nombre.upper()
+        if clave and clave not in vistos:
+            vistos[clave] = nombre
+    rows = conn.execute(
+        "SELECT DISTINCT TRIM(huerto) FROM riego WHERE TRIM(COALESCE(huerto, '')) != ''"
+    ).fetchall()
+    for (h,) in rows:
+        nombre = str(h or "").strip()
+        clave = nombre.upper()
+        if clave and clave not in vistos:
+            vistos[clave] = nombre
+    pedido = (request.args.get("huerto") or "").strip()
+    if pedido and pedido.upper() not in vistos:
+        vistos[pedido.upper()] = pedido
+    return [vistos[k] for k in sorted(vistos)]
+
+
+def _huerto_canon(pedido: str, opciones: list[str]) -> str:
+    clave = (pedido or "").strip().upper()
+    if not clave:
+        return ""
+    for h in opciones:
+        if h.upper() == clave:
+            return h
+    return pedido.strip()
+
+
+def _blob_historial(demo, rows, fi, ff, huerto: str) -> bytes | None:
+    import pandas as pd
+
+    if not rows:
+        return None
+    df = pd.DataFrame(
+        [
+            {
+                "N°": r["codigo"],
+                "Fecha": r["fecha"],
+                "Huerto": r["huerto"],
+                "Modo": r["modo_txt"],
+                "Horas": r["horas"],
+                "m3": r["m3"],
+                "Fertilizacion": r["fert_txt"],
+                "Regador": r["regador"],
+                "Origen": r["origen"],
+            }
+            for r in rows
+        ]
+    )
+    titulo = f"HISTORIAL DE RIEGO {fi.strftime('%d-%m-%Y')} A {ff.strftime('%d-%m-%Y')}"
+    if huerto:
+        titulo += f" - {huerto}"
+    generar = getattr(demo, "generar_pdf_blob", None)
+    if not generar:
+        return None
+    blob = generar(df, titulo, incluir_precios=False)
+    return blob or None
+
+
+def _pdf_historial(user_email: str, user_rol: str):
+    demo = get_demo_module()
+    bind_user_session(user_email, user_rol)
+    from demo_web.services.registro_riego import listar_historial
+
+    conn = demo.conectar_db()
+    try:
+        fi, ff, pedido = _rango_historial(demo, conn)
+        huerto = _huerto_canon(pedido, _huertos_filtro(conn))
+        rows = listar_historial(
+            conn,
+            limite=None,
+            desde=fi.isoformat(),
+            hasta=ff.isoformat(),
+            huerto=huerto or None,
+        )
+        blob = _blob_historial(demo, rows, fi, ff, huerto)
+    finally:
+        conn.close()
+    if not blob:
+        flash("No hay registros para el PDF.", "warning")
+        return _volver_historial()
+    return send_file(
+        BytesIO(blob),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="historial_riego.pdf",
+        max_age=0,
+    )
+
+
 def gather_riego(user_email: str, user_rol: str) -> dict:
     demo = get_demo_module()
     bind_user_session(user_email, user_rol)
@@ -119,9 +246,41 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         ctx["riego_desfase"] = n_pend > 0
 
         if sec == "historial":
-            ctx["historial_rows"] = listar_historial(conn)
-            ctx["npk_resumen"] = resumen_npk_por_huerto(conn)
+            fi, ff, pedido = _rango_historial(demo, conn)
+            opciones = _huertos_filtro(conn)
+            huerto = _huerto_canon(pedido, opciones)
+            rows = listar_historial(
+                conn,
+                limite=None,
+                desde=fi.isoformat(),
+                hasta=ff.isoformat(),
+                huerto=huerto or None,
+            )
+            ctx["historial_rows"] = rows
+            ctx["npk_resumen"] = resumen_npk_por_huerto(
+                conn,
+                desde=fi.isoformat(),
+                hasta=ff.isoformat(),
+                huerto=huerto or None,
+            )
             ctx["bitacora_puede_autorizar"] = demo.es_admin() and not demo.es_solo_lectura()
+            ctx["filtro_desde"] = fi.isoformat()
+            ctx["filtro_hasta"] = ff.isoformat()
+            ctx["filtro_huerto"] = huerto
+            ctx["filtro_huertos"] = opciones
+            ctx["n_registros"] = len(rows)
+            if rows:
+                pdf_args = {
+                    "sec": "historial",
+                    "pdf": "1",
+                    "desde": fi.isoformat(),
+                    "hasta": ff.isoformat(),
+                }
+                if huerto:
+                    pdf_args["huerto"] = huerto
+                ctx["pdf_historial_url"] = url_for("modules.riego", **pdf_args)
+            else:
+                ctx["pdf_historial_url"] = None
         elif sec == "hoy":
             from demo_web.services.hydrawise_riego import (
                 contexto_control_hydra_ui,
@@ -360,7 +519,7 @@ def view(user_email: str, user_rol: str):
                 codigo = (request.form.get("codigo") or "").strip()
                 result = confirmar_fert_hydra(codigo, user_email)
                 flash(result["msg"], "success" if result["ok"] else "danger")
-            return _volver("historial")
+            return _volver_historial()
 
         if action == "modificar_fert_hydra":
             if not demo.es_admin():
@@ -381,7 +540,7 @@ def view(user_email: str, user_rol: str):
                     con_fertilizacion=con_fert,
                 )
                 flash(result["msg"], "success" if result["ok"] else "danger")
-            return _volver("historial")
+            return _volver_historial()
 
         if is_concepcion_tenant() and action.startswith("hydra_"):
             sec_hydra, sub_hydra = _canon_post_hydra(
@@ -484,6 +643,14 @@ def view(user_email: str, user_rol: str):
                 conn.close()
             flash(result.get("msg", ""), "success" if result.get("ok") else "danger")
             return _volver(sec_hydra, sub_hydra)
+
+    sec_pdf = (request.args.get("sec") or "historial").strip()
+    if is_concepcion_tenant():
+        sec_pdf, _ = _canon_lc(sec_pdf, request.args.get("sub") or "")
+    elif sec_pdf not in {k for k, _ in SECCIONES}:
+        sec_pdf = "historial"
+    if request.args.get("pdf") == "1" and sec_pdf == "historial":
+        return _pdf_historial(user_email, user_rol)
 
     ctx = gather_riego(user_email, user_rol)
     return render_template(
