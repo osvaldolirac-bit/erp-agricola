@@ -93,6 +93,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/templates/modules/tesoreria.html",
     "demo_web/static/css/erp.css",
     "demo_web/templates/dashboard/index.html",
+    "demo_web/templates/base.html",
     "demo_web/templates/select_tenant.html",
     "demo_web/templates/partials/espino_libro_campo.html",
     "erp_flujo_financiero.py",

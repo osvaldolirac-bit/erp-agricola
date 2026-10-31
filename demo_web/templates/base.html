@@ -74,12 +74,18 @@
       <nav class="demo-menu" aria-label="Módulos">
         {% for item in (nav_ops if nav_ops is defined else nav_menu) %}
         <a href="{{ url_for(item.endpoint) }}"
-           class="demo-nav-link {% if item.badge_count is defined and item.badge_count is not none %}nav-with-count{% endif %} {% if active_key == item.key %}active{% endif %}">
+           class="demo-nav-link {% if item.riego_avisos %}nav-with-riego{% elif item.badge_count is defined and item.badge_count is not none %}nav-with-count{% endif %} {% if active_key == item.key %}active{% endif %}">
           <span class="nav-link-main">
             <i class="bi {{ item.icon|default('bi-circle') }}" aria-hidden="true"></i>
             <span class="nav-link-label">{{ item.label }}</span>
           </span>
-          {% if item.badge_count is defined and item.badge_count is not none %}
+          {% if item.riego_avisos %}
+          <span class="nav-riego-avisos">
+            {% for aviso in item.riego_avisos %}
+            <span class="nav-riego-chip {{ aviso.clase }}" title="{{ aviso.title }}">{{ aviso.texto }}</span>
+            {% endfor %}
+          </span>
+          {% elif item.badge_count is defined and item.badge_count is not none %}
           <span class="nav-count{% if item.badge_count > 0 %} nav-count-alert{% endif %}">{{ item.badge_count }}</span>
           {% endif %}
         </a>
@@ -88,12 +94,18 @@
         <div class="demo-nav-section">Sistema</div>
         {% for item in nav_sistema %}
         <a href="{{ url_for(item.endpoint) }}"
-           class="demo-nav-link {% if item.badge_count is defined and item.badge_count is not none %}nav-with-count{% endif %} {% if active_key == item.key %}active{% endif %}">
+           class="demo-nav-link {% if item.riego_avisos %}nav-with-riego{% elif item.badge_count is defined and item.badge_count is not none %}nav-with-count{% endif %} {% if active_key == item.key %}active{% endif %}">
           <span class="nav-link-main">
             <i class="bi {{ item.icon|default('bi-circle') }}" aria-hidden="true"></i>
             <span class="nav-link-label">{{ item.label }}</span>
           </span>
-          {% if item.badge_count is defined and item.badge_count is not none %}
+          {% if item.riego_avisos %}
+          <span class="nav-riego-avisos">
+            {% for aviso in item.riego_avisos %}
+            <span class="nav-riego-chip {{ aviso.clase }}" title="{{ aviso.title }}">{{ aviso.texto }}</span>
+            {% endfor %}
+          </span>
+          {% elif item.badge_count is defined and item.badge_count is not none %}
           <span class="nav-count{% if item.badge_count > 0 %} nav-count-alert{% endif %}">{{ item.badge_count }}</span>
           {% endif %}
         </a>

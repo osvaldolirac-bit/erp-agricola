@@ -205,6 +205,7 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
     opts = demo.construir_menu_usuario(user_email, rol)
     modulos_menu = set(opts.values())
     badge_by_key: dict[str, int] = {}
+    riego_avisos: list[dict] = []
     conn = demo.conectar_db()
     try:
         try:
@@ -213,9 +214,10 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
             opts = aplicar_badge_menu_soporte(opts, conn, demo.es_admin)
         except Exception:
             pass
-        from demo_web.services.sidebar_badges import conteos_sidebar
+        from demo_web.services.sidebar_badges import avisos_riego_sidebar, conteos_sidebar
 
         badge_by_key = conteos_sidebar(conn, modulos_menu)
+        riego_avisos = avisos_riego_sidebar(conn)
     finally:
         conn.close()
 
@@ -269,7 +271,9 @@ def build_menu(user_email: str, rol: str) -> list[dict]:
                 "endpoint": endpoint,
                 "icon": icon_map.get(key, "bi-circle"),
             }
-            if key in badge_by_key:
+            if key == "Riego" and riego_avisos:
+                item["riego_avisos"] = riego_avisos
+            elif key in badge_by_key:
                 item["badge_count"] = badge_by_key[key]
             items.append(item)
     return items
