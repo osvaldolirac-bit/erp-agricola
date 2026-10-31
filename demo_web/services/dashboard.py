@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sqlite3
+from datetime import datetime
+
 from dateutil.relativedelta import relativedelta
 
 import pandas as pd
@@ -18,6 +21,135 @@ from demo_web.services.tenant_scope import cuarteles_oficiales
 
 def _demo():
     return get_demo_module()
+
+
+def _fmt_minutos_aviso(minutos: float) -> str:
+    m = float(minutos or 0)
+    if m <= 0:
+        return ""
+    total = int(round(m))
+    if total < 60:
+        return f"{total} min"
+    horas, resto = divmod(total, 60)
+    if resto:
+        return f"{horas} h {resto} min"
+    return f"{horas} h"
+
+
+def _etiqueta_sector(nombre: str, alias: str, huerto: str, minutos: float) -> str:
+    nom = (nombre or "Sector").strip()
+    alias_n = (alias or "").strip()
+    if alias_n and alias_n.casefold() != nom.casefold():
+        etiqueta = f"{nom} — {alias_n}"
+    else:
+        etiqueta = nom
+    partes = [etiqueta]
+    cc = (huerto or "").strip()
+    if cc:
+        partes.append(cc)
+    tiempo = _fmt_minutos_aviso(minutos)
+    if tiempo:
+        partes.append(tiempo)
+    return " · ".join(partes)
+
+
+def _inicio_programa(value: str) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace(" ", "T")[:19])
+    except ValueError:
+        return None
+
+
+def alertas_riego_dashboard(conn) -> list[dict]:
+    """Avisos de riego en el Dashboard de La Concepción.
+
+    Ejecución, cola y pendientes de autorizar. El Espino no usa cola Hydra.
+    """
+    from demo_web.services.tenant_scope import is_concepcion_tenant
+
+    if not is_concepcion_tenant():
+        return []
+    alertas: list[dict] = []
+    try:
+        alertas.extend(_alertas_cola_hydra(conn))
+    except sqlite3.OperationalError:
+        pass
+    n_auth = _pendientes_autorizar(conn)
+    if n_auth == 1:
+        texto = "Hay 1 riego pendiente de autorizar."
+    elif n_auth > 1:
+        texto = f"Hay {n_auth} riegos pendientes de autorizar."
+    else:
+        texto = ""
+    if texto:
+        alertas.append(
+            {"tipo": "autorizar", "clase": "dash-alerta-riego-auth", "texto": texto}
+        )
+    return alertas
+
+
+def _pendientes_autorizar(conn) -> int:
+    try:
+        from demo_web.services.registro_riego import contar_pendientes
+
+        return int(contar_pendientes(conn) or 0)
+    except Exception:
+        return 0
+
+
+def _alertas_cola_hydra(conn) -> list[dict]:
+    cola = conn.execute(
+        """SELECT id, tipo, inicio_programa, estado
+           FROM hydrawise_cola
+           WHERE estado IN ('programado', 'en_ejecucion')
+           ORDER BY id DESC LIMIT 1"""
+    ).fetchone()
+    if not cola:
+        return []
+    cola_id, tipo, inicio, _estado = cola
+    items = conn.execute(
+        """SELECT i.estado, i.minutos, z.nombre_hw, z.alias, z.huerto_cc, i.orden
+           FROM hydrawise_cola_item i
+           LEFT JOIN hydrawise_zona z ON z.relay_id = i.relay_id
+           WHERE i.cola_id=?
+           ORDER BY i.orden""",
+        (int(cola_id),),
+    ).fetchall()
+    alertas: list[dict] = []
+    en_vivo = [r for r in items if str(r[0] or "") in ("corriendo", "pausado")]
+    en_vivo.sort(key=lambda r: (0 if str(r[0]) == "corriendo" else 1, int(r[5] or 0)))
+    for estado, minutos, nombre, alias, huerto, _orden in en_vivo:
+        pausa = str(estado) == "pausado"
+        titulo = "Riego en pausa" if pausa else "Riego en ejecución"
+        alertas.append(
+            {
+                "tipo": "pausa" if pausa else "ejecucion",
+                "clase": "dash-alerta-riego-run",
+                "texto": f"{titulo}: {_etiqueta_sector(nombre, alias, huerto, minutos)}.",
+            }
+        )
+    espera = [r for r in items if str(r[0] or "") == "pendiente"]
+    if espera:
+        detalle = "; ".join(
+            _etiqueta_sector(nombre, alias, huerto, minutos)
+            for _estado, minutos, nombre, alias, huerto, _orden in espera
+        )
+        prefijo = "En cola"
+        if str(tipo or "") == "programado" and not en_vivo:
+            cuando = _inicio_programa(inicio)
+            if cuando:
+                prefijo = f"En cola, programa {cuando.strftime('%d/%m/%Y %H:%M')}"
+        alertas.append(
+            {
+                "tipo": "cola",
+                "clase": "dash-alerta-riego-cola",
+                "texto": f"{prefijo}: {detalle}.",
+            }
+        )
+    return alertas
 
 
 def gather_dashboard(email: str, rol: str) -> dict:
@@ -154,6 +286,7 @@ def gather_dashboard(email: str, rol: str) -> dict:
 
         return {
             "alerta_rrhh": alerta_rrhh,
+            "alertas_riego": alertas_riego_dashboard(conn),
             "indicadores": ind,
             "kpis": kpis,
             "gastos_cc": gastos_cc,

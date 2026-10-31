@@ -15,6 +15,15 @@
     <span class="modulo-badge">DASHBOARD</span>
   </div>
 
+  {% if alertas_riego %}
+  {% for aviso in alertas_riego %}
+  <div class="dash-alerta-riego {{ aviso.clase }}">
+    {{ aviso.texto }}
+    <a href="{{ url_for('modules.riego', sec='hoy') }}">Ver en Hoy</a>
+  </div>
+  {% endfor %}
+  {% endif %}
+
   {% if alerta_rrhh %}
   <div class="alert-roja">⚠️ {{ alerta_rrhh }}</div>
   {% endif %}

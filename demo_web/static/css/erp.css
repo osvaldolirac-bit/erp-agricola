@@ -901,6 +901,50 @@ body.demo-body .dataTables_wrapper .dataTables_paginate {
   font-weight: 700;
 }
 
+.dashboard-page .dash-alerta-riego {
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 0.75rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.dashboard-page .dash-alerta-riego a {
+  font-weight: 700;
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}
+
+.dashboard-page .dash-alerta-riego-run {
+  background: #E3F2FD;
+  color: #0D47A1;
+  border: 1px solid #90CAF9;
+}
+
+.dashboard-page .dash-alerta-riego-run a {
+  color: #0D47A1;
+}
+
+.dashboard-page .dash-alerta-riego-cola {
+  background: #F5F7F6;
+  color: #1F2933;
+  border: 1px solid #DDE5DF;
+}
+
+.dashboard-page .dash-alerta-riego-cola a {
+  color: #1565C0;
+}
+
+.dashboard-page .dash-alerta-riego-auth {
+  background: #FFF8E1;
+  color: #8A6D1B;
+  border: 1px solid #FFE082;
+}
+
+.dashboard-page .dash-alerta-riego-auth a {
+  color: #8A6D1B;
+}
+
 .dashboard-page .dashboard-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 11.5rem), 1fr));
