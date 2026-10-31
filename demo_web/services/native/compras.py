@@ -169,6 +169,28 @@ def _proveedores_options(conn) -> list[dict]:
     ]
 
 
+def proveedores_con_actual(opciones: list[dict], actual: str) -> list[dict]:
+    """El proveedor del documento queda en el selector aunque no esté en la maestra.
+
+    Los contratistas no figuran en esa maestra. Sin esta opción, el navegador
+    envía el primer proveedor (p. ej. ABASTIBLE) al guardar la corrección.
+    """
+    nombre = (actual or "").strip()
+    if not nombre:
+        return list(opciones)
+    if any(str(p.get("nombre") or "") == nombre for p in opciones):
+        return list(opciones)
+    return [{"nombre": nombre, "label": nombre}, *opciones]
+
+
+def proveedor_de_correccion(prov_form: str, contratista_nombre: str | None) -> str:
+    """Un servicio de contratista conserva el nombre del contratista."""
+    nombre = (contratista_nombre or "").strip()
+    if nombre:
+        return nombre
+    return (prov_form or "").strip()
+
+
 def _df_historial(demo, conn):
     """Facturas del historial según el filtro de la pantalla. Sin armar el PDF."""
     _ensure_folio_interno_col(conn)
@@ -187,7 +209,7 @@ def _df_historial(demo, conn):
                IFNULL(razon_social, 'ERP Demo Agrícola') AS razon_social,
                fecha_compra, fecha_vencimiento, {SQL_ETIQUETA_TIPO} AS tipo,
                COALESCE(NULLIF(TRIM(tipo_gasto), ''), ?) AS tipo_gasto_cc,
-               concepto, monto_total
+               concepto, monto_total, COALESCE(contratista_id, 0) AS contratista_id
         FROM facturas
         WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P'
           AND fecha_compra BETWEEN ? AND ?
@@ -275,6 +297,7 @@ def _historial(demo, conn) -> dict:
                 "concepto_full": r["concepto"] or "",
                 "monto_total": demo.f_peso(r["monto_total"]),
                 "monto_raw": float(r["monto_total"] or 0),
+                "es_contratista": int(r["contratista_id"] or 0) > 0,
             }
         )
     pdf_url = None
@@ -319,6 +342,8 @@ def _historial(demo, conn) -> dict:
     razones = list(razones_sociales_compras(demo))
     tipos_gasto = list(getattr(demo, "TIPOS_GASTO_HISTORIAL_COMPRAS", []) or [])
     proveedores = _proveedores_options(conn) if es_admin else []
+    if factura_edit:
+        proveedores = proveedores_con_actual(proveedores, factura_edit.get("proveedor") or "")
 
     puede_folio = not bool(demo.es_solo_lectura())
     if puede_folio and factura_edit:
@@ -920,6 +945,14 @@ def _post_corregir_factura(demo, conn) -> dict:
     monto_old = float(fila[5] or 0)
     doc_new = (request.form.get("nro_documento") or "").strip()
     prov_new = (request.form.get("proveedor") or "").strip()
+    cid = int(fila[10] or 0)
+    if cid:
+        row_ct = conn.execute(
+            "SELECT razon_social FROM contratistas WHERE id=?", (cid,)
+        ).fetchone()
+        prov_new = proveedor_de_correccion(
+            prov_new, str(row_ct[0] or "") if row_ct else ""
+        )
     nrazon = (request.form.get("razon_social") or "").strip()
     nconcepto = (request.form.get("concepto") or "").strip()
     nfe = (request.form.get("fecha_compra") or "").strip()

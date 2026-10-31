@@ -131,12 +131,19 @@
         </select>
       </div>
       <div class="col-md-3">
+        {% if factura_edit.es_contratista %}
+        <label class="form-label small">Contratista</label>
+        <input type="text" class="form-control form-control-sm" value="{{ factura_edit.proveedor }}" disabled>
+        <input type="hidden" name="proveedor" value="{{ factura_edit.proveedor }}">
+        <div class="form-text small">Sigue el nombre del contratista. No sale de la maestra de proveedores.</div>
+        {% else %}
         <label class="form-label small">Proveedor</label>
         <select name="proveedor" class="form-select form-select-sm" required>
           {% for p in proveedores_hist %}
           <option value="{{ p.nombre }}" {% if p.nombre == factura_edit.proveedor %}selected{% endif %}>{{ p.label }}</option>
           {% endfor %}
         </select>
+        {% endif %}
       </div>
       <div class="col-md-2">
         <label class="form-label small">N° Documento</label>
