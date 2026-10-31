@@ -94,6 +94,10 @@ RIEGO_M3_HR_HA: dict[str, float] = {
     "CEREZOS CORTE 2": 18.0,
     "CIRUELOS": 18.0,
     "NOGALES APARICION": 34.0,
+    # El Espino: cerezos por variedad, mismo caudal que los cortes de LC.
+    "ROYAL DOWN": 18.0,
+    "SWEET ARYANA": 18.0,
+    "SANTINA": 18.0,
 }
 # Riego por surco: m³ = horas × 40 m³/h·ha × ha (prorrateo)
 RIEGO_SOLO_SURCO: frozenset[str] = frozenset({"NOGALES CRUZ DEL SUR"})
@@ -1171,6 +1175,39 @@ def corregir_m3_por_sector(conn: sqlite3.Connection) -> int:
     return n_upd
 
 
+def completar_m3_pendiente(conn: sqlite3.Connection) -> int:
+    """Rellena m³ en cero si el huerto tiene fórmula y el riego tiene horas.
+
+    Un m³ ya informado se deja igual. No toca fertilizantes ni el prorrateo.
+    """
+    n_upd = 0
+    for cc in sorted(_huertos_riego_auto()):
+        for tabla in ("riego", "riego_bitacora"):
+            try:
+                rows = conn.execute(
+                    f"""SELECT id, COALESCE(horas, 0), COALESCE(modo_riego, 'horas')
+                        FROM {tabla}
+                        WHERE UPPER(TRIM(huerto)) = ?
+                          AND COALESCE(horas, 0) > 0
+                          AND ABS(COALESCE(m3, 0)) < 0.001""",
+                    (cc,),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                continue
+            for rid, horas, modo in rows:
+                m3, err = calcular_m3_riego(
+                    conn, cc, float(horas), modo=modo or "horas"
+                )
+                if err or m3 <= 0:
+                    continue
+                conn.execute(
+                    f"UPDATE {tabla} SET m3=? WHERE id=?",
+                    (m3, int(rid)),
+                )
+                n_upd += 1
+    return n_upd
+
+
 def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
     from erp_solo_lectura import conn_en_solo_lectura
 
@@ -1254,6 +1291,7 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
             )
         _ensure_riego_config_cc(conn)
         corregir_m3_por_sector(conn)
+        completar_m3_pendiente(conn)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_meta (clave TEXT PRIMARY KEY, valor TEXT)"
         )
