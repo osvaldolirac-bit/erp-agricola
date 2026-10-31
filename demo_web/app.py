@@ -49,6 +49,10 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(registro_riego_bp)
     app.register_blueprint(salida_petroleo_bp)
 
+    from demo_web.blueprints.stock_bodega_link import bp as stock_bodega_link_bp
+
+    app.register_blueprint(stock_bodega_link_bp)
+
     from demo_web.services.mantenimiento import register_mantenimiento
 
     register_mantenimiento(app)
@@ -59,7 +63,9 @@ def create_app(config_class=Config) -> Flask:
 
     @app.before_request
     def _bind_tenant():
-        slug = session.get("tenant_slug")
+        from demo_web.services.public_link_tenant import tenant_slug_for_request
+
+        slug = tenant_slug_for_request()
         bind_tenant_context(slug if slug else None)
 
 
@@ -446,10 +452,15 @@ def create_app(config_class=Config) -> Flask:
         menu = []
         nav_ops: list = []
         nav_sistema: list = []
+        tenant_switch_options: list = []
         home_url = url_for("auth.login")
         tenant = get_tenant(session.get("tenant_slug"))
         if session.get("email") and tenant:
             from demo_web.auth.login_next import default_landing_url
+            from demo_web.auth.tenant_access import (
+                list_accessible_tenants,
+                other_tenant_switch_options,
+            )
 
             home_url = default_landing_url()
             user = {
@@ -458,6 +469,13 @@ def create_app(config_class=Config) -> Flask:
                 "tenant_slug": tenant["slug"],
                 "tenant_nombre": tenant["nombre"],
             }
+            accessible = session.get("accessible_tenants") or []
+            if len(accessible) < 2:
+                refreshed = list_accessible_tenants(session["email"])
+                if refreshed:
+                    accessible = refreshed
+                    session["accessible_tenants"] = refreshed
+            tenant_switch_options = other_tenant_switch_options(accessible, tenant["slug"])
             menu = build_menu(user["email"], user["rol"])
             for it in menu:
                 if it.get("key") in _SISTEMA_KEYS:
@@ -489,6 +507,13 @@ def create_app(config_class=Config) -> Flask:
             logo_url = url_for("logo_asset") if find_logo_path(prefer_master=True) else None
             erp_app = "agricola"
         pricing = pricing_context(tenant["slug"] if tenant else None)
+        stock_bodega_login_url = ""
+        try:
+            from demo_web.auth.public_urls import url_publica_login_stock_bodega
+
+            stock_bodega_login_url = url_publica_login_stock_bodega()
+        except Exception:
+            pass
         return {
             "current_user": user,
             "nav_menu": menu,
@@ -504,6 +529,7 @@ def create_app(config_class=Config) -> Flask:
             "erp_login_subtitle": subtitle,
             "erp_app": erp_app,
             "tenant": tenant,
+            "tenant_switch_options": tenant_switch_options,
             "logo_url": logo_url,
             "master_logo_url": master_logo_url,
             "static_version": config_class.static_version(),
@@ -511,6 +537,7 @@ def create_app(config_class=Config) -> Flask:
             "session_idle_warn": int(app.config.get("SESSION_IDLE_WARN_SECONDS") or 120),
             "clp": format_clp,
             "solo_lectura": bool(session.get("solo_lectura")) or (session.get("rol") == "lector"),
+            "stock_bodega_login_url": stock_bodega_login_url,
             **pricing,
         }
 
@@ -527,6 +554,7 @@ def create_app(config_class=Config) -> Flask:
         from demo_web.services.demo_loader import init_demo_db
         from demo_web.services.registro_riego import migrar_tabla as migrar_riego
         from demo_web.services.salida_petroleo import migrar_tabla as migrar_petroleo
+        from demo_web.services.stock_bodega_link import migrar_tabla as migrar_stock_bodega_link
 
         init_demo_db()
         for t in list_tenants():
@@ -534,6 +562,7 @@ def create_app(config_class=Config) -> Flask:
             try:
                 migrar_petroleo()
                 migrar_riego()
+                migrar_stock_bodega_link()
             except Exception:
                 pass
         bind_tenant_context(None)
