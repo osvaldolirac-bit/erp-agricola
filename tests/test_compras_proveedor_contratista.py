@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from demo_web.services.native.compras import (
     proveedor_de_correccion,
@@ -27,6 +28,13 @@ class ComprasProveedorContratistaTests(unittest.TestCase):
         self.assertEqual(out[1]["nombre"], "ABASTIBLE")
         otra = proveedores_con_actual(maestra, "ABASTIBLE")
         self.assertEqual(len(otra), 1)
+
+    def test_el_formulario_fija_al_contratista(self) -> None:
+        html = (
+            Path(__file__).resolve().parents[1] / "demo_web/templates/modules/compras.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("factura_edit.es_contratista", html)
+        self.assertIn("Sigue el nombre del contratista", html)
 
 
 if __name__ == "__main__":

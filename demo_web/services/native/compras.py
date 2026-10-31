@@ -209,7 +209,7 @@ def _df_historial(demo, conn):
                IFNULL(razon_social, 'ERP Demo Agrícola') AS razon_social,
                fecha_compra, fecha_vencimiento, {SQL_ETIQUETA_TIPO} AS tipo,
                COALESCE(NULLIF(TRIM(tipo_gasto), ''), ?) AS tipo_gasto_cc,
-               concepto, monto_total
+               concepto, monto_total, COALESCE(contratista_id, 0) AS contratista_id
         FROM facturas
         WHERE monto_total > 0 AND nro_documento NOT LIKE '%_P'
           AND fecha_compra BETWEEN ? AND ?
@@ -297,6 +297,7 @@ def _historial(demo, conn) -> dict:
                 "concepto_full": r["concepto"] or "",
                 "monto_total": demo.f_peso(r["monto_total"]),
                 "monto_raw": float(r["monto_total"] or 0),
+                "es_contratista": int(r["contratista_id"] or 0) > 0,
             }
         )
     pdf_url = None
