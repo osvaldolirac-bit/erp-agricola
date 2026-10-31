@@ -34,7 +34,7 @@ ARMADO_SUB = (
 
 
 def _canon_lc(sec: str, sub: str) -> tuple[str, str]:
-    """La Concepción: las URLs viejas abren la pantalla nueva. El resto cae en Historial."""
+    """La Concepción: las URLs viejas abren la pantalla nueva. Sin sección, abre Hoy."""
     sec = (sec or "").strip()
     sub = (sub or "").strip()
     if sec == "hydra_config" or (sec == "hydra" and sub == "config"):
@@ -57,7 +57,7 @@ def _canon_lc(sec: str, sub: str) -> tuple[str, str]:
         return "hoy", ""
     if sec == "historial":
         return "historial", ""
-    return "historial", ""
+    return "hoy", ""
 
 
 def _canon_post_hydra(sec: str, sub: str) -> tuple[str, str]:
@@ -214,7 +214,7 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         resumen_npk_por_huerto,
     )
 
-    sec_in = (request.values.get("sec") or request.args.get("sec") or "historial").strip()
+    sec_in = (request.values.get("sec") or request.args.get("sec") or "").strip()
     sub_in = (request.values.get("sub") or "").strip()
     lc = is_concepcion_tenant()
     if lc:
