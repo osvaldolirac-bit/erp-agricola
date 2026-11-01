@@ -529,7 +529,11 @@ def _historial(demo, conn) -> dict:
                 ORDER BY CAST(n_aplicacion AS INTEGER) DESC, id ASC"""
     df = pd.read_sql_query(query, conn, params=params)
     pdf_url = None
-    pdf_filename = "LIBRO_DE_CAMPO_LA_CONCEPCION.pdf"
+    from demo_web.services.pdf_meta import marca_corta_pdf, nombre_archivo_segun_tenant
+
+    marca = marca_corta_pdf()
+    pdf_filename = nombre_archivo_segun_tenant("LIBRO_DE_CAMPO_LA_CONCEPCION.pdf")
+    titulo_pdf = "LIBRO DE CAMPO" if marca == "LA CONCEPCION" else f"LIBRO DE CAMPO {marca}"
     if df.empty:
         return {
             "historial_grupos": [],
@@ -567,7 +571,7 @@ def _historial(demo, conn) -> dict:
     if "OP. CERT." in df.columns:
         df["OP. CERT."] = df["OP. CERT."].apply(_fmt_op_cert)
 
-    blob = demo.generar_pdf_libro_campo(df)
+    blob = demo.generar_pdf_libro_campo(df, titulo_pdf)
     if blob:
         pdf_url = pdf_download_url(store_pdf(blob, pdf_filename), pdf_filename)
 
