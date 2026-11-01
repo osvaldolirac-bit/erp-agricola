@@ -45,7 +45,13 @@ def bodega_secciones() -> list[tuple[str, str]]:
     return list(BODEGA_SECCIONES)
 
 
-def _es_producto_bodega_espino(nombre: str) -> bool:
+def _es_producto_bodega_espino(nombre: str, conn=None, producto_id: int | None = None) -> bool:
+    """El catálogo se decide por el nombre.
+
+    El stock del Libro de Campo llama con la conexión y el id del producto.
+    Esos datos no cambian la regla; tienen que aceptarse para que el ingreso no caiga.
+    """
+    del conn, producto_id
     n = (nombre or "").upper().strip()
     if n in {p.upper() for p in PRODUCTOS_BODEGA_ESPINO}:
         return True
