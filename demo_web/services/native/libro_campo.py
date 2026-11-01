@@ -487,7 +487,7 @@ def _ingreso(demo, conn) -> dict:
         "lc_car_raw": car,
         "reabrir_n_app": _reabrir_n_app_ctx(demo, conn),
         "copiado_desde_n_app": session.get("lc_copiado_desde_n_app"),
-        "rebaje_bodega_lc": is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino",
+        "rebaje_bodega_al_guardar": _tenant_slug_lc(demo) == "espino" or is_concepcion_tenant(),
     }
 
 

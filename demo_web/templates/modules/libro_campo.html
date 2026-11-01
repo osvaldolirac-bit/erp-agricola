@@ -227,9 +227,9 @@
 
   {% elif sec_activa == 'ingreso' %}
   <div class="alert alert-primary small mb-3">
-    {% if rebaje_bodega_lc %}
+    {% if rebaje_bodega_al_guardar %}
     Al <strong>validar y guardar</strong> la aplicación se archiva en Libro de Campo y se registra la
-    <strong>salida en bodega</strong> (stock e imputación al cuartel), salvo falta de stock.
+    <strong>salida en bodega</strong> (rebaja el stock e imputa al cuartel), salvo falta de stock.
     {% else %}
     Libro de Campo y Bodega son <strong>módulos independientes</strong>.
     Registrar aquí archiva la aplicación; debe rebajar stock en <strong>Bodega → Salida</strong>.
