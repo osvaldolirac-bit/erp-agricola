@@ -173,5 +173,14 @@ class FolioCotizacionAnioTests(unittest.TestCase):
         self.assertEqual(core.siguiente_folio_cotizacion(conn, "2026-11-02"), "COT-28_2026")
 
 
+class MenuModulosTests(unittest.TestCase):
+    def test_el_menu_recibe_modulo_visible(self):
+        app_py = (ROOT / "riomaipo_vps/rmweb/app.py").read_text(encoding="utf-8")
+        self.assertIn("modulo_visible", app_py)
+        self.assertIn('ctx["modulo_visible"]', app_py)
+        self.assertIn("register_taller_routes", app_py)
+        self.assertIn("register_rrhh_routes", app_py)
+
+
 if __name__ == "__main__":
     unittest.main()

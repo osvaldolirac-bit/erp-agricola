@@ -22,7 +22,7 @@ from flask import (
 from io import BytesIO
 
 from rmweb import core
-from rmweb.tenants import get_tenant, list_tenants
+from rmweb.tenants import get_tenant, list_tenants, modulo_visible
 from rmweb.pricing import pricing_context
 from rmweb.mail_alertas import enviar_correo_alerta, enviar_correo_alerta_pago
 from rmweb.master_bitacora import log_master_bitacora
@@ -308,7 +308,35 @@ def inject_globals():
     }
     ctx.update(pricing_context(slug))
     ctx.update(_demo_prueba_context(slug, session.get("auth_fecha_expira")))
+    ctx["modulo_visible"] = lambda mod: modulo_visible(slug, mod)
     return ctx
+
+
+_MODULO_PATH_PREFIXES: dict[str, tuple[str, ...]] = {
+    "arriendos": ("/arriendos",),
+    "mercadolibre": ("/ml", "/mercadolibre"),
+    "taller_ot": ("/taller",),
+}
+
+
+@app.before_request
+def _guard_modulos_ocultos():
+    """Cierra por URL los módulos que el menú oculta según el rubro."""
+    if request.endpoint in SESSION_PASSIVE_ENDPOINTS or request.endpoint in {
+        "login", "logout", "favicon", "static",
+    }:
+        return None
+    slug = (session.get("tenant_slug") or "").strip().lower()
+    if not slug:
+        return None
+    path = (request.path or "").lower()
+    for mod, prefixes in _MODULO_PATH_PREFIXES.items():
+        if not modulo_visible(slug, mod) and any(
+            path == p or path.startswith(p + "/") for p in prefixes
+        ):
+            flash("Este módulo no está disponible en su tenant.", "warning")
+            return redirect(url_for("dashboard"))
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -2580,13 +2608,16 @@ def admin_usuario_editar(uid: int):
 
 
 from rmweb.ops_views import register_ops_routes
-from rmweb.ops_views import register_ops_routes
 from rmweb.ops_oc_views import register_oc_routes
 from rmweb.ml_views import register_ml_routes
+from rmweb.taller_views import register_taller_routes
+from rmweb.rrhh_views import register_rrhh_routes
 
 register_ops_routes(app, login_required)
 register_oc_routes(app, login_required)
 register_ml_routes(app, login_required)
+register_taller_routes(app, login_required)
+register_rrhh_routes(app, login_required)
 
 
 def create_app():
