@@ -162,15 +162,15 @@ class FolioCotizacionAnioTests(unittest.TestCase):
             r["id"]: r["folio"]
             for r in conn.execute("SELECT id, folio FROM cotizaciones")
         }
-        self.assertEqual(folios[20], "COT-01_2026")
-        self.assertEqual(folios[16], "COT-02_2026")
-        self.assertEqual(folios[30], "COT-03_2026")
-        self.assertEqual(folios[2], "COT-01_2025")
+        self.assertEqual(folios[20], "COT-1000_2026")
+        self.assertEqual(folios[16], "COT-1004_2026")
+        self.assertEqual(folios[30], "COT-27_2026")
+        self.assertEqual(folios[2], "COT-1018_2025")
         cuenta = conn.execute("SELECT documento, concepto FROM cuentas WHERE id=1").fetchone()
-        self.assertEqual(cuenta["documento"], "COT-01_2026")
-        self.assertIn("COT-01_2026", cuenta["concepto"])
+        self.assertEqual(cuenta["documento"], "COT-1000_2026")
+        self.assertIn("COT-1000_2026", cuenta["concepto"])
         self.assertEqual(core.renumerar_folios_cotizacion(conn), 0)
-        self.assertEqual(core.siguiente_folio_cotizacion(conn, "2026-11-02"), "COT-04_2026")
+        self.assertEqual(core.siguiente_folio_cotizacion(conn, "2026-11-02"), "COT-28_2026")
 
 
 if __name__ == "__main__":

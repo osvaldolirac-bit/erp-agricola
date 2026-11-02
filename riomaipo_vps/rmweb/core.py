@@ -452,26 +452,36 @@ def anio_de_fecha_cotizacion(fecha: str | None) -> int:
     return hoy_chile().year
 
 
-def siguiente_folio_cotizacion(c: sqlite3.Connection, fecha: str | None = None) -> str:
-    """Siguiente COT-NN_AAAA del año de la fecha, sin mezclar otros documentos."""
-    anio = anio_de_fecha_cotizacion(fecha)
-    max_n = 0
+def _numeros_folio_anio(c: sqlite3.Connection, anio: int) -> list[tuple[int, int]]:
+    """(id, número) de las cotizaciones COT-NN_AAAA de ese año."""
+    out: list[tuple[int, int]] = []
     rows = c.execute(
-        "SELECT folio FROM cotizaciones WHERE folio LIKE ?",
+        "SELECT id, folio FROM cotizaciones WHERE folio LIKE ?",
         (f"COT-%_{anio}",),
     ).fetchall()
     for row in rows:
         m = _FOLIO_COT_ANIO.match(str(row["folio"] or ""))
         if m and int(m.group(2)) == anio:
-            max_n = max(max_n, int(m.group(1)))
-    return folio_cotizacion(max_n + 1, anio)
+            out.append((int(row["id"]), int(m.group(1))))
+    return out
 
 
-def _numero_folio_para_ordenar(folio: str) -> int:
-    m = _FOLIO_COT_ANIO.match(folio) or _FOLIO_COT_SIMPLE.match(folio)
-    if m:
-        return int(m.group(1))
-    return 10**9
+def siguiente_folio_cotizacion(c: sqlite3.Connection, fecha: str | None = None) -> str:
+    """Siguiente número del año.
+
+    Las cotizaciones importadas (1000, 1001, …) no avanzan el correlativo
+    con el que se siguen emitiendo las nuevas (20, 21, … 27).
+    """
+    anio = anio_de_fecha_cotizacion(fecha)
+    pares = _numeros_folio_anio(c, anio)
+    if not pares:
+        return folio_cotizacion(1, anio)
+    _cid, ultimo = max(pares, key=lambda par: par[0])
+    if ultimo < 1000:
+        numeros = [n for _i, n in pares if n < 1000]
+    else:
+        numeros = [n for _i, n in pares if n >= 1000] or [ultimo]
+    return folio_cotizacion(max(numeros) + 1, anio)
 
 
 def _reemplazar_folio_citado(c: sqlite3.Connection, viejo: str, nuevo: str) -> None:
@@ -514,35 +524,19 @@ def _reemplazar_folio_citado(c: sqlite3.Connection, viejo: str, nuevo: str) -> N
 
 
 def renumerar_folios_cotizacion(c: sqlite3.Connection) -> int:
-    """Pasa COT-0027 a COT-26_2026, en orden de fecha dentro de cada año."""
+    """Pasa COT-0027 a COT-27_2026. Conserva el correlativo y agrega el año."""
     rows = c.execute("SELECT id, folio, fecha FROM cotizaciones").fetchall()
     if not rows:
         return 0
-    if all(_FOLIO_COT_ANIO.match(str(r["folio"] or "")) for r in rows):
-        return 0
-    anios = {
-        anio_de_fecha_cotizacion(r["fecha"])
-        for r in rows
-        if not _FOLIO_COT_ANIO.match(str(r["folio"] or ""))
-    }
-    grupo = [r for r in rows if anio_de_fecha_cotizacion(r["fecha"]) in anios]
-    por_anio: dict[int, list] = {}
-    for r in grupo:
-        por_anio.setdefault(anio_de_fecha_cotizacion(r["fecha"]), []).append(r)
     cambios: list[tuple[int, str, str]] = []
-    for anio, items in por_anio.items():
-        items.sort(
-            key=lambda r: (
-                str(r["fecha"] or ""),
-                _numero_folio_para_ordenar(str(r["folio"] or "")),
-                int(r["id"]),
-            )
-        )
-        for i, r in enumerate(items, start=1):
-            nuevo = folio_cotizacion(i, anio)
-            viejo = str(r["folio"] or "")
-            if viejo != nuevo:
-                cambios.append((int(r["id"]), viejo, nuevo))
+    for r in rows:
+        viejo = str(r["folio"] or "")
+        m = _FOLIO_COT_SIMPLE.match(viejo)
+        if not m:
+            continue
+        nuevo = folio_cotizacion(int(m.group(1)), anio_de_fecha_cotizacion(r["fecha"]))
+        if viejo != nuevo:
+            cambios.append((int(r["id"]), viejo, nuevo))
     if not cambios:
         return 0
     for cid, _viejo, _nuevo in cambios:
