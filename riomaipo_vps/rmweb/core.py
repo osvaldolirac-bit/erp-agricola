@@ -974,39 +974,79 @@ def _cotizacion_planilla_totales(cot, items, iva_pct: float = 0.19) -> dict:
     }
 
 
-def _pdf_hoja_condiciones(pdf, folio: str, cliente: str, notas: str) -> None:
-    """Segunda hoja: el texto de condiciones que el usuario escribió en la cotización."""
-    C_BRAND = (22, 58, 95)
-    C_CYAN = (15, 143, 168)
-    C_TEXT = (26, 43, 60)
-    C_MUTED = (91, 107, 124)
-    C_WHITE = (255, 255, 255)
-    pdf.set_auto_page_break(auto=True, margin=16)
-    pdf.add_page()
-    page_w = pdf.w
-    left = 12.0
-    content_w = page_w - 24.0
-    pdf.set_fill_color(*C_BRAND)
-    pdf.rect(0, 0, page_w, 18, "F")
-    pdf.set_fill_color(*C_CYAN)
-    pdf.rect(0, 18, page_w, 1.4, "F")
-    pdf.set_xy(left, 6)
-    pdf.set_text_color(*C_WHITE)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(content_w - 42, 6, _pdf_txt("Condiciones de la cotización"), ln=0)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(42, 6, _pdf_txt(folio or ""), align="R", ln=1)
-    y = 26.0
-    if cliente:
-        pdf.set_xy(left, y)
-        pdf.set_text_color(*C_MUTED)
-        pdf.set_font("Helvetica", "", 8)
-        pdf.cell(content_w, 5, _pdf_txt(cliente)[:90], ln=1)
-        y = pdf.get_y() + 3
-    pdf.set_xy(left, y)
-    pdf.set_text_color(*C_TEXT)
-    pdf.set_font("Helvetica", "", 10)
-    pdf.multi_cell(content_w, 5.2, _pdf_txt(notas))
+def _pdf_partir_lineas(pdf, texto: str, ancho: float, tamano: float) -> list[str]:
+    pdf.set_font("Helvetica", "", tamano)
+    lineas: list[str] = []
+    for bloque in str(texto).replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        palabras = bloque.split()
+        if not palabras:
+            lineas.append("")
+            continue
+        actual = ""
+        for palabra in palabras:
+            prueba = palabra if not actual else f"{actual} {palabra}"
+            if pdf.get_string_width(_pdf_txt(prueba)) <= ancho or not actual:
+                actual = prueba
+            else:
+                lineas.append(actual)
+                actual = palabra
+        if actual:
+            lineas.append(actual)
+    return lineas
+
+
+def _pdf_medida_condiciones(pdf, ancho: float, notas: str) -> tuple[float, float, float, list[str]]:
+    """Alto del recuadro y letra. Baja el tamaño hasta que el texto quepa en la hoja 1."""
+    pad = 1.6
+    inner_w = max(10.0, ancho - 2 * pad)
+    titulo_h = 3.4
+    for tam in (7, 6.5, 6, 5.5, 5, 4.5):
+        lineas = _pdf_partir_lineas(pdf, notas, inner_w, tam)
+        alto_linea = max(1.7, tam * 0.38)
+        alto = titulo_h + len(lineas) * alto_linea + 2.4
+        if alto <= 96:
+            return alto, tam, alto_linea, lineas
+    tam = 4.5
+    lineas = _pdf_partir_lineas(pdf, notas, inner_w, tam)
+    alto_linea = 1.7
+    alto = min(110.0, titulo_h + len(lineas) * alto_linea + 2.4)
+    return alto, tam, alto_linea, lineas
+
+
+def _pdf_caja_condiciones(
+    pdf,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    notas: str,
+    *,
+    tam: float,
+    alto_linea: float,
+    lineas: list[str],
+) -> None:
+    """Recuadro inferior izquierdo de la hoja 1, al lado de los totales."""
+    if w < 24 or h < 10:
+        return
+    pdf.set_fill_color(255, 255, 255)
+    pdf.set_draw_color(215, 224, 234)
+    pdf.rect(x, y, w, h, "DF")
+    pad = 1.6
+    inner_w = w - 2 * pad
+    titulo_h = 3.4
+    pdf.set_xy(x + pad, y + 1.2)
+    pdf.set_text_color(22, 58, 95)
+    pdf.set_font("Helvetica", "B", 6.5)
+    pdf.cell(inner_w, titulo_h, _pdf_txt("Condiciones"), ln=1)
+    pdf.set_font("Helvetica", "", tam)
+    pdf.set_text_color(26, 43, 60)
+    yy = y + 1.2 + titulo_h
+    for linea in lineas:
+        if yy + alto_linea > y + h - 0.5:
+            break
+        pdf.set_xy(x + pad, yy)
+        pdf.cell(inner_w, alto_linea, _pdf_txt(linea), ln=1)
+        yy += alto_linea
 
 
 def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> bytes:
@@ -1117,6 +1157,29 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
     pdf.multi_cell(content_w, 6, title)
     y = pdf.get_y() + 2
 
+    notas = ""
+    if "notas" in cot.keys() and cot["notas"]:
+        notas = str(cot["notas"]).strip()
+    label_w, val_w = 42, 36
+    box_w = label_w + val_w
+    sx = right - box_w
+    sy = page_h - 48
+    totales_y = sy - 2
+    totales_h = 6 * 6.2 + 4
+    cond_tam = cond_alto = 0.0
+    cond_lineas: list[str] = []
+    if notas:
+        caja_x = left
+        caja_w = (sx - 2) - left - 2.5
+        caja_h, cond_tam, cond_alto, cond_lineas = _pdf_medida_condiciones(pdf, caja_w, notas)
+        caja_h = max(caja_h, totales_h)
+        caja_bottom = totales_y + totales_h
+        caja_y = caja_bottom - caja_h
+        table_bottom = caja_y - 1.2
+    else:
+        caja_x = caja_y = caja_w = caja_h = 0.0
+        table_bottom = page_h - 52.0
+
     headers = ["#", "Especificación", "Obs", "Und", "Cant.", "Valor", "Total"]
     # A4 vertical: ~186 mm útiles
     widths = [10, 62, 26, 12, 18, 28, 30]
@@ -1179,11 +1242,10 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
                 )
             y += row_h
             n_drawn = idx
-            if y > page_h - 52:
+            if y + row_h > table_bottom:
                 break
 
-    # Completar cuadriculado vacío hasta el bloque de totales / pie.
-    table_bottom = page_h - 52.0
+    # Completar cuadriculado vacío hasta el recuadro de condiciones o los totales.
     empty_i = n_drawn
     while y + row_h <= table_bottom + 0.01:
         empty_i += 1
@@ -1195,7 +1257,7 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
         y += row_h
 
     # Sello DEMO atravesado en la zona de productos (tabla de ítems).
-    zone_h = max(y - table_top_y, page_h - 55.0 - table_top_y, 50.0)
+    zone_h = max(y - table_top_y, 20.0)
     _pdf_sello_demo_prueba(pdf, left, table_top_y, content_w, zone_h)
 
     summary = [
@@ -1206,10 +1268,6 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
         (f"IVA {plan['iva_pct']:g}%", f"$ {fmt_clp_plain(plan['iva'])}", False),
         ("TOTAL", f"$ {fmt_clp_plain(plan['total'])}", True),
     ]
-    label_w, val_w = 42, 36
-    box_w = label_w + val_w
-    sx = right - box_w
-    sy = page_h - 48
     pdf.set_fill_color(*C_WHITE)
     pdf.set_draw_color(*C_LINE)
     pdf.rect(sx - 2, sy - 2, box_w + 4, len(summary) * 6.2 + 4, "DF")
@@ -1251,11 +1309,18 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
         align="L",
     )
 
-    notas = ""
-    if "notas" in cot.keys() and cot["notas"]:
-        notas = str(cot["notas"]).strip()
     if notas:
-        _pdf_hoja_condiciones(pdf, folio, cliente, notas)
+        _pdf_caja_condiciones(
+            pdf,
+            caja_x,
+            caja_y,
+            caja_w,
+            caja_h,
+            notas,
+            tam=cond_tam,
+            alto_linea=cond_alto,
+            lineas=cond_lineas,
+        )
 
     raw = pdf.output(dest="S")
     return raw.encode("latin-1") if isinstance(raw, str) else bytes(raw)
