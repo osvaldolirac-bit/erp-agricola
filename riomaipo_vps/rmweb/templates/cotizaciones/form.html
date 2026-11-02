@@ -143,8 +143,8 @@
 
     <div class="cot-totals">
       <div class="cot-totals-note">
-        <label class="form-label fw-bold">Notas internas</label>
-        <textarea class="form-control" name="notas" rows="4">{{ edit.notas if edit and edit.notas else '' }}</textarea>
+        <label class="form-label fw-bold">Condiciones de la cotización</label>
+        <textarea class="form-control" name="notas" rows="6" placeholder="Validez, alcance, garantía y forma de pago. Este texto se imprime en el PDF.">{{ edit.notas if edit and edit.notas else '' }}</textarea>
       </div>
 
       <div class="cot-totals-box">

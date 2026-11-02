@@ -382,6 +382,7 @@ def init_db(db_path: str | Path | None = None, empresa_default: dict | None = No
             """,
             (DEFAULT_ACCESO, salt, digest, "Osvaldo Lira", "Administrador"),
         )
+    renumerar_folios_cotizacion(c)
     c.commit()
     c.close()
 
@@ -433,6 +434,120 @@ def next_code(c: sqlite3.Connection, table: str, field: str, prefix: str) -> str
     ).fetchone()
     n = int(row["m"] or 0) + 1
     return f"{prefix}-{n:04d}"
+
+
+_FOLIO_COT_ANIO = re.compile(r"^COT-(\d+)_(\d{4})$")
+_FOLIO_COT_SIMPLE = re.compile(r"^COT-(\d+)$")
+
+
+def folio_cotizacion(numero: int, anio: int) -> str:
+    """Número visible: COT-01_2026."""
+    return f"COT-{int(numero):02d}_{int(anio)}"
+
+
+def anio_de_fecha_cotizacion(fecha: str | None) -> int:
+    anio = str(fecha or "")[:4]
+    if anio.isdigit() and 2000 <= int(anio) <= 2100:
+        return int(anio)
+    return hoy_chile().year
+
+
+def _numeros_folio_anio(c: sqlite3.Connection, anio: int) -> list[tuple[int, int]]:
+    """(id, número) de las cotizaciones COT-NN_AAAA de ese año."""
+    out: list[tuple[int, int]] = []
+    rows = c.execute(
+        "SELECT id, folio FROM cotizaciones WHERE folio LIKE ?",
+        (f"COT-%_{anio}",),
+    ).fetchall()
+    for row in rows:
+        m = _FOLIO_COT_ANIO.match(str(row["folio"] or ""))
+        if m and int(m.group(2)) == anio:
+            out.append((int(row["id"]), int(m.group(1))))
+    return out
+
+
+def siguiente_folio_cotizacion(c: sqlite3.Connection, fecha: str | None = None) -> str:
+    """Siguiente número del año.
+
+    Las cotizaciones importadas (1000, 1001, …) no avanzan el correlativo
+    con el que se siguen emitiendo las nuevas (20, 21, … 27).
+    """
+    anio = anio_de_fecha_cotizacion(fecha)
+    pares = _numeros_folio_anio(c, anio)
+    if not pares:
+        return folio_cotizacion(1, anio)
+    _cid, ultimo = max(pares, key=lambda par: par[0])
+    if ultimo < 1000:
+        numeros = [n for _i, n in pares if n < 1000]
+    else:
+        numeros = [n for _i, n in pares if n >= 1000] or [ultimo]
+    return folio_cotizacion(max(numeros) + 1, anio)
+
+
+def _reemplazar_folio_citado(c: sqlite3.Connection, viejo: str, nuevo: str) -> None:
+    """Actualiza cuentas, arriendos y textos que guardan el número antiguo."""
+    if not viejo or viejo == nuevo:
+        return
+    patron = re.compile(rf"(?<![\w]){re.escape(viejo)}(?![\w])")
+    tablas = [
+        r[0]
+        for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    ]
+    for tabla in tablas:
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", tabla) or tabla == "sqlite_sequence":
+            continue
+        columnas = [r[1] for r in c.execute(f"PRAGMA table_info({tabla})").fetchall()]
+        for col in columnas:
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", col):
+                continue
+            if tabla == "cotizaciones" and col == "folio":
+                continue
+            try:
+                encontrados = c.execute(
+                    f"SELECT rowid AS _rid, {col} AS _val FROM {tabla} "
+                    f"WHERE CAST({col} AS TEXT) LIKE ?",
+                    (f"%{viejo}%",),
+                ).fetchall()
+            except sqlite3.Error:
+                continue
+            for fila in encontrados:
+                texto = str(fila["_val"] or "")
+                if texto == viejo:
+                    cambiado = nuevo
+                else:
+                    cambiado = patron.sub(nuevo, texto)
+                if cambiado != texto:
+                    c.execute(
+                        f"UPDATE {tabla} SET {col}=? WHERE rowid=?",
+                        (cambiado, int(fila["_rid"])),
+                    )
+
+
+def renumerar_folios_cotizacion(c: sqlite3.Connection) -> int:
+    """Pasa COT-0027 a COT-27_2026. Conserva el correlativo y agrega el año."""
+    rows = c.execute("SELECT id, folio, fecha FROM cotizaciones").fetchall()
+    if not rows:
+        return 0
+    cambios: list[tuple[int, str, str]] = []
+    for r in rows:
+        viejo = str(r["folio"] or "")
+        m = _FOLIO_COT_SIMPLE.match(viejo)
+        if not m:
+            continue
+        nuevo = folio_cotizacion(int(m.group(1)), anio_de_fecha_cotizacion(r["fecha"]))
+        if viejo != nuevo:
+            cambios.append((int(r["id"]), viejo, nuevo))
+    if not cambios:
+        return 0
+    for cid, _viejo, _nuevo in cambios:
+        c.execute(
+            "UPDATE cotizaciones SET folio=? WHERE id=?",
+            (f"COT-TMP-{cid}", cid),
+        )
+    for cid, viejo, nuevo in sorted(cambios, key=lambda x: len(x[1]), reverse=True):
+        c.execute("UPDATE cotizaciones SET folio=? WHERE id=?", (nuevo, cid))
+        _reemplazar_folio_citado(c, viejo, nuevo)
+    return len(cambios)
 
 
 def list_accesos(db_path: str | Path | None = None) -> list[str]:
@@ -974,6 +1089,81 @@ def _cotizacion_planilla_totales(cot, items, iva_pct: float = 0.19) -> dict:
     }
 
 
+def _pdf_partir_lineas(pdf, texto: str, ancho: float, tamano: float) -> list[str]:
+    pdf.set_font("Helvetica", "", tamano)
+    lineas: list[str] = []
+    for bloque in str(texto).replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        palabras = bloque.split()
+        if not palabras:
+            lineas.append("")
+            continue
+        actual = ""
+        for palabra in palabras:
+            prueba = palabra if not actual else f"{actual} {palabra}"
+            if pdf.get_string_width(_pdf_txt(prueba)) <= ancho or not actual:
+                actual = prueba
+            else:
+                lineas.append(actual)
+                actual = palabra
+        if actual:
+            lineas.append(actual)
+    return lineas
+
+
+def _pdf_medida_condiciones(pdf, ancho: float, notas: str) -> tuple[float, float, float, list[str]]:
+    """Alto del recuadro y letra. Baja el tamaño hasta que el texto quepa en la hoja 1."""
+    pad = 1.6
+    inner_w = max(10.0, ancho - 2 * pad)
+    titulo_h = 3.4
+    for tam in (7, 6.5, 6, 5.5, 5, 4.5):
+        lineas = _pdf_partir_lineas(pdf, notas, inner_w, tam)
+        alto_linea = max(1.7, tam * 0.38)
+        alto = titulo_h + len(lineas) * alto_linea + 2.4
+        if alto <= 96:
+            return alto, tam, alto_linea, lineas
+    tam = 4.5
+    lineas = _pdf_partir_lineas(pdf, notas, inner_w, tam)
+    alto_linea = 1.7
+    alto = min(110.0, titulo_h + len(lineas) * alto_linea + 2.4)
+    return alto, tam, alto_linea, lineas
+
+
+def _pdf_caja_condiciones(
+    pdf,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    notas: str,
+    *,
+    tam: float,
+    alto_linea: float,
+    lineas: list[str],
+) -> None:
+    """Recuadro inferior izquierdo de la hoja 1, al lado de los totales."""
+    if w < 24 or h < 10:
+        return
+    pdf.set_fill_color(255, 255, 255)
+    pdf.set_draw_color(215, 224, 234)
+    pdf.rect(x, y, w, h, "DF")
+    pad = 1.6
+    inner_w = w - 2 * pad
+    titulo_h = 3.4
+    pdf.set_xy(x + pad, y + 1.2)
+    pdf.set_text_color(22, 58, 95)
+    pdf.set_font("Helvetica", "B", 6.5)
+    pdf.cell(inner_w, titulo_h, _pdf_txt("Condiciones"), ln=1)
+    pdf.set_font("Helvetica", "", tam)
+    pdf.set_text_color(26, 43, 60)
+    yy = y + 1.2 + titulo_h
+    for linea in lineas:
+        if yy + alto_linea > y + h - 0.5:
+            break
+        pdf.set_xy(x + pad, yy)
+        pdf.cell(inner_w, alto_linea, _pdf_txt(linea), ln=1)
+        yy += alto_linea
+
+
 def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> bytes:
     """PDF cotización — diseño alineado a la UI Comercial (navy/cyan)."""
     if FPDF is None:
@@ -1082,6 +1272,29 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
     pdf.multi_cell(content_w, 6, title)
     y = pdf.get_y() + 2
 
+    notas = ""
+    if "notas" in cot.keys() and cot["notas"]:
+        notas = str(cot["notas"]).strip()
+    label_w, val_w = 42, 36
+    box_w = label_w + val_w
+    sx = right - box_w
+    sy = page_h - 48
+    totales_y = sy - 2
+    totales_h = 6 * 6.2 + 4
+    cond_tam = cond_alto = 0.0
+    cond_lineas: list[str] = []
+    if notas:
+        caja_x = left
+        caja_w = (sx - 2) - left - 2.5
+        caja_h, cond_tam, cond_alto, cond_lineas = _pdf_medida_condiciones(pdf, caja_w, notas)
+        caja_h = max(caja_h, totales_h)
+        caja_bottom = totales_y + totales_h
+        caja_y = caja_bottom - caja_h
+        table_bottom = caja_y - 1.2
+    else:
+        caja_x = caja_y = caja_w = caja_h = 0.0
+        table_bottom = page_h - 52.0
+
     headers = ["#", "Especificación", "Obs", "Und", "Cant.", "Valor", "Total"]
     # A4 vertical: ~186 mm útiles
     widths = [10, 62, 26, 12, 18, 28, 30]
@@ -1144,11 +1357,10 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
                 )
             y += row_h
             n_drawn = idx
-            if y > page_h - 52:
+            if y + row_h > table_bottom:
                 break
 
-    # Completar cuadriculado vacío hasta el bloque de totales / pie.
-    table_bottom = page_h - 52.0
+    # Completar cuadriculado vacío hasta el recuadro de condiciones o los totales.
     empty_i = n_drawn
     while y + row_h <= table_bottom + 0.01:
         empty_i += 1
@@ -1160,7 +1372,7 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
         y += row_h
 
     # Sello DEMO atravesado en la zona de productos (tabla de ítems).
-    zone_h = max(y - table_top_y, page_h - 55.0 - table_top_y, 50.0)
+    zone_h = max(y - table_top_y, 20.0)
     _pdf_sello_demo_prueba(pdf, left, table_top_y, content_w, zone_h)
 
     summary = [
@@ -1171,10 +1383,6 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
         (f"IVA {plan['iva_pct']:g}%", f"$ {fmt_clp_plain(plan['iva'])}", False),
         ("TOTAL", f"$ {fmt_clp_plain(plan['total'])}", True),
     ]
-    label_w, val_w = 42, 36
-    box_w = label_w + val_w
-    sx = right - box_w
-    sy = page_h - 48
     pdf.set_fill_color(*C_WHITE)
     pdf.set_draw_color(*C_LINE)
     pdf.rect(sx - 2, sy - 2, box_w + 4, len(summary) * 6.2 + 4, "DF")
@@ -1215,6 +1423,19 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
         ),
         align="L",
     )
+
+    if notas:
+        _pdf_caja_condiciones(
+            pdf,
+            caja_x,
+            caja_y,
+            caja_w,
+            caja_h,
+            notas,
+            tam=cond_tam,
+            alto_linea=cond_alto,
+            lineas=cond_lineas,
+        )
 
     raw = pdf.output(dest="S")
     return raw.encode("latin-1") if isinstance(raw, str) else bytes(raw)
