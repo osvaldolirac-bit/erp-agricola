@@ -974,6 +974,41 @@ def _cotizacion_planilla_totales(cot, items, iva_pct: float = 0.19) -> dict:
     }
 
 
+def _pdf_hoja_condiciones(pdf, folio: str, cliente: str, notas: str) -> None:
+    """Segunda hoja: el texto de condiciones que el usuario escribió en la cotización."""
+    C_BRAND = (22, 58, 95)
+    C_CYAN = (15, 143, 168)
+    C_TEXT = (26, 43, 60)
+    C_MUTED = (91, 107, 124)
+    C_WHITE = (255, 255, 255)
+    pdf.set_auto_page_break(auto=True, margin=16)
+    pdf.add_page()
+    page_w = pdf.w
+    left = 12.0
+    content_w = page_w - 24.0
+    pdf.set_fill_color(*C_BRAND)
+    pdf.rect(0, 0, page_w, 18, "F")
+    pdf.set_fill_color(*C_CYAN)
+    pdf.rect(0, 18, page_w, 1.4, "F")
+    pdf.set_xy(left, 6)
+    pdf.set_text_color(*C_WHITE)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(content_w - 42, 6, _pdf_txt("Condiciones de la cotización"), ln=0)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(42, 6, _pdf_txt(folio or ""), align="R", ln=1)
+    y = 26.0
+    if cliente:
+        pdf.set_xy(left, y)
+        pdf.set_text_color(*C_MUTED)
+        pdf.set_font("Helvetica", "", 8)
+        pdf.cell(content_w, 5, _pdf_txt(cliente)[:90], ln=1)
+        y = pdf.get_y() + 3
+    pdf.set_xy(left, y)
+    pdf.set_text_color(*C_TEXT)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(content_w, 5.2, _pdf_txt(notas))
+
+
 def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> bytes:
     """PDF cotización — diseño alineado a la UI Comercial (navy/cyan)."""
     if FPDF is None:
@@ -1215,6 +1250,12 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
         ),
         align="L",
     )
+
+    notas = ""
+    if "notas" in cot.keys() and cot["notas"]:
+        notas = str(cot["notas"]).strip()
+    if notas:
+        _pdf_hoja_condiciones(pdf, folio, cliente, notas)
 
     raw = pdf.output(dest="S")
     return raw.encode("latin-1") if isinstance(raw, str) else bytes(raw)
