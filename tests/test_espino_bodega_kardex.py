@@ -42,14 +42,18 @@ class TestEspinoBodegaKardex(unittest.TestCase):
                 "PIRIPROXIFEN", self.conn, producto_id=1
             )
         )
-        self.assertFalse(
-            espino_bodega._es_producto_bodega_espino("AZUFRE", self.conn, producto_id=9)
+        self.assertTrue(
+            espino_bodega._es_producto_bodega_espino("ACETAMIPRID 70 WP")
         )
+        self.assertTrue(
+            espino_bodega._es_producto_bodega_espino("UREA GRANULADA")
+        )
+        self.assertFalse(espino_bodega._es_producto_bodega_espino("  "))
         import pandas as pd
 
-        nombres = pd.Series(["PIRIPROXIFEN", "AZUFRE"])
+        nombres = pd.Series(["PIRIPROXIFEN", "INDAR 2F", ""])
         marcados = nombres.apply(espino_bodega._es_producto_bodega_espino).tolist()
-        self.assertEqual(marcados, [True, False])
+        self.assertEqual(marcados, [True, True, False])
 
     def test_stock_incluye_movimientos_cerezos(self):
         self.conn.execute(

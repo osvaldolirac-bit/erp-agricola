@@ -24,13 +24,6 @@ def _cc_bodega_in(col: str = "centro_costo") -> tuple[str, tuple[str, ...]]:
 
 PDF_STOCK_FILENAME = "STOCK_BODEGA_EL_ESPINO.pdf"
 
-# Catálogo fijo bodega El Espino.
-PRODUCTOS_BODEGA_ESPINO = (
-    "PIRIPROXIFEN",
-    "ACEITE BIOIL SPRAY",
-    "COBRE NORDOX",
-)
-
 BODEGA_SECCIONES = [
     ("bodega", "📦 BODEGA"),
 ]
@@ -46,24 +39,19 @@ def bodega_secciones() -> list[tuple[str, str]]:
 
 
 def _es_producto_bodega_espino(nombre: str, conn=None, producto_id: int | None = None) -> bool:
-    """El catálogo se decide por el nombre.
+    """Todo producto del inventario El Espino es de bodega.
 
-    El stock del Libro de Campo llama con la conexión y el id del producto.
-    Esos datos no cambian la regla; tienen que aceptarse para que el ingreso no caiga.
+    El ingreso de Libro de Campo lista lo que tiene stock. La lista corta
+    (PIRIPROXIFEN, BIOIL, COBRE, CAPTAN) dejaba fuera el resto de la bodega.
     """
-    del conn, producto_id
-    n = (nombre or "").upper().strip()
-    if n in {p.upper() for p in PRODUCTOS_BODEGA_ESPINO}:
-        return True
-    if "PIRIPROXIFEN" in n:
-        return True
-    if "BIOIL" in n and "SPRAY" in n:
-        return True
-    if n.startswith("COBRE") or " COBRE" in f" {n}":
-        return True
-    if "CAPTAN" in n:
-        return True
-    return False
+    if conn is not None and producto_id is not None:
+        row = conn.execute(
+            "SELECT producto FROM inventario WHERE id=?",
+            (int(producto_id),),
+        ).fetchone()
+        if row and str(row[0] or "").strip():
+            return True
+    return bool((nombre or "").strip())
 
 
 def _stock_cc_map(conn) -> dict[int, float]:
