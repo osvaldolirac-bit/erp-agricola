@@ -8,7 +8,7 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module
 from demo_web.services.native._helpers import hoy_demo, parse_date
-from demo_web.services.tenant_scope import is_concepcion_tenant
+from demo_web.services.tenant_scope import is_concepcion_tenant, is_espino_tenant
 
 SECCIONES = [
     ("historial", "📊 HISTORIAL"),
@@ -152,6 +152,7 @@ def _blob_historial(demo, rows, fi, ff, huerto: str) -> bytes | None:
                 "Fertilizacion": r["fert_txt"],
                 "Regador": r["regador"],
                 "Origen": r["origen"],
+                **({"Nota": r.get("nota") or ""} if is_espino_tenant() else {}),
             }
             for r in rows
         ]
@@ -239,6 +240,7 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             "riego_cc_config": config_riego_cc_para_formulario(),
             "sub_activa": sub,
             "riego_lc": lc,
+            "riego_espino": is_espino_tenant(),
             "regar_sub": REGAR_SUB if lc else (),
             "armado_sub": ARMADO_SUB if lc else (),
         }
@@ -425,7 +427,11 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
 
 
 def _post_manual(demo, conn, user_email: str) -> dict:
-    from demo_web.services.registro_riego import parse_fertilizantes_request, registrar_manual
+    from demo_web.services.registro_riego import (
+        nota_riego,
+        parse_fertilizantes_request,
+        registrar_manual,
+    )
 
     fecha = request.form.get("fecha") or str(hoy_demo(demo))
     huerto = request.form.get("huerto") or ""
@@ -439,6 +445,7 @@ def _post_manual(demo, conn, user_email: str) -> dict:
         m3 = 0.0
     modo_riego = (request.form.get("modo_riego") or "horas").strip().lower()
     regador = (request.form.get("regador") or user_email).strip()
+    nota = nota_riego(request.form.get("nota")) if is_espino_tenant() else ""
     con_fert = request.form.get("con_fertilizacion") == "1"
     fert_lineas = parse_fertilizantes_request(request.form) if con_fert else None
 
@@ -454,6 +461,7 @@ def _post_manual(demo, conn, user_email: str) -> dict:
         user_email,
         fertilizantes=fert_lineas,
         modo_riego=modo_riego,
+        nota=nota,
     )
 
 

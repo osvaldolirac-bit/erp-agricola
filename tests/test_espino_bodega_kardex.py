@@ -36,6 +36,25 @@ class TestEspinoBodegaKardex(unittest.TestCase):
             """INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)
                VALUES (1,'Ingreso',100,'2026-01-01','EL ESPINO',1000,'L')"""
         )
+    def test_predicado_bodega_acepta_id_del_libro(self):
+        self.assertTrue(
+            espino_bodega._es_producto_bodega_espino(
+                "PIRIPROXIFEN", self.conn, producto_id=1
+            )
+        )
+        self.assertTrue(
+            espino_bodega._es_producto_bodega_espino("ACETAMIPRID 70 WP")
+        )
+        self.assertTrue(
+            espino_bodega._es_producto_bodega_espino("UREA GRANULADA")
+        )
+        self.assertFalse(espino_bodega._es_producto_bodega_espino("  "))
+        import pandas as pd
+
+        nombres = pd.Series(["PIRIPROXIFEN", "INDAR 2F", ""])
+        marcados = nombres.apply(espino_bodega._es_producto_bodega_espino).tolist()
+        self.assertEqual(marcados, [True, True, False])
+
     def test_stock_incluye_movimientos_cerezos(self):
         self.conn.execute(
             """INSERT INTO movimientos (producto_id, tipo, cantidad, fecha, centro_costo, valor_imputado, unidad_medida)

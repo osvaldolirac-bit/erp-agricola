@@ -1284,6 +1284,8 @@ def migrar_tabla(conn: sqlite3.Connection | None = None) -> None:
                 conn.execute(
                     f"ALTER TABLE {tabla} ADD COLUMN hydrawise_relay_id INTEGER"
                 )
+            if tabla == "riego" and "notas" not in cols:
+                conn.execute("ALTER TABLE riego ADD COLUMN notas TEXT DEFAULT ''")
         riego_cols = {r[1] for r in conn.execute("PRAGMA table_info(riego)").fetchall()}
         if "fert_estado" not in riego_cols:
             conn.execute(
@@ -1999,6 +2001,11 @@ def rechazar_registro(codigo: str, usuario: str, motivo: str = "") -> dict[str, 
     }
 
 
+def nota_riego(texto: str | None, limite: int = 500) -> str:
+    """Nota libre del registro manual. Vacía si no hay texto."""
+    return (texto or "").replace("\r\n", "\n").replace("\r", "\n").strip()[:limite]
+
+
 def registrar_manual(
     fecha: str,
     huerto: str,
@@ -2012,6 +2019,7 @@ def registrar_manual(
     fertilizantes: list[dict[str, Any]] | None = None,
     modo_riego: str = "horas",
     surcos: float | None = None,
+    nota: str = "",
 ) -> dict[str, Any]:
     demo = get_demo_module()
     huerto_cc = _norm_cc(huerto)
@@ -2040,11 +2048,12 @@ def registrar_manual(
         conn.execute("BEGIN IMMEDIATE")
         codigo = _siguiente_codigo(conn)
         fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+        nota_txt = nota_riego(nota)
         conn.execute(
             """INSERT INTO riego
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, origen, creado_por, creado_en, modo_riego, surcos)
-               VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?, ?, ?)""",
+                regador, origen, creado_por, creado_en, modo_riego, surcos, notas)
+               VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?, ?, ?, ?)""",
             (
                 codigo,
                 str(fecha)[:10],
@@ -2058,6 +2067,7 @@ def registrar_manual(
                 fh,
                 modo_riego,
                 None,
+                nota_txt,
             ),
         )
         if lineas_fert:
@@ -2070,14 +2080,15 @@ def registrar_manual(
                 return {"ok": False, "msg": msg_bod}
 
         fert_resumen = _fmt_fertilizantes(conn, codigo, demo, fert_dosis_ha, fert_total)
+        detalle = (
+            f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | "
+            f"{demo.f_decimal(m3)} m3 | {fert_resumen[:80]}"
+        )
+        if nota_txt:
+            detalle += f" | {nota_txt[:80]}"
         conn.execute(
             "INSERT INTO bitacora (usuario, accion, detalle, fecha_hora) VALUES (?,?,?,?)",
-            (
-                usuario,
-                "RIEGO MANUAL",
-                f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | {demo.f_decimal(m3)} m3 | {fert_resumen[:80]}",
-                fh,
-            ),
+            (usuario, "RIEGO MANUAL", detalle, fh),
         )
         conn.commit()
     except Exception as exc:
@@ -2193,7 +2204,8 @@ def listar_historial(
         params.append(huerto_n)
     sql = """SELECT codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
                   regador, origen, bitacora_codigo, creado_por, creado_en,
-                  COALESCE(modo_riego, 'horas'), surcos, COALESCE(fert_estado, '')
+                  COALESCE(modo_riego, 'horas'), surcos, COALESCE(fert_estado, ''),
+                  COALESCE(notas, '')
            FROM riego"""
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -2222,6 +2234,7 @@ def listar_historial(
             modo_riego,
             surcos,
             fert_estado,
+            notas,
         ) = row
         cod = str(codigo or "").strip()
         npk = (
@@ -2247,6 +2260,7 @@ def listar_historial(
                 "creado_por": creado_por or "",
                 "creado_en": creado_en or "",
                 "fert_estado": fest,
+                "nota": str(notas or "").strip(),
                 "fert_pendiente_hydra": orig == "hydrawise" and fest == "pendiente",
                 "fertilizantes_lineas": [
                     {

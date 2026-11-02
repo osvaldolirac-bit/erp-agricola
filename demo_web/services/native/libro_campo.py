@@ -486,8 +486,7 @@ def _ingreso(demo, conn) -> dict:
         "lc_car": car_rows,
         "lc_car_raw": car,
         "reabrir_n_app": _reabrir_n_app_ctx(demo, conn),
-        "copiado_desde_n_app": session.get("lc_copiado_desde_n_app"),
-        "rebaje_bodega_lc": is_concepcion_tenant() and _tenant_slug_lc(demo) != "espino",
+        "rebaje_bodega_al_guardar": _tenant_slug_lc(demo) == "espino" or is_concepcion_tenant(),
     }
 
 
@@ -529,7 +528,11 @@ def _historial(demo, conn) -> dict:
                 ORDER BY CAST(n_aplicacion AS INTEGER) DESC, id ASC"""
     df = pd.read_sql_query(query, conn, params=params)
     pdf_url = None
-    pdf_filename = "LIBRO_DE_CAMPO_LA_CONCEPCION.pdf"
+    from demo_web.services.pdf_meta import marca_corta_pdf, nombre_archivo_segun_tenant
+
+    marca = marca_corta_pdf()
+    pdf_filename = nombre_archivo_segun_tenant("LIBRO_DE_CAMPO_LA_CONCEPCION.pdf")
+    titulo_pdf = "LIBRO DE CAMPO" if marca == "LA CONCEPCION" else f"LIBRO DE CAMPO {marca}"
     if df.empty:
         return {
             "historial_grupos": [],
@@ -567,7 +570,7 @@ def _historial(demo, conn) -> dict:
     if "OP. CERT." in df.columns:
         df["OP. CERT."] = df["OP. CERT."].apply(_fmt_op_cert)
 
-    blob = demo.generar_pdf_libro_campo(df)
+    blob = demo.generar_pdf_libro_campo(df, titulo_pdf)
     if blob:
         pdf_url = pdf_download_url(store_pdf(blob, pdf_filename), pdf_filename)
 
@@ -801,16 +804,6 @@ def _post_guardar_evento(demo, conn) -> dict:
 
     rebaje_espino = _tenant_slug_lc(demo) == "espino"
     rebaje_lc = is_concepcion_tenant() and not rebaje_espino
-    rebaje_lc_omitido_copia = False
-    copiado_desde = session.get("lc_copiado_desde_n_app")
-    if rebaje_lc and copiado_desde:
-        try:
-            n_src = int(copiado_desde)
-        except (TypeError, ValueError):
-            n_src = 0
-        if n_src and _lineas_aplicacion(conn, n_src):
-            rebaje_lc = False
-            rebaje_lc_omitido_copia = True
     if rebaje_espino:
         from demo_web.services.native import espino_bodega
 
@@ -843,8 +836,6 @@ def _post_guardar_evento(demo, conn) -> dict:
                 n_app_fn=_siguiente_n_aplicacion,
                 n_orden_fn=_siguiente_n_orden,
                 rebaje_bodega=rebaje_lc,
-                rebaje_omitido_copia=rebaje_lc_omitido_copia,
-                copiado_desde=int(copiado_desde) if copiado_desde else None,
             )
         except LcAplicacionError as exc:
             return {"ok": False, "msg": exc.msg}
@@ -855,15 +846,9 @@ def _post_guardar_evento(demo, conn) -> dict:
         session[UNDO_KEY] = n_app
         session[CAR_KEY] = []
         session.pop(META_KEY, None)
-        session.pop("lc_copiado_desde_n_app", None)
         msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
         if saved.rebaje_bodega:
             msg += ". Bodega rebajada automáticamente."
-        elif saved.rebaje_omitido_copia and saved.copiado_desde:
-            msg += (
-                f". Bodega no se rebajó de nuevo (copia desde App N° {saved.copiado_desde:05d}; "
-                "la salida original sigue vigente)."
-            )
         if wx:
             msg += f" (clima {fe_app.isoformat()}: T° {wx.get('t_max')} / {wx.get('t_min')} · HR {wx.get('hr_pct')}% · viento {wx.get('viento_kmh')} km/h)"
         msg += " — visible en planilla GlobalGAP."
@@ -940,7 +925,6 @@ def _post_guardar_evento(demo, conn) -> dict:
     session[UNDO_KEY] = n_app
     session[CAR_KEY] = []
     session.pop(META_KEY, None)
-    session.pop("lc_copiado_desde_n_app", None)
     msg = f"Aplicación N° {n_app:05d} guardada en Libro de Campo"
     if rebaje_espino:
         msg += ". Bodega rebajada automáticamente."
@@ -951,42 +935,9 @@ def _post_guardar_evento(demo, conn) -> dict:
     return {"ok": True, "msg": msg}
 
 
-def _copiar_aplicacion_a_ingreso(demo, conn, n_app: int) -> dict:
-    rows = _lineas_aplicacion(conn, n_app)
-    if not rows:
-        return {"ok": False, "msg": "No hay líneas guardadas para esa aplicación."}
-    car, meta = _car_y_meta_desde_lineas(rows)
-    session[CAR_KEY] = car
-    session[META_KEY] = meta
-    session.pop(UNDO_KEY, None)
-    session["lc_copiado_desde_n_app"] = int(n_app)
-    siguiente = _siguiente_n_aplicacion(conn)
-    demo.registrar_accion("LIBRO CAMPO", f"Copiar ingreso desde App N°{n_app}")
-    return {
-        "ok": True,
-        "msg": (
-            f"Aplicación N° {n_app:05d} copiada al ingreso "
-            f"(al guardar obtendrá N° {siguiente:05d}). "
-            "El registro original permanece en el historial; bodega no se descontará otra vez."
-        ),
-        "extra": {"sec": "ingreso"},
-    }
-
-
-def _post_copiar_aplicacion_ingreso(demo, conn) -> dict:
-    try:
-        n_app = int(request.form.get("n_app") or 0)
-    except (TypeError, ValueError):
-        return {"ok": False, "msg": "N° de aplicación inválido."}
-    if n_app < 1:
-        return {"ok": False, "msg": "Indique el N° de aplicación a copiar."}
-    return _copiar_aplicacion_a_ingreso(demo, conn, n_app)
-
-
 def _post_descartar_borrador(demo, conn) -> dict:
     session.pop(CAR_KEY, None)
     session.pop(META_KEY, None)
-    session.pop("lc_copiado_desde_n_app", None)
     session.pop(UNDO_KEY, None)
     demo.registrar_accion("LIBRO CAMPO", "Descartar borrador ingreso")
     return {
@@ -1241,7 +1192,6 @@ def view(user_email: str, user_rol: str):
             handlers = {
                 "agregar_producto": _post_agregar_producto,
                 "guardar_evento": _post_guardar_evento,
-                "copiar_aplicacion_ingreso": _post_copiar_aplicacion_ingreso,
                 "descartar_borrador": _post_descartar_borrador,
                 "reabrir_aplicacion": _post_reabrir_aplicacion,
                 "editar_linea": _post_editar_linea,
@@ -1259,23 +1209,6 @@ def view(user_email: str, user_rol: str):
                 return _redirect_lc(**extra)
         finally:
             conn.close()
-
-    if request.method == "GET":
-        copiar_raw = (request.args.get("copiar_app") or "").strip()
-        if copiar_raw and request.args.get("sec", "historial") == "ingreso":
-            try:
-                n_copiar = int(copiar_raw)
-            except (TypeError, ValueError):
-                flash("N° de aplicación inválido.", "danger")
-            else:
-                conn = _conectar_libro(demo)
-                try:
-                    result = _copiar_aplicacion_a_ingreso(demo, conn, n_copiar)
-                    flash(result["msg"], "success" if result["ok"] else "danger")
-                finally:
-                    conn.close()
-                if result.get("ok"):
-                    return _redirect_lc(sec="ingreso")
 
     ctx = gather_libro_campo(user_email, user_rol)
     return render_template(

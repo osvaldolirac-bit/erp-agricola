@@ -28,7 +28,8 @@ class RiegoHistorialFiltroTests(unittest.TestCase):
                    horas REAL, m3 REAL, fert_dosis_ha REAL, fert_total REAL,
                    regador TEXT, origen TEXT, bitacora_codigo TEXT,
                    creado_por TEXT, creado_en TEXT,
-                   modo_riego TEXT, surcos REAL, fert_estado TEXT
+                   modo_riego TEXT, surcos REAL, fert_estado TEXT,
+                   notas TEXT DEFAULT ''
                )"""
         )
         self.conn.execute(
@@ -63,6 +64,7 @@ class RiegoHistorialFiltroTests(unittest.TestCase):
     def test_filtra_por_fecha_y_huerto(self):
         rows = self._listar(desde="2026-10-01", hasta="2026-10-31", huerto="nogales aparicion")
         self.assertEqual([r["codigo"] for r in rows], ["R1"])
+        self.assertEqual(rows[0]["nota"], "")
 
     def test_sin_huerto_respeta_el_periodo(self):
         rows = self._listar(desde="2026-10-01", hasta="2026-10-31")

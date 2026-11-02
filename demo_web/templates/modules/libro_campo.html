@@ -60,7 +60,7 @@
         <button type="submit" class="btn btn-primary w-100">Filtrar</button>
       </div>
       <div class="col-md-2 d-flex align-items-end">
-        {{ pdf_btn(pdf_historial_url, '📥 PDF INFORME', 'btn-outline-success w-100', filename=pdf_historial_filename|default('LIBRO_DE_CAMPO_LA_CONCEPCION.pdf')) }}
+        {{ pdf_btn(pdf_historial_url, '📥 PDF INFORME', 'btn-outline-success w-100', filename=pdf_historial_filename|default('LIBRO_DE_CAMPO.pdf')) }}
       </div>
     </form>
   </div>
@@ -77,12 +77,6 @@
       Agua: {{ g.vol_agua }} L &nbsp;|&nbsp; {{ g.maquinaria }} &nbsp;|&nbsp; {{ g.tractor }} &nbsp;|&nbsp;
       {{ g.aplicador }} &nbsp;|&nbsp; Op.Cert: {{ g.op_cert }}
     </span>
-    <form method="post" class="ms-auto mb-0" onsubmit="return confirm('¿Copiar la aplicación N° {{ '%05d'|format(g.num) }} al ingreso? El historial no se modifica; bodega no se descontará otra vez al guardar la copia.');">
-      <input type="hidden" name="action" value="copiar_aplicacion_ingreso">
-      <input type="hidden" name="sec" value="historial">
-      <input type="hidden" name="n_app" value="{{ g.num }}">
-      <button type="submit" class="btn btn-outline-primary btn-sm">📋 Copiar a ingreso</button>
-    </form>
   </div>
   <div class="panel-card mb-3">
     <div class="table-responsive">
@@ -227,9 +221,9 @@
 
   {% elif sec_activa == 'ingreso' %}
   <div class="alert alert-primary small mb-3">
-    {% if rebaje_bodega_lc %}
+    {% if rebaje_bodega_al_guardar %}
     Al <strong>validar y guardar</strong> la aplicación se archiva en Libro de Campo y se registra la
-    <strong>salida en bodega</strong> (stock e imputación al cuartel), salvo falta de stock.
+    <strong>salida en bodega</strong> (rebaja el stock e imputa al cuartel), salvo falta de stock.
     {% else %}
     Libro de Campo y Bodega son <strong>módulos independientes</strong>.
     Registrar aquí archiva la aplicación; debe rebajar stock en <strong>Bodega → Salida</strong>.
@@ -245,7 +239,6 @@
   <div class="alert alert-warning small mb-3">
     <strong>¿Registró la aplicación N° {{ '%05d'|format(reabrir_n_app) }} por error?</strong>
     Puede volver al paso de ingreso de productos (se borra el registro en Libro de Campo y recupera los productos en pantalla).
-    Para repetir una aplicación <strong>sin borrar el historial</strong>, use <strong>Copiar a ingreso</strong> en Historial.
     <form method="post" class="mt-2 d-inline" onsubmit="return confirm('¿Reabrir la aplicación N° {{ '%05d'|format(reabrir_n_app) }}? Se eliminará del historial y volverá al formulario de ingreso con los mismos productos.');">
       <input type="hidden" name="action" value="reabrir_aplicacion">
       <input type="hidden" name="sec" value="ingreso">
@@ -254,13 +247,9 @@
     </form>
   </div>
   {% endif %}
-  {% if copiado_desde_n_app or lc_car %}
+  {% if lc_car %}
   <div class="alert alert-secondary small mb-3 d-flex flex-wrap align-items-center gap-2">
-    {% if copiado_desde_n_app %}
-    <span>Copia desde App N° {{ '%05d'|format(copiado_desde_n_app) }} — la original sigue guardada en historial.</span>
-    {% else %}
-    <span>Hay un borrador de ingreso en curso.</span>
-    {% endif %}
+    <span>Hay un borrador de ingreso en curso. Al validar y guardar queda firme y se rebaja la bodega.</span>
     <form method="post" class="ms-auto mb-0" onsubmit="return confirm('¿Descartar el borrador? No se guardará nada nuevo; el historial queda igual.');">
       <input type="hidden" name="action" value="descartar_borrador">
       <input type="hidden" name="sec" value="ingreso">

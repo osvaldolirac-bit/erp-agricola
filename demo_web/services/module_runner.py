@@ -136,14 +136,18 @@ def was_submitted(st_state: dict, key: str | None = None, form_key: str | None =
 
 def store_pdf(blob: bytes, filename: str) -> str:
     from demo_web.services.pdf_cache import store_pdf as _store
+    from demo_web.services.pdf_meta import nombre_archivo_segun_tenant
 
-    return _store(blob, filename)
+    return _store(blob, nombre_archivo_segun_tenant(filename))
 
 
 def pdf_download_url(token: str, filename: str, *, inline: bool = False) -> str:
     """URL de descarga con nombre en la ruta (evita 'unknown' en visores/navegadores)."""
     from werkzeug.utils import secure_filename
 
+    from demo_web.services.pdf_meta import nombre_archivo_segun_tenant
+
+    filename = nombre_archivo_segun_tenant(filename)
     safe = secure_filename((filename or "documento.pdf").split("/")[-1]) or "documento.pdf"
     if not safe.lower().endswith(".pdf"):
         safe = f"{safe}.pdf"
