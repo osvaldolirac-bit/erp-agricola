@@ -121,5 +121,57 @@ class CotizacionCondicionesPdfTests(unittest.TestCase):
         self.assertNotIn("Notas internas", html)
 
 
+class FolioCotizacionAnioTests(unittest.TestCase):
+    def _core(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT / "riomaipo_vps"))
+        from rmweb import core
+
+        return core
+
+    def test_renumera_por_fecha_y_actualiza_las_citas(self):
+        core = self._core()
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE cotizaciones (
+                   id INTEGER PRIMARY KEY, folio TEXT UNIQUE, fecha TEXT
+               )"""
+        )
+        conn.execute(
+            """CREATE TABLE cuentas (
+                   id INTEGER PRIMARY KEY, documento TEXT UNIQUE, concepto TEXT
+               )"""
+        )
+        conn.executemany(
+            "INSERT INTO cotizaciones (id, folio, fecha) VALUES (?,?,?)",
+            [
+                (20, "COT-1000", "2026-04-15"),
+                (16, "COT-1004", "2026-04-15"),
+                (30, "COT-0027", "2026-11-02"),
+                (2, "COT-1018", "2025-12-01"),
+            ],
+        )
+        conn.execute(
+            "INSERT INTO cuentas (id, documento, concepto) VALUES (1, 'COT-1000', 'Desde cotización COT-1000 · obra')"
+        )
+        n = core.renumerar_folios_cotizacion(conn)
+        self.assertEqual(n, 4)
+        folios = {
+            r["id"]: r["folio"]
+            for r in conn.execute("SELECT id, folio FROM cotizaciones")
+        }
+        self.assertEqual(folios[20], "COT-01_2026")
+        self.assertEqual(folios[16], "COT-02_2026")
+        self.assertEqual(folios[30], "COT-03_2026")
+        self.assertEqual(folios[2], "COT-01_2025")
+        cuenta = conn.execute("SELECT documento, concepto FROM cuentas WHERE id=1").fetchone()
+        self.assertEqual(cuenta["documento"], "COT-01_2026")
+        self.assertIn("COT-01_2026", cuenta["concepto"])
+        self.assertEqual(core.renumerar_folios_cotizacion(conn), 0)
+        self.assertEqual(core.siguiente_folio_cotizacion(conn, "2026-11-02"), "COT-04_2026")
+
+
 if __name__ == "__main__":
     unittest.main()

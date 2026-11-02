@@ -1135,7 +1135,7 @@ def cotizaciones_form(cot_id: int | None = None):
                 cid = edit["id"]
                 folio = edit["folio"]
             else:
-                folio = core.next_code(db, "cotizaciones", "folio", "COT")
+                folio = core.siguiente_folio_cotizacion(db, fecha)
                 cur = db.cursor()
                 try:
                     cur.execute(

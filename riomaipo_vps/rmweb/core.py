@@ -382,6 +382,7 @@ def init_db(db_path: str | Path | None = None, empresa_default: dict | None = No
             """,
             (DEFAULT_ACCESO, salt, digest, "Osvaldo Lira", "Administrador"),
         )
+    renumerar_folios_cotizacion(c)
     c.commit()
     c.close()
 
@@ -433,6 +434,126 @@ def next_code(c: sqlite3.Connection, table: str, field: str, prefix: str) -> str
     ).fetchone()
     n = int(row["m"] or 0) + 1
     return f"{prefix}-{n:04d}"
+
+
+_FOLIO_COT_ANIO = re.compile(r"^COT-(\d+)_(\d{4})$")
+_FOLIO_COT_SIMPLE = re.compile(r"^COT-(\d+)$")
+
+
+def folio_cotizacion(numero: int, anio: int) -> str:
+    """Número visible: COT-01_2026."""
+    return f"COT-{int(numero):02d}_{int(anio)}"
+
+
+def anio_de_fecha_cotizacion(fecha: str | None) -> int:
+    anio = str(fecha or "")[:4]
+    if anio.isdigit() and 2000 <= int(anio) <= 2100:
+        return int(anio)
+    return hoy_chile().year
+
+
+def siguiente_folio_cotizacion(c: sqlite3.Connection, fecha: str | None = None) -> str:
+    """Siguiente COT-NN_AAAA del año de la fecha, sin mezclar otros documentos."""
+    anio = anio_de_fecha_cotizacion(fecha)
+    max_n = 0
+    rows = c.execute(
+        "SELECT folio FROM cotizaciones WHERE folio LIKE ?",
+        (f"COT-%_{anio}",),
+    ).fetchall()
+    for row in rows:
+        m = _FOLIO_COT_ANIO.match(str(row["folio"] or ""))
+        if m and int(m.group(2)) == anio:
+            max_n = max(max_n, int(m.group(1)))
+    return folio_cotizacion(max_n + 1, anio)
+
+
+def _numero_folio_para_ordenar(folio: str) -> int:
+    m = _FOLIO_COT_ANIO.match(folio) or _FOLIO_COT_SIMPLE.match(folio)
+    if m:
+        return int(m.group(1))
+    return 10**9
+
+
+def _reemplazar_folio_citado(c: sqlite3.Connection, viejo: str, nuevo: str) -> None:
+    """Actualiza cuentas, arriendos y textos que guardan el número antiguo."""
+    if not viejo or viejo == nuevo:
+        return
+    patron = re.compile(rf"(?<![\w]){re.escape(viejo)}(?![\w])")
+    tablas = [
+        r[0]
+        for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    ]
+    for tabla in tablas:
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", tabla) or tabla == "sqlite_sequence":
+            continue
+        columnas = [r[1] for r in c.execute(f"PRAGMA table_info({tabla})").fetchall()]
+        for col in columnas:
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", col):
+                continue
+            if tabla == "cotizaciones" and col == "folio":
+                continue
+            try:
+                encontrados = c.execute(
+                    f"SELECT rowid AS _rid, {col} AS _val FROM {tabla} "
+                    f"WHERE CAST({col} AS TEXT) LIKE ?",
+                    (f"%{viejo}%",),
+                ).fetchall()
+            except sqlite3.Error:
+                continue
+            for fila in encontrados:
+                texto = str(fila["_val"] or "")
+                if texto == viejo:
+                    cambiado = nuevo
+                else:
+                    cambiado = patron.sub(nuevo, texto)
+                if cambiado != texto:
+                    c.execute(
+                        f"UPDATE {tabla} SET {col}=? WHERE rowid=?",
+                        (cambiado, int(fila["_rid"])),
+                    )
+
+
+def renumerar_folios_cotizacion(c: sqlite3.Connection) -> int:
+    """Pasa COT-0027 a COT-26_2026, en orden de fecha dentro de cada año."""
+    rows = c.execute("SELECT id, folio, fecha FROM cotizaciones").fetchall()
+    if not rows:
+        return 0
+    if all(_FOLIO_COT_ANIO.match(str(r["folio"] or "")) for r in rows):
+        return 0
+    anios = {
+        anio_de_fecha_cotizacion(r["fecha"])
+        for r in rows
+        if not _FOLIO_COT_ANIO.match(str(r["folio"] or ""))
+    }
+    grupo = [r for r in rows if anio_de_fecha_cotizacion(r["fecha"]) in anios]
+    por_anio: dict[int, list] = {}
+    for r in grupo:
+        por_anio.setdefault(anio_de_fecha_cotizacion(r["fecha"]), []).append(r)
+    cambios: list[tuple[int, str, str]] = []
+    for anio, items in por_anio.items():
+        items.sort(
+            key=lambda r: (
+                str(r["fecha"] or ""),
+                _numero_folio_para_ordenar(str(r["folio"] or "")),
+                int(r["id"]),
+            )
+        )
+        for i, r in enumerate(items, start=1):
+            nuevo = folio_cotizacion(i, anio)
+            viejo = str(r["folio"] or "")
+            if viejo != nuevo:
+                cambios.append((int(r["id"]), viejo, nuevo))
+    if not cambios:
+        return 0
+    for cid, _viejo, _nuevo in cambios:
+        c.execute(
+            "UPDATE cotizaciones SET folio=? WHERE id=?",
+            (f"COT-TMP-{cid}", cid),
+        )
+    for cid, viejo, nuevo in sorted(cambios, key=lambda x: len(x[1]), reverse=True):
+        c.execute("UPDATE cotizaciones SET folio=? WHERE id=?", (nuevo, cid))
+        _reemplazar_folio_citado(c, viejo, nuevo)
+    return len(cambios)
 
 
 def list_accesos(db_path: str | Path | None = None) -> list[str]:
