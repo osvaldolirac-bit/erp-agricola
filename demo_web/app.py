@@ -20,6 +20,28 @@ from demo_web.tenants import RUBRO_BRAND, RUBRO_SUBTITLE, RUBRO_TITLE, get_tenan
 _SISTEMA_KEYS = frozenset({"Soporte", "Manual", "Administracion"})
 
 
+def sesion_es_lector() -> bool:
+    """Perfil Lector, o la casilla de solo lectura."""
+    if (session.get("rol") or "").strip().lower() == "lector":
+        return True
+    return bool(session.get("solo_lectura"))
+
+
+def lector_pide_descarga(path: str, args, form_action: str = "") -> bool:
+    """El lector consulta en pantalla. No baja PDF, Excel ni archivos del módulo."""
+    p = (path or "").lower()
+    if "download_doc" in (args or {}):
+        return True
+    if (form_action or "") == "planilla_pdf":
+        return True
+    limpio = p.rstrip("/")
+    if "/pdf/" in p or limpio.endswith("/pdf"):
+        return True
+    if limpio.endswith("/excel"):
+        return True
+    return False
+
+
 def create_app(config_class=Config) -> Flask:
     app = Flask(
         __name__,
@@ -62,11 +84,82 @@ def create_app(config_class=Config) -> Flask:
         return format_clp(n)
 
     @app.before_request
+    def _lector_sin_descarga():
+        if not sesion_es_lector():
+            return None
+        if not lector_pide_descarga(
+            request.path or "",
+            request.args,
+            request.form.get("action") or "",
+        ):
+            return None
+        flash(
+            "Modo solo lectura: puede consultar en pantalla, pero no descargar PDF ni archivos.",
+            "warning",
+        )
+        ref = request.referrer or ""
+        if ref.startswith(request.host_url) and not lector_pide_descarga(ref, {}, ""):
+            return redirect(ref)
+        return redirect(url_for("modules.dashboard"))
+
+    @app.before_request
     def _bind_tenant():
         from demo_web.services.public_link_tenant import tenant_slug_for_request
 
         slug = tenant_slug_for_request()
         bind_tenant_context(slug if slug else None)
+
+    @app.before_request
+    def _sesion_en_su_empresa():
+        """Si la sesión quedó en una empresa sin usuario, vuelve a la suya."""
+        from flask import g
+
+        email = (session.get("email") or "").strip()
+        slug = (session.get("tenant_slug") or "").strip().lower()
+        if not email or not slug:
+            return None
+        endpoint = request.endpoint or ""
+        if endpoint.startswith("static") or endpoint in {
+            "auth.login",
+            "auth.logout",
+            "auth.master_entry",
+            "auth.select_tenant",
+            "auth.elegir_empresa",
+            "auth.cambiar_empresa",
+            "globalgap_portal.login",
+            "globalgap_portal.logout",
+            "globalgap_portal.root",
+            "logo_asset",
+            "registro_riego.formulario",
+            "salida_petroleo.formulario",
+            "stock_bodega_link.formulario",
+            "stock_bodega_link.kardex",
+            "stock_bodega_link.pdf_kardex",
+            "auth.cosecha_formulario",
+            "session_status",
+            "session_continue",
+            "tenant_logo_asset",
+        }:
+            return None
+        from demo_web.auth.tenant_access import (
+            list_accessible_tenants,
+            sesion_puede_estar_en,
+        )
+
+        refreshed = list_accessible_tenants(email)
+        if not refreshed:
+            return None
+        session["accessible_tenants"] = refreshed
+        g.accessible_tenants = refreshed
+        if sesion_puede_estar_en(slug, refreshed):
+            return None
+        destino = refreshed[0]
+        session["tenant_slug"] = destino["slug"]
+        if destino.get("rol"):
+            session["rol"] = destino["rol"]
+        bind_tenant_context(destino["slug"])
+        flash(f"Tu sesión volvió a {destino.get('nombre') or destino['slug']}.", "info")
+        return redirect(url_for("modules.dashboard"))
 
 
     @app.before_request
@@ -446,7 +539,7 @@ def create_app(config_class=Config) -> Flask:
             find_master_logo_path,
             find_tenant_logo_path,
         )
-        from flask import request, url_for
+        from flask import g, request, url_for
 
         user = None
         menu = []
@@ -469,8 +562,9 @@ def create_app(config_class=Config) -> Flask:
                 "tenant_slug": tenant["slug"],
                 "tenant_nombre": tenant["nombre"],
             }
-            accessible = session.get("accessible_tenants") or []
-            if len(accessible) < 2:
+            accessible = getattr(g, "accessible_tenants", None) or []
+            if not accessible:
+                accessible = session.get("accessible_tenants") or []
                 refreshed = list_accessible_tenants(session["email"])
                 if refreshed:
                     accessible = refreshed

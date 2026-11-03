@@ -356,9 +356,11 @@
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <p class="small text-muted mb-0">
       Consulta página a página (optimizado para celular).
-      En iPhone use <strong>Descargar PDF</strong> para guardar en Archivos.
+      {% if not solo_lectura %}En iPhone use <strong>Descargar PDF</strong> para guardar en Archivos.{% endif %}
     </p>
-    <a class="btn btn-outline-success" href="{{ programa.pdf_url }}" download="{{ programa.descarga }}">Descargar PDF</a>
+    {% if not solo_lectura %}
+    <a class="btn btn-outline-success erp-pdf-btn" href="{{ programa.pdf_url }}" download="{{ programa.descarga }}">Descargar PDF</a>
+    {% endif %}
   </div>
   {% if programa.paginas %}
   <p class="small text-muted mb-2"><strong>{{ programa.n_paginas }}</strong> página(s) — desplace hacia abajo para ver el documento completo.</p>

@@ -28,6 +28,7 @@ from demo_web.services.erp_loader import (
     bind_tenant_context,
     get_erp_module_for,
     invalidate_erp_module,
+    using_tenant_db,
 )
 from demo_web.tenants import get_tenant, list_tenants
 
@@ -124,12 +125,12 @@ def _find_login_matches(email: str, password: str) -> list[dict]:
     matches: list[dict] = []
     for t in list_tenants():
         try:
-            erp = get_erp_module_for(t["slug"])
-            conn = erp.conectar_db()
-            try:
-                row = fetch_login_row(conn, email, erp.hash_password(password))
-            finally:
-                conn.close()
+            with using_tenant_db(t["slug"]) as erp:
+                conn = erp.conectar_db()
+                try:
+                    row = fetch_login_row(conn, email, erp.hash_password(password))
+                finally:
+                    conn.close()
             if not row:
                 continue
             if not erp.usuario_prueba_vigente(row[2]):
@@ -182,12 +183,12 @@ def master_entry():
     except Exception:
         pass
 
-    erp = get_erp_module_for(token_slug)
-    conn = erp.conectar_db()
-    try:
-        row = fetch_bridge_user(conn, email)
-    finally:
-        conn.close()
+    with using_tenant_db(token_slug) as erp:
+        conn = erp.conectar_db()
+        try:
+            row = fetch_bridge_user(conn, email)
+        finally:
+            conn.close()
     if not row:
         flash("Tu usuario de consola no existe en este ERP. Ingresa con tu clave.", "warning")
         return redirect(url_for("auth.login"))

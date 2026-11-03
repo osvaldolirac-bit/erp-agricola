@@ -1,8 +1,10 @@
 """Carga app_demo / app_concepcion según tenant de la petición (rubro agrícola)."""
 from __future__ import annotations
 
+import contextvars
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +102,39 @@ def current_tenant() -> dict[str, Any] | None:
     return TENANTS.get("concepcion") or next(iter(TENANTS.values()), None)
 
 
+# Consulta puntual a otra empresa (login, selector). Gana sobre la sesión:
+# LC y El Espino comparten módulo, y sin esto conectar_db reabría la DB
+# de la sesión. Un usuario solo de La Concepción aparecía con acceso a El Espino.
+_explicit_db_slug: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "erp_explicit_db_slug", default=None
+)
+
+
+def tenant_for_db() -> dict[str, Any] | None:
+    forced = (_explicit_db_slug.get() or "").strip().lower()
+    if forced:
+        t = get_tenant(forced)
+        if t:
+            return t
+    return current_tenant()
+
+
+@contextmanager
+def using_tenant_db(slug: str):
+    """Abre la DB de `slug` aunque la sesión esté en otra empresa."""
+    token = _explicit_db_slug.set(str(slug or "").strip().lower())
+    try:
+        yield get_erp_module_for(slug)
+    finally:
+        _explicit_db_slug.reset(token)
+        activo = current_tenant()
+        if activo:
+            try:
+                get_erp_module_for(activo["slug"])
+            except Exception:
+                pass
+
+
 def get_erp_app() -> str:
     t = current_tenant()
     if t:
@@ -148,7 +183,7 @@ def _wrap_conectar_db(erp: Any) -> None:
     original = erp.conectar_db
 
     def conectar_db(*args, **kwargs):  # noqa: ANN001
-        t = current_tenant()
+        t = tenant_for_db()
         if t:
             _apply_tenant_config(erp, t)
         return original(*args, **kwargs)
