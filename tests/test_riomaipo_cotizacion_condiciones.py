@@ -182,5 +182,19 @@ class MenuModulosTests(unittest.TestCase):
         self.assertIn("register_rrhh_routes", app_py)
 
 
+class SidebarMovilTests(unittest.TestCase):
+    def test_el_menu_movil_parte_oculto_con_las_tres_rayas(self):
+        base = (ROOT / "riomaipo_vps/rmweb/templates/base.html").read_text(encoding="utf-8")
+        css = (ROOT / "riomaipo_vps/rmweb/static/css/app.css").read_text(encoding="utf-8")
+        self.assertIn('id="appMenu"', base)
+        self.assertIn('aria-label="Menú"', base)
+        self.assertIn("mobile-topbar", base)
+        self.assertIn("navbar-toggler-icon", base)
+        self.assertNotIn(".sidebar { width: 100%; height: auto; position: relative; }", css)
+        self.assertIn("translateX(-100%)", css)
+        self.assertIn("@media (max-width: 991.98px)", css)
+        self.assertIn("@media (min-width: 992px)", css)
+
+
 if __name__ == "__main__":
     unittest.main()
