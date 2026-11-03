@@ -511,11 +511,12 @@ def create_app(config_class=Config) -> Flask:
                 "tenant_nombre": tenant["nombre"],
             }
             accessible = session.get("accessible_tenants") or []
-            if len(accessible) < 2:
-                refreshed = list_accessible_tenants(session["email"])
-                if refreshed:
-                    accessible = refreshed
-                    session["accessible_tenants"] = refreshed
+            # Siempre contra la DB. Si la sesión ya traía 2 empresas, el
+            # selector no se volvía a calcular y El Espino seguía visible.
+            refreshed = list_accessible_tenants(session["email"])
+            if refreshed:
+                accessible = refreshed
+                session["accessible_tenants"] = refreshed
             tenant_switch_options = other_tenant_switch_options(accessible, tenant["slug"])
             menu = build_menu(user["email"], user["rol"])
             for it in menu:

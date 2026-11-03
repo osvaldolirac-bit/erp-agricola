@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from flask import Flask, g
 
@@ -114,6 +115,68 @@ class TestLcDefaultsRestore(unittest.TestCase):
                 erp._clasificar_cc_seleccionados(["SANTINA"]),
                 (["SANTINA"], ["SANTINA"], []),
             )
+
+
+class TestDbPorTenant(unittest.TestCase):
+    def test_conectar_db_abre_espino_aunque_la_sesion_sea_lc(self):
+        erp = _FakeConcepcionErp()
+        erp_loader._LC_DEFAULTS = None
+        erp_loader._capture_lc_defaults(erp)
+        seen: list[str] = []
+
+        def original():
+            seen.append(erp.NOMBRE_DB)
+            return "ok"
+
+        erp.conectar_db = original
+        erp_loader._wrap_conectar_db(erp)
+        app = Flask(__name__)
+        with app.test_request_context("/"):
+            g.tenant_slug = "concepcion"
+            token = erp_loader._explicit_db_slug.set("espino")
+            try:
+                self.assertEqual(erp.conectar_db(), "ok")
+            finally:
+                erp_loader._explicit_db_slug.reset(token)
+            self.assertEqual(seen, ["/root/espino/erp_espino.db"])
+            erp.conectar_db()
+            self.assertEqual(seen[-1], "/root/erp_concepcion_v6.db")
+
+    def test_lector_de_lc_no_hereda_el_tenant_espino(self):
+        opened: list[str | None] = []
+
+        class Conn:
+            def close(self):
+                return None
+
+        class Erp:
+            def conectar_db(self):
+                opened.append(erp_loader._explicit_db_slug.get())
+                return Conn()
+
+            def usuario_prueba_vigente(self, _fecha):
+                return True
+
+            def normalizar_rol_usuario(self, rol, _email):
+                return rol
+
+        def bridge(_conn, _email):
+            if erp_loader._explicit_db_slug.get() == "concepcion":
+                return ("lirac1970@gmail.com", "lector", None)
+            return None
+
+        app = Flask(__name__)
+        with app.test_request_context("/"):
+            g.tenant_slug = "concepcion"
+            with mock.patch.object(erp_loader, "get_erp_module_for", return_value=Erp()):
+                with mock.patch("demo_web.auth.user_db.fetch_bridge_user", side_effect=bridge):
+                    from demo_web.auth.tenant_access import list_accessible_tenants
+
+                    rows = list_accessible_tenants("lirac1970@gmail.com")
+        slugs = [r["slug"] for r in rows]
+        self.assertEqual(slugs, ["concepcion"])
+        self.assertIn("espino", opened)
+        self.assertIn("concepcion", opened)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Acceso multi-tenant por email (LC, Espino, Demo)."""
 from __future__ import annotations
 
-from demo_web.services.erp_loader import get_erp_module_for
+from demo_web.services.erp_loader import using_tenant_db
 from demo_web.tenants import get_tenant, list_tenants
 
 _SWITCHABLE_KINDS = frozenset({"lc", "demo", "espino"})
@@ -12,29 +12,29 @@ def _tenant_access_row(email: str, tenant: dict) -> dict | None:
     if tenant.get("kind") not in _SWITCHABLE_KINDS:
         return None
     try:
-        erp = get_erp_module_for(slug)
-        conn = erp.conectar_db()
-        try:
-            from demo_web.auth.user_db import fetch_bridge_user
+        with using_tenant_db(slug) as erp:
+            conn = erp.conectar_db()
+            try:
+                from demo_web.auth.user_db import fetch_bridge_user
 
-            row = fetch_bridge_user(conn, email)
-        finally:
-            conn.close()
-        if not row:
-            return None
-        if not erp.usuario_prueba_vigente(row[2]):
-            return None
-        rol = (
-            erp.normalizar_rol_usuario(row[1], row[0])
-            if hasattr(erp, "normalizar_rol_usuario")
-            else row[1]
-        )
-        return {
-            "slug": slug,
-            "nombre": tenant.get("nombre") or slug,
-            "descripcion": tenant.get("descripcion") or "",
-            "rol": rol,
-        }
+                row = fetch_bridge_user(conn, email)
+            finally:
+                conn.close()
+            if not row:
+                return None
+            if not erp.usuario_prueba_vigente(row[2]):
+                return None
+            rol = (
+                erp.normalizar_rol_usuario(row[1], row[0])
+                if hasattr(erp, "normalizar_rol_usuario")
+                else row[1]
+            )
+            return {
+                "slug": slug,
+                "nombre": tenant.get("nombre") or slug,
+                "descripcion": tenant.get("descripcion") or "",
+                "rol": rol,
+            }
     except Exception:
         return None
 
