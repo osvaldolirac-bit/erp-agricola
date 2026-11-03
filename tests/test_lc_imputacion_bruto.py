@@ -4,10 +4,13 @@ from __future__ import annotations
 import sqlite3
 import unittest
 
+from pathlib import Path
+
 from demo_web.services.lc_imputacion_bruto import (
     instalar_imputacion_bruta_lc,
     marcar_imputacion_respeta_bruto,
 )
+from demo_web.services.native.compras import _imputacion_bruta
 
 
 class _Erp:
@@ -44,6 +47,23 @@ def _db() -> sqlite3.Connection:
         "VALUES ('INT-20261021-01_P', 'COMERCIAL ROSA BASTIAS L', 0, 390000, 'CIRUELOS')"
     )
     return conn
+
+
+class TestCasillasImputacion(unittest.TestCase):
+    def test_solo_bruto_o_neto(self):
+        self.assertTrue(_imputacion_bruta("bruto"))
+        self.assertFalse(_imputacion_bruta("neto"))
+        self.assertIsNone(_imputacion_bruta(""))
+        self.assertIsNone(_imputacion_bruta("si"))
+
+    def test_el_formulario_muestra_las_dos_casillas(self):
+        html = Path("demo_web/templates/modules/compras.html").read_text(encoding="utf-8")
+        self.assertIn('name="imputacion"', html)
+        self.assertIn('value="bruto"', html)
+        self.assertIn('value="neto"', html)
+        self.assertIn("Imputa bruto", html)
+        self.assertIn("Imputa neto", html)
+        self.assertNotIn('name="iva_bruto"', html)
 
 
 class TestImputacionBrutaLc(unittest.TestCase):
