@@ -706,6 +706,16 @@ def _post_save_agro(demo, conn) -> dict:
     return {"ok": True, "msg": f"Factura {nro} guardada. Stock y PMP actualizados."}
 
 
+def _imputacion_bruta(valor: str) -> bool | None:
+    """True si eligió Imputa bruto, False si eligió Imputa neto."""
+    v = (valor or "").strip().lower()
+    if v == "bruto":
+        return True
+    if v == "neto":
+        return False
+    return None
+
+
 def _post_save_gastos(demo, conn) -> dict:
     prov = (request.form.get("proveedor") or "").strip()
     fe = request.form.get("fecha_emision") or str(hoy_demo(demo))
@@ -715,7 +725,7 @@ def _post_save_gastos(demo, conn) -> dict:
     razon = request.form.get("razon_social") or razon_social_compras_default(demo)
     concepto = (request.form.get("concepto") or "").strip()
     tipo_gasto = request.form.get("tipo_gasto") or demo.TIPOS_GASTO_ALTA[0]
-    iva_bruto = request.form.get("iva_bruto") == "1"
+    iva_bruto = _imputacion_bruta(request.form.get("imputacion") or "")
     try:
         mt = float(request.form.get("monto") or 0)
     except ValueError:
@@ -730,6 +740,8 @@ def _post_save_gastos(demo, conn) -> dict:
         return {"ok": False, "msg": "El monto debe ser mayor a cero."}
     if not selcc:
         return {"ok": False, "msg": "Seleccione al menos un centro de costo."}
+    if iva_bruto is None:
+        return {"ok": False, "msg": "Elija Imputa bruto o Imputa neto."}
 
     ng = _folio_interno(conn, fe) if sin_doc else nro
     imp = mt if iva_bruto else mt / 1.19
