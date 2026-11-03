@@ -63,6 +63,17 @@ def tenant_access_option(email: str, slug: str) -> dict | None:
     return _tenant_access_row(email, tenant)
 
 
+def sesion_puede_estar_en(slug: str, accessible: list[dict]) -> bool:
+    """False cuando la empresa de la sesión no está en las bases de ese email.
+
+    Lista vacía (fallo al leer) no corta la sesión.
+    """
+    cur = (slug or "").strip().lower()
+    if not cur or not accessible:
+        return True
+    return any(str(t.get("slug") or "").strip().lower() == cur for t in accessible)
+
+
 def other_tenant_switch_options(accessible: list[dict], current_slug: str | None) -> list[dict]:
     cur = (current_slug or "").strip().lower()
     return [t for t in accessible if str(t.get("slug") or "").strip().lower() != cur]

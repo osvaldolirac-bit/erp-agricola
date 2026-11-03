@@ -109,6 +109,58 @@ def create_app(config_class=Config) -> Flask:
         slug = tenant_slug_for_request()
         bind_tenant_context(slug if slug else None)
 
+    @app.before_request
+    def _sesion_en_su_empresa():
+        """Si la sesión quedó en una empresa sin usuario, vuelve a la suya."""
+        from flask import g
+
+        email = (session.get("email") or "").strip()
+        slug = (session.get("tenant_slug") or "").strip().lower()
+        if not email or not slug:
+            return None
+        endpoint = request.endpoint or ""
+        if endpoint.startswith("static") or endpoint in {
+            "auth.login",
+            "auth.logout",
+            "auth.master_entry",
+            "auth.select_tenant",
+            "auth.elegir_empresa",
+            "auth.cambiar_empresa",
+            "globalgap_portal.login",
+            "globalgap_portal.logout",
+            "globalgap_portal.root",
+            "logo_asset",
+            "registro_riego.formulario",
+            "salida_petroleo.formulario",
+            "stock_bodega_link.formulario",
+            "stock_bodega_link.kardex",
+            "stock_bodega_link.pdf_kardex",
+            "auth.cosecha_formulario",
+            "session_status",
+            "session_continue",
+            "tenant_logo_asset",
+        }:
+            return None
+        from demo_web.auth.tenant_access import (
+            list_accessible_tenants,
+            sesion_puede_estar_en,
+        )
+
+        refreshed = list_accessible_tenants(email)
+        if not refreshed:
+            return None
+        session["accessible_tenants"] = refreshed
+        g.accessible_tenants = refreshed
+        if sesion_puede_estar_en(slug, refreshed):
+            return None
+        destino = refreshed[0]
+        session["tenant_slug"] = destino["slug"]
+        if destino.get("rol"):
+            session["rol"] = destino["rol"]
+        bind_tenant_context(destino["slug"])
+        flash(f"Tu sesión volvió a {destino.get('nombre') or destino['slug']}.", "info")
+        return redirect(url_for("modules.dashboard"))
+
 
     @app.before_request
     def _globalgap_tenant_guard():
@@ -487,7 +539,7 @@ def create_app(config_class=Config) -> Flask:
             find_master_logo_path,
             find_tenant_logo_path,
         )
-        from flask import request, url_for
+        from flask import g, request, url_for
 
         user = None
         menu = []
@@ -510,13 +562,13 @@ def create_app(config_class=Config) -> Flask:
                 "tenant_slug": tenant["slug"],
                 "tenant_nombre": tenant["nombre"],
             }
-            accessible = session.get("accessible_tenants") or []
-            # Siempre contra la DB. Si la sesión ya traía 2 empresas, el
-            # selector no se volvía a calcular y El Espino seguía visible.
-            refreshed = list_accessible_tenants(session["email"])
-            if refreshed:
-                accessible = refreshed
-                session["accessible_tenants"] = refreshed
+            accessible = getattr(g, "accessible_tenants", None) or []
+            if not accessible:
+                accessible = session.get("accessible_tenants") or []
+                refreshed = list_accessible_tenants(session["email"])
+                if refreshed:
+                    accessible = refreshed
+                    session["accessible_tenants"] = refreshed
             tenant_switch_options = other_tenant_switch_options(accessible, tenant["slug"])
             menu = build_menu(user["email"], user["rol"])
             for it in menu:

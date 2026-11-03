@@ -178,6 +178,16 @@ class TestDbPorTenant(unittest.TestCase):
         self.assertIn("espino", opened)
         self.assertIn("concepcion", opened)
 
+    def test_sesion_en_espino_sin_usuario_no_se_queda(self):
+        from demo_web.auth.tenant_access import sesion_puede_estar_en
+
+        solo_lc = [{"slug": "concepcion", "nombre": "La Concepción"}]
+        ambas = solo_lc + [{"slug": "espino", "nombre": "El Espino"}]
+        self.assertFalse(sesion_puede_estar_en("espino", solo_lc))
+        self.assertTrue(sesion_puede_estar_en("concepcion", solo_lc))
+        self.assertTrue(sesion_puede_estar_en("espino", ambas))
+        self.assertTrue(sesion_puede_estar_en("espino", []))
+
 
 if __name__ == "__main__":
     unittest.main()
