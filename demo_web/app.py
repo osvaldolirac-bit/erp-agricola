@@ -20,6 +20,28 @@ from demo_web.tenants import RUBRO_BRAND, RUBRO_SUBTITLE, RUBRO_TITLE, get_tenan
 _SISTEMA_KEYS = frozenset({"Soporte", "Manual", "Administracion"})
 
 
+def sesion_es_lector() -> bool:
+    """Perfil Lector, o la casilla de solo lectura."""
+    if (session.get("rol") or "").strip().lower() == "lector":
+        return True
+    return bool(session.get("solo_lectura"))
+
+
+def lector_pide_descarga(path: str, args, form_action: str = "") -> bool:
+    """El lector consulta en pantalla. No baja PDF, Excel ni archivos del módulo."""
+    p = (path or "").lower()
+    if "download_doc" in (args or {}):
+        return True
+    if (form_action or "") == "planilla_pdf":
+        return True
+    limpio = p.rstrip("/")
+    if "/pdf/" in p or limpio.endswith("/pdf"):
+        return True
+    if limpio.endswith("/excel"):
+        return True
+    return False
+
+
 def create_app(config_class=Config) -> Flask:
     app = Flask(
         __name__,
@@ -60,6 +82,25 @@ def create_app(config_class=Config) -> Flask:
     @app.template_filter("clp")
     def _clp_filter(n):
         return format_clp(n)
+
+    @app.before_request
+    def _lector_sin_descarga():
+        if not sesion_es_lector():
+            return None
+        if not lector_pide_descarga(
+            request.path or "",
+            request.args,
+            request.form.get("action") or "",
+        ):
+            return None
+        flash(
+            "Modo solo lectura: puede consultar en pantalla, pero no descargar PDF ni archivos.",
+            "warning",
+        )
+        ref = request.referrer or ""
+        if ref.startswith(request.host_url) and not lector_pide_descarga(ref, {}, ""):
+            return redirect(ref)
+        return redirect(url_for("modules.dashboard"))
 
     @app.before_request
     def _bind_tenant():

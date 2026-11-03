@@ -60,8 +60,8 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
       <h2 class="h6 panel-title mb-0">Flujo mensual</h2>
       <div class="d-flex flex-wrap gap-2 align-items-center">
-        {% if excel_flujo_url %}
-        <a class="btn btn-outline-success btn-sm" href="{{ excel_flujo_url }}">📥 Excel planilla</a>
+        {% if excel_flujo_url and not solo_lectura %}
+        <a class="btn btn-outline-success btn-sm erp-export-btn" href="{{ excel_flujo_url }}">📥 Excel planilla</a>
         {% endif %}
         {{ pdf_btn(pdf_flujo_url, '📥 PDF FLUJO FINANCIERO') }}
       </div>
