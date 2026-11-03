@@ -1,4 +1,4 @@
-"""LC: un gasto ingresado por el bruto igual se registra neto en Costos."""
+"""LC: imputar un gasto por el bruto no lo convierte a neto en Costos."""
 from __future__ import annotations
 
 import sqlite3
@@ -47,7 +47,7 @@ def _db() -> sqlite3.Connection:
 
 
 class TestImputacionBrutaLc(unittest.TestCase):
-    def test_bruto_marcado_igual_pasa_a_neto_en_ciruelos(self):
+    def test_bruto_marcado_no_se_divide_en_ciruelos(self):
         erp = _Erp()
         instalar_imputacion_bruta_lc(erp)
         conn = _db()
@@ -57,13 +57,7 @@ class TestImputacionBrutaLc(unittest.TestCase):
             factores, "INT-20261021-01_P", "COMERCIAL ROSA BASTIAS L", 390000,
         )
         costo = erp._monto_costos_factura_matriz("Repuestos y talleres", scaled)
-        self.assertAlmostEqual(costo, 390000.0 / 1.19)
-
-    def test_compra_179095_en_ciruelos_queda_en_150500(self):
-        erp = _Erp()
-        instalar_imputacion_bruta_lc(erp)
-        costo = erp._monto_costos_factura_matriz("Repuestos y talleres", 179095.0)
-        self.assertAlmostEqual(costo, 150500.0)
+        self.assertAlmostEqual(costo, 390000.0)
 
     def test_sin_marca_el_rubro_sigue_en_neto(self):
         erp = _Erp()

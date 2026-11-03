@@ -715,6 +715,7 @@ def _post_save_gastos(demo, conn) -> dict:
     razon = request.form.get("razon_social") or razon_social_compras_default(demo)
     concepto = (request.form.get("concepto") or "").strip()
     tipo_gasto = request.form.get("tipo_gasto") or demo.TIPOS_GASTO_ALTA[0]
+    iva_bruto = request.form.get("iva_bruto") == "1"
     try:
         mt = float(request.form.get("monto") or 0)
     except ValueError:
@@ -731,8 +732,7 @@ def _post_save_gastos(demo, conn) -> dict:
         return {"ok": False, "msg": "Seleccione al menos un centro de costo."}
 
     ng = _folio_interno(conn, fe) if sin_doc else nro
-    # El formulario pide el bruto. Costos lo lleva a neto en los rubros con IVA.
-    imp = mt
+    imp = mt if iva_bruto else mt / 1.19
     conn.execute(
         """INSERT INTO facturas (nro_documento, proveedor, fecha_compra, fecha_vencimiento, monto_total,
            tipo, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?)""",
@@ -744,6 +744,11 @@ def _post_save_gastos(demo, conn) -> dict:
                tipo, centro_costo, monto_imputado, concepto, razon_social, tipo_gasto) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (ng + "_P", prov, fe, fv, 0, "Gasto Operacional", c.upper(), imp / len(selcc), concepto, razon, tipo_gasto),
         )
+    if _kardex_lc_activo():
+        from demo_web.services.lc_imputacion_bruto import marcar_imputacion_respeta_bruto
+
+        # Marcado: Costos deja el bruto. Desmarcado: sigue el neto del rubro.
+        marcar_imputacion_respeta_bruto(conn, ng, prov, iva_bruto)
     conn.commit()
     demo.registrar_accion("GASTO", ng)
     return {"ok": True, "msg": f"Gasto registrado bajo folio {ng}."}
