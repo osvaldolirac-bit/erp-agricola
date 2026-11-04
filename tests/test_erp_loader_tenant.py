@@ -188,6 +188,13 @@ class TestDbPorTenant(unittest.TestCase):
         self.assertTrue(sesion_puede_estar_en("espino", ambas))
         self.assertTrue(sesion_puede_estar_en("espino", []))
 
+    def test_globalgap_no_vuelve_al_dashboard_agricola(self):
+        from demo_web.auth.tenant_access import sesion_es_portal_aparte
+
+        self.assertTrue(sesion_es_portal_aparte("globalgap"))
+        self.assertFalse(sesion_es_portal_aparte("concepcion"))
+        self.assertFalse(sesion_es_portal_aparte("espino"))
+
 
 if __name__ == "__main__":
     unittest.main()

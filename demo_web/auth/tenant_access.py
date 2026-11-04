@@ -63,6 +63,15 @@ def tenant_access_option(email: str, slug: str) -> dict | None:
     return _tenant_access_row(email, tenant)
 
 
+def sesion_es_portal_aparte(slug: str) -> bool:
+    """GlobalGAP consultor no entra al cambiador de empresas agrícolas.
+
+    Si el mismo correo también está en La Concepción, la sesión del portal
+    no debe devolverse al dashboard agrícola.
+    """
+    return (slug or "").strip().lower() == "globalgap"
+
+
 def sesion_puede_estar_en(slug: str, accessible: list[dict]) -> bool:
     """False cuando la empresa de la sesión no está en las bases de ese email.
 

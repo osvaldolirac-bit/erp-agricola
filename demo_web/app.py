@@ -118,6 +118,10 @@ def create_app(config_class=Config) -> Flask:
         slug = (session.get("tenant_slug") or "").strip().lower()
         if not email or not slug:
             return None
+        from demo_web.auth.tenant_access import sesion_es_portal_aparte
+
+        if sesion_es_portal_aparte(slug):
+            return None
         endpoint = request.endpoint or ""
         if endpoint.startswith("static") or endpoint in {
             "auth.login",
