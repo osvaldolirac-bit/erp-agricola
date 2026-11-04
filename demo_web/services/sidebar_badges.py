@@ -85,7 +85,7 @@ def avisos_riego_sidebar(conn) -> list[dict[str, str]]:
             {
                 "tipo": "regando",
                 "clase": "nav-riego-run",
-                "texto": f"{n_run} S regando",
+                "texto": "regando" if n_run == 1 else f"{n_run} S regando",
                 "title": "Sectores regando",
             }
         )

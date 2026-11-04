@@ -75,6 +75,37 @@ class SidebarRiegoAvisosTests(unittest.TestCase):
             ],
         )
 
+    def test_un_sector_regando_dice_regando(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE hydrawise_cola (id INTEGER PRIMARY KEY, estado TEXT)")
+        conn.execute(
+            "CREATE TABLE hydrawise_cola_item (id INTEGER PRIMARY KEY, cola_id INTEGER, estado TEXT)"
+        )
+        conn.execute("INSERT INTO hydrawise_cola (id, estado) VALUES (1, 'en_ejecucion')")
+        conn.execute(
+            "INSERT INTO hydrawise_cola_item (cola_id, estado) VALUES (1, 'corriendo')"
+        )
+        conn.execute(
+            "INSERT INTO hydrawise_cola_item (cola_id, estado) VALUES (1, 'pendiente')"
+        )
+        with (
+            patch(
+                "demo_web.services.tenant_scope.is_concepcion_tenant", return_value=True
+            ),
+            patch(
+                "demo_web.services.sidebar_badges._n_autorizar_riego", return_value=1
+            ),
+        ):
+            avisos = avisos_riego_sidebar(conn)
+        self.assertEqual(
+            [(a["tipo"], a["texto"]) for a in avisos],
+            [
+                ("regando", "regando"),
+                ("cola", "1 S en cola"),
+                ("autorizar", "1 autorizar"),
+            ],
+        )
+
     def test_sin_cola_solo_autorizar(self):
         conn = sqlite3.connect(":memory:")
         with (
