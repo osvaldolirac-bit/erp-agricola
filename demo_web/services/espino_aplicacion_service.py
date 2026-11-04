@@ -45,6 +45,16 @@ def _rollback(conn) -> None:
         pass
 
 
+def _variedad_columna(conn) -> None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(libro_campo)").fetchall()}
+    if "variedad" in cols:
+        return
+    try:
+        conn.execute("ALTER TABLE libro_campo ADD COLUMN variedad TEXT DEFAULT ''")
+    except Exception:
+        pass
+
+
 def guardar_aplicacion_espino(
     conn,
     demo,
@@ -60,10 +70,17 @@ def guardar_aplicacion_espino(
     tractor: str,
     n_app_fn: Callable,
     n_orden_fn: Callable,
+    huerto: str = "",
 ) -> GuardarEspinoResult:
+    from demo_web.services.espino_scope import etiqueta_variedad_espino, normalizar_cuartel_espino
+
     assert_tenant_espino(tenant_slug)
     if not car:
         raise EspinoAplicacionError("Agregue al menos un producto al evento.")
+    cuartel = normalizar_cuartel_espino(huerto)
+    if not cuartel:
+        raise EspinoAplicacionError("Seleccione una variedad válida (sector).")
+    etiqueta = etiqueta_variedad_espino(cuartel)
 
     for item in car:
         ok, msg, _, _, _ = espino_bodega.validar_salida_bodega(
@@ -81,13 +98,14 @@ def guardar_aplicacion_espino(
 
     conn.execute("BEGIN IMMEDIATE")
     try:
+        _variedad_columna(conn)
         pares: list[tuple[int, dict]] = []
         for item in car:
             demo._insertar_linea_libro_campo(
                 conn,
                 fe_app,
                 n_app,
-                CC_ESPINO,
+                cuartel,
                 especie,
                 item,
                 total_agua,
@@ -99,6 +117,13 @@ def guardar_aplicacion_espino(
             )
             linea_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
             pares.append((linea_id, item))
+        conn.execute(
+            """UPDATE libro_campo
+               SET variedad=?
+               WHERE n_aplicacion=? AND UPPER(sector)=?
+                 AND COALESCE(TRIM(variedad), '')=''""",
+            (etiqueta, n_app, cuartel.upper()),
+        )
 
         for linea_id, item in pares:
             ok, msg, mov_id = espino_bodega.registrar_salida_bodega(
@@ -140,9 +165,13 @@ def eliminar_aplicacion_espino(
     conn.execute("BEGIN IMMEDIATE")
     try:
         rev_info = revertir_salidas_lineas_espino(conn, rows)
+        from demo_web.services.espino_scope import sectores_libro_campo_espino
+
+        sectores = tuple(sorted(sectores_libro_campo_espino()))
+        marcas = ",".join("?" * len(sectores))
         conn.execute(
-            "DELETE FROM libro_campo WHERE n_aplicacion=? AND UPPER(sector)=?",
-            (int(n_app), CC_ESPINO.upper()),
+            f"DELETE FROM libro_campo WHERE n_aplicacion=? AND UPPER(sector) IN ({marcas})",
+            (int(n_app), *sectores),
         )
         conn.commit()
     except Exception as exc:
@@ -173,9 +202,13 @@ def reabrir_aplicacion_espino(
     conn.execute("BEGIN IMMEDIATE")
     try:
         rev_info = revertir_salidas_lineas_espino(conn, rows)
+        from demo_web.services.espino_scope import sectores_libro_campo_espino
+
+        sectores = tuple(sorted(sectores_libro_campo_espino()))
+        marcas = ",".join("?" * len(sectores))
         conn.execute(
-            "DELETE FROM libro_campo WHERE n_aplicacion=? AND UPPER(sector)=?",
-            (int(n_app), CC_ESPINO.upper()),
+            f"DELETE FROM libro_campo WHERE n_aplicacion=? AND UPPER(sector) IN ({marcas})",
+            (int(n_app), *sectores),
         )
         conn.commit()
     except Exception as exc:
@@ -205,8 +238,10 @@ def eliminar_linea_espino(
         raise EspinoAplicacionError("Línea no encontrada.")
     if int(row.get("n_aplicacion") or 0) != int(n_app):
         raise EspinoAplicacionError("La línea no pertenece a esa aplicación.")
-    if str(row.get("sector") or "").strip().upper() != CC_ESPINO.upper():
-        raise EspinoAplicacionError("La línea no es del sector El Espino.")
+    from demo_web.services.espino_scope import sectores_libro_campo_espino
+
+    if str(row.get("sector") or "").strip().upper() not in sectores_libro_campo_espino():
+        raise EspinoAplicacionError("La línea no es del libro de campo El Espino.")
 
     conn.execute("BEGIN IMMEDIATE")
     try:

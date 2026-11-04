@@ -521,7 +521,10 @@ def _historial(demo, conn) -> dict:
         params.append(_N_APP_HIST_MIN)
 
     where_sql = " AND ".join(filtros)
-    query = f"""SELECT n_aplicacion, fecha, sector, especie, producto, lote_producto, ingrediente,
+    cols_lc = {r[1] for r in conn.execute("PRAGMA table_info(libro_campo)")}
+    var_sql = "COALESCE(variedad, '') AS variedad" if "variedad" in cols_lc else "'' AS variedad"
+    query = f"""SELECT n_aplicacion, fecha, sector, {var_sql}, especie,
+                       producto, lote_producto, ingrediente,
                        dosis, unidad_dosis, vol_total, gasto_total, aplicadores,
                        operador_certificado, maquina, tractor, fecha_viable
                 FROM libro_campo WHERE {where_sql}
@@ -551,6 +554,7 @@ def _historial(demo, conn) -> dict:
         "n_aplicacion": "N° APP",
         "fecha": "FECHA",
         "sector": "CUARTEL",
+        "variedad": "VARIEDAD",
         "especie": "ESPECIE",
         "producto": "PRODUCTO",
         "lote_producto": "LOTE",
@@ -565,6 +569,14 @@ def _historial(demo, conn) -> dict:
         "tractor": "TRACTOR",
         "fecha_viable": "FECHA VIABLE PHI",
     })
+    if _tenant_slug_lc(demo) == "espino" and "CUARTEL" in df.columns:
+        from demo_web.services.espino_scope import cuartel_visible_libro
+
+        variedades = df["VARIEDAD"] if "VARIEDAD" in df.columns else [""] * len(df)
+        df["CUARTEL"] = [
+            cuartel_visible_libro(sec, var) for sec, var in zip(df["CUARTEL"], variedades)
+        ]
+    df = df.drop(columns=["VARIEDAD"], errors="ignore")
     df = enriquecer_columna_maquinaria(conn, df, "MAQUINARIA")
     df = enriquecer_columna_maquinaria(conn, df, "TRACTOR")
     if "OP. CERT." in df.columns:
@@ -728,6 +740,10 @@ def _desfase(demo, conn) -> dict:
     df_lc_sin, df_bod_sin = demo._calcular_desfaces_lc_bodega(conn, fi, ff, dias_v)
     lc_rows = df_lc_sin.fillna("").to_dict(orient="records") if not df_lc_sin.empty else []
     bod_rows = df_bod_sin.fillna("").to_dict(orient="records") if not df_bod_sin.empty else []
+    if _tenant_slug_lc(demo) == "espino":
+        from demo_web.services.espino_bodega_desfase import excluir_desfase_ligado
+
+        lc_rows, bod_rows = excluir_desfase_ligado(conn, lc_rows, bod_rows)
 
     return {
         "desfase_lc_rows": lc_rows,
@@ -868,6 +884,7 @@ def _post_guardar_evento(demo, conn) -> dict:
                 tenant_slug=slug,
                 car=car,
                 fe_app=fe_app,
+                huerto=huerto,
                 especie=especie,
                 total_agua=total_agua,
                 aplicador=aplicador,

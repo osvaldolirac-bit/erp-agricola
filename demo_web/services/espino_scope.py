@@ -142,6 +142,30 @@ def normalizar_cuartel_espino(nombre: str) -> str:
     return _VARIEDADES_UPPER.get(key, "")
 
 
+_ETIQUETA_VARIEDAD = {
+    "ROYAL DOWN": "Royal Down",
+    "SWEET ARYANA": "Sweet Aryana",
+    "SANTINA": "Santina",
+}
+
+
+def etiqueta_variedad_espino(nombre: str) -> str:
+    """Nombre de variedad para la columna libro_campo.variedad."""
+    return _ETIQUETA_VARIEDAD.get(normalizar_cuartel_espino(nombre), "")
+
+
+def cuartel_visible_libro(sector: str, variedad: str = "") -> str:
+    """Cuartel del historial: la variedad, no el rótulo genérico EL ESPINO."""
+    canon = normalizar_cuartel_espino(sector)
+    if canon:
+        return canon
+    if (sector or "").strip().upper() == BODEGA_CC_ESPINO.upper():
+        por_var = normalizar_cuartel_espino(variedad)
+        if por_var:
+            return por_var
+    return (sector or "").strip()
+
+
 def cuarteles_espino_sql_in() -> tuple[str, ...]:
     """Sectores Libro de Campo Espino (variedades + legado bodega)."""
     return tuple({*VARIEDADES_ESPINO, BODEGA_CC_ESPINO})
