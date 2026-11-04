@@ -74,6 +74,50 @@ def revertir_salida_linea_espino(
     return {"ok": True, "mov_id": mov_id, "producto": prod}
 
 
+def excluir_desfase_ligado(
+    conn: sqlite3.Connection,
+    lc_rows: list[dict],
+    bod_rows: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Saca del desfase las líneas ya ligadas a una salida de bodega.
+
+    El cuartel del libro es la variedad y la salida queda en EL ESPINO;
+    el cruce por nombre de cuartel las marca como desfase aunque el vínculo exista.
+    """
+    try:
+        links = conn.execute(
+            """SELECT l.n_aplicacion,
+                      UPPER(TRIM(COALESCE(l.producto, ''))) AS prod,
+                      SUBSTR(COALESCE(m.fecha, ''), 1, 10) AS fecha,
+                      UPPER(TRIM(COALESCE(i.producto, ''))) AS mprod,
+                      UPPER(TRIM(COALESCE(m.centro_costo, ''))) AS cc
+               FROM libro_campo l
+               JOIN movimientos m ON m.id = l.movimiento_id
+               JOIN inventario i ON i.id = m.producto_id
+               WHERE l.movimiento_id IS NOT NULL"""
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return lc_rows, bod_rows
+    lc_keys = {(int(r[0]), r[1]) for r in links if r[0] is not None}
+    bod_keys = {(r[2], r[3], r[4]) for r in links}
+
+    def _keep_lc(row: dict) -> bool:
+        try:
+            n_app = int(row.get("N° APP") or row.get("n_aplicacion") or 0)
+        except (TypeError, ValueError):
+            return True
+        prod = str(row.get("PRODUCTO") or row.get("producto") or "").strip().upper()
+        return (n_app, prod) not in lc_keys
+
+    def _keep_bod(row: dict) -> bool:
+        fecha = str(row.get("FECHA") or row.get("fecha") or "")[:10]
+        prod = str(row.get("PRODUCTO") or row.get("producto") or "").strip().upper()
+        cc = str(row.get("CUARTEL") or row.get("centro_costo") or "").strip().upper()
+        return (fecha, prod, cc) not in bod_keys
+
+    return [r for r in lc_rows if _keep_lc(r)], [r for r in bod_rows if _keep_bod(r)]
+
+
 def revertir_salidas_lineas_espino(
     conn: sqlite3.Connection,
     rows: list[dict[str, Any]],
