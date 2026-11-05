@@ -1473,7 +1473,7 @@ def detener_sector_cola(
             cola_id=int(cola[0]),
             horas_override=horas,
             event_key=f"cola{int(row[0])}",
-            notificar_ok=False,
+            notificar_ok=True,
         )
         if not imp.get("ok"):
             conn.execute(
