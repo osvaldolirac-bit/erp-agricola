@@ -31,6 +31,12 @@ class TestItemColaHydra(unittest.TestCase):
         self.assertIn("COALESCE(fert_json, '')", texto)
         self.assertIn("ejecucion_por_relay", texto)
 
+    def test_detener_un_sector_avisa_para_autorizar(self):
+        texto = Path("demo_web/services/hydrawise_riego.py").read_text(encoding="utf-8")
+        fn = texto.split("def detener_sector_cola", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("notificar_ok=True", fn)
+        self.assertNotIn("notificar_ok=False", fn)
+
     def test_la_zona_corriendo_arma_la_ficha_del_detalle(self):
         ahora = datetime(2026, 10, 28, 8, 30, 26)
         ficha = ficha_zona_corriendo(
