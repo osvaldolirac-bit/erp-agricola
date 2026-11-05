@@ -200,7 +200,7 @@ def create_user(
         if exists:
             return False, "Ya existe un usuario con ese correo."
         pwd = hash_password(password, kind)
-        if kind == "demo":
+        if kind in {"demo", "globalgap"}:
             exp = (date.today() + timedelta(days=max(1, int(dias_demo)))).isoformat()
             conn.execute(
                 """
@@ -223,6 +223,20 @@ def create_user(
         msg = f"Usuario creado. Vigencia hasta {exp}."
         if enviar_invitacion:
             ok_mail, mail_txt = send_demo_invitation(
+                db_path,
+                email_n,
+                password,
+                rol,
+                invitado_por or "",
+                exp,
+            )
+            msg = f"{msg} {mail_txt}"
+            if not ok_mail:
+                return True, msg
+    elif kind == "globalgap":
+        msg = f"Usuario de prueba creado. Vigencia hasta {exp}."
+        if enviar_invitacion:
+            ok_mail, mail_txt = send_globalgap_invitation(
                 db_path,
                 email_n,
                 password,
@@ -261,6 +275,47 @@ def send_demo_invitation(
         return False, "No se pudo enviar el correo de invitación (revise SMTP)."
     except Exception as exc:
         return False, f"Invitación no enviada: {exc}"
+
+
+def send_globalgap_invitation(
+    db_path: str,
+    email: str,
+    password_plain: str,
+    rol: str,
+    admin_email: str,
+    fecha_expira: str,
+    *,
+    incluir_clave_al_invitado: bool = True,
+) -> tuple[bool, str]:
+    """Invitación de prueba GlobalGAP: clave solo al invitado y copia sin clave."""
+    try:
+        from erp_master.globalgap_invitacion import enviar_invitacion_globalgap
+
+        _ensure_demo_web_path()
+        import app_demo as demo  # noqa: WPS433
+
+        demo.NOMBRE_DB = db_path
+        extras = []
+        try:
+            extras = list(demo._destinatarios_admin_demo(admin_email) or [])
+        except Exception:
+            extras = []
+
+        def _enviar(asunto: str, cuerpo: str, destinatarios: list[str]) -> bool:
+            return bool(demo._enviar_correo_html(asunto, cuerpo, destinatarios))
+
+        return enviar_invitacion_globalgap(
+            email=email,
+            password_plain=password_plain,
+            rol=rol,
+            admin_email=admin_email,
+            fecha_expira=fecha_expira,
+            enviar_html=_enviar,
+            copias_extra=extras,
+            incluir_clave_al_invitado=incluir_clave_al_invitado,
+        )
+    except Exception as exc:
+        return False, f"Invitación GlobalGAP no enviada: {exc}"
 
 
 def get_plataforma_demo(db_path: str) -> dict[str, Any]:

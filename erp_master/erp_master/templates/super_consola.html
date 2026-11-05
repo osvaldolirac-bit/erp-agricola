@@ -74,14 +74,17 @@
               {% endfor %}
             </select>
           </label>
-          {% if tenant.kind == 'demo' %}
-          <label>Días demo
+          {% if tenant.kind == 'demo' or tenant.kind == 'globalgap' %}
+          <label>{% if tenant.kind == 'globalgap' %}Días de prueba{% else %}Días demo{% endif %}
             <input type="number" name="dias_demo" value="30" min="1" max="365">
           </label>
           <label class="check-inline">
             <input type="checkbox" name="enviar_invitacion" value="1" checked>
             Enviar invitación por correo
           </label>
+          {% endif %}
+          {% if tenant.kind == 'globalgap' %}
+          <p class="help">La cuenta queda en prueba por los días indicados. El invitado recibe la clave y usted recibe una copia sin la contraseña. El ingreso es el portal GlobalGAP.</p>
           {% endif %}
           <label class="check-inline">
             <input type="checkbox" name="mail_tesoreria" value="1">
@@ -117,7 +120,7 @@
                 <th>Rol</th>
                 <th>Opciones</th>
                 <th>Módulos</th>
-                {% if tenant.kind == 'demo' %}<th>Expira</th><th>Invitado por</th>{% endif %}
+                {% if tenant.kind == 'demo' or tenant.kind == 'globalgap' %}<th>Expira</th><th>Invitado por</th>{% endif %}
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -152,7 +155,7 @@
                   </form>
                 </td>
                 <td class="cell-muted">{{ u.modulos_txt }}</td>
-                {% if tenant.kind == 'demo' %}
+                {% if tenant.kind == 'demo' or tenant.kind == 'globalgap' %}
                 <td class="cell-muted">{{ u.fecha_expira or '—' }}</td>
                 <td class="cell-muted">{{ u.invitado_por or '—' }}</td>
                 {% endif %}
