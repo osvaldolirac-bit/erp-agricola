@@ -85,7 +85,8 @@
       {% endif %}
       <div class="input-group">
         <input type="search" name="q" class="form-control form-control-lg" value="{{ filtro_q }}"
-               placeholder="Buscar producto o familia…" autocomplete="off" enterkeyhint="search">
+               placeholder="Buscar producto, familia o ingrediente activo" autocomplete="off" enterkeyhint="search">
+        <button class="btn btn-light btn-lg" type="submit">Filtrar</button>
         {% if filtro_q %}
         <a class="btn btn-outline-light btn-lg px-3" href="{{ url_stock_list_all|default(url_stock_list) }}"
            title="Quitar filtro y ver todo" aria-label="Ver todos los productos">×</a>
@@ -140,10 +141,12 @@
       <p class="small text-muted mb-2">{{ items|length }} con stock · toque para ver kardex</p>
       {% for row in items %}
       <a class="stock-row{% if row.activo %} activo{% endif %}"
-         href="{% if link_mode and link_tok %}{{ url_for('stock_bodega_link.formulario', t=link_tok, pid=row.id) }}{% else %}{{ url_for('modules.stock_bodega_rapido', pid=row.id) }}{% endif %}">
+         href="{% if link_mode and link_tok %}{{ url_for('stock_bodega_link.formulario', t=link_tok, pid=row.id, q=filtro_q or none) }}{% else %}{{ url_for('modules.stock_bodega_rapido', pid=row.id, q=filtro_q or none) }}{% endif %}">
         <div class="min-w-0">
           <div class="stock-name text-truncate">{{ row.producto }}</div>
-          {% if row.familia %}<div class="familia-tag">{{ row.familia }}</div>{% endif %}
+          {% if row.familia or row.ingrediente %}
+          <div class="familia-tag">{{ row.familia }}{% if row.familia and row.ingrediente %} · {% endif %}{{ row.ingrediente }}</div>
+          {% endif %}
         </div>
         <div class="stock-qty text-end">{{ row.stock }} <span class="fs-6 fw-normal text-muted">{{ row.um }}</span></div>
       </a>
