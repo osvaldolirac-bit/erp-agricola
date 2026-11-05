@@ -8,6 +8,18 @@ from demo_web.services.demo_loader import bind_user_session, get_demo_module, ge
 from demo_web.services.module_runner import store_pdf
 
 
+def coincide_busqueda(q: str, producto: str, familia: str, ingrediente: str) -> bool:
+    """Misma búsqueda que Bodega: nombre, familia o ingrediente activo."""
+    ql = (q or "").strip().lower()
+    if not ql:
+        return True
+    return (
+        ql in str(producto or "").lower()
+        or ql in str(familia or "").lower()
+        or ql in str(ingrediente or "").lower()
+    )
+
+
 def _parse_pid() -> int:
     raw = (request.args.get("pid") or "0").strip()
     try:
@@ -113,7 +125,8 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
         rows = conn.execute(
             """SELECT id, producto, COALESCE(stock, 0) AS stock,
                       COALESCE(unidad_medida, ?) AS um,
-                      COALESCE(familia, '') AS familia
+                      COALESCE(familia, '') AS familia,
+                      COALESCE(ingrediente_activo, '') AS ingrediente
                FROM inventario
                WHERE stock > 0
                ORDER BY producto COLLATE NOCASE""",
@@ -156,14 +169,14 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
         conn.close()
 
     items = []
-    ql = q.lower()
     for r in rows:
         iid = int(r[0])
         prod = str(r[1] or "")
         stock_f = float(r[2] or 0)
         um = str(r[3] or "")
         fam = str(r[4] or "")
-        if q and ql not in prod.lower() and ql not in fam.lower():
+        ing = str(r[5] or "")
+        if not coincide_busqueda(q, prod, fam, ing):
             continue
         items.append(
             {
@@ -172,6 +185,7 @@ def _build_context(demo, *, link_tok: str | None, q: str, pid: int) -> dict:
                 "stock": demo.f_cantidad(stock_f),
                 "um": um,
                 "familia": fam,
+                "ingrediente": ing,
                 "activo": pid == iid,
             }
         )
