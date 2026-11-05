@@ -4072,3 +4072,43 @@ body.gap-comercial-page main.demo-main {
   line-height: 1.35;
 }
 
+/* Regar / programar: pantalla verde mientras Hydrawise no contesta. */
+.hydra-espera {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: #2e7d32;
+  color: #fff;
+}
+.hydra-espera[hidden] {
+  display: none !important;
+}
+.hydra-espera-titulo {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+.hydra-espera-reloj {
+  margin: 0.15rem 0;
+  font-size: 2.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.hydra-espera-texto {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+.hydra-espera-volver {
+  margin-top: 0.5rem;
+}
+
