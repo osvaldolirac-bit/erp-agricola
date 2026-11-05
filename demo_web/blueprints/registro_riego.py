@@ -467,7 +467,9 @@ def formulario():
         running_relay_ids=sorted(running_relay_ids),
         paused_relay_ids=sorted(paused_relay_ids),
         queued_relay_ids=sorted(queued_relay_ids),
-        relays_en_ejecucion=sorted(running_relay_ids | paused_relay_ids),
+        relays_en_ejecucion=sorted(
+            running_relay_ids | paused_relay_ids | queued_relay_ids
+        ),
         programa_por_relay=programa_por_relay,
         ejecucion_por_relay=ejecucion_por_relay,
         hydra_tiene_corriendo=bool(running_relay_ids),

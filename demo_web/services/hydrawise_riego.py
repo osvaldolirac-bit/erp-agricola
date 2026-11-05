@@ -663,14 +663,6 @@ def crear_cola(
             }
         vistos.add(rid)
     migrar_hydrawise(conn)
-    ocupados = _relays_en_ejecucion(conn)
-    for ln in detalle:
-        rid = int(ln["relay_id"])
-        if rid in ocupados:
-            return {
-                "ok": False,
-                "msg": f"{_label_zona(conn, rid)} está en ejecución. Elija otro sector.",
-            }
     from demo_web.services.registro_riego import _validar_lineas_fertilizantes
 
     for ln in detalle:
@@ -686,16 +678,8 @@ def crear_cola(
             if not ok_f:
                 return {"ok": False, "msg": msg_f}
 
-    demo = get_demo_module()
-    fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute("BEGIN IMMEDIATE")
-    cur = conn.execute(
-        """INSERT INTO hydrawise_cola (tipo, inicio_programa, estado, creado_por, creado_en)
-           VALUES (?,?,?,?,?)""",
-        (tipo, inicio_programa, "programado", usuario, fh),
-    )
-    cola_id = int(cur.lastrowid)
-    for orden, ln in enumerate(detalle, start=1):
+    preparados: list[tuple[int, float, str]] = []
+    for ln in detalle:
         rid = int(ln["relay_id"])
         minutos = float(ln["minutos"])
         fert_in = ln.get("fertilizantes")
@@ -703,13 +687,33 @@ def crear_cola(
             fert_save = _fert_json_serializa(_fert_lineas_desde_zona(conn, rid))
         else:
             fert_save = _fert_json_serializa(fert_in)
-        conn.execute(
-            """INSERT INTO hydrawise_cola_item
-               (cola_id, orden, relay_id, minutos, estado, fert_json)
-               VALUES (?,?,?,?, 'pendiente', ?)""",
-            (cola_id, orden, rid, minutos, fert_save),
+        preparados.append((rid, minutos, fert_save))
+
+    demo = get_demo_module()
+    fh = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        rechazo = _rechazo_si_hay_orden_vigente(conn, detalle)
+        if rechazo:
+            conn.rollback()
+            return rechazo
+        cur = conn.execute(
+            """INSERT INTO hydrawise_cola (tipo, inicio_programa, estado, creado_por, creado_en)
+               VALUES (?,?,?,?,?)""",
+            (tipo, inicio_programa, "programado", usuario, fh),
         )
-    conn.commit()
+        cola_id = int(cur.lastrowid)
+        for orden, (rid, minutos, fert_save) in enumerate(preparados, start=1):
+            conn.execute(
+                """INSERT INTO hydrawise_cola_item
+                   (cola_id, orden, relay_id, minutos, estado, fert_json)
+                   VALUES (?,?,?,?, 'pendiente', ?)""",
+                (cola_id, orden, rid, minutos, fert_save),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     from demo_web.services.registro_riego import enviar_alerta_hydra_cola_inicio
 
     enviar_alerta_hydra_cola_inicio(
@@ -722,16 +726,72 @@ def crear_cola(
     return {"ok": True, "msg": f"Cola #{cola_id} creada ({len(detalle)} sector(es)).", "cola_id": cola_id}
 
 
-def _relays_en_ejecucion(conn: sqlite3.Connection) -> set[int]:
-    """Sectores que están regando o en pausa. No se pueden volver a elegir."""
-    cola = _cola_activa(conn)
-    if not cola:
-        return set()
+def _rechazo_si_hay_orden_vigente(
+    conn: sqlite3.Connection, detalle: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Bloquea otra cola mientras haya una orden pendiente, regando o en pausa.
+
+    El candado anterior solo miraba la cola más nueva y solo los ítems ya
+    corriendo. Un segundo «regar» a los pocos segundos, con el sector todavía
+    pendiente, abría otra cola y Hydrawise partía el mismo corte otra vez.
+    """
+    ocupados = _relays_en_ejecucion(conn)
+    if not ocupados:
+        return None
+    for ln in detalle:
+        rid = int(ln["relay_id"])
+        if rid in ocupados:
+            return {
+                "ok": False,
+                "msg": (
+                    f"{_label_zona(conn, rid)} ya tiene una orden de riego. "
+                    "Espere a que termine."
+                ),
+            }
     return {
-        int(it[2])
-        for it in _items_cola(conn, int(cola[0]))
-        if str(it[4] or "") in ("corriendo", "pausado")
+        "ok": False,
+        "msg": "Ya hay una orden de riego en curso. Espere a que termine para iniciar otra.",
     }
+
+
+def _relays_en_ejecucion(conn: sqlite3.Connection) -> set[int]:
+    """Sectores con orden vigente: pendiente, regando o en pausa, en cualquier cola activa.
+
+    No migra ni hace commit: se llama dentro de la transacción que inserta la cola.
+    """
+    rows = conn.execute(
+        """SELECT DISTINCT i.relay_id
+           FROM hydrawise_cola_item i
+           JOIN hydrawise_cola c ON c.id = i.cola_id
+           WHERE c.estado IN ('programado', 'en_ejecucion')
+             AND i.estado IN ('pendiente', 'corriendo', 'pausado')"""
+    ).fetchall()
+    return {int(r[0]) for r in rows}
+
+
+def _relay_en_otra_orden(
+    conn: sqlite3.Connection, relay_id: int, item_id: int
+) -> bool:
+    """True si otra orden ya tiene ese sector pendiente, regando o en pausa."""
+    row = conn.execute(
+        """SELECT 1
+           FROM hydrawise_cola_item i
+           JOIN hydrawise_cola c ON c.id = i.cola_id
+           WHERE i.relay_id=? AND i.id<>?
+             AND c.estado IN ('programado', 'en_ejecucion')
+             AND (
+               i.estado IN ('corriendo', 'pausado')
+               OR (
+                 i.estado='pendiente'
+                 AND i.cola_id <> (
+                   SELECT cola_id FROM hydrawise_cola_item WHERE id=?
+                 )
+               )
+             )
+           LIMIT 1""",
+        (int(relay_id), int(item_id), int(item_id)),
+    ).fetchone()
+    return row is not None
 
 
 def _cola_activa(conn: sqlite3.Connection) -> sqlite3.Row | None:
@@ -1672,6 +1732,29 @@ def sincronizar_hydrawise(
                 if cid_err:
                     return {"ok": False, "msg": cid_err}
             item_id, _, relay_id, minutos, _, _, _, _, _, _ = partes_item(pending)
+            if _relay_en_otra_orden(conn, int(relay_id), int(item_id)):
+                conn.execute(
+                    """UPDATE hydrawise_cola_item
+                       SET estado='error', error_msg=?
+                       WHERE id=?""",
+                    ("El sector ya está en otra orden de riego.", item_id),
+                )
+                restantes = _items_cola(conn, cola_id)
+                if restantes and all(
+                    str(it[4]) in ("importado", "error") for it in restantes
+                ):
+                    conn.execute(
+                        "UPDATE hydrawise_cola SET estado='completado' WHERE id=?",
+                        (cola_id,),
+                    )
+                conn.commit()
+                return {
+                    "ok": False,
+                    "msg": (
+                        f"{_label_zona(conn, int(relay_id))} ya está en riego. "
+                        "No se enciende de nuevo."
+                    ),
+                }
             sec = int(float(minutos) * 60)
             run = set_zone_run(key, int(relay_id), sec, controller_id=cid)
             _mark_api_sync(conn, ahora)
@@ -2293,7 +2376,9 @@ def contexto_control_hydra_ui(
             running_relay_ids.add(rid_i)
             paused_relay_ids.discard(rid_i)
             queued_relay_ids.discard(rid_i)
-    relays_en_ejecucion = sorted(running_relay_ids | paused_relay_ids)
+    relays_en_ejecucion = sorted(
+        running_relay_ids | paused_relay_ids | queued_relay_ids
+    )
 
     return {
         "hydra_control_activo": bool(hydra_sectores),
