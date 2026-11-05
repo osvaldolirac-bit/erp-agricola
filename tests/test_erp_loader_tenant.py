@@ -195,6 +195,23 @@ class TestDbPorTenant(unittest.TestCase):
         self.assertFalse(sesion_es_portal_aparte("concepcion"))
         self.assertFalse(sesion_es_portal_aparte("espino"))
 
+    def test_la_consola_entra_por_el_puente_del_portal(self):
+        from flask import Flask
+
+        from demo_web.auth.routes import bp as auth_bp
+        from demo_web.blueprints.globalgap_portal import bp as portal_bp
+
+        app = Flask(__name__)
+        app.config["SECRET_KEY"] = "test"
+        app.register_blueprint(auth_bp)
+        app.register_blueprint(portal_bp)
+        resp = app.test_client().get("/globalgap/login/master?t=abc")
+        self.assertEqual(resp.status_code, 302)
+        loc = resp.headers["Location"]
+        self.assertIn("/login/master", loc)
+        self.assertIn("t=abc", loc)
+        self.assertNotIn("/globalgap/login/master", loc)
+
 
 if __name__ == "__main__":
     unittest.main()

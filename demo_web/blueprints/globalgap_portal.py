@@ -64,6 +64,16 @@ def root():
     return redirect(url_for("globalgap_portal.login"))
 
 
+@bp.route("/login/master")
+def master_entry():
+    """La consola abre {url del tenant}/login/master.
+
+    En GlobalGAP esa url es /agricola/globalgap/, así que el puente cae aquí
+    y sigue al ingreso común, que deja la sesión en el panel del consultor.
+    """
+    return redirect(url_for("auth.master_entry", t=request.args.get("t") or ""))
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     tenant = get_tenant(TENANT_SLUG)
