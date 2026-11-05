@@ -59,7 +59,7 @@ MENU_DEMO = [
 
 ROLES_LC = ("admin", "operador", "certificacion", "lector")
 ROLES_DEMO = ("super_admin", "admin_cliente", "admin", "operador", "certificacion")
-ROLES_GLOBALGAP = ("admin",)
+ROLES_GLOBALGAP = ("super_admin", "admin")
 
 MENU_GLOBALGAP = [
     ("Panel consultor", "PanelGlobalGAP"),
@@ -92,7 +92,7 @@ def roles_for(kind: str) -> tuple[str, ...]:
 
 def protected_role(kind: str) -> str:
     if kind == "globalgap":
-        return "admin"
+        return "super_admin"
     return "admin" if kind == "lc" else "super_admin"
 
 
@@ -138,7 +138,7 @@ def _ensure_mail_riego_bitacora(conn: sqlite3.Connection) -> None:
 def list_users(db_path: str, kind: str) -> list[dict[str, Any]]:
     with tenant_conn(db_path) as conn:
         _ensure_mail_riego_bitacora(conn)
-        if kind == "demo":
+        if kind in {"demo", "globalgap"}:
             rows = conn.execute(
                 """
                 SELECT id, email, rol, modulos, mail_tesoreria,
