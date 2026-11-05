@@ -198,12 +198,98 @@
     return out;
   }
 
+  var hydraEnviando = false;
+  var hydraEsperaTimer = null;
+  var hydraEsperaInicio = 0;
+
+  function bloquearEnvio(on) {
+    document
+      .querySelectorAll("#formHydraRunNow [type='submit'], #formHydraProgramar [type='submit']")
+      .forEach(function (btn) {
+        if (on) {
+          if (!btn.dataset.prevLabel) btn.dataset.prevLabel = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Enviando…";
+        } else {
+          btn.disabled = false;
+          if (btn.dataset.prevLabel) btn.textContent = btn.dataset.prevLabel;
+        }
+      });
+  }
+
+  function pintarEspera() {
+    var reloj = document.getElementById("hydraEsperaReloj");
+    var texto = document.getElementById("hydraEsperaTexto");
+    var capa = document.getElementById("hydraEspera");
+    if (!reloj || !capa) return;
+    var seg = Math.max(0, Math.floor((Date.now() - hydraEsperaInicio) / 1000));
+    var m = Math.floor(seg / 60);
+    var s = seg % 60;
+    reloj.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+    if (seg >= 45 && texto && !capa.querySelector(".hydra-espera-volver")) {
+      texto.textContent =
+        "Siga esperando. No vuelva a apretar: revise si el sector ya quedó en riego.";
+      var volver = document.createElement("button");
+      volver.type = "button";
+      volver.className = "btn btn-light hydra-espera-volver";
+      volver.textContent = "Volver al formulario";
+      volver.addEventListener("click", cerrarEspera);
+      capa.appendChild(volver);
+    }
+  }
+
+  function mostrarEspera() {
+    var capa = document.getElementById("hydraEspera");
+    if (!capa) {
+      capa = document.createElement("div");
+      capa.id = "hydraEspera";
+      capa.className = "hydra-espera";
+      capa.setAttribute("role", "status");
+      capa.setAttribute("aria-live", "polite");
+      capa.innerHTML =
+        '<p class="hydra-espera-titulo">Enviando a Hydrawise</p>' +
+        '<p class="hydra-espera-reloj" id="hydraEsperaReloj">0:00</p>' +
+        '<p class="hydra-espera-texto" id="hydraEsperaTexto">Espere, no vuelva a apretar.</p>';
+      document.body.appendChild(capa);
+    }
+    capa.hidden = false;
+    hydraEsperaInicio = Date.now();
+    pintarEspera();
+    if (hydraEsperaTimer) clearInterval(hydraEsperaTimer);
+    hydraEsperaTimer = setInterval(pintarEspera, 250);
+  }
+
+  function cerrarEspera() {
+    hydraEnviando = false;
+    if (hydraEsperaTimer) {
+      clearInterval(hydraEsperaTimer);
+      hydraEsperaTimer = null;
+    }
+    var capa = document.getElementById("hydraEspera");
+    if (capa) {
+      capa.hidden = true;
+      var volver = capa.querySelector(".hydra-espera-volver");
+      if (volver) volver.remove();
+    }
+    var texto = document.getElementById("hydraEsperaTexto");
+    if (texto) texto.textContent = "Espere, no vuelva a apretar.";
+    bloquearEnvio(false);
+  }
+
+  window.addEventListener("pageshow", function (ev) {
+    if (ev.persisted) cerrarEspera();
+  });
+
   function bindColaForm(formId, containerId) {
     var form = document.getElementById(formId);
     var container = document.getElementById(containerId);
     if (!form || !container) return;
     container.querySelectorAll(".hydra-linea").forEach(wireLine);
     form.addEventListener("submit", function (ev) {
+      if (hydraEnviando) {
+        ev.preventDefault();
+        return;
+      }
       var hidden = form.querySelector('[name="hw_lineas_json"]');
       if (!hidden) return;
       try {
@@ -231,7 +317,15 @@
           ev.preventDefault();
           alert("Con fertirriego activo, indique al menos un producto con cantidad mayor a cero.");
         }
+        return;
       }
+      hydraEnviando = true;
+      mostrarEspera();
+      // El botón se apaga en el siguiente turno: si se deshabilita dentro del
+      // submit, algunos navegadores cancelan el envío que ya iba saliendo.
+      setTimeout(function () {
+        bloquearEnvio(true);
+      }, 0);
     });
   }
 
