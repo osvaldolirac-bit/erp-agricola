@@ -33,6 +33,38 @@ _REMEMBER_KEY = "erp_login_remember_globalgap"
 _PLANTILLAS = ("cerezos", "ciruelos")
 
 
+def acceso_prueba_vigente(fecha_expira) -> bool:
+    """Una fecha vacía es acceso permanente. Una fecha pasada cierra la prueba."""
+    from demo_web.demo_probar import usuario_prueba_vigente
+
+    return usuario_prueba_vigente(fecha_expira)
+
+
+def _cerrar_si_prueba_vencida():
+    email = (session.get("email") or "").strip()
+    if not email:
+        return None
+    try:
+        from demo_web.auth.user_db import fetch_session_row
+
+        bind_tenant_context(TENANT_SLUG)
+        conn = get_erp_module_for(TENANT_SLUG).conectar_db()
+        try:
+            row = fetch_session_row(conn, email)
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    fecha = row[1] if len(row) > 1 else None
+    if acceso_prueba_vigente(fecha):
+        return None
+    session.clear()
+    flash("Su periodo de prueba ha finalizado.", "warning")
+    return redirect(url_for("globalgap_portal.login"))
+
+
 def _require_globalgap_tenant(view):
     from functools import wraps
 
@@ -40,6 +72,9 @@ def _require_globalgap_tenant(view):
     def wrapped(*args, **kwargs):
         if session.get("tenant_slug") != TENANT_SLUG:
             return redirect(url_for("globalgap_portal.login"))
+        corte = _cerrar_si_prueba_vencida()
+        if corte is not None:
+            return corte
         return view(*args, **kwargs)
 
     return wrapped
@@ -60,6 +95,9 @@ def _hash_password(password: str) -> str:
 @bp.route("/")
 def root():
     if session.get("tenant_slug") == TENANT_SLUG and session.get("email"):
+        corte = _cerrar_si_prueba_vencida()
+        if corte is not None:
+            return corte
         return redirect(url_for("globalgap_portal.panel"))
     return redirect(url_for("globalgap_portal.login"))
 
@@ -82,6 +120,9 @@ def login():
         return redirect(url_for("auth.login"))
 
     if session.get("tenant_slug") == TENANT_SLUG and session.get("email"):
+        corte = _cerrar_si_prueba_vencida()
+        if corte is not None:
+            return corte
         return redirect(url_for("globalgap_portal.panel"))
 
     if session.get("tenant_slug") and session.get("tenant_slug") != TENANT_SLUG:
@@ -104,6 +145,10 @@ def login():
             error = "Acceso denegado."
             open_panel = True
             flash(error, "danger")
+        elif not acceso_prueba_vigente(row[2] if len(row) > 2 else None):
+            error = "Su periodo de prueba ha finalizado."
+            open_panel = True
+            flash(error, "warning")
         else:
             _maybe_alert_login(email=email, exitoso=True, tenant_slug=TENANT_SLUG)
             _activate_session(email=row[0], rol=row[1], tenant_slug=TENANT_SLUG)
