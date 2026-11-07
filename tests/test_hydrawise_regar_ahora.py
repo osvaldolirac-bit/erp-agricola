@@ -8,6 +8,7 @@ from pathlib import Path
 from demo_web.services.hydrawise_cola_item import (
     corte_al_pausar,
     ficha_zona_corriendo,
+    horas_bitacora,
     partes_item,
 )
 
@@ -56,12 +57,42 @@ class TestItemColaHydra(unittest.TestCase):
         self.assertEqual(ficha["tipo_label"], "Regar ahora")
         self.assertEqual(ficha["huerto_cc"], "CEREZOS CORTE 1")
         self.assertEqual(ficha["cola_id"], 12)
-        self.assertEqual(ficha["run_inicio_fmt"], "28/10/2026 08:00")
-        self.assertEqual(ficha["fin_estimado_fmt"], "28/10/2026 10:00")
+        self.assertEqual(ficha["run_inicio_fmt"], "28/10/2026 09:00")
+        self.assertEqual(ficha["fin_estimado_fmt"], "28/10/2026 11:00")
+        self.assertEqual(ficha["inicio_programa_fmt"], "28/10/2026 08:52")
         self.assertEqual(ficha["minutos_fmt"], "2 h")
         self.assertEqual(ficha["remaining_sec"], 90 * 60)
         self.assertEqual(ficha["remaining_clock"], "1:30:00")
         self.assertEqual(ficha["remaining_fmt"], "1 h 30 min")
+        invierno = ficha_zona_corriendo(
+            label="Sector 1 Cerezo — corte 1",
+            huerto_cc="CEREZOS CORTE 1",
+            cola_id=1,
+            tipo="run_now",
+            inicio_programa="2026-07-15 18:00:00",
+            creado_por="Regador",
+            minutos=60,
+            run_inicio="2026-07-15 18:00:00",
+            fertilizantes=[],
+            ahora=datetime(2026, 7, 15, 18, 10, 0),
+        )
+        self.assertEqual(invierno["run_inicio_fmt"], "15/07/2026 18:00")
+        self.assertEqual(invierno["fin_estimado_fmt"], "15/07/2026 19:00")
+        programado = ficha_zona_corriendo(
+            label="Sector 1 Cerezo — corte 1",
+            huerto_cc="CEREZOS CORTE 1",
+            cola_id=2,
+            tipo="programado",
+            inicio_programa="2026-11-07 19:00:00",
+            creado_por="Regador",
+            minutos=90,
+            run_inicio="2026-11-07 18:00:00",
+            fertilizantes=[],
+            ahora=datetime(2026, 11, 7, 18, 5, 0),
+        )
+        self.assertEqual(programado["inicio_programa_fmt"], "07/11/2026 19:00")
+        self.assertEqual(programado["run_inicio_fmt"], "07/11/2026 19:00")
+        self.assertEqual(programado["fin_estimado_fmt"], "07/11/2026 20:30")
         self.assertTrue(ficha["tiene_fertirriego"])
         self.assertEqual(ficha["fertilizantes"][0]["nombre"], "Nitrato")
         panel = Path(
@@ -83,6 +114,46 @@ class TestItemColaHydra(unittest.TestCase):
         self.assertIn("hydra_pausar", enlace)
         self.assertIn("hydra_detener_sector", enlace)
         self.assertIn("hydra_cancelar_sector", enlace)
+
+    def test_la_bitacora_muestra_el_inicio_en_hora_de_santiago(self):
+        corte = horas_bitacora(
+            "run_now",
+            "2026-11-07 15:09:00",
+            [
+                {
+                    "run_inicio": "2026-11-07 15:09:00",
+                    "run_fin": "2026-11-07 17:09:00",
+                }
+            ],
+        )
+        self.assertEqual(corte["inicio_fmt"], "07/11/2026 16:09")
+        self.assertEqual(corte["tipo_label"], "Regar ahora")
+        self.assertEqual(corte["turnos"][0]["run_inicio_fmt"], "07/11/2026 16:09")
+        self.assertEqual(corte["turnos"][0]["run_fin_fmt"], "07/11/2026 18:09")
+        invierno = horas_bitacora(
+            "run_now",
+            "2026-07-15 18:00:00",
+            [{"run_inicio": "2026-07-15 18:00:00", "run_fin": "2026-07-15 18:05:00"}],
+        )
+        self.assertEqual(invierno["inicio_fmt"], "15/07/2026 18:00")
+        self.assertEqual(invierno["turnos"][0]["run_fin_fmt"], "15/07/2026 18:05")
+        programado = horas_bitacora(
+            "programado",
+            "2026-11-07 19:00:00",
+            [{"run_inicio": "2026-11-07 18:00:00", "run_fin": "2026-11-07 18:05:00"}],
+        )
+        self.assertEqual(programado["inicio_fmt"], "07/11/2026 19:00")
+        self.assertEqual(programado["turnos"][0]["run_inicio_fmt"], "07/11/2026 19:00")
+        self.assertEqual(programado["turnos"][0]["run_fin_fmt"], "07/11/2026 19:05")
+        sin_arranque = horas_bitacora("programado", "2026-11-07 19:00:00", [])
+        self.assertEqual(sin_arranque["inicio_fmt"], "07/11/2026 19:00")
+        plantilla = Path(
+            "demo_web/templates/registro_riego/_hydra_bitacora_ui.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("c.inicio_fmt", plantilla)
+        self.assertIn("it.run_inicio_fmt", plantilla)
+        servicio = Path("demo_web/services/hydrawise_riego.py").read_text(encoding="utf-8")
+        self.assertIn("horas_bitacora", servicio)
 
     def test_pausar_guarda_lo_que_falta(self):
         ahora = datetime(2026, 10, 28, 8, 30, 26)

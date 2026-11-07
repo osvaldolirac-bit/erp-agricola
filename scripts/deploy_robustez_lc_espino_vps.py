@@ -58,6 +58,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/templates/registro_riego/_hydra_panel_regar.html",
     "demo_web/templates/registro_riego/_hydra_panel_programar.html",
     "demo_web/templates/registro_riego/_hydra_running_detail_modal.html",
+    "demo_web/templates/registro_riego/_hydra_bitacora_ui.html",
     "demo_web/templates/registro_riego/_hydra_control_ui.html",
     "demo_web/templates/registro_riego/hydra_link.html",
     "demo_web/static/js/hydra_link_control.js",

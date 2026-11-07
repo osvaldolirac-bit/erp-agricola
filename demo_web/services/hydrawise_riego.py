@@ -1854,12 +1854,19 @@ def listar_bitacora_operativa(
                     "relay_id": rid,
                     "label": labels.get(rid) or f"Zona {rid}",
                     "minutos": float(it[3]),
+                    "minutos_fmt": _fmt_minutos_riego(float(it[3])),
                     "estado": est,
                     "codigo_riego": it[7],
                     "error_msg": it[8],
+                    "run_inicio": it[5],
                     "run_fin": it[6],
                 }
             )
+        from demo_web.services.hydrawise_cola_item import horas_bitacora
+
+        horas = horas_bitacora(str(r[1] or ""), str(r[2] or ""), turnos)
+        for turno, visto in zip(turnos, horas["turnos"]):
+            turno.update(visto)
         n = len(turnos)
         partes: list[str] = [f"{n} sector(es)"]
         if importados:
@@ -1870,7 +1877,9 @@ def listar_bitacora_operativa(
             {
                 "id": cid,
                 "tipo": r[1],
+                "tipo_label": horas["tipo_label"],
                 "inicio_programa": r[2],
+                "inicio_fmt": horas["inicio_fmt"],
                 "estado": r[3],
                 "creado_por": r[4],
                 "creado_en": r[5],
@@ -2245,10 +2254,20 @@ def programa_por_relay_en_cola(
     ahora = demo.hora_chile()
     items = _cola_turnos(cola)
     nombres = _map_nombres_fertilizante(conn)
+    from demo_web.services.hydrawise_cola_item import reloj_guardado_a_santiago
+
     inicio_prog = _parse_dt_chile(cola.get("inicio_programa"))
-    inicio_prog_fmt = inicio_prog.strftime("%d/%m/%Y %H:%M") if inicio_prog else "—"
     tipo = str(cola.get("tipo") or "")
     tipo_label = "Programado" if tipo == "programado" else "Regar ahora"
+    if inicio_prog and tipo == "programado":
+        inicio_prog_fmt = inicio_prog.strftime("%d/%m/%Y %H:%M")
+    elif inicio_prog:
+        inicio_prog_fmt = reloj_guardado_a_santiago(inicio_prog).strftime("%d/%m/%Y %H:%M")
+    else:
+        inicio_prog_fmt = "—"
+    programado_futuro = bool(
+        tipo == "programado" and inicio_prog and inicio_prog > ahora
+    )
 
     out: dict[int, dict[str, Any]] = {}
     for it in items:
@@ -2260,12 +2279,16 @@ def programa_por_relay_en_cola(
         )
         fert_lines = _fert_ui_lineas(fert_src, nombres)
         est_dt = _inicio_estimado_pendiente(cola, items, it, ahora)
+        if programado_futuro:
+            est_fmt = est_dt.strftime("%d/%m %H:%M")
+        else:
+            est_fmt = reloj_guardado_a_santiago(est_dt).strftime("%d/%m %H:%M")
         out[rid] = {
             "orden": int(it["orden"]),
             "minutos": float(it["minutos"]),
             "minutos_fmt": _fmt_minutos_riego(float(it["minutos"])),
             "inicio_programa_fmt": inicio_prog_fmt,
-            "inicio_estimado_fmt": est_dt.strftime("%d/%m %H:%M"),
+            "inicio_estimado_fmt": est_fmt,
             "tipo_label": tipo_label,
             "tiene_fertirriego": bool(fert_lines),
             "fertilizantes": fert_lines,
