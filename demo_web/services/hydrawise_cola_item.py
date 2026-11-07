@@ -60,6 +60,51 @@ def _fmt_santiago(momento: datetime, forma: str = "%d/%m/%Y %H:%M") -> str:
     return reloj_guardado_a_santiago(momento).strftime(forma)
 
 
+def fmt_reloj_guardado(valor: str | None, *, ya_es_local: bool = False) -> str:
+    """Texto de un reloj guardado. Programar ya trae la hora del teléfono."""
+    momento = _parse_dt(valor)
+    if not momento:
+        return ""
+    if ya_es_local:
+        return momento.strftime("%d/%m/%Y %H:%M")
+    return _fmt_santiago(momento)
+
+
+def horas_bitacora(
+    tipo: str,
+    inicio_programa: str | None,
+    turnos: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Inicio de la cola y de cada sector, en la hora que ve el teléfono.
+
+    El inicio de una cola programada ya está en hora local.
+    run_inicio y run_fin salen de hora_chile(), fijo en UTC−4.
+    """
+    programado = str(tipo or "") == "programado"
+    inicios: list[datetime] = []
+    vistos: list[dict[str, str]] = []
+    for turno in turnos:
+        ri = _parse_dt(str(turno.get("run_inicio") or ""))
+        rf = _parse_dt(str(turno.get("run_fin") or ""))
+        if ri:
+            inicios.append(ri)
+        vistos.append(
+            {
+                "run_inicio_fmt": _fmt_santiago(ri) if ri else "",
+                "run_fin_fmt": _fmt_santiago(rf) if rf else "",
+            }
+        )
+    if inicios:
+        inicio_fmt = _fmt_santiago(min(inicios))
+    else:
+        inicio_fmt = fmt_reloj_guardado(inicio_programa, ya_es_local=programado)
+    return {
+        "inicio_fmt": inicio_fmt,
+        "tipo_label": "Programado" if programado else "Regar ahora",
+        "turnos": vistos,
+    }
+
+
 def _reloj(segundos: int) -> str:
     resto = max(0, int(segundos))
     minutos, seg = divmod(resto, 60)

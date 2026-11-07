@@ -1854,12 +1854,19 @@ def listar_bitacora_operativa(
                     "relay_id": rid,
                     "label": labels.get(rid) or f"Zona {rid}",
                     "minutos": float(it[3]),
+                    "minutos_fmt": _fmt_minutos_riego(float(it[3])),
                     "estado": est,
                     "codigo_riego": it[7],
                     "error_msg": it[8],
+                    "run_inicio": it[5],
                     "run_fin": it[6],
                 }
             )
+        from demo_web.services.hydrawise_cola_item import horas_bitacora
+
+        horas = horas_bitacora(str(r[1] or ""), str(r[2] or ""), turnos)
+        for turno, visto in zip(turnos, horas["turnos"]):
+            turno.update(visto)
         n = len(turnos)
         partes: list[str] = [f"{n} sector(es)"]
         if importados:
@@ -1870,7 +1877,9 @@ def listar_bitacora_operativa(
             {
                 "id": cid,
                 "tipo": r[1],
+                "tipo_label": horas["tipo_label"],
                 "inicio_programa": r[2],
+                "inicio_fmt": horas["inicio_fmt"],
                 "estado": r[3],
                 "creado_por": r[4],
                 "creado_en": r[5],
