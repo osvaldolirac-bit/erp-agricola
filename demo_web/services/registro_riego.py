@@ -5,7 +5,7 @@ import os
 import re
 import secrets
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -1619,8 +1619,9 @@ def inicio_visible_mail(tipo: str, inicio_programa: str) -> str:
         naive = datetime.fromisoformat(raw.replace(" ", "T")[:19])
     except ValueError:
         return datetime.now(_SANTIAGO).strftime("%Y-%m-%d %H:%M")
-    utc = (naive + timedelta(hours=4)).replace(tzinfo=timezone.utc)
-    return utc.astimezone(_SANTIAGO).strftime("%Y-%m-%d %H:%M")
+    from demo_web.services.hydrawise_cola_item import reloj_guardado_a_santiago
+
+    return reloj_guardado_a_santiago(naive).strftime("%Y-%m-%d %H:%M")
 
 
 def enviar_alerta_hydra_cola_inicio(

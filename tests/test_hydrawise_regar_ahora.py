@@ -56,12 +56,42 @@ class TestItemColaHydra(unittest.TestCase):
         self.assertEqual(ficha["tipo_label"], "Regar ahora")
         self.assertEqual(ficha["huerto_cc"], "CEREZOS CORTE 1")
         self.assertEqual(ficha["cola_id"], 12)
-        self.assertEqual(ficha["run_inicio_fmt"], "28/10/2026 08:00")
-        self.assertEqual(ficha["fin_estimado_fmt"], "28/10/2026 10:00")
+        self.assertEqual(ficha["run_inicio_fmt"], "28/10/2026 09:00")
+        self.assertEqual(ficha["fin_estimado_fmt"], "28/10/2026 11:00")
+        self.assertEqual(ficha["inicio_programa_fmt"], "28/10/2026 08:52")
         self.assertEqual(ficha["minutos_fmt"], "2 h")
         self.assertEqual(ficha["remaining_sec"], 90 * 60)
         self.assertEqual(ficha["remaining_clock"], "1:30:00")
         self.assertEqual(ficha["remaining_fmt"], "1 h 30 min")
+        invierno = ficha_zona_corriendo(
+            label="Sector 1 Cerezo — corte 1",
+            huerto_cc="CEREZOS CORTE 1",
+            cola_id=1,
+            tipo="run_now",
+            inicio_programa="2026-07-15 18:00:00",
+            creado_por="Regador",
+            minutos=60,
+            run_inicio="2026-07-15 18:00:00",
+            fertilizantes=[],
+            ahora=datetime(2026, 7, 15, 18, 10, 0),
+        )
+        self.assertEqual(invierno["run_inicio_fmt"], "15/07/2026 18:00")
+        self.assertEqual(invierno["fin_estimado_fmt"], "15/07/2026 19:00")
+        programado = ficha_zona_corriendo(
+            label="Sector 1 Cerezo — corte 1",
+            huerto_cc="CEREZOS CORTE 1",
+            cola_id=2,
+            tipo="programado",
+            inicio_programa="2026-11-07 19:00:00",
+            creado_por="Regador",
+            minutos=90,
+            run_inicio="2026-11-07 18:00:00",
+            fertilizantes=[],
+            ahora=datetime(2026, 11, 7, 18, 5, 0),
+        )
+        self.assertEqual(programado["inicio_programa_fmt"], "07/11/2026 19:00")
+        self.assertEqual(programado["run_inicio_fmt"], "07/11/2026 19:00")
+        self.assertEqual(programado["fin_estimado_fmt"], "07/11/2026 20:30")
         self.assertTrue(ficha["tiene_fertirriego"])
         self.assertEqual(ficha["fertilizantes"][0]["nombre"], "Nitrato")
         panel = Path(

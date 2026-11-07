@@ -1,8 +1,11 @@
 """Columnas de un ítem de cola Hydrawise. fert_json es la décima."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
+
+_SANTIAGO = ZoneInfo("America/Santiago")
 
 
 def partes_item(row: Any) -> tuple:
@@ -42,6 +45,19 @@ def _fmt_minutos(minutos: float) -> str:
     if resto:
         return f"{horas} h {resto} min"
     return f"{horas} h"
+
+
+def reloj_guardado_a_santiago(momento: datetime) -> datetime:
+    """hora_chile() guarda UTC−4 fijo. En verano Santiago va una hora adelante.
+
+    El resultado es naive, en la hora que ve el teléfono.
+    """
+    utc = (momento.replace(tzinfo=None) + timedelta(hours=4)).replace(tzinfo=timezone.utc)
+    return utc.astimezone(_SANTIAGO).replace(tzinfo=None)
+
+
+def _fmt_santiago(momento: datetime, forma: str = "%d/%m/%Y %H:%M") -> str:
+    return reloj_guardado_a_santiago(momento).strftime(forma)
 
 
 def _reloj(segundos: int) -> str:
@@ -103,17 +119,21 @@ def ficha_zona_corriendo(
     fin = t0 + timedelta(minutes=float(minutos or 0))
     inicio_prog = _parse_dt(inicio_programa)
     tipo_label = "Programado" if str(tipo or "") == "programado" else "Regar ahora"
+    if inicio_prog and str(tipo or "") == "programado":
+        inicio_prog_fmt = inicio_prog.strftime("%d/%m/%Y %H:%M")
+    elif inicio_prog:
+        inicio_prog_fmt = _fmt_santiago(inicio_prog)
+    else:
+        inicio_prog_fmt = ""
     fert = list(fertilizantes or [])
     return {
         "label": (label or "").strip() or "Riego en curso",
         "huerto_cc": (huerto_cc or "").strip(),
         "tipo_label": tipo_label,
         "cola_id": int(cola_id) if cola_id else None,
-        "inicio_programa_fmt": (
-            inicio_prog.strftime("%d/%m/%Y %H:%M") if inicio_prog else ""
-        ),
-        "run_inicio_fmt": t0.strftime("%d/%m/%Y %H:%M") if _parse_dt(run_inicio) else "—",
-        "fin_estimado_fmt": "—" if pausado else fin.strftime("%d/%m/%Y %H:%M"),
+        "inicio_programa_fmt": inicio_prog_fmt,
+        "run_inicio_fmt": _fmt_santiago(t0) if _parse_dt(run_inicio) else "—",
+        "fin_estimado_fmt": "—" if pausado else _fmt_santiago(fin),
         "minutos_fmt": _fmt_minutos(
             float(minutos_total if minutos_total is not None else minutos or 0)
         ),
