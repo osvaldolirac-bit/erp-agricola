@@ -5,7 +5,7 @@ from flask import flash, render_template, request, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native import espino_bodega, espino_libro_campo, espino_maquinaria
+from demo_web.services.native import espino_bodega, espino_cosecha, espino_libro_campo, espino_maquinaria
 from demo_web.services.native._helpers import parse_date, temporada_sel
 
 SECCIONES = [
@@ -14,6 +14,7 @@ SECCIONES = [
     ("maquinaria", "🚜 TRABAJOS MAQUINARIA"),
     *espino_bodega.BODEGA_SECCIONES,
     *espino_libro_campo.LIBRO_SECCIONES,
+    *espino_cosecha.COSECHA_SECCIONES,
 ]
 
 _BODEGA_SECS = {k for k, _ in espino_bodega.BODEGA_SECCIONES}
@@ -304,6 +305,8 @@ def gather_espino(user_email: str, user_rol: str) -> dict:
             ctx.update(espino_bodega.gather_bodega(demo, conn, op_override=bodega_op_override))
         elif sec == "libro_campo":
             ctx.update(espino_libro_campo.gather_libro_campo(demo, conn))
+        elif sec == "cosecha_cerezas":
+            ctx.update(espino_cosecha.gather_cosecha_cerezas(demo, conn))
         return ctx
     finally:
         conn.close()

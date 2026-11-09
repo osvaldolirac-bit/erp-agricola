@@ -550,6 +550,293 @@
   {% elif sec_activa == 'libro_campo' %}
   {% include "partials/espino_libro_campo.html" %}
 
+  {% elif sec_activa == 'cosecha_cerezas' %}
+  <style>
+    /* ── KPI Cards ───────────────────────────────────────── */
+    .cc-kpi { background:#fff; border:1px solid #dee2e6; border-radius:10px; padding:1rem 1.25rem; text-align:center; }
+    .cc-kpi-label { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:#6c757d; margin-bottom:.25rem; }
+    .cc-kpi-value { font-size:1.5rem; font-weight:700; color:#1b5e20; line-height:1; }
+    .cc-kpi-sub   { font-size:.75rem; color:#6c757d; margin-top:.2rem; }
+
+    /* ── Section headers ─────────────────────────────────── */
+    .cc-section-title {
+      font-size:.8rem; font-weight:700; text-transform:uppercase;
+      letter-spacing:.08em; color:#fff; background:#2e7d32;
+      padding:.35rem .75rem; border-radius:6px; margin-bottom:.75rem;
+    }
+
+    /* ── Tables ──────────────────────────────────────────── */
+    .cc-table { font-size:.82rem; }
+    .cc-table th { background:#f1f8f4; color:#1b5e20; font-weight:700; white-space:nowrap; vertical-align:middle; }
+    .cc-table tfoot td { background:#e8f5e9; font-weight:700; }
+    .cc-table .cc-row-total td { background:#c8e6c9; font-weight:700; }
+
+    /* ── MG Bloques ──────────────────────────────────────── */
+    .cc-mg-bloque {
+      border:2px solid #a5d6a7; border-radius:10px;
+      overflow:hidden; margin-bottom:1.25rem;
+    }
+    .cc-mg-bloque-header {
+      background:linear-gradient(135deg,#2e7d32,#43a047);
+      color:#fff; padding:.5rem 1rem; font-weight:700; font-size:.9rem;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .cc-mg-bloque-header .cc-mg-total-chip {
+      background:rgba(255,255,255,.18); border-radius:20px;
+      padding:.15rem .6rem; font-size:.78rem;
+    }
+    .cc-mg-table { font-size:.82rem; margin:0; }
+    .cc-mg-table thead th {
+      background:#e8f5e9; color:#1b5e20; font-size:.75rem;
+      font-weight:700; text-align:center; white-space:nowrap;
+      padding:.45rem .5rem; border-bottom:2px solid #a5d6a7;
+    }
+    .cc-mg-table thead th.cc-th-semana { text-align:left; min-width:70px; }
+    .cc-mg-table tbody td { vertical-align:middle; padding:.4rem .5rem; }
+    .cc-mg-table tbody td.cc-td-semana {
+      font-weight:700; background:#f9fbe7; color:#558b2f; text-align:left;
+    }
+
+    /* ── Calibre cell ────────────────────────────────────── */
+    .cc-cal-cell { text-align:center; }
+    .cc-cal-kg   { font-weight:600; color:#212529; display:block; line-height:1.2; }
+    .cc-cal-kg.empty { color:#ced4da; }
+    .cc-cal-price {
+      display:inline-block; margin-top:.2rem; padding:.05rem .35rem;
+      border-radius:4px; font-size:.7rem; font-weight:600;
+    }
+
+    /* ── MG badge colors ─────────────────────────────────── */
+    .mg-badge-alto  { background:#1b5e20; color:#fff; }
+    .mg-badge-medio { background:#388e3c; color:#fff; }
+    .mg-badge-bajo  { background:#a5d6a7; color:#1b5e20; }
+    .mg-badge-none  { background:#e9ecef; color:#868e96; }
+
+    /* ── Pct bar ─────────────────────────────────────────── */
+    .cc-pct-bar { height:8px; border-radius:4px; background:#a5d6a7; }
+
+    /* ── Summary row ─────────────────────────────────────── */
+    .cc-mg-table tfoot td {
+      background:#e8f5e9; font-weight:700; text-align:center; font-size:.8rem;
+    }
+    .cc-mg-table tfoot td.cc-td-semana { text-align:left; color:#1b5e20; }
+    .cc-usd-total-row { font-size:.8rem; }
+    .cc-usd-cell { font-weight:700; color:#1b5e20; text-align:center; }
+  </style>
+
+  {# ── KPIs ──────────────────────────────────────────────────────── #}
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="cc-kpi">
+        <div class="cc-kpi-label">Total Cosecha</div>
+        <div class="cc-kpi-value">{{ cosecha_total_kg }} kg</div>
+        <div class="cc-kpi-sub">{{ cosecha_total_totes }} totes</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="cc-kpi">
+        <div class="cc-kpi-label">Kg / Há</div>
+        <div class="cc-kpi-value">{{ cosecha_kg_ha }}</div>
+        <div class="cc-kpi-sub">sobre {{ embalado_pct_exp }}% exportado</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="cc-kpi">
+        <div class="cc-kpi-label">USD Proyectado MG</div>
+        <div class="cc-kpi-value">{{ mg_usd_total }}</div>
+        <div class="cc-kpi-sub">base kilos embalados</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="cc-kpi">
+        <div class="cc-kpi-label">MG Promedio</div>
+        <div class="cc-kpi-value">{{ mg_prom }}</div>
+        <div class="cc-kpi-sub">USD / kg exportado</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Tabla Cosecha ──────────────────────────────────────────────── #}
+  <div class="panel-card mb-4">
+    <div class="cc-section-title">📋 Registros de Cosecha</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered cc-table mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Doc</th><th>Variedad</th>
+            <th class="text-end">Totes</th><th class="text-end">Kilos netos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in cosecha_rows %}
+          <tr>
+            <td>{{ r.fecha }}</td>
+            <td>{{ r.documento }}</td>
+            <td><span class="badge bg-success bg-opacity-75">{{ r.variedad }}</span></td>
+            <td class="text-end">{{ r.totes }}</td>
+            <td class="text-end fw-semibold">{{ r.kilos_netos }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="cc-row-total">
+            <td colspan="3">TOTAL</td>
+            <td class="text-end">{{ cosecha_total_totes }}</td>
+            <td class="text-end">{{ cosecha_total_kg }} kg</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {# ── Tabla Embalado ─────────────────────────────────────────────── #}
+  <div class="panel-card mb-4">
+    <div class="cc-section-title">📦 Embalado por Variedad y Calibre (kg)</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered cc-table mb-2">
+        <thead>
+          <tr>
+            <th>Variedad</th>
+            {% for c in embalado_calibres %}<th class="text-center">{{ c }}</th>{% endfor %}
+            <th class="text-center">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in embalado_rows %}
+          <tr>
+            <td class="fw-semibold">{{ r.variedad }}</td>
+            {% for c in embalado_calibres %}<td class="text-center">{{ r[c] }}</td>{% endfor %}
+            <td class="text-center fw-bold">{{ r.total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="fw-bold">TOTAL x CALIBRE</td>
+            {% for c in embalado_calibres %}
+            <td class="text-center">{{ embalado_totales[c] }}</td>
+            {% endfor %}
+            <td class="text-center">{{ embalado_total_kg }}</td>
+          </tr>
+          <tr>
+            <td class="fw-bold text-muted small">% x calibre</td>
+            {% for c in embalado_calibres %}
+            <td class="text-center small">
+              {{ embalado_pct_cal[c] }}%
+              <div class="cc-pct-bar mt-1" style="width:{{ embalado_pct_cal[c]|float|round }}%;max-width:100%"></div>
+            </td>
+            {% endfor %}
+            <td class="text-center small">{{ embalado_pct_exp }}%<br><span class="text-muted">exportado</span></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {# ── Tabla MG ───────────────────────────────────────────────────── #}
+  <div class="cc-section-title" style="margin-bottom:1rem;">💰 Proyección Mínimos Garantizados (MG)</div>
+  <p class="small text-muted mb-3">
+    Cada celda muestra <strong>kg embalados</strong> y el precio MG en USD/kg para esa semana y calibre.
+    El total por variedad es la suma de <em>kg × MG</em> de las celdas con datos.
+  </p>
+
+  {# leyenda colores #}
+  <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+    <span class="small text-muted">MG:</span>
+    <span class="cc-cal-price mg-badge-alto">≥ $4.00</span>
+    <span class="cc-cal-price mg-badge-medio">$2.50 – $3.99</span>
+    <span class="cc-cal-price mg-badge-bajo">< $2.50</span>
+    <span class="cc-cal-price mg-badge-none">sin precio</span>
+  </div>
+
+  {% for bloque in mg_bloques %}
+  <div class="cc-mg-bloque">
+    <div class="cc-mg-bloque-header">
+      <span>🍒 {{ bloque.label }}</span>
+      <span class="cc-mg-total-chip">USD Total: {{ bloque.usd_total_fmt }}</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered cc-mg-table mb-0">
+        <thead>
+          <tr>
+            <th class="cc-th-semana">Semana</th>
+            {% for cal in mg_calibres %}
+            <th>
+              Calibre <strong>{{ cal }}</strong>
+            </th>
+            {% endfor %}
+            <th>USD Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sem_row in bloque.semanas %}
+          <tr{% if sem_row.is_base %} class="table-success"{% endif %}>
+            <td class="cc-td-semana">
+              Sem {{ sem_row.semana }}
+              {% if sem_row.is_base %}<span class="badge bg-success ms-1" style="font-size:.65rem;">cosecha</span>{% else %}<span class="badge bg-secondary ms-1" style="font-size:.65rem;">proyección</span>{% endif %}
+            </td>
+            {% for cal_data in sem_row.calibres %}
+            <td class="cc-cal-cell">
+              {% if cal_data.has_data %}
+              <span class="cc-cal-kg">{{ cal_data.kg_fmt }} kg</span>
+              {% else %}
+              <span class="cc-cal-kg empty">—</span>
+              {% endif %}
+              <span class="cc-cal-price {{ cal_data.badge }}">{{ cal_data.mg_fmt }}</span>
+              {% if cal_data.usd > 0 %}
+              <span class="d-block small text-muted mt-1">{{ cal_data.usd_fmt }}</span>
+              {% endif %}
+            </td>
+            {% endfor %}
+            <td class="cc-usd-cell{% if sem_row.is_base %} fw-bold text-success{% endif %}">{{ sem_row.usd_total_fmt }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="cc-td-semana fw-bold" style="color:#1b5e20">TOTAL VARIEDAD</td>
+            {% for cal in mg_calibres %}
+            <td class="text-center text-muted small">—</td>
+            {% endfor %}
+            <td class="cc-usd-cell fw-bold text-success">{{ bloque.usd_total_fmt }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  {# ── Resumen global MG ──────────────────────────────────────────── #}
+  <div class="panel-card mt-2">
+    <div class="cc-section-title" style="margin-bottom:.75rem;">📊 Resumen Global MG</div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="cc-kpi">
+          <div class="cc-kpi-label">USD Total proyectado</div>
+          <div class="cc-kpi-value" style="font-size:1.8rem;">{{ mg_usd_total }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="cc-kpi">
+          <div class="cc-kpi-label">MG Promedio ponderado</div>
+          <div class="cc-kpi-value" style="font-size:1.8rem;">{{ mg_prom }}</div>
+          <div class="cc-kpi-sub">USD / kg exportado</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="cc-kpi">
+          <div class="cc-kpi-label">Por variedad</div>
+          {% for bloque in mg_bloques %}
+          <div class="d-flex justify-content-between small mb-1">
+            <span>{{ bloque.label }}</span>
+            <strong>{{ bloque.usd_total_fmt }}</strong>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   {% endif %}
 </div>
 {% endblock %}
