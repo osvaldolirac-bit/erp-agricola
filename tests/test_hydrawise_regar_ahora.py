@@ -10,6 +10,7 @@ from demo_web.services.hydrawise_cola_item import (
     ficha_zona_corriendo,
     horas_bitacora,
     partes_item,
+    programado_aun_espera,
 )
 
 
@@ -154,6 +155,19 @@ class TestItemColaHydra(unittest.TestCase):
         self.assertIn("it.run_inicio_fmt", plantilla)
         servicio = Path("demo_web/services/hydrawise_riego.py").read_text(encoding="utf-8")
         self.assertIn("horas_bitacora", servicio)
+
+    def test_programar_parte_cuando_el_telefono_llega_a_la_hora(self):
+        inicio = datetime(2026, 11, 10, 15, 45)
+        self.assertTrue(programado_aun_espera(inicio, datetime(2026, 11, 10, 14, 40)))
+        self.assertFalse(programado_aun_espera(inicio, datetime(2026, 11, 10, 14, 45)))
+        self.assertFalse(programado_aun_espera(inicio, datetime(2026, 11, 10, 14, 48)))
+        invierno = datetime(2026, 7, 15, 15, 45)
+        self.assertTrue(programado_aun_espera(invierno, datetime(2026, 7, 15, 15, 40)))
+        self.assertFalse(programado_aun_espera(invierno, datetime(2026, 7, 15, 15, 45)))
+        texto = Path("demo_web/services/hydrawise_riego.py").read_text(encoding="utf-8")
+        puerta = texto.split("def sincronizar_hydrawise", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("programado_aun_espera", puerta)
+        self.assertNotIn("ahora < inicio_dt", puerta)
 
     def test_pausar_guarda_lo_que_falta(self):
         ahora = datetime(2026, 10, 28, 8, 30, 26)

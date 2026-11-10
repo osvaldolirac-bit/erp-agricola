@@ -1244,7 +1244,9 @@ def cola_permite_apagar(cola: dict[str, Any] | None) -> bool:
         inicio = _parse_dt_chile(str(cola.get("inicio_programa") or ""))
         demo = get_demo_module()
         ahora = demo.hora_chile()
-        if inicio and ahora >= inicio:
+        from demo_web.services.hydrawise_cola_item import programado_aun_espera
+
+        if inicio and not programado_aun_espera(inicio, ahora):
             return any(str(it.get("estado") or "") in activos for it in items)
     return False
 
@@ -1564,7 +1566,9 @@ def sincronizar_hydrawise(
         cola_id = int(cola[0])
         inicio_prog = str(cola[2] or "")
         inicio_dt = _parse_dt_chile(inicio_prog) or ahora
-        if cola[3] == "programado" and ahora < inicio_dt:
+        from demo_web.services.hydrawise_cola_item import programado_aun_espera
+
+        if cola[3] == "programado" and programado_aun_espera(inicio_dt, ahora):
             return {
                 "ok": True,
                 "msg": f"Cola #{cola_id} programada — arranca {inicio_prog[:16]}.",
@@ -2191,7 +2195,9 @@ def _inicio_estimado_pendiente(
     ordenados = sorted(items, key=lambda x: int(x["orden"]))
     inicio_prog = _parse_dt_chile(cola.get("inicio_programa")) or ahora
     cola_est = str(cola.get("estado") or "")
-    if cola_est == "programado" and inicio_prog > ahora:
+    from demo_web.services.hydrawise_cola_item import programado_aun_espera
+
+    if cola_est == "programado" and programado_aun_espera(inicio_prog, ahora):
         prev = sum(
             float(it["minutos"])
             for it in ordenados
@@ -2254,7 +2260,10 @@ def programa_por_relay_en_cola(
     ahora = demo.hora_chile()
     items = _cola_turnos(cola)
     nombres = _map_nombres_fertilizante(conn)
-    from demo_web.services.hydrawise_cola_item import reloj_guardado_a_santiago
+    from demo_web.services.hydrawise_cola_item import (
+        programado_aun_espera,
+        reloj_guardado_a_santiago,
+    )
 
     inicio_prog = _parse_dt_chile(cola.get("inicio_programa"))
     tipo = str(cola.get("tipo") or "")
@@ -2266,7 +2275,7 @@ def programa_por_relay_en_cola(
     else:
         inicio_prog_fmt = "—"
     programado_futuro = bool(
-        tipo == "programado" and inicio_prog and inicio_prog > ahora
+        tipo == "programado" and inicio_prog and programado_aun_espera(inicio_prog, ahora)
     )
 
     out: dict[int, dict[str, Any]] = {}
