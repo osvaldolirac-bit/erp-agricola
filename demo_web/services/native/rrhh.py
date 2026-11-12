@@ -313,34 +313,23 @@ def _contratistas_cuenta(demo, conn) -> dict:
     fi, ff = _fechas_con_reset_cc(ctx_key, fi_def, ff_def, "rrhh_ct_cuenta_cc")
 
     df, razon = query_cuenta_corriente_contratista(conn, ct_map[ct_sel], fi, ff, cc_u=cc_u)
-    rows = []
+    from demo_web.services.contratista_cuenta import presentar_cuenta
+
+    rows, df_pdf = presentar_cuenta(conn, df, demo.f_peso)
     tot_debe = tot_haber = 0.0
-    for _, r in df.iterrows():
-        debe = float(r.get("DEBE") or 0)
-        haber = float(r.get("HABER") or 0)
-        tot_debe += debe
-        tot_haber += haber
-        rows.append(
-            {
-                "fecha": str(r.get("FECHA", ""))[:10],
-                "tipo": r.get("TIPO", ""),
-                "documento": r.get("DOCUMENTO", ""),
-                "detalle": r.get("DETALLE", ""),
-                "debe": demo.f_peso(debe) if debe else "",
-                "haber": demo.f_peso(haber) if haber else "",
-                "saldo": demo.f_peso(r.get("SALDO") or 0),
-            }
-        )
+    if not df.empty:
+        tot_debe = float(df["DEBE"].fillna(0).sum())
+        tot_haber = float(df["HABER"].fillna(0).sum())
     saldo_final = float(df["SALDO"].iloc[-1]) if not df.empty else 0.0
     pdf_url = None
-    if not df.empty:
+    if not df_pdf.empty:
         suf_cc = f"_{cc_u.lower().replace(' ', '_')}" if cc_u else ""
         titulo = (
             f"CTA CTE {str(razon or '').upper()} "
             f"({fi.strftime('%d-%m-%Y')} al {ff.strftime('%d-%m-%Y')})"
         )
         titulo += f" - CC {cc_u}" if cc_u else " - TODOS LOS CENTROS DE COSTOS"
-        blob = demo.generar_pdf_blob(df, titulo, incluir_precios=False, orden_asc=True)
+        blob = demo.generar_pdf_blob(df_pdf, titulo, incluir_precios=False, orden_asc=True)
         if blob:
             pdf_url = url_for(
                 "modules.pdf_download",
@@ -354,6 +343,7 @@ def _contratistas_cuenta(demo, conn) -> dict:
         "cc_filtro_sel": cc_sel,
         "cta_rows": rows,
         "cta_razon": razon,
+        "cta_contratista_id": ct_map[ct_sel],
         "cta_tot_gen": demo.f_peso(tot_debe),
         "cta_tot_pag": demo.f_peso(tot_haber),
         "cta_saldo": demo.f_peso(saldo_final),
@@ -957,6 +947,7 @@ def _post_registrar_servicio(demo, conn) -> dict:
     fecha = request.form.get("fecha") or str(hoy_demo(demo))
     fv = request.form.get("fecha_vence") or str(hoy_demo(demo))
     concepto = (request.form.get("concepto") or "").strip()
+    tipo_trabajo = (request.form.get("tipo_trabajo") or "").strip()
     razon = request.form.get("razon_social") or razon_social_compras_default(demo)
     iva_bruto = request.form.get("iva_bruto") == "1"
     try:
@@ -985,6 +976,10 @@ def _post_registrar_servicio(demo, conn) -> dict:
     ok, err = demo._registrar_servicio_contratista(
         conn, cid, row[0], ndoc, fecha, fv, monto, concepto, selcc, razon, imputar_bruto=iva_bruto,
     )
+    if ok and tipo_trabajo:
+        from demo_web.services.contratista_cuenta import guardar_tipo_trabajo
+
+        guardar_tipo_trabajo(conn, ndoc, cid, tipo_trabajo, row[0])
     if ok and _es_documento_interno(ndoc):
         cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)")}
         if "folio_interno" in cols:
@@ -998,6 +993,19 @@ def _post_registrar_servicio(demo, conn) -> dict:
     conn.commit()
     demo.registrar_accion("RRHH CONTRATISTA SERVICIO", f"{row[0]} {ndoc}")
     return {"ok": True, "msg": f"Servicio registrado ({ndoc})."}
+
+
+def _post_guardar_tipo_trabajo(demo, conn) -> dict:
+    from demo_web.services.contratista_cuenta import guardar_tipo_trabajo
+
+    cid = int(request.form.get("contratista_id") or 0)
+    nro = (request.form.get("nro_documento") or "").strip()
+    razon = conn.execute("SELECT razon_social FROM contratistas WHERE id=?", (cid,)).fetchone()
+    if not guardar_tipo_trabajo(conn, nro, cid, request.form.get("tipo_trabajo") or "", razon[0] if razon else ""):
+        return {"ok": False, "msg": "No se encontró el trabajo para anotar el tipo."}
+    conn.commit()
+    demo.registrar_accion("RRHH CONTRATISTA TIPO", f"{nro} {request.form.get('tipo_trabajo') or ''}")
+    return {"ok": True, "msg": "Tipo de trabajo guardado."}
 
 
 def _post_guardar_ficha(demo, conn) -> dict:
@@ -1408,6 +1416,7 @@ def view(user_email: str, user_rol: str):
                 "crear_contratista": _post_crear_contratista,
                 "editar_contratista": _post_editar_contratista,
                 "registrar_servicio": _post_registrar_servicio,
+                "guardar_tipo_trabajo": _post_guardar_tipo_trabajo,
                 "guardar_ficha": _post_guardar_ficha,
                 "registrar_prestamo": _post_registrar_prestamo,
                 "editar_prestamo": _post_editar_prestamo,
@@ -1436,6 +1445,11 @@ def view(user_email: str, user_rol: str):
                     extra["edit_id"] = request.form.get("contratista_id", "")
                 if action == "registrar_servicio":
                     extra["contratista_id"] = request.form.get("contratista_id", "")
+                if action == "guardar_tipo_trabajo":
+                    extra["contratista"] = request.form.get("contratista", "")
+                    extra["cc_filtro"] = request.form.get("cc_filtro", "")
+                    extra["desde"] = request.form.get("desde", "")
+                    extra["hasta"] = request.form.get("hasta", "")
                 if action.startswith("cosecha_"):
                     extra["contratista_id"] = request.form.get("contratista_id", "")
                     extra["faena_id"] = result.get("faena_id") or request.form.get("faena_id", "")
