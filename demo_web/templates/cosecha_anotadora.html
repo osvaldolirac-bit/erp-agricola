@@ -14,6 +14,10 @@
     .nav-cosecha:active { background: #e7f2e8; }
     .chip-cuartel { display: inline-block; padding: .4rem .75rem; border-radius: 999px; border: 1px solid #c5d4c5; background: #fff; color: #172417; text-decoration: none; font-size: .9rem; }
     .chip-cuartel.active { background: #1f6b3a; border-color: #1f6b3a; color: #fff; }
+    .stat-caja { background: #fff; border: 1px solid #d5e0d5; border-radius: .85rem; padding: .7rem .5rem; text-align: center; }
+    .stat-num { font-size: 1.55rem; font-weight: 800; line-height: 1; }
+    .stat-lbl { font-size: .72rem; color: #5c6b5c; margin-top: .2rem; }
+    .stat-fila { display: flex; justify-content: space-between; gap: .75rem; padding: .65rem .8rem; background: #fff; border: 1px solid #d5e0d5; border-radius: .75rem; margin-bottom: .4rem; }
   </style>
 </head>
 <body class="pb-5">
@@ -75,12 +79,16 @@
     <input id="fecha" type="date" class="form-control form-control-lg mb-3" required value="{{ fecha }}">
     <ul class="nav nav-pills mb-3">
       <li class="nav-item flex-fill">
-        <a class="nav-link text-center js-dia {% if tab == 'ingreso' %}active{% endif %}"
+        <a class="nav-link text-center js-dia {% if tab == 'ingreso' %}active{% endif %}" data-tab="ingreso"
            href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingreso', fecha=fecha, cuartel=cuartel, faena=faena_id) if super else url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingreso', fecha=fecha, cuartel=cuartel) if todos else url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingreso', fecha=fecha) }}">Ingreso</a>
       </li>
       <li class="nav-item flex-fill">
-        <a class="nav-link text-center js-dia {% if tab == 'ingresado' %}active{% endif %}"
+        <a class="nav-link text-center js-dia {% if tab == 'ingresado' %}active{% endif %}" data-tab="ingresado"
            href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingresado', fecha=fecha, cuartel=cuartel, faena=faena_id) if super else url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingresado', fecha=fecha, cuartel=cuartel) if todos else url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='ingresado', fecha=fecha) }}">Ingresado</a>
+      </li>
+      <li class="nav-item flex-fill">
+        <a class="nav-link text-center js-dia {% if tab == 'estadisticas' %}active{% endif %}" data-tab="estadisticas"
+           href="{{ url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='estadisticas', fecha=fecha, cuartel=cuartel, faena=faena_id) if super else url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='estadisticas', fecha=fecha, cuartel=cuartel) if todos else url_for('auth.cosecha_formulario', token=token, tenant=tenant, tab='estadisticas', fecha=fecha) }}">Estadísticas</a>
       </li>
     </ul>
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -89,7 +97,48 @@
       {% endfor %}
     {% endwith %}
 
-    {% if tab == 'ingresado' %}
+    {% if tab == 'estadisticas' and estadisticas %}
+    <p class="small text-muted mb-2">{{ fecha_txt }}</p>
+    <h2 class="h6">Este día</h2>
+    <div class="row g-2 mb-2">
+      <div class="col-4"><div class="stat-caja"><div class="stat-num">{{ estadisticas.dia.totes }}</div><div class="stat-lbl">totes</div></div></div>
+      <div class="col-4"><div class="stat-caja"><div class="stat-num">{{ estadisticas.dia.cosecheros }}</div><div class="stat-lbl">cosecheros</div></div></div>
+      <div class="col-4"><div class="stat-caja"><div class="stat-num">{{ estadisticas.dia.promedio }}</div><div class="stat-lbl">promedio</div></div></div>
+    </div>
+    {% if estadisticas.dia.mayor %}
+    <p class="mb-3">Más totes: <strong>{{ estadisticas.dia.mayor.numero }}</strong>{% if estadisticas.dia.mayor.nombre %} {{ estadisticas.dia.mayor.nombre }}{% endif %} · {{ estadisticas.dia.mayor.totes }}</p>
+    {% else %}
+    <p class="text-muted mb-3">Este día no tiene ingresos.</p>
+    {% endif %}
+    <h2 class="h6">Toda la faena</h2>
+    <div class="row g-2 mb-3">
+      <div class="col-4"><div class="stat-caja"><div class="stat-num">{{ estadisticas.faena.totes }}</div><div class="stat-lbl">totes</div></div></div>
+      <div class="col-4"><div class="stat-caja"><div class="stat-num">{{ estadisticas.faena.dias }}</div><div class="stat-lbl">días</div></div></div>
+      <div class="col-4"><div class="stat-caja"><div class="stat-num">{{ estadisticas.faena.cosecheros }}</div><div class="stat-lbl">cosecheros</div></div></div>
+    </div>
+    {% if estadisticas.faena.varios_cuarteles %}
+    <h2 class="h6">Por cuartel</h2>
+    {% for corte in estadisticas.faena.por_cuartel %}
+    <div class="stat-fila"><span>{{ corte.nombre }}</span><strong>{{ corte.totes }}</strong></div>
+    {% endfor %}
+    {% endif %}
+    <h2 class="h6 mt-3">Por día</h2>
+    {% for dia in estadisticas.faena.por_dia %}
+    <div class="stat-fila"><span>{{ dia.fecha_txt }}</span><strong>{{ dia.totes }}</strong></div>
+    {% else %}
+    <p class="text-muted">Aún no hay totes.</p>
+    {% endfor %}
+    <h2 class="h6 mt-3">Cosecheros</h2>
+    {% for persona in estadisticas.faena.ranking %}
+    <div class="stat-fila">
+      <span><strong>{{ persona.numero }}</strong>{% if persona.nombre %} {{ persona.nombre }}{% endif %}<span class="d-block small text-muted">{{ persona.dias }} día(s)</span></span>
+      <strong>{{ persona.totes }}</strong>
+    </div>
+    {% else %}
+    <p class="text-muted">Aún no hay cosecheros.</p>
+    {% endfor %}
+
+    {% elif tab == 'ingresado' %}
     <p class="small text-muted mb-1">{{ fecha_txt }}</p>
     <p class="tote-grande mb-2">{{ total_totes }} totes</p>
     {% for fila in filas %}
@@ -163,8 +212,7 @@
       a.addEventListener('click', function (ev) {
         if (!fecha || !fecha.value) return;
         ev.preventDefault();
-        const tab = a.href.indexOf('tab=ingresado') >= 0 ? 'ingresado' : 'ingreso';
-        irConFecha(tab);
+        irConFecha(a.getAttribute('data-tab') || 'ingreso');
       });
     });
     const form = document.getElementById('form-ingreso');
