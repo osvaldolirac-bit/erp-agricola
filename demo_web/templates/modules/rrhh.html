@@ -312,7 +312,8 @@
         <div class="col-md-3"><label class="form-label">Razón social</label>
           <select name="razon_social" class="form-select form-select-sm">{% for r in razones_sociales %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
         </div>
-        <div class="col-12"><label class="form-label">Servicio / concepto</label><input type="text" name="concepto" class="form-control form-control-sm" required></div>
+        <div class="col-md-4"><label class="form-label">Tipo de trabajo</label><input type="text" name="tipo_trabajo" class="form-control form-control-sm" maxlength="80" placeholder="Cosecha, poda, raleo…"></div>
+        <div class="col-md-8"><label class="form-label">Servicio / concepto</label><input type="text" name="concepto" class="form-control form-control-sm" required></div>
         <div class="col-12">
           <label class="form-label">Centros de costo</label>
           <div class="row g-1">
@@ -374,8 +375,35 @@
     {{ pdf_btn(pdf_cta_url, '📥 PDF CUENTA CORRIENTE', rows=pdf_cta_rows) }}
   </p>
   <div class="panel-card"><div class="table-responsive"><table class="table table-sm table-bordered demo-datatable w-100">
-    <thead><tr><th>Fecha</th><th>Tipo</th><th>Documento</th><th>Detalle</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
-    <tbody>{% for row in cta_rows %}<tr><td>{{ row.fecha }}</td><td>{{ row.tipo }}</td><td>{{ row.documento }}</td><td>{{ row.detalle }}</td><td class="text-end">{{ row.debe }}</td><td class="text-end">{{ row.haber }}</td><td class="fw-semibold text-end">{{ row.saldo }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>Fecha</th><th>Tipo de trabajo</th><th>CC</th><th>Documento</th><th>Detalle</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
+    <tbody>{% for row in cta_rows %}
+      <tr>
+        <td>{{ row.fecha }}</td>
+        <td>
+          {% if row.es_trabajo %}
+          <form method="post" class="d-flex gap-1">
+            <input type="hidden" name="action" value="guardar_tipo_trabajo">
+            <input type="hidden" name="sec" value="contratistas">
+            <input type="hidden" name="sub" value="cuenta">
+            <input type="hidden" name="contratista_id" value="{{ cta_contratista_id }}">
+            <input type="hidden" name="contratista" value="{{ contratista_cta_sel }}">
+            <input type="hidden" name="cc_filtro" value="{{ cc_filtro_sel }}">
+            <input type="hidden" name="desde" value="{{ filtro_desde }}">
+            <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+            <input type="hidden" name="nro_documento" value="{{ row.documento }}">
+            <input type="text" name="tipo_trabajo" class="form-control form-control-sm" maxlength="80" value="{{ row.tipo_trabajo }}" placeholder="Tipo de trabajo">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Guardar</button>
+          </form>
+          {% else %}{{ row.tipo }}{% endif %}
+        </td>
+        <td>{{ row.cc }}</td>
+        <td>{{ row.documento }}</td>
+        <td>{{ row.detalle }}</td>
+        <td class="text-end">{{ row.debe }}</td>
+        <td class="text-end">{{ row.haber }}</td>
+        <td class="fw-semibold text-end">{{ row.saldo }}</td>
+      </tr>
+    {% endfor %}</tbody>
   </table></div></div>
   {% else %}<div class="alert alert-info">Sin movimientos para este contratista.</div>{% endif %}
   {% endif %}

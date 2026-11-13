@@ -88,6 +88,7 @@ ROBUSTEZ_LC_ESPINO_FILES: tuple[str, ...] = (
     "demo_web/services/native/flujo.py",
     "demo_web/services/native/administracion.py",
     "demo_web/services/native/bodega.py",
+    "demo_web/services/contratista_cuenta.py",
     "demo_web/services/native/rrhh.py",
     "demo_web/services/native/espino.py",
     "demo_web/services/native/espino_bodega.py",
