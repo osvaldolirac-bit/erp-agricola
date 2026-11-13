@@ -75,6 +75,10 @@ class _Demo:
     def __init__(self):
         self.acciones = []
 
+    def hora_chile(self):
+        from datetime import datetime
+        return datetime(2026, 11, 13, 12, 0, 0)
+
     def f_peso(self, n):
         return f"${int(round(n))}"
 
@@ -112,10 +116,25 @@ class TestAbonoCuenta(unittest.TestCase):
             "banco": "BCI",
             "fecha_pago": "2026-11-13",
         }
-        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=False):
+        avisos = {}
+
+        def _aviso(*args, **kwargs):
+            avisos["args"] = args
+            avisos["kwargs"] = kwargs
+            return True, " Correo al contratista enviado."
+
+        with patch("demo_web.services.tenant_scope.is_espino_tenant", return_value=False), patch(
+            "demo_web.services.native.tesoreria._avisos_pago", side_effect=_aviso
+        ):
             with app.test_request_context("/", method="POST", data=data):
                 res = _post_abono_cuenta(demo, conn, "osvaldo@laconcepcion.cl")
         self.assertTrue(res["ok"], res["msg"])
+        self.assertTrue(avisos["args"][7] is True)
+        self.assertEqual(
+            [linea["nro_documento"] for linea in avisos["args"][3]],
+            ["CONTR-06", "CONTR-07"],
+        )
+        self.assertIn("Correo de respaldo enviado al equipo", res["msg"])
         seis = conn.execute(
             "SELECT estado, monto_pagado FROM facturas WHERE nro_documento='CONTR-06'"
         ).fetchone()

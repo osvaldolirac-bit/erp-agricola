@@ -1015,7 +1015,7 @@ def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
     """El abono de la cuenta paga en Tesorería, del documento más antiguo al siguiente."""
     from demo_web.services.contratista_cuenta import documentos_con_saldo, repartir_abono
     from demo_web.services.espino_compras_guards import validar_estado_pago_coherente
-    from demo_web.services.native.tesoreria import _banco_form, _validar_banco_pago
+    from demo_web.services.native.tesoreria import _avisos_pago, _banco_form, _validar_banco_pago
     from demo_web.services.tenant_scope import is_espino_tenant
 
     cid = int(request.form.get("contratista_id") or 0)
@@ -1033,7 +1033,7 @@ def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
     err_banco = _validar_banco_pago(metodo, banco)
     if err_banco:
         return {"ok": False, "msg": err_banco}
-    fecha = request.form.get("fecha_pago") or str(hoy_demo(demo))
+    fecha = parse_date(request.form.get("fecha_pago"), hoy_demo(demo))
     partes, err = repartir_abono(documentos_con_saldo(conn, cid, razon_row[0]), monto)
     if err:
         return {"ok": False, "msg": err}
@@ -1066,10 +1066,17 @@ def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
         else:
             detalle.append(f"{parte['nro']} queda con saldo {demo.f_peso(parte['saldo_despues'])}")
     demo.registrar_accion("ABONO CTA CONTRATISTA", f"{razon_row[0]} | {demo.f_peso(monto)} | {metodo}")
-    return {
-        "ok": True,
-        "msg": f"Abono de {demo.f_peso(monto)} registrado en Tesorería. " + ". ".join(detalle) + ".",
-    }
+    lineas = [
+        {"nro_documento": res.get("nro_documento") or parte["nro"], "monto": res.get("monto") or parte["aplicar"]}
+        for parte, res in aplicados
+    ]
+    mail_ok, avisos = _avisos_pago(
+        demo, conn, razon_row[0], lineas, monto, metodo, fecha, True, user_email, banco=banco,
+    )
+    msg = f"Abono de {demo.f_peso(monto)} registrado en Tesorería. " + ". ".join(detalle) + "."
+    msg += " Correo de respaldo enviado al equipo." if mail_ok else " No se pudo enviar el correo al equipo."
+    msg += avisos or ""
+    return {"ok": True, "msg": msg}
 
 
 def _post_guardar_tipo_trabajo(demo, conn) -> dict:
