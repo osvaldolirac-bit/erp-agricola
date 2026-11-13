@@ -257,11 +257,7 @@ def asegurar_lote_abono(conn: sqlite3.Connection) -> bool:
 
 
 def _tiene_lote(conn: sqlite3.Connection) -> bool:
-    tablas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    if "facturas_abonos" not in tablas:
-        return False
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas_abonos)")}
-    return "abono_lote" in cols
+    return "abono_lote" in _columnas(conn, "facturas_abonos")
 
 
 def marcar_abono_lote(conn: sqlite3.Connection, factura_id: int, fecha, monto: float, lote: str) -> None:
@@ -280,11 +276,19 @@ def marcar_abono_lote(conn: sqlite3.Connection, factura_id: int, fecha, monto: f
         conn.execute("UPDATE facturas_abonos SET abono_lote=? WHERE id=?", (lote, int(fila[0])))
 
 
+def _columnas(conn: sqlite3.Connection, tabla: str) -> set[str]:
+    tablas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if tabla not in tablas:
+        return set()
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({tabla})")}
+
+
 def unificar_abonos_libro(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.DataFrame:
     """Un abono repartido en varios documentos se ve como un solo monto en la cuenta."""
     if df is None or df.empty or "TIPO" not in getattr(df, "columns", []):
         return df
-    if not _tiene_lote(conn):
+    cols = _columnas(conn, "facturas_abonos")
+    if not cols:
         return df
     documentos = []
     for doc in df["DOCUMENTO"].tolist():
@@ -293,21 +297,40 @@ def unificar_abonos_libro(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.Data
             documentos.append(nro)
     if not documentos:
         return df
+    lote_sql = "COALESCE(fa.abono_lote, '')" if "abono_lote" in cols else "''"
+    reg_sql = "COALESCE(fa.fecha_registro, '')" if "fecha_registro" in cols else "''"
     marcas = ",".join("?" * len(documentos))
     trozos = conn.execute(
-        f"""SELECT fa.id, fa.abono_lote, fa.fecha, fa.monto, COALESCE(fa.metodo_pago, ''), f.nro_documento
+        f"""SELECT fa.id, {lote_sql}, fa.fecha, fa.monto, COALESCE(fa.metodo_pago, ''),
+                  f.nro_documento, {reg_sql}, COALESCE(f.proveedor, '')
             FROM facturas_abonos fa
             JOIN facturas f ON f.id = fa.factura_id
             WHERE f.nro_documento IN ({marcas})
-              AND COALESCE(fa.abono_lote, '') <> ''
             ORDER BY fa.id""",
         documentos,
     ).fetchall()
     if not trozos:
         return df
+    por_registro: dict[tuple, list] = {}
+    for trozo in trozos:
+        if str(trozo[1] or "").strip() or not str(trozo[6] or "").strip():
+            continue
+        por_registro.setdefault((str(trozo[7]), str(trozo[6]), str(trozo[4])), []).append(trozo)
+    lote_de: dict[int, str] = {}
+    for clave, grupo in por_registro.items():
+        if len({str(t[5]) for t in grupo}) < 2:
+            continue
+        sintetico = "mismo-abono:" + "|".join(clave)
+        for trozo in grupo:
+            lote_de[int(trozo[0])] = sintetico
     por_lote: dict[str, list] = {}
     for trozo in trozos:
-        por_lote.setdefault(str(trozo[1]), []).append(trozo)
+        lote = str(trozo[1] or "").strip() or lote_de.get(int(trozo[0]), "")
+        if not lote:
+            continue
+        por_lote.setdefault(lote, []).append(trozo)
+    if not por_lote:
+        return df
 
     def _clave(nro: str, fecha, monto: float) -> tuple:
         return (str(nro), str(fecha)[:10], round(float(monto or 0), 2))

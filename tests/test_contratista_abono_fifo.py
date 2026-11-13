@@ -223,3 +223,36 @@ class TestAbonoCuenta(unittest.TestCase):
         self.assertEqual(len(unido), 2)
         self.assertEqual(unido.iloc[1]["DOCUMENTO"], "CONTR-06")
         self.assertEqual(float(unido.iloc[1]["HABER"]), 50000.0)
+
+    def test_el_abono_de_un_millon_es_una_linea(self):
+        conn = _conn()
+        ids = {
+            nro: fid
+            for nro, fid in conn.execute(
+                "SELECT nro_documento, id FROM facturas WHERE nro_documento IN ('CONTR-06', 'CONTR-07')"
+            )
+        }
+        conn.executemany(
+            """INSERT INTO facturas_abonos (factura_id, fecha, monto, metodo_pago, fecha_registro)
+               VALUES (?,?,?,?,?)""",
+            [
+                (ids["CONTR-06"], "2026-11-12", 745800, "Transferencia", "2026-11-13 09:30:10"),
+                (ids["CONTR-07"], "2026-11-12", 254200, "Transferencia", "2026-11-13 09:30:10"),
+            ],
+        )
+        libro = pd.DataFrame(
+            [
+                {"FECHA": "2026-11-12", "TIPO": "PAGO", "DOCUMENTO": "CONTR-06", "DETALLE": "Pago (Transferencia)", "DEBE": 0.0, "HABER": 745800.0, "SALDO": 0.0},
+                {"FECHA": "2026-11-12", "TIPO": "PAGO", "DOCUMENTO": "CONTR-07", "DETALLE": "Pago (Transferencia)", "DEBE": 0.0, "HABER": 254200.0, "SALDO": -1000000.0},
+            ]
+        )
+        unido = unificar_abonos_libro(conn, libro)
+        pagos = unido[unido["TIPO"] == "PAGO"]
+        self.assertEqual(len(pagos), 1)
+        self.assertEqual(float(pagos.iloc[0]["HABER"]), 1000000.0)
+        self.assertEqual(str(pagos.iloc[0]["DOCUMENTO"]), "")
+        self.assertNotIn("CONTR-", str(pagos.iloc[0]["DETALLE"]))
+        detalle = conn.execute(
+            "SELECT f.nro_documento, fa.monto FROM facturas_abonos fa JOIN facturas f ON f.id=fa.factura_id ORDER BY fa.id"
+        ).fetchall()
+        self.assertEqual(detalle, [("CONTR-06", 745800), ("CONTR-07", 254200)])
