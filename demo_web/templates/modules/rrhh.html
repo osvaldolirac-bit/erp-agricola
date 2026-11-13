@@ -370,6 +370,44 @@
       <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Filtrar</button></div>
     </form>
   </div>
+  <div class="panel-card mb-3">
+    <h2 class="h6">Abono</h2>
+    <p class="small text-muted mb-2">El abono queda en esta cuenta como un solo monto. En Tesorería se ve el pago o el abono de cada documento, del más antiguo al siguiente.</p>
+    <form method="post" class="row g-2 align-items-end">
+      <input type="hidden" name="action" value="abono_cuenta_contratista">
+      <input type="hidden" name="sec" value="contratistas">
+      <input type="hidden" name="sub" value="cuenta">
+      <input type="hidden" name="contratista_id" value="{{ cta_contratista_id }}">
+      <input type="hidden" name="contratista" value="{{ contratista_cta_sel }}">
+      <input type="hidden" name="cc_filtro" value="{{ cc_filtro_sel }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-2">
+        <label class="form-label">Fecha</label>
+        <input type="date" name="fecha_pago" class="form-control form-control-sm" value="{{ cta_abono_hoy }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Monto</label>
+        <input type="text" name="monto" class="form-control form-control-sm text-end js-peso" inputmode="numeric" placeholder="$100.000" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Forma de pago</label>
+        <select name="metodo_pago" class="form-select form-select-sm js-metodo-pago" data-banco-target="banco-cta">
+          {% for m in cta_metodos_pago %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3" id="wrap-banco-cta">
+        <label class="form-label">Banco</label>
+        <select name="banco" id="banco-cta" class="form-select form-select-sm js-banco-pago">
+          <option value="—">—</option>
+          {% for b in cta_bancos %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary btn-sm w-100">Registrar abono</button>
+      </div>
+    </form>
+  </div>
   {% if cta_rows %}
   <p class="small text-muted"><strong>{{ cta_razon }}</strong> · Trabajos {{ cta_tot_gen }} · Pagos {{ cta_tot_pag }} · Saldo {{ cta_saldo }}
     {{ pdf_btn(pdf_cta_url, '📥 PDF CUENTA CORRIENTE', rows=pdf_cta_rows) }}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import timedelta
 
 import pandas as pd
@@ -313,8 +314,9 @@ def _contratistas_cuenta(demo, conn) -> dict:
     fi, ff = _fechas_con_reset_cc(ctx_key, fi_def, ff_def, "rrhh_ct_cuenta_cc")
 
     df, razon = query_cuenta_corriente_contratista(conn, ct_map[ct_sel], fi, ff, cc_u=cc_u)
-    from demo_web.services.contratista_cuenta import presentar_cuenta
+    from demo_web.services.contratista_cuenta import presentar_cuenta, unificar_abonos_libro
 
+    df = unificar_abonos_libro(conn, df)
     rows, df_pdf = presentar_cuenta(conn, df, demo.f_peso)
     tot_debe = tot_haber = 0.0
     if not df.empty:
@@ -351,6 +353,22 @@ def _contratistas_cuenta(demo, conn) -> dict:
         "filtro_hasta": ff.isoformat(),
         "pdf_cta_url": pdf_url,
         "pdf_cta_rows": len(rows),
+        "cta_abono_hoy": hoy.isoformat(),
+        "cta_metodos_pago": ["Transferencia", "Efectivo", "Cheque", "Tarjeta bancaria"],
+        "cta_bancos": [
+            "Banco Estado",
+            "Banco de Chile",
+            "Banco Santander",
+            "BCI",
+            "Scotiabank",
+            "Itaú",
+            "Banco BICE",
+            "Banco Security",
+            "Banco Falabella",
+            "Banco Ripley",
+            "Banco Internacional",
+            "Otro",
+        ],
     }
 
 
@@ -995,6 +1013,79 @@ def _post_registrar_servicio(demo, conn) -> dict:
     return {"ok": True, "msg": f"Servicio registrado ({ndoc})."}
 
 
+def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
+    """El abono de la cuenta paga en Tesorería, del documento más antiguo al siguiente."""
+    from demo_web.services.contratista_cuenta import (
+        asegurar_lote_abono,
+        documentos_con_saldo,
+        marcar_abono_lote,
+        repartir_abono,
+    )
+    from demo_web.services.espino_compras_guards import validar_estado_pago_coherente
+    from demo_web.services.native.tesoreria import _avisos_pago, _banco_form, _validar_banco_pago
+    from demo_web.services.tenant_scope import is_espino_tenant
+
+    cid = int(request.form.get("contratista_id") or 0)
+    razon_row = conn.execute("SELECT razon_social FROM contratistas WHERE id=?", (cid,)).fetchone()
+    if not razon_row:
+        return {"ok": False, "msg": "Contratista no encontrado."}
+    try:
+        monto = _parse_monto_form(request.form.get("monto"))
+    except ValueError:
+        return {"ok": False, "msg": "Monto de abono inválido."}
+    metodo = (request.form.get("metodo_pago") or "Transferencia").strip()
+    if metodo not in ("Transferencia", "Efectivo", "Cheque", "Tarjeta bancaria"):
+        metodo = "Transferencia"
+    banco = _banco_form(metodo)
+    err_banco = _validar_banco_pago(metodo, banco)
+    if err_banco:
+        return {"ok": False, "msg": err_banco}
+    fecha = parse_date(request.form.get("fecha_pago"), hoy_demo(demo))
+    partes, err = repartir_abono(documentos_con_saldo(conn, cid, razon_row[0]), monto)
+    if err:
+        return {"ok": False, "msg": err}
+    asegurar_lote_abono(conn)
+    lote = uuid.uuid4().hex
+    aplicados = []
+    for parte in partes:
+        ok, res = demo._registrar_abono_factura(
+            conn, parte["id"], fecha, parte["aplicar"], metodo, user_email, banco=banco,
+        )
+        if not ok:
+            conn.rollback()
+            return {"ok": False, "msg": str(res)}
+        marcar_abono_lote(conn, parte["id"], fecha, parte["aplicar"], lote)
+        if is_espino_tenant():
+            row_pago = conn.execute(
+                "SELECT COALESCE(estado,''), monto_total, COALESCE(monto_pagado,0) FROM facturas WHERE id=?",
+                (int(parte["id"]),),
+            ).fetchone()
+            if row_pago:
+                ok_pago, msg_pago = validar_estado_pago_coherente(
+                    str(row_pago[0]), float(row_pago[1] or 0), float(row_pago[2] or 0),
+                )
+                if not ok_pago:
+                    conn.rollback()
+                    return {"ok": False, "msg": msg_pago}
+        aplicados.append((parte, res))
+    conn.commit()
+    demo.registrar_accion("ABONO CTA CONTRATISTA", f"{razon_row[0]} | {demo.f_peso(monto)} | {metodo}")
+    lineas = [
+        {"nro_documento": res.get("nro_documento") or parte["nro"], "monto": res.get("monto") or parte["aplicar"]}
+        for parte, res in aplicados
+    ]
+    mail_ok, avisos = _avisos_pago(
+        demo, conn, razon_row[0], lineas, monto, metodo, fecha, True, user_email, banco=banco,
+    )
+    msg = (
+        f"Abono de {demo.f_peso(monto)} registrado. "
+        "En esta cuenta queda un solo monto; en Tesorería está el detalle de cada documento."
+    )
+    msg += " Correo de respaldo enviado al equipo." if mail_ok else " No se pudo enviar el correo al equipo."
+    msg += avisos or ""
+    return {"ok": True, "msg": msg}
+
+
 def _post_guardar_tipo_trabajo(demo, conn) -> dict:
     from demo_web.services.contratista_cuenta import guardar_tipo_trabajo
 
@@ -1417,6 +1508,7 @@ def view(user_email: str, user_rol: str):
                 "editar_contratista": _post_editar_contratista,
                 "registrar_servicio": _post_registrar_servicio,
                 "guardar_tipo_trabajo": _post_guardar_tipo_trabajo,
+                "abono_cuenta_contratista": lambda demo, conn: _post_abono_cuenta(demo, conn, user_email),
                 "guardar_ficha": _post_guardar_ficha,
                 "registrar_prestamo": _post_registrar_prestamo,
                 "editar_prestamo": _post_editar_prestamo,
@@ -1445,7 +1537,7 @@ def view(user_email: str, user_rol: str):
                     extra["edit_id"] = request.form.get("contratista_id", "")
                 if action == "registrar_servicio":
                     extra["contratista_id"] = request.form.get("contratista_id", "")
-                if action == "guardar_tipo_trabajo":
+                if action in ("guardar_tipo_trabajo", "abono_cuenta_contratista"):
                     extra["contratista"] = request.form.get("contratista", "")
                     extra["cc_filtro"] = request.form.get("cc_filtro", "")
                     extra["desde"] = request.form.get("desde", "")
