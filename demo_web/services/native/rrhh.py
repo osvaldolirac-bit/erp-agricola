@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import timedelta
 
 import pandas as pd
@@ -313,8 +314,9 @@ def _contratistas_cuenta(demo, conn) -> dict:
     fi, ff = _fechas_con_reset_cc(ctx_key, fi_def, ff_def, "rrhh_ct_cuenta_cc")
 
     df, razon = query_cuenta_corriente_contratista(conn, ct_map[ct_sel], fi, ff, cc_u=cc_u)
-    from demo_web.services.contratista_cuenta import presentar_cuenta
+    from demo_web.services.contratista_cuenta import presentar_cuenta, unificar_abonos_libro
 
+    df = unificar_abonos_libro(conn, df)
     rows, df_pdf = presentar_cuenta(conn, df, demo.f_peso)
     tot_debe = tot_haber = 0.0
     if not df.empty:
@@ -1013,7 +1015,12 @@ def _post_registrar_servicio(demo, conn) -> dict:
 
 def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
     """El abono de la cuenta paga en Tesorería, del documento más antiguo al siguiente."""
-    from demo_web.services.contratista_cuenta import documentos_con_saldo, repartir_abono
+    from demo_web.services.contratista_cuenta import (
+        asegurar_lote_abono,
+        documentos_con_saldo,
+        marcar_abono_lote,
+        repartir_abono,
+    )
     from demo_web.services.espino_compras_guards import validar_estado_pago_coherente
     from demo_web.services.native.tesoreria import _avisos_pago, _banco_form, _validar_banco_pago
     from demo_web.services.tenant_scope import is_espino_tenant
@@ -1037,6 +1044,8 @@ def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
     partes, err = repartir_abono(documentos_con_saldo(conn, cid, razon_row[0]), monto)
     if err:
         return {"ok": False, "msg": err}
+    asegurar_lote_abono(conn)
+    lote = uuid.uuid4().hex
     aplicados = []
     for parte in partes:
         ok, res = demo._registrar_abono_factura(
@@ -1045,6 +1054,7 @@ def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
         if not ok:
             conn.rollback()
             return {"ok": False, "msg": str(res)}
+        marcar_abono_lote(conn, parte["id"], fecha, parte["aplicar"], lote)
         if is_espino_tenant():
             row_pago = conn.execute(
                 "SELECT COALESCE(estado,''), monto_total, COALESCE(monto_pagado,0) FROM facturas WHERE id=?",
@@ -1059,12 +1069,6 @@ def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
                     return {"ok": False, "msg": msg_pago}
         aplicados.append((parte, res))
     conn.commit()
-    detalle = []
-    for parte, _res in aplicados:
-        if parte["saldo_despues"] <= 0.01:
-            detalle.append(f"{parte['nro']} pagado")
-        else:
-            detalle.append(f"{parte['nro']} queda con saldo {demo.f_peso(parte['saldo_despues'])}")
     demo.registrar_accion("ABONO CTA CONTRATISTA", f"{razon_row[0]} | {demo.f_peso(monto)} | {metodo}")
     lineas = [
         {"nro_documento": res.get("nro_documento") or parte["nro"], "monto": res.get("monto") or parte["aplicar"]}
@@ -1073,7 +1077,10 @@ def _post_abono_cuenta(demo, conn, user_email: str) -> dict:
     mail_ok, avisos = _avisos_pago(
         demo, conn, razon_row[0], lineas, monto, metodo, fecha, True, user_email, banco=banco,
     )
-    msg = f"Abono de {demo.f_peso(monto)} registrado en Tesorería. " + ". ".join(detalle) + "."
+    msg = (
+        f"Abono de {demo.f_peso(monto)} registrado. "
+        "En esta cuenta queda un solo monto; en Tesorería está el detalle de cada documento."
+    )
     msg += " Correo de respaldo enviado al equipo." if mail_ok else " No se pudo enviar el correo al equipo."
     msg += avisos or ""
     return {"ok": True, "msg": msg}

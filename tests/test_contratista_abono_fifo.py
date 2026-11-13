@@ -7,7 +7,14 @@ from unittest.mock import patch
 
 from flask import Flask
 
-from demo_web.services.contratista_cuenta import documentos_con_saldo, repartir_abono
+import pandas as pd
+
+from demo_web.services.contratista_cuenta import (
+    documentos_con_saldo,
+    presentar_cuenta,
+    repartir_abono,
+    unificar_abonos_libro,
+)
 from demo_web.services.native.rrhh import _post_abono_cuenta
 
 
@@ -23,10 +30,23 @@ def _conn():
             monto_pagado REAL DEFAULT 0,
             estado TEXT DEFAULT 'Pendiente',
             tipo_gasto TEXT,
-            contratista_id INTEGER
+            contratista_id INTEGER,
+            centro_costo TEXT
         )"""
     )
     conn.execute("CREATE TABLE contratistas (id INTEGER PRIMARY KEY, razon_social TEXT)")
+    conn.execute(
+        """CREATE TABLE facturas_abonos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            factura_id INTEGER,
+            fecha TEXT,
+            monto REAL,
+            metodo_pago TEXT,
+            usuario TEXT,
+            fecha_registro TEXT,
+            banco TEXT
+        )"""
+    )
     conn.execute("INSERT INTO contratistas VALUES (3, 'HERNAN ARAVENA')")
     conn.executemany(
         """INSERT INTO facturas
@@ -96,6 +116,11 @@ class _Demo:
             "UPDATE facturas SET monto_pagado=?, estado=? WHERE id=?",
             (pagado, estado, int(doc_id)),
         )
+        conn.execute(
+            """INSERT INTO facturas_abonos (factura_id, fecha, monto, metodo_pago, usuario, banco)
+               VALUES (?,?,?,?,?,?)""",
+            (int(doc_id), str(fecha)[:10], float(monto), metodo, usuario, banco),
+        )
         return True, {
             "nro_documento": row[0],
             "monto": monto,
@@ -145,4 +170,56 @@ class TestAbonoCuenta(unittest.TestCase):
         self.assertEqual(seis[1], 705400)
         self.assertEqual(siete[0], "Pendiente")
         self.assertEqual(siete[1], 94600)
-        self.assertIn("CONTR-07 queda con saldo", res["msg"])
+        self.assertIn("un solo monto", res["msg"])
+        self.assertNotIn("CONTR-06", res["msg"])
+        abonos = conn.execute(
+            "SELECT factura_id, monto, abono_lote FROM facturas_abonos ORDER BY id"
+        ).fetchall()
+        self.assertEqual([a[1] for a in abonos], [705400, 94600])
+        self.assertTrue(abonos[0][2])
+        self.assertEqual(abonos[0][2], abonos[1][2])
+        ids = {
+            nro: fid
+            for fid, nro in conn.execute("SELECT id, nro_documento FROM facturas")
+        }
+        libro = pd.DataFrame(
+            [
+                {"FECHA": "2026-11-06", "TIPO": "TRABAJO", "DOCUMENTO": "CONTR-06", "DETALLE": "faena", "DEBE": 705400.0, "HABER": 0.0, "SALDO": 705400.0},
+                {"FECHA": "2026-11-07", "TIPO": "TRABAJO", "DOCUMENTO": "CONTR-07", "DETALLE": "faena", "DEBE": 974000.0, "HABER": 0.0, "SALDO": 1679400.0},
+                {"FECHA": "2026-11-13", "TIPO": "PAGO", "DOCUMENTO": "CONTR-06", "DETALLE": "Pago (Transferencia)", "DEBE": 0.0, "HABER": 705400.0, "SALDO": 974000.0},
+                {"FECHA": "2026-11-13", "TIPO": "PAGO", "DOCUMENTO": "CONTR-07", "DETALLE": "Pago (Transferencia)", "DEBE": 0.0, "HABER": 94600.0, "SALDO": 879400.0},
+            ]
+        )
+        unido = unificar_abonos_libro(conn, libro)
+        pagos = unido[unido["TIPO"] == "PAGO"]
+        self.assertEqual(len(pagos), 1)
+        self.assertEqual(float(pagos.iloc[0]["HABER"]), 800000.0)
+        self.assertEqual(str(pagos.iloc[0]["DOCUMENTO"]), "")
+        self.assertNotIn("CONTR-", str(pagos.iloc[0]["DETALLE"]))
+        self.assertEqual(float(unido.iloc[-1]["SALDO"]), 879400.0)
+        filas, _pdf = presentar_cuenta(conn, unido, demo.f_peso)
+        self.assertEqual(filas[-1]["haber"], "$800000")
+        self.assertEqual(filas[-1]["documento"], "")
+        self.assertEqual(filas[-1]["cc"], "")
+        self.assertEqual(ids["CONTR-06"], abonos[0][0])
+        self.assertEqual(ids["CONTR-07"], abonos[1][0])
+
+    def test_un_pago_de_tesoreria_sigue_en_su_documento(self):
+        conn = _conn()
+        seis = conn.execute("SELECT id FROM facturas WHERE nro_documento='CONTR-06'").fetchone()[0]
+        conn.execute("ALTER TABLE facturas_abonos ADD COLUMN abono_lote TEXT DEFAULT ''")
+        conn.execute(
+            """INSERT INTO facturas_abonos (factura_id, fecha, monto, metodo_pago, abono_lote)
+               VALUES (?,?,?,?,?)""",
+            (seis, "2026-11-13", 50000, "Transferencia", ""),
+        )
+        libro = pd.DataFrame(
+            [
+                {"FECHA": "2026-11-06", "TIPO": "TRABAJO", "DOCUMENTO": "CONTR-06", "DETALLE": "faena", "DEBE": 705400.0, "HABER": 0.0, "SALDO": 705400.0},
+                {"FECHA": "2026-11-13", "TIPO": "PAGO", "DOCUMENTO": "CONTR-06", "DETALLE": "Pago (Transferencia)", "DEBE": 0.0, "HABER": 50000.0, "SALDO": 655400.0},
+            ]
+        )
+        unido = unificar_abonos_libro(conn, libro)
+        self.assertEqual(len(unido), 2)
+        self.assertEqual(unido.iloc[1]["DOCUMENTO"], "CONTR-06")
+        self.assertEqual(float(unido.iloc[1]["HABER"]), 50000.0)

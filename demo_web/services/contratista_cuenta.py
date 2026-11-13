@@ -236,3 +236,120 @@ def repartir_abono(documentos: list[dict], monto: float) -> tuple[list[dict], st
         )
         resta = round(resta - aplicar, 2)
     return partes, ""
+
+
+def asegurar_lote_abono(conn: sqlite3.Connection) -> bool:
+    """Marca los trozos de un mismo abono para mostrarlos como un solo monto."""
+    try:
+        from erp_solo_lectura import conn_en_solo_lectura
+
+        if conn_en_solo_lectura(conn):
+            return _tiene_lote(conn)
+    except Exception:
+        pass
+    if _tiene_lote(conn):
+        return True
+    tablas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "facturas_abonos" not in tablas:
+        return False
+    conn.execute("ALTER TABLE facturas_abonos ADD COLUMN abono_lote TEXT DEFAULT ''")
+    return True
+
+
+def _tiene_lote(conn: sqlite3.Connection) -> bool:
+    tablas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "facturas_abonos" not in tablas:
+        return False
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas_abonos)")}
+    return "abono_lote" in cols
+
+
+def marcar_abono_lote(conn: sqlite3.Connection, factura_id: int, fecha, monto: float, lote: str) -> None:
+    if not lote or not asegurar_lote_abono(conn):
+        return
+    fecha_txt = str(fecha)[:10]
+    fila = conn.execute(
+        """SELECT id FROM facturas_abonos
+           WHERE factura_id=? AND ABS(COALESCE(monto, 0) - ?) < 0.01
+             AND substr(COALESCE(fecha, ''), 1, 10)=?
+             AND COALESCE(abono_lote, '')=''
+           ORDER BY id DESC LIMIT 1""",
+        (int(factura_id), float(monto), fecha_txt),
+    ).fetchone()
+    if fila:
+        conn.execute("UPDATE facturas_abonos SET abono_lote=? WHERE id=?", (lote, int(fila[0])))
+
+
+def unificar_abonos_libro(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.DataFrame:
+    """Un abono repartido en varios documentos se ve como un solo monto en la cuenta."""
+    if df is None or df.empty or "TIPO" not in getattr(df, "columns", []):
+        return df
+    if not _tiene_lote(conn):
+        return df
+    documentos = []
+    for doc in df["DOCUMENTO"].tolist():
+        nro = str(doc or "").strip()
+        if nro and nro not in documentos:
+            documentos.append(nro)
+    if not documentos:
+        return df
+    marcas = ",".join("?" * len(documentos))
+    trozos = conn.execute(
+        f"""SELECT fa.id, fa.abono_lote, fa.fecha, fa.monto, COALESCE(fa.metodo_pago, ''), f.nro_documento
+            FROM facturas_abonos fa
+            JOIN facturas f ON f.id = fa.factura_id
+            WHERE f.nro_documento IN ({marcas})
+              AND COALESCE(fa.abono_lote, '') <> ''
+            ORDER BY fa.id""",
+        documentos,
+    ).fetchall()
+    if not trozos:
+        return df
+    por_lote: dict[str, list] = {}
+    for trozo in trozos:
+        por_lote.setdefault(str(trozo[1]), []).append(trozo)
+
+    def _clave(nro: str, fecha, monto: float) -> tuple:
+        return (str(nro), str(fecha)[:10], round(float(monto or 0), 2))
+
+    pendientes: dict[tuple, list[str]] = {}
+    for lote, grupo in por_lote.items():
+        for trozo in grupo:
+            pendientes.setdefault(_clave(trozo[5], trozo[2], trozo[3]), []).append(lote)
+
+    vistos: dict[str, dict] = {}
+    ordenados = []
+    junto = False
+    for _, fila in df.iterrows():
+        tipo = str(fila.get("TIPO") or "").strip().upper()
+        if tipo != "PAGO":
+            ordenados.append(fila.to_dict())
+            continue
+        clave = _clave(fila.get("DOCUMENTO"), fila.get("FECHA"), fila.get("HABER"))
+        cola = pendientes.get(clave) or []
+        if not cola:
+            ordenados.append(fila.to_dict())
+            continue
+        lote = cola.pop(0)
+        haber = round(float(fila.get("HABER") or 0), 2)
+        if lote in vistos:
+            junto = True
+            grupo = por_lote[lote]
+            metodo = next((str(t[4]).strip() for t in grupo if str(t[4]).strip()), "")
+            vistos[lote]["HABER"] = round(float(vistos[lote]["HABER"]) + haber, 2)
+            vistos[lote]["DOCUMENTO"] = ""
+            vistos[lote]["DETALLE"] = f"Abono ({metodo})" if metodo else "Abono"
+            continue
+        copia = fila.to_dict()
+        copia["HABER"] = haber
+        vistos[lote] = copia
+        ordenados.append(copia)
+
+    if not junto:
+        return df
+    primera = df.iloc[0]
+    saldo = float(primera.get("SALDO") or 0) - float(primera.get("DEBE") or 0) + float(primera.get("HABER") or 0)
+    for fila in ordenados:
+        saldo = round(saldo + float(fila.get("DEBE") or 0) - float(fila.get("HABER") or 0), 2)
+        fila["SALDO"] = saldo
+    return pd.DataFrame(ordenados)
