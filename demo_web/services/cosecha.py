@@ -1026,6 +1026,130 @@ def _vista_menu(link: dict, fecha: str) -> dict:
     }
 
 
+def _promedio_totes(totes: int, personas: int) -> str:
+    if personas <= 0:
+        return "0"
+    valor = totes / personas
+    if valor == int(valor):
+        return str(int(valor))
+    return f"{valor:.1f}".replace(".", ",")
+
+
+def _fecha_visible(dia: str) -> str:
+    if len(dia) == 10 and dia[4] == "-" and dia[7] == "-":
+        return f"{dia[8:10]}-{dia[5:7]}-{dia[0:4]}"
+    return dia
+
+
+def estadisticas_cosecha(
+    conn: sqlite3.Connection,
+    faena_id: int,
+    cuarteles: list[str],
+    fecha: str,
+) -> dict[str, Any]:
+    """Totales del día y de la faena, en los cuarteles que el enlace ya puede ver."""
+    asegurar_tablas(conn)
+    alcance = [str(c).strip() for c in cuarteles if str(c).strip()]
+    dia_vacio = {
+        "totes": 0,
+        "cosecheros": 0,
+        "promedio": "0",
+        "mayor": None,
+    }
+    faena_vacia = {
+        "totes": 0,
+        "dias": 0,
+        "cosecheros": 0,
+        "por_cuartel": [],
+        "por_dia": [],
+        "ranking": [],
+        "varios_cuarteles": len(alcance) > 1,
+    }
+    if not alcance:
+        return {"dia": dia_vacio, "faena": faena_vacia}
+    marcas = ",".join("?" * len(alcance))
+    expr = _fecha_sql("t.")
+    filas = conn.execute(
+        f"""SELECT t.cuartel, t.funda_id, f.numero, COALESCE(f.nombre, ''),
+                   ({expr}) AS dia
+            FROM cosecha_tote t
+            JOIN cosecha_funda f ON f.id = t.funda_id
+            WHERE t.faena_id=? AND t.anulado=0 AND t.cuartel IN ({marcas})""",
+        [int(faena_id), *alcance],
+    ).fetchall()
+
+    del_dia = [r for r in filas if str(r[4] or "") == (fecha or "").strip()]
+    por_persona_dia: dict[int, dict[str, Any]] = {}
+    for cuartel, funda_id, numero, nombre, _dia in del_dia:
+        persona = por_persona_dia.setdefault(
+            int(funda_id),
+            {"numero": int(numero), "nombre": nombre or "", "totes": 0},
+        )
+        persona["totes"] += 1
+        del cuartel
+    mayor = None
+    if por_persona_dia:
+        mayor = min(
+            por_persona_dia.values(),
+            key=lambda p: (-int(p["totes"]), int(p["numero"])),
+        )
+    dia = {
+        "totes": len(del_dia),
+        "cosecheros": len(por_persona_dia),
+        "promedio": _promedio_totes(len(del_dia), len(por_persona_dia)),
+        "mayor": mayor,
+    }
+
+    por_cuartel = {nombre: 0 for nombre in alcance}
+    por_dia: dict[str, int] = {}
+    personas: dict[int, dict[str, Any]] = {}
+    for cuartel, funda_id, numero, nombre, dia_fila in filas:
+        nombre_cuartel = str(cuartel)
+        por_cuartel[nombre_cuartel] = por_cuartel.get(nombre_cuartel, 0) + 1
+        dia_txt = str(dia_fila or "")
+        if dia_txt:
+            por_dia[dia_txt] = por_dia.get(dia_txt, 0) + 1
+        persona = personas.setdefault(
+            int(funda_id),
+            {"numero": int(numero), "nombre": nombre or "", "totes": 0, "dias": set()},
+        )
+        persona["totes"] += 1
+        if dia_txt:
+            persona["dias"].add(dia_txt)
+    ranking = sorted(
+        (
+            {
+                "numero": p["numero"],
+                "nombre": p["nombre"],
+                "totes": p["totes"],
+                "dias": len(p["dias"]),
+            }
+            for p in personas.values()
+        ),
+        key=lambda p: (-int(p["totes"]), int(p["numero"])),
+    )
+    return {
+        "dia": dia,
+        "faena": {
+            "totes": len(filas),
+            "dias": len(por_dia),
+            "cosecheros": len(personas),
+            "por_cuartel": [
+                {"nombre": nombre, "totes": por_cuartel[nombre]}
+                for nombre in sorted(por_cuartel, key=lambda n: (-por_cuartel[n], n))
+            ]
+            if len(alcance) > 1
+            else [],
+            "por_dia": [
+                {"fecha": dia_txt, "fecha_txt": _fecha_visible(dia_txt), "totes": totes}
+                for dia_txt, totes in sorted(por_dia.items(), reverse=True)
+            ],
+            "ranking": ranking,
+            "varios_cuarteles": len(alcance) > 1,
+        },
+    }
+
+
 def vista_anotadora(
     conn: sqlite3.Connection,
     token: str,
@@ -1079,8 +1203,10 @@ def vista_anotadora(
                 "viva": funda["estado"] == "activa",
                 "totes": por_funda.get(int(funda["id"]), 0),
             }
-    pestana = "ingresado" if (tab or "").strip() == "ingresado" else "ingreso"
+    pedido = (tab or "").strip()
+    pestana = pedido if pedido in ("ingresado", "estadisticas") else "ingreso"
     visible = f"{dia[8:10]}-{dia[5:7]}-{dia[0:4]}" if len(dia) == 10 else ""
+    alcance = list(link["cuarteles"]) if link.get("todos") or link.get("super") else [cuartel]
     return {
         "cuartel": cuartel,
         "tab": pestana,
@@ -1102,6 +1228,11 @@ def vista_anotadora(
         "faena_id": int(link["faena_id"]) if link.get("super") else 0,
         "contratista": link.get("contratista") or "",
         "faena_estado": link.get("faena_estado") or "",
+        "estadisticas": (
+            estadisticas_cosecha(conn, faena_id, alcance, dia)
+            if pestana == "estadisticas"
+            else None
+        ),
     }
 
 

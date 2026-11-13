@@ -377,7 +377,7 @@ def _volver_cosecha(
     args = {
         "token": token,
         "tenant": (tenant or "concepcion").strip().lower(),
-        "tab": "ingresado" if tab == "ingresado" else "ingreso",
+        "tab": tab if tab in ("ingresado", "estadisticas") else "ingreso",
     }
     if numero:
         args["n"] = numero
@@ -392,7 +392,7 @@ def _volver_cosecha(
 
 @bp.route("/cosecha/<token>", methods=["GET", "POST"])
 def cosecha_formulario(token: str):
-    """Teléfono de la anotadora: ingreso e ingresado, sin precios."""
+    """Teléfono de la anotadora: ingreso, ingresado y estadísticas, sin precios."""
     from demo_web.services.cosecha import atender_anotadora, vista_anotadora
     from demo_web.services.demo_loader import get_demo_module
 

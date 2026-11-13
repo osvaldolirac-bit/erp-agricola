@@ -178,6 +178,8 @@ class TestFaena(unittest.TestCase):
         self.assertIn("not fila.asignado", html)
         self.assertIn("+ 1 tote", html)
         self.assertIn('name="nombre"', html)
+        self.assertIn("Estadísticas", html)
+        self.assertIn('data-tab="estadisticas"', html)
         self.assertIn('name="rut"', html)
         self.assertIn("Deshacer el último", html)
         self.assertIn('type="date"', html)
@@ -199,6 +201,59 @@ class TestFaena(unittest.TestCase):
         self.assertNotIn("Escanear", html)
         self.assertNotIn("QR", html)
         self.assertNotIn("Generar", html)
+
+    def test_la_estadistica_separa_el_dia_de_la_faena(self):
+        conn = _conn()
+        _ok, _msg, faena = abrir_faena(
+            conn, 1, ["CEREZOS CORTE 1", "CIRUELOS"], "2026-11-20"
+        )
+        entregar_funda(conn, faena, "Ana")
+        entregar_funda(conn, faena, "Luis")
+        links = {x["cuartel"]: x["token"] for x in listar_links(conn, faena)}
+        corte = links["CEREZOS CORTE 1"]
+        ciruelos = links["CIRUELOS"]
+        for _ in range(2):
+            sumar_tote(conn, corte, 1, "2026-11-20 08:00:00", "2026-11-20")
+        sumar_tote(conn, corte, 2, "2026-11-20 09:00:00", "2026-11-20")
+        sumar_tote(conn, corte, 1, "2026-11-21 08:00:00", "2026-11-21")
+        for _ in range(2):
+            sumar_tote(conn, ciruelos, 2, "2026-11-20 10:00:00", "2026-11-20")
+
+        uno = vista_anotadora(conn, corte, "estadisticas", None, "2026-11-20")
+        self.assertEqual(uno["tab"], "estadisticas")
+        self.assertNotIn("precio", uno)
+        self.assertNotIn("bruto", uno)
+        dia = uno["estadisticas"]["dia"]
+        self.assertEqual(dia["totes"], 3)
+        self.assertEqual(dia["cosecheros"], 2)
+        self.assertEqual(dia["promedio"], "1,5")
+        self.assertEqual(dia["mayor"]["numero"], 1)
+        self.assertEqual(dia["mayor"]["nombre"], "Ana")
+        self.assertEqual(dia["mayor"]["totes"], 2)
+        totales = uno["estadisticas"]["faena"]
+        self.assertEqual(totales["totes"], 4)
+        self.assertEqual(totales["dias"], 2)
+        self.assertEqual(totales["cosecheros"], 2)
+        self.assertFalse(totales["varios_cuarteles"])
+        self.assertEqual(totales["ranking"][0]["numero"], 1)
+        self.assertEqual(totales["ranking"][0]["totes"], 3)
+        self.assertEqual(totales["ranking"][0]["dias"], 2)
+        self.assertEqual(totales["por_dia"][0]["fecha"], "2026-11-21")
+
+        todos = enlace_todos(conn, faena)
+        amplio = vista_anotadora(
+            conn, todos, "estadisticas", None, "2026-11-20", "CIRUELOS"
+        )
+        self.assertEqual(amplio["estadisticas"]["dia"]["totes"], 5)
+        self.assertEqual(amplio["estadisticas"]["dia"]["mayor"]["numero"], 2)
+        self.assertEqual(amplio["estadisticas"]["dia"]["mayor"]["totes"], 3)
+        self.assertEqual(amplio["estadisticas"]["faena"]["totes"], 6)
+        self.assertTrue(amplio["estadisticas"]["faena"]["varios_cuarteles"])
+        nombres = [c["nombre"] for c in amplio["estadisticas"]["faena"]["por_cuartel"]]
+        self.assertEqual(nombres[0], "CEREZOS CORTE 1")
+        self.assertIn("CIRUELOS", nombres)
+        ingreso = vista_anotadora(conn, corte, "ingreso", None, "2026-11-20")
+        self.assertIsNone(ingreso["estadisticas"])
 
     def test_el_enlace_se_comparte_por_whatsapp(self):
         from urllib.parse import unquote
