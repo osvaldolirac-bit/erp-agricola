@@ -60,6 +60,16 @@ def _fmt_santiago(momento: datetime, forma: str = "%d/%m/%Y %H:%M") -> str:
     return reloj_guardado_a_santiago(momento).strftime(forma)
 
 
+def programado_aun_espera(inicio_local: datetime, ahora_guardado: datetime) -> bool:
+    """True si la hora elegida en el teléfono todavía no llega.
+
+    inicio_local ya está en hora de Santiago. ahora_guardado es hora_chile(),
+    fijo en UTC−4. En verano el teléfono va una hora adelante.
+    """
+    telefono = reloj_guardado_a_santiago(ahora_guardado)
+    return telefono < inicio_local.replace(tzinfo=None)
+
+
 def fmt_reloj_guardado(valor: str | None, *, ya_es_local: bool = False) -> str:
     """Texto de un reloj guardado. Programar ya trae la hora del teléfono."""
     momento = _parse_dt(valor)
