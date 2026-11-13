@@ -161,3 +161,78 @@ def presentar_cuenta(conn: sqlite3.Connection, df: pd.DataFrame, f_peso) -> tupl
             }
         )
     return filas, pd.DataFrame(pdf)
+
+
+def _filtro_tipo_gasto() -> str:
+    try:
+        from erp_contratistas import sql_filtro_tipo_gasto_contratista
+
+        return sql_filtro_tipo_gasto_contratista("tipo_gasto")
+    except Exception:
+        return "UPPER(TRIM(COALESCE(tipo_gasto, ''))) = 'CONTRATISTAS'"
+
+
+def documentos_con_saldo(conn: sqlite3.Connection, contratista_id: int, razon: str = "") -> list[dict]:
+    """Cabeceras pendientes del contratista, de la más antigua a la más nueva."""
+    filtro = _filtro_tipo_gasto()
+    filas = conn.execute(
+        f"""SELECT id, nro_documento, fecha_compra, monto_total, COALESCE(monto_pagado, 0)
+            FROM facturas
+            WHERE monto_total > 0
+              AND nro_documento NOT LIKE '%_P'
+              AND COALESCE(estado, 'Pendiente') = 'Pendiente'
+              AND {filtro}
+              AND (
+                    COALESCE(contratista_id, 0)=?
+                    OR (
+                        COALESCE(contratista_id, 0)=0
+                        AND UPPER(TRIM(proveedor))=UPPER(TRIM(?))
+                    )
+                  )
+            ORDER BY fecha_compra ASC, id ASC""",
+        (int(contratista_id), (razon or "").strip()),
+    ).fetchall()
+    pendientes = []
+    for fid, nro, fecha, total, pagado in filas:
+        saldo = round(float(total or 0) - float(pagado or 0), 2)
+        if saldo <= 0.01:
+            continue
+        pendientes.append(
+            {
+                "id": int(fid),
+                "nro": str(nro),
+                "fecha": str(fecha or "")[:10],
+                "saldo": saldo,
+            }
+        )
+    return pendientes
+
+
+def repartir_abono(documentos: list[dict], monto: float) -> tuple[list[dict], str]:
+    """Aplica el abono al documento más antiguo y el resto al siguiente."""
+    try:
+        pesos = round(float(monto), 2)
+    except (TypeError, ValueError):
+        return [], "Monto de abono inválido."
+    if pesos <= 0:
+        return [], "El abono tiene que ser mayor a cero."
+    if not documentos:
+        return [], "Este contratista no tiene documentos con saldo."
+    deuda = round(sum(doc["saldo"] for doc in documentos), 2)
+    if pesos > deuda + 0.01:
+        return [], "El abono supera la deuda pendiente."
+    partes = []
+    resta = pesos
+    for doc in documentos:
+        if resta <= 0.01:
+            break
+        aplicar = round(min(doc["saldo"], resta), 2)
+        partes.append(
+            {
+                **doc,
+                "aplicar": aplicar,
+                "saldo_despues": round(doc["saldo"] - aplicar, 2),
+            }
+        )
+        resta = round(resta - aplicar, 2)
+    return partes, ""
