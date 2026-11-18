@@ -393,6 +393,10 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             )
         elif sec == "armado" and sub == "manual":
             ctx["form_fecha"] = hoy_demo(demo).isoformat()
+            if lc:
+                from demo_web.services.registro_riego import sectores_para_riego_manual
+
+                ctx["manual_sectores"] = sectores_para_riego_manual(conn)
         elif sec == "bitacora" and habilitado():
             es_demo = get_erp_app() == "demo"
             hydra_link_n = 0
@@ -435,6 +439,18 @@ def _post_manual(demo, conn, user_email: str) -> dict:
 
     fecha = request.form.get("fecha") or str(hoy_demo(demo))
     huerto = request.form.get("huerto") or ""
+    relay_id = None
+    sector_label = ""
+    if is_concepcion_tenant():
+        from demo_web.services.registro_riego import resolver_sector_manual
+
+        pedido = (request.form.get("sector") or request.form.get("relay_id") or "").strip()
+        sector = resolver_sector_manual(conn, pedido)
+        if not sector:
+            return {"ok": False, "msg": "Seleccione un sector."}
+        huerto = sector["huerto_cc"]
+        relay_id = int(sector["relay_id"]) if sector.get("relay_id") else None
+        sector_label = str(sector["label"] or "")
     try:
         horas = float((request.form.get("horas") or "0").replace(",", "."))
     except ValueError:
@@ -462,6 +478,8 @@ def _post_manual(demo, conn, user_email: str) -> dict:
         fertilizantes=fert_lineas,
         modo_riego=modo_riego,
         nota=nota,
+        hydrawise_relay_id=relay_id,
+        sector_label=sector_label,
     )
 
 

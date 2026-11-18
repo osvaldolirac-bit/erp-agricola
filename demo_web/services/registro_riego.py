@@ -127,6 +127,58 @@ def _norm_cc(huerto: str) -> str:
     return (huerto or "").strip().upper()
 
 
+# Huertos de La Concepción que no tienen válvula en Hydra y se riegan a mano.
+SECTORES_MANUAL_SIN_HYDRA: tuple[tuple[str, str], ...] = (
+    ("CIRUELOS", "Ciruelos"),
+    ("NOGALES CRUZ DEL SUR", "Nogales Cruz del Sur"),
+)
+
+
+def sectores_para_riego_manual(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Sectores de Hydra más Ciruelos y Nogales Cruz del Sur."""
+    from demo_web.services.hydrawise_riego import sectores_para_link_riego
+
+    out: list[dict[str, Any]] = []
+    for s in sectores_para_link_riego(conn):
+        item = dict(s)
+        item["valor"] = str(int(s["relay_id"]))
+        out.append(item)
+    ya = {_norm_cc(str(s.get("huerto_cc") or "")) for s in out}
+    for cc, label in SECTORES_MANUAL_SIN_HYDRA:
+        if cc in ya:
+            continue
+        out.append(
+            {
+                "relay_id": None,
+                "valor": f"cc:{cc}",
+                "label": label,
+                "huerto_cc": cc,
+                "modo_riego": "surcos" if cc in RIEGO_SOLO_SURCO else "horas",
+            }
+        )
+    return out
+
+
+def resolver_sector_manual(conn: sqlite3.Connection, valor: str) -> dict[str, Any] | None:
+    pedido = (valor or "").strip()
+    if not pedido or pedido == "0":
+        return None
+    if pedido.upper().startswith("CC:"):
+        cc = _norm_cc(pedido.split(":", 1)[1])
+        for s in sectores_para_riego_manual(conn):
+            if s.get("relay_id") is None and _norm_cc(str(s.get("huerto_cc") or "")) == cc:
+                return s
+        return None
+    try:
+        rid = int(pedido)
+    except ValueError:
+        return None
+    for s in sectores_para_riego_manual(conn):
+        if s.get("relay_id") is not None and int(s["relay_id"]) == rid:
+            return s
+    return None
+
+
 def _cargar_superficie_ha(conn: sqlite3.Connection, huerto: str) -> float:
     cc = _norm_cc(huerto)
     try:
@@ -2021,6 +2073,8 @@ def registrar_manual(
     modo_riego: str = "horas",
     surcos: float | None = None,
     nota: str = "",
+    hydrawise_relay_id: int | None = None,
+    sector_label: str = "",
 ) -> dict[str, Any]:
     demo = get_demo_module()
     huerto_cc = _norm_cc(huerto)
@@ -2053,8 +2107,9 @@ def registrar_manual(
         conn.execute(
             """INSERT INTO riego
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, origen, creado_por, creado_en, modo_riego, surcos, notas)
-               VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?, ?, ?, ?)""",
+                regador, origen, creado_por, creado_en, modo_riego, surcos, notas,
+                hydrawise_relay_id)
+               VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?, ?, ?, ?, ?)""",
             (
                 codigo,
                 str(fecha)[:10],
@@ -2069,6 +2124,7 @@ def registrar_manual(
                 modo_riego,
                 None,
                 nota_txt,
+                hydrawise_relay_id,
             ),
         )
         if lineas_fert:
@@ -2081,8 +2137,9 @@ def registrar_manual(
                 return {"ok": False, "msg": msg_bod}
 
         fert_resumen = _fmt_fertilizantes(conn, codigo, demo, fert_dosis_ha, fert_total)
+        donde = (sector_label or "").strip() or huerto_cc
         detalle = (
-            f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | "
+            f"{codigo} | {donde} | {huerto_cc} | {demo.f_decimal(horas)} h | "
             f"{demo.f_decimal(m3)} m3 | {fert_resumen[:80]}"
         )
         if nota_txt:
@@ -2101,7 +2158,8 @@ def registrar_manual(
     finally:
         conn.close()
 
-    return {"ok": True, "msg": f"{codigo} registrado en {huerto_cc}.", "codigo": codigo}
+    donde = (sector_label or "").strip() or huerto_cc
+    return {"ok": True, "msg": f"{codigo} registrado en {donde}.", "codigo": codigo}
 
 
 def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
