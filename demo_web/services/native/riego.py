@@ -394,9 +394,9 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
         elif sec == "armado" and sub == "manual":
             ctx["form_fecha"] = hoy_demo(demo).isoformat()
             if lc:
-                from demo_web.services.hydrawise_riego import sectores_para_link_riego
+                from demo_web.services.registro_riego import sectores_para_riego_manual
 
-                ctx["manual_sectores"] = sectores_para_link_riego(conn)
+                ctx["manual_sectores"] = sectores_para_riego_manual(conn)
         elif sec == "bitacora" and habilitado():
             es_demo = get_erp_app() == "demo"
             hydra_link_n = 0
@@ -442,22 +442,15 @@ def _post_manual(demo, conn, user_email: str) -> dict:
     relay_id = None
     sector_label = ""
     if is_concepcion_tenant():
-        from demo_web.services.hydrawise_riego import (
-            resolver_sector_link,
-            sectores_para_link_riego,
-        )
+        from demo_web.services.registro_riego import resolver_sector_manual
 
-        if sectores_para_link_riego(conn):
-            try:
-                pedido = int(request.form.get("relay_id") or 0)
-            except ValueError:
-                pedido = 0
-            sector = resolver_sector_link(conn, pedido) if pedido else None
-            if not sector:
-                return {"ok": False, "msg": "Seleccione un sector de Hydra."}
-            huerto = sector["huerto_cc"]
-            relay_id = int(sector["relay_id"])
-            sector_label = str(sector["label"] or "")
+        pedido = (request.form.get("sector") or request.form.get("relay_id") or "").strip()
+        sector = resolver_sector_manual(conn, pedido)
+        if not sector:
+            return {"ok": False, "msg": "Seleccione un sector."}
+        huerto = sector["huerto_cc"]
+        relay_id = int(sector["relay_id"]) if sector.get("relay_id") else None
+        sector_label = str(sector["label"] or "")
     try:
         horas = float((request.form.get("horas") or "0").replace(",", "."))
     except ValueError:

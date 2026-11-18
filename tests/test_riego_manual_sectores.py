@@ -38,8 +38,13 @@ class TestRiegoManualSectores(unittest.TestCase):
         html = (ROOT / "demo_web/templates/modules/riego.html").read_text()
         manual = html.split("sec_activa == 'manual'", 1)[1].split("sec_activa == 'hoy'", 1)[0]
         self.assertIn("manual_sectores", manual)
-        self.assertIn('name="relay_id"', manual)
+        self.assertIn('name="sector"', manual)
         self.assertIn("{{ s.label }}", manual)
+        self.assertIn("Ciruelos", manual)
+        self.assertIn("Nogales Cruz del Sur", manual)
+        src = (ROOT / "demo_web/services/registro_riego.py").read_text()
+        self.assertIn('("CIRUELOS", "Ciruelos")', src)
+        self.assertIn('("NOGALES CRUZ DEL SUR", "Nogales Cruz del Sur")', src)
         regar = (ROOT / "demo_web/templates/registro_riego/_hydra_panel_regar.html").read_text()
         self.assertIn("{{ s.label }}", regar)
 
@@ -84,3 +89,29 @@ class TestRiegoManualSectores(unittest.TestCase):
         self.assertFalse(res["ok"])
         self.assertIn("sector", res["msg"].lower())
         guardar.assert_not_called()
+
+    def test_ciruelos_y_cruz_del_sur_se_imputan_a_su_huerto(self):
+        app = Flask(__name__)
+        casos = (
+            ("cc:CIRUELOS", "CIRUELOS", "Ciruelos"),
+            ("cc:NOGALES CRUZ DEL SUR", "NOGALES CRUZ DEL SUR", "Nogales Cruz del Sur"),
+        )
+        for valor, cc, label in casos:
+            registrado = {}
+
+            def _guardar(*args, **kwargs):
+                registrado["args"] = args
+                registrado["kwargs"] = kwargs
+                return {"ok": True, "msg": "ok", "codigo": "RIE-91"}
+
+            with patch(
+                "demo_web.services.native.riego.is_concepcion_tenant", return_value=True
+            ), _hydra(lambda conn: [SECTOR], lambda conn, rid: SECTOR), patch(
+                "demo_web.services.registro_riego.registrar_manual", side_effect=_guardar
+            ):
+                with app.test_request_context("/", method="POST", data={"sector": valor, "fecha": "2026-11-18", "horas": "1", "m3": "5"}):
+                    res = _post_manual(_Demo(), object(), "osvaldo@laconcepcion.cl")
+            self.assertTrue(res["ok"], valor)
+            self.assertEqual(registrado["args"][1], cc)
+            self.assertIsNone(registrado["kwargs"]["hydrawise_relay_id"])
+            self.assertEqual(registrado["kwargs"]["sector_label"], label)
