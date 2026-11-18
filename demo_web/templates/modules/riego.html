@@ -42,7 +42,7 @@
   {% endif %}
   <div class="panel-card">
     <h2 class="h6">Registro manual</h2>
-    <p class="small text-muted">Imputa directamente al huerto (CC). Fertilización opcional desde bodega (familia FERTILIZANTE).</p>
+    <p class="small text-muted">{% if manual_sectores %}Los sectores son los de Hydra. El riego se imputa al centro de costo de ese sector.{% else %}Imputa directamente al huerto (CC).{% endif %} Fertilización opcional desde bodega (familia FERTILIZANTE).</p>
     <form method="post" class="row g-2" id="formManualRiego">
       <input type="hidden" name="action" value="registrar_manual">
       <input type="hidden" name="sec" value="{% if sec_activa == 'armado' %}armado{% else %}manual{% endif %}">
@@ -55,7 +55,17 @@
         <label class="form-label small">Fecha</label>
         <input type="date" name="fecha" class="form-control form-control-sm" value="{{ form_fecha }}" required>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-4">
+        {% if manual_sectores %}
+        <label class="form-label small">Sector</label>
+        <select name="relay_id" id="manualSector" class="form-select form-select-sm" required>
+          <option value="">—</option>
+          {% for s in manual_sectores %}
+          <option value="{{ s.relay_id }}" data-huerto="{{ s.huerto_cc }}">{{ s.label }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="huerto" id="manualHuerto" value="">
+        {% else %}
         <label class="form-label small">Huerto (CC)</label>
         <select name="huerto" id="manualHuerto" class="form-select form-select-sm" required>
           <option value="">—</option>
@@ -63,6 +73,7 @@
           <option value="{{ h }}">{{ h }}</option>
           {% endfor %}
         </select>
+        {% endif %}
       </div>
       <div class="col-12" id="manualModoBlock" style="display:none">
         <label class="form-label small d-block">Tipo de registro</label>
@@ -204,13 +215,26 @@
         }
         recalcM3();
       }
+      var sectorEl = document.getElementById('manualSector');
+      function aplicarSector() {
+        if (!sectorEl || !huertoEl) return;
+        var opt = sectorEl.options[sectorEl.selectedIndex];
+        huertoEl.value = (opt && opt.getAttribute('data-huerto')) || '';
+      }
+      if (sectorEl) {
+        sectorEl.addEventListener('change', function () {
+          aplicarSector();
+          refreshUi();
+        });
+      }
       if (huertoEl) huertoEl.addEventListener('change', refreshUi);
       if (horasEl) horasEl.addEventListener('input', recalcM3);
       modoInputs.forEach(function (inp) { inp.addEventListener('change', refreshUi); });
       var formManual = document.getElementById('formManualRiego');
       if (formManual) {
-        formManual.addEventListener('submit', function() { recalcM3(); });
+        formManual.addEventListener('submit', function() { aplicarSector(); recalcM3(); });
       }
+      aplicarSector();
       refreshUi();
     })();
     </script>

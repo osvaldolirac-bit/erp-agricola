@@ -2021,6 +2021,8 @@ def registrar_manual(
     modo_riego: str = "horas",
     surcos: float | None = None,
     nota: str = "",
+    hydrawise_relay_id: int | None = None,
+    sector_label: str = "",
 ) -> dict[str, Any]:
     demo = get_demo_module()
     huerto_cc = _norm_cc(huerto)
@@ -2053,8 +2055,9 @@ def registrar_manual(
         conn.execute(
             """INSERT INTO riego
                (codigo, fecha, huerto, horas, m3, fert_dosis_ha, fert_total,
-                regador, origen, creado_por, creado_en, modo_riego, surcos, notas)
-               VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?, ?, ?, ?)""",
+                regador, origen, creado_por, creado_en, modo_riego, surcos, notas,
+                hydrawise_relay_id)
+               VALUES (?,?,?,?,?,?,?,?, 'manual', ?, ?, ?, ?, ?, ?)""",
             (
                 codigo,
                 str(fecha)[:10],
@@ -2069,6 +2072,7 @@ def registrar_manual(
                 modo_riego,
                 None,
                 nota_txt,
+                hydrawise_relay_id,
             ),
         )
         if lineas_fert:
@@ -2081,8 +2085,9 @@ def registrar_manual(
                 return {"ok": False, "msg": msg_bod}
 
         fert_resumen = _fmt_fertilizantes(conn, codigo, demo, fert_dosis_ha, fert_total)
+        donde = (sector_label or "").strip() or huerto_cc
         detalle = (
-            f"{codigo} | {huerto_cc} | {demo.f_decimal(horas)} h | "
+            f"{codigo} | {donde} | {huerto_cc} | {demo.f_decimal(horas)} h | "
             f"{demo.f_decimal(m3)} m3 | {fert_resumen[:80]}"
         )
         if nota_txt:
@@ -2101,7 +2106,8 @@ def registrar_manual(
     finally:
         conn.close()
 
-    return {"ok": True, "msg": f"{codigo} registrado en {huerto_cc}.", "codigo": codigo}
+    donde = (sector_label or "").strip() or huerto_cc
+    return {"ok": True, "msg": f"{codigo} registrado en {donde}.", "codigo": codigo}
 
 
 def listar_bitacora(conn, limite: int = 50) -> list[dict[str, Any]]:
