@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ cot.folio }}{% endblock %}
+{% block content %}
+  {% include "cotizaciones/_ot_banner.html" %}
+<div class="page-head">
+  <div>
+    <h1>{{ cot.folio }}</h1>
+    <p>
+      {{ cot.razon_social or '—' }}
+      {% if cot.titulo and cot.titulo != cot.razon_social %} · {{ cot.titulo }}{% endif %}
+      ·
+      {% if (cot.tipo_venta or 'servicio') == 'producto' %}
+      <span class="badge text-bg-primary">Venta producto</span>
+      {% elif (cot.tipo_venta or '') == 'arriendo' %}
+      <span class="badge text-bg-warning">Arriendo</span>
+      {% else %}
+      <span class="badge text-bg-secondary">Venta servicio</span>
+      {% endif %}
+    </p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('cotizaciones_list') }}">Volver</a>
+    <a class="btn btn-info text-white" href="{{ url_for('cotizaciones_pdf', cot_id=cot.id) }}"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+    <a class="btn btn-warning text-white" href="{{ url_for('cotizaciones_form', cot_id=cot.id) }}"><i class="bi bi-pencil-square"></i> Editar</a>
+    {% if cxc %}
+    <a class="btn btn-outline-primary" href="{{ url_for('cuentas_detalle', cuenta_id=cxc.id) }}"><i class="bi bi-cash-stack"></i> Ver CxC {{ cxc.documento }}</a>
+    {% endif %}
+    {% if contrato_arriendo %}
+    <a class="btn btn-warning" href="{{ url_for('arriendos_detalle', aid=contrato_arriendo.id) }}"><i class="bi bi-truck"></i> Contrato {{ contrato_arriendo.folio }}</a>
+    {% endif %}
+  </div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="panel mb-0">
+      <div class="text-muted small">Proyecto</div>
+      <strong>{{ cot.proyecto or '—' }}</strong>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="panel mb-0">
+      <div class="text-muted small">Asunto</div>
+      <strong>{{ cot.asunto or '—' }}</strong>
+    </div>
+  </div>
+</div>
+{% if cxc %}
+<div class="alert alert-success py-2">
+  Cuenta por cobrar vinculada: <strong>{{ cxc.documento }}</strong>
+  · saldo {{ clp(cxc.saldo) }}
+  · <span class="estado {{ cxc_estado_class(cxc.estado) }}">{{ cxc_estado_label(cxc.estado) }}</span>
+</div>
+{% elif cot.estado == 'aprobada' %}
+<div class="alert alert-warning py-2">
+  Cotización aprobada sin CxC. Al actualizar el estado a <strong>aprobada</strong> se genera automáticamente.
+</div>
+{% endif %}
+<div class="row g-3 mb-3">
+  <div class="col-md-2"><div class="panel"><div class="text-muted small">Subtotal neto</div><strong>{{ clp(cot.subtotal) }}</strong></div></div>
+  <div class="col-md-2"><div class="panel"><div class="text-muted small">GG {{ (cot.gg_pct or 0)|round(1) }}%</div><strong>{{ clp(cot.gg_monto) }}</strong></div></div>
+  <div class="col-md-2"><div class="panel"><div class="text-muted small">Utilidad {{ (cot.utilidad_pct or 0)|round(1) }}%</div><strong>{{ clp(cot.utilidad_monto) }}</strong></div></div>
+  <div class="col-md-2"><div class="panel"><div class="text-muted small">Valor neto</div><strong>{{ clp(cot.valor_neto) }}</strong></div></div>
+  <div class="col-md-2"><div class="panel"><div class="text-muted small">IVA{% if cot.iva_pct is not none %} {{ cot.iva_pct|round(1) }}%{% endif %}</div><strong>{{ clp(cot.iva) }}</strong></div></div>
+  <div class="col-md-2"><div class="panel"><div class="text-muted small">Total</div><strong>{{ clp(cot.total) }}</strong></div></div>
+</div>
+<div class="panel">
+  <table class="table table-sm">
+    <thead><tr><th>Item</th><th>Especificación</th><th>Obs</th><th>Und</th><th>Cant</th>{% if (cot.tipo_venta or '') == 'arriendo' %}<th>Días</th><th>$/día</th>{% else %}<th>Valor</th>{% endif %}<th>Total</th></tr></thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>1.{{ loop.index }}</td>
+        <td>{{ it.descripcion }}</td>
+        <td>{{ it.obs or '' }}</td>
+        <td>{{ it.unidad }}</td>
+        <td>{{ '%.2f'|format(it.cantidad) }}</td>
+        {% if (cot.tipo_venta or '') == 'arriendo' %}
+        <td>{{ '%.0f'|format(it.dias_arriendo or 0) }}</td>
+        <td>{{ clp(it.precio_unitario) }}</td>
+        {% else %}
+        <td>{{ clp(it.precio_unitario) }}</td>
+        {% endif %}
+        <td>{{ clp(it.total) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="panel">
+  <h2 class="h6 mb-2">Notas y condiciones</h2>
+  {% if cot.notas %}
+  <div style="white-space: pre-wrap">{{ cot.notas }}</div>
+  {% else %}
+  <div class="text-muted">Sin notas ni condiciones. Se escriben al editar el borrador y salen en el PDF.</div>
+  {% endif %}
+</div>
+<div class="panel">
+  <form class="row g-2 align-items-end" method="post" action="{{ url_for('cotizaciones_estado', cot_id=cot.id) }}">
+    <div class="col-auto">
+      <label class="form-label fw-bold">Estado</label>
+      <select class="form-select" name="estado">
+        {% for e, label in estados_cot %}
+        <option value="{{ e }}" {% if cot.estado==e %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary" type="submit">Actualizar estado</button>
+    </div>
+    <div class="col-12">
+      <div class="form-text">Al pasar a <strong>aprobada</strong>: CxC automática. Producto → salida bodega. Arriendo → contrato + despacho en módulo Arriendos.</div>
+    </div>
+  </form>
+</div>
+{% endblock %}

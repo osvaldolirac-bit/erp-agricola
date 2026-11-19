@@ -924,6 +924,22 @@ def _fecha_cotizacion_form(raw: str | None) -> str:
     return d.isoformat()
 
 
+def _form_iva_pct(edit, default_nuevo: float) -> float:
+    """IVA de la cotización. En blanco significa 0: el usuario lo borró."""
+    raw = request.form.get("iva_pct")
+    if raw is None:
+        if edit:
+            prev = core.cotizacion_iva_pct(edit, default=default_nuevo)
+            return float(default_nuevo if prev is None else prev)
+        return float(default_nuevo)
+    if str(raw).strip() == "":
+        return 0.0
+    try:
+        return float(str(raw).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _form_pct(name: str, default: float) -> float:
     """Lee % del formulario; «0» es válido (no cae al default por falsy)."""
     raw = request.form.get(name)
@@ -1043,7 +1059,7 @@ def cotizaciones_form(cot_id: int | None = None):
         validez = int(request.form.get("validez") or validez_def)
         gg_pct = _form_pct("gg_pct", gg_def)
         utilidad_pct = _form_pct("utilidad_pct", util_def)
-        iva_pct = _form_pct("iva_pct", iva_def) / 100.0
+        iva_pct = _form_iva_pct(edit, iva_def) / 100.0
         notas = (request.form.get("notas") or "").strip() or None
         tipo_venta = (request.form.get("tipo_venta") or "servicio").strip().lower()
         if tipo_venta not in {"servicio", "producto", "arriendo"}:
@@ -1149,14 +1165,15 @@ def cotizaciones_form(cot_id: int | None = None):
                       cliente_id=?, asunto=?, proyecto=?, estado=?, fecha=?, validez_dias=?,
                       version=?, titulo=?, gg_pct=?, utilidad_pct=?,
                       gg_monto=?, utilidad_monto=?, valor_neto=?,
-                      subtotal=?, iva=?, total=?, notas=?, tipo_venta=?
+                      subtotal=?, iva=?, total=?, notas=?, tipo_venta=?, iva_pct=?
                     WHERE id=?
                     """,
                     (
                         cliente_id, asunto, proyecto, estado, fecha, validez,
                         version, titulo, gg_pct, utilidad_pct,
                         tots["gg_monto"], tots["utilidad_monto"], tots["valor_neto"],
-                        tots["subtotal"], tots["iva"], tots["total"], notas, tipo_venta, edit["id"],
+                        tots["subtotal"], tots["iva"], tots["total"], notas, tipo_venta,
+                        round(iva_pct * 100.0, 2), edit["id"],
                     ),
                 )
                 db.execute("DELETE FROM cotizacion_items WHERE cotizacion_id=?", (edit["id"],))
@@ -1171,8 +1188,9 @@ def cotizaciones_form(cot_id: int | None = None):
                         INSERT INTO cotizaciones
                         (folio, cliente_id, asunto, proyecto, estado, fecha, validez_dias,
                          version, titulo, gg_pct, utilidad_pct,
-                         gg_monto, utilidad_monto, valor_neto, subtotal, iva, total, notas, tipo_venta)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                         gg_monto, utilidad_monto, valor_neto, subtotal, iva, total, notas, tipo_venta,
+                         iva_pct)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         """,
                         (
                             folio, cliente_id, asunto, proyecto, estado,
@@ -1180,6 +1198,7 @@ def cotizaciones_form(cot_id: int | None = None):
                             version, titulo, gg_pct, utilidad_pct,
                             tots["gg_monto"], tots["utilidad_monto"], tots["valor_neto"],
                             tots["subtotal"], tots["iva"], tots["total"], notas, tipo_venta,
+                            round(iva_pct * 100.0, 2),
                         ),
                     )
                 except sqlite3.IntegrityError:
@@ -1265,7 +1284,9 @@ def cotizaciones_form(cot_id: int | None = None):
         gg_def=gg_def,
         util_def=util_def,
         iva_def=iva_def,
+        iva_cot=core.cotizacion_iva_pct(edit, default=None) if edit else None,
         validez_def=validez_def,
+        condiciones_def=core.CONDICIONES_COTIZACION_DEFECTO,
         hoy=core.hoy_chile().isoformat(),
         slots=16,
     )
@@ -1341,17 +1362,19 @@ def cotizaciones_pdf(cot_id: int):
         (cot_id,),
     ).fetchall()
     empresa = db.execute("SELECT * FROM empresa WHERE id=1").fetchone()
-    iva_pct = core.param(db, "iva", 19) / 100.0
-    db.close()
     if not cot:
+        db.close()
         flash("Cotización no encontrada", "danger")
         return redirect(url_for("cotizaciones_list"))
+    iva_guardado = core.cotizacion_iva_pct(cot, core.param(db, "iva", 19))
+    iva_pct = float(0 if iva_guardado is None else iva_guardado) / 100.0
+    db.close()
     pdf = core.cotizacion_pdf_bytes(cot, items, empresa, iva_pct=iva_pct)
     return send_file(
         BytesIO(pdf),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name=f"{cot['folio']}.pdf",
+        download_name=core.cotizacion_nombre_pdf(cot),
     )
 
 

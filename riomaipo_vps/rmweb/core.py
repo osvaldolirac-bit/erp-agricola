@@ -288,6 +288,7 @@ def init_db(db_path: str | Path | None = None, empresa_default: dict | None = No
             ("gg_monto", "REAL DEFAULT 0"),
             ("utilidad_monto", "REAL DEFAULT 0"),
             ("valor_neto", "REAL DEFAULT 0"),
+            ("iva_pct", "REAL"),
         ],
     )
     _ensure_columns(c, "cotizacion_items", [("obs", "TEXT"), ("orden", "INTEGER DEFAULT 0")])
@@ -652,6 +653,19 @@ def ensure_cxc_from_cotizacion(c: sqlite3.Connection, cot_id: int) -> str | None
     return doc
 
 
+def cotizacion_iva_pct(cot, default: float | None = 19.0) -> float | None:
+    """Porcentaje de IVA guardado en la cotización. 0 es válido."""
+    if "iva_pct" in cot.keys() and cot["iva_pct"] is not None:
+        return float(cot["iva_pct"])
+    neto = float(cot["valor_neto"] or 0) if "valor_neto" in cot.keys() else 0.0
+    iva = float(cot["iva"] or 0) if "iva" in cot.keys() else 0.0
+    if neto > 0 and iva <= 0:
+        return 0.0
+    if neto > 0 and iva > 0:
+        return round(iva / neto * 100.0, 2)
+    return default
+
+
 def calc_cotizacion_totales(subtotal: float, gg_pct: float, utilidad_pct: float, iva_pct: float) -> dict:
     sub = float(subtotal or 0)
     gg = int(round(sub * float(gg_pct or 0) / 100.0))
@@ -683,6 +697,15 @@ ESTADOS_COT = (
     ("aprobada", "Aprobada"),
     ("rechazada", "Rechazada"),
 )
+
+CONDICIONES_COTIZACION_DEFECTO = """\
+Validez: 7 días corridos desde la fecha de esta cotización.
+
+Alcance: el precio considera únicamente los materiales y la mano de obra descritos en el detalle. Trabajos adicionales, cambios de alcance y vicios ocultos en la instalación existente (filtraciones, cañerías o fallas eléctricas) se cotizan aparte.
+
+Garantía: 6 meses sobre la mano de obra ejecutada. Los materiales y equipos mantienen la garantía del fabricante.
+
+Forma de pago: 50% al aceptar la cotización y 50% contra recepción conforme."""
 
 
 def cxc_estado_label(estado: str | None) -> str:
@@ -963,6 +986,38 @@ def fmt_cant_pdf(v) -> str:
         return "0,00"
 
 
+def cotizacion_proyecto_asunto(cot) -> tuple[str, str]:
+    """Nombre de proyecto y asunto, cada uno por separado."""
+
+    def _txt(key: str) -> str:
+        if key in cot.keys() and cot[key]:
+            return str(cot[key]).strip()
+        return ""
+
+    return _txt("proyecto"), _txt("asunto")
+
+
+def cotizacion_nombre_pdf(cot) -> str:
+    """Archivo: folio, cliente, proyecto y asunto."""
+
+    def _parte(valor) -> str:
+        s = str(valor or "").strip()
+        s = s.replace("\\", " ").replace("/", " ")
+        for ch in ':*?"<>|\n\r\t':
+            s = s.replace(ch, " ")
+        s = " ".join(s.split())
+        return s.strip(" .")
+
+    folio = _parte(cot["folio"]) if "folio" in cot.keys() else ""
+    cliente = _parte(cot["razon_social"]) if "razon_social" in cot.keys() else ""
+    proyecto, asunto = cotizacion_proyecto_asunto(cot)
+    partes = [p for p in (folio, cliente, _parte(proyecto), _parte(asunto)) if p]
+    base = " - ".join(partes) if partes else "cotizacion"
+    if len(base) > 160:
+        base = base[:160].rstrip(" .-")
+    return f"{base}.pdf"
+
+
 def cotizacion_titulo_pdf(cot) -> str:
     version = str(cot["version"] if "version" in cot.keys() else "1") or "1"
     version = version.lstrip("Vv") or "1"
@@ -1064,15 +1119,20 @@ def _cotizacion_planilla_totales(cot, items, iva_pct: float = 0.19) -> dict:
     stored_total = float(cot["total"] or 0) if "total" in cot.keys() else 0.0
     stored_neto = float(cot["valor_neto"] or 0) if "valor_neto" in cot.keys() else 0.0
 
+    tasa = 0.0 if iva_pct is None else float(iva_pct)
     if stored_neto > 0 and abs(stored_neto - neto) <= 1 and stored_iva >= 0:
         iva = stored_iva
         total = stored_total if stored_total > 0 else neto + iva
+        if neto > 0:
+            tasa = 0.0 if abs(iva) < 0.5 else iva / neto
     elif stored_total > 0 and stored_iva > 0 and abs(stored_total - stored_iva - neto) <= 2:
         # Legacy: a veces el neto coincidía con total-iva
         iva = stored_iva
         total = stored_total
+        if neto > 0:
+            tasa = iva / neto
     else:
-        iva = float(round(neto * float(iva_pct or 0.19)))
+        iva = float(round(neto * tasa))
         total = neto + iva
 
     return {
@@ -1084,7 +1144,7 @@ def _cotizacion_planilla_totales(cot, items, iva_pct: float = 0.19) -> dict:
         "util": util,
         "neto": neto,
         "iva": iva,
-        "iva_pct": float(iva_pct or 0.19) * 100.0,
+        "iva_pct": round(tasa * 100.0, 2),
         "total": total,
     }
 
@@ -1152,7 +1212,7 @@ def _pdf_caja_condiciones(
     pdf.set_xy(x + pad, y + 1.2)
     pdf.set_text_color(22, 58, 95)
     pdf.set_font("Helvetica", "B", 6.5)
-    pdf.cell(inner_w, titulo_h, _pdf_txt("Condiciones"), ln=1)
+    pdf.cell(inner_w, titulo_h, _pdf_txt("Notas y condiciones"), ln=1)
     pdf.set_font("Helvetica", "", tam)
     pdf.set_text_color(26, 43, 60)
     yy = y + 1.2 + titulo_h
@@ -1270,7 +1330,21 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
     pdf.set_text_color(*C_BRAND)
     pdf.set_font("Helvetica", "B", 12)
     pdf.multi_cell(content_w, 6, title)
-    y = pdf.get_y() + 2
+    y = pdf.get_y() + 1
+    proyecto, asunto = cotizacion_proyecto_asunto(cot)
+    meta = []
+    if proyecto:
+        meta.append(f"Proyecto: {proyecto}")
+    if asunto:
+        meta.append(f"Asunto: {asunto}")
+    if meta:
+        pdf.set_xy(left, y)
+        pdf.set_text_color(*C_TEXT)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(content_w, 4.4, _pdf_txt("  ·  ".join(meta)))
+        y = pdf.get_y() + 1.5
+    else:
+        y += 1
 
     notas = ""
     if "notas" in cot.keys() and cot["notas"]:
