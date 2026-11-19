@@ -362,6 +362,14 @@ class SidebarMovilTests(unittest.TestCase):
         self.assertIn("@media (max-width: 991.98px)", css)
         self.assertIn("@media (min-width: 992px)", css)
 
+    def test_el_sidebar_no_tiene_cursor(self):
+        base = (ROOT / "riomaipo_vps/rmweb/templates/base.html").read_text(encoding="utf-8")
+        self.assertNotIn("Con Cursor", base)
+        self.assertNotIn("cotizaciones_cursor", base)
+        self.assertNotIn("cursor.com/link/prompt", base)
+        app = (ROOT / "riomaipo_vps/rmweb/app.py").read_text(encoding="utf-8")
+        self.assertNotIn("/cotizaciones/cursor", app)
+
 
 if __name__ == "__main__":
     unittest.main()
