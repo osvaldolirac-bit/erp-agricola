@@ -125,6 +125,60 @@ class CotizacionCondicionesPdfTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("Notas y condiciones", detalle)
         self.assertIn("cot.notas", detalle)
+        self.assertIn(">Proyecto<", detalle)
+        self.assertIn("cot.proyecto", detalle)
+        self.assertIn(">Asunto<", detalle)
+        self.assertIn("cot.asunto", detalle)
+        lista = (
+            ROOT / "riomaipo_vps/rmweb/templates/cotizaciones/lista.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Proyecto: {{ r.proyecto }}", lista)
+        self.assertIn("Asunto: {{ r.asunto }}", lista)
+
+    def test_el_pdf_muestra_proyecto_y_asunto(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT / "riomaipo_vps"))
+        from rmweb.core import cotizacion_pdf_bytes
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE cotizaciones (
+                   folio TEXT, estado TEXT, fecha TEXT, razon_social TEXT,
+                   titulo TEXT, version TEXT, proyecto TEXT, asunto TEXT,
+                   gg_pct REAL, utilidad_pct REAL,
+                   gg_monto REAL, utilidad_monto REAL, valor_neto REAL,
+                   iva REAL, total REAL, notas TEXT
+               )"""
+        )
+        conn.execute(
+            """INSERT INTO cotizaciones VALUES (
+                   'COT-28_2026', 'borrador', '2026-11-19', 'SALVADOR GARCES',
+                   'SALVADOR GARCES', '1', 'Fray Montalva', 'Fogón',
+                   5, 15, 0, 0, 0, 0, 0, ''
+               )"""
+        )
+        cot = conn.execute("SELECT * FROM cotizaciones").fetchone()
+        conn.execute(
+            """CREATE TABLE items (
+                   descripcion TEXT, obs TEXT, unidad TEXT,
+                   cantidad REAL, precio_unitario REAL, total REAL
+               )"""
+        )
+        conn.execute("INSERT INTO items VALUES ('Adoquin', '', 'm2', 10, 1000, 10000)")
+        items = conn.execute("SELECT * FROM items").fetchall()
+        pdf = cotizacion_pdf_bytes(cot, items, None, iva_pct=0.19)
+        self.assertIn(b"/Count 1", pdf)
+        partes = []
+        for raw in re.findall(br"stream\r?\n(.*?)\r?\nendstream", pdf, re.S):
+            try:
+                partes.append(zlib.decompress(raw).decode("latin-1", "replace"))
+            except zlib.error:
+                continue
+        plano = "\n".join(partes)
+        self.assertIn("Proyecto: Fray Montalva", plano)
+        self.assertIn("Asunto: Fogón", plano)
 
 
 class FolioCotizacionAnioTests(unittest.TestCase):

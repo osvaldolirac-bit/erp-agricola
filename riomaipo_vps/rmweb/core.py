@@ -972,6 +972,17 @@ def fmt_cant_pdf(v) -> str:
         return "0,00"
 
 
+def cotizacion_proyecto_asunto(cot) -> tuple[str, str]:
+    """Nombre de proyecto y asunto, cada uno por separado."""
+
+    def _txt(key: str) -> str:
+        if key in cot.keys() and cot[key]:
+            return str(cot[key]).strip()
+        return ""
+
+    return _txt("proyecto"), _txt("asunto")
+
+
 def cotizacion_titulo_pdf(cot) -> str:
     version = str(cot["version"] if "version" in cot.keys() else "1") or "1"
     version = version.lstrip("Vv") or "1"
@@ -1279,7 +1290,21 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
     pdf.set_text_color(*C_BRAND)
     pdf.set_font("Helvetica", "B", 12)
     pdf.multi_cell(content_w, 6, title)
-    y = pdf.get_y() + 2
+    y = pdf.get_y() + 1
+    proyecto, asunto = cotizacion_proyecto_asunto(cot)
+    meta = []
+    if proyecto:
+        meta.append(f"Proyecto: {proyecto}")
+    if asunto:
+        meta.append(f"Asunto: {asunto}")
+    if meta:
+        pdf.set_xy(left, y)
+        pdf.set_text_color(*C_TEXT)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(content_w, 4.4, _pdf_txt("  ·  ".join(meta)))
+        y = pdf.get_y() + 1.5
+    else:
+        y += 1
 
     notas = ""
     if "notas" in cot.keys() and cot["notas"]:

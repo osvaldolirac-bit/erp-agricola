@@ -6,7 +6,8 @@
   <div>
     <h1>{{ cot.folio }}</h1>
     <p>
-      {{ cot.razon_social or '—' }} · {{ cot.titulo or cot.proyecto or cot.asunto or 'Sin título' }}
+      {{ cot.razon_social or '—' }}
+      {% if cot.titulo and cot.titulo != cot.razon_social %} · {{ cot.titulo }}{% endif %}
       ·
       {% if (cot.tipo_venta or 'servicio') == 'producto' %}
       <span class="badge text-bg-primary">Venta producto</span>
@@ -27,6 +28,20 @@
     {% if contrato_arriendo %}
     <a class="btn btn-warning" href="{{ url_for('arriendos_detalle', aid=contrato_arriendo.id) }}"><i class="bi bi-truck"></i> Contrato {{ contrato_arriendo.folio }}</a>
     {% endif %}
+  </div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="panel mb-0">
+      <div class="text-muted small">Proyecto</div>
+      <strong>{{ cot.proyecto or '—' }}</strong>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="panel mb-0">
+      <div class="text-muted small">Asunto</div>
+      <strong>{{ cot.asunto or '—' }}</strong>
+    </div>
   </div>
 </div>
 {% if cxc %}
