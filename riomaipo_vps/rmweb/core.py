@@ -684,6 +684,15 @@ ESTADOS_COT = (
     ("rechazada", "Rechazada"),
 )
 
+CONDICIONES_COTIZACION_DEFECTO = """\
+Validez: 7 días corridos desde la fecha de esta cotización.
+
+Alcance: el precio considera únicamente los materiales y la mano de obra descritos en el detalle. Trabajos adicionales, cambios de alcance y vicios ocultos en la instalación existente (filtraciones, cañerías o fallas eléctricas) se cotizan aparte.
+
+Garantía: 6 meses sobre la mano de obra ejecutada. Los materiales y equipos mantienen la garantía del fabricante.
+
+Forma de pago: 50% al aceptar la cotización y 50% contra recepción conforme."""
+
 
 def cxc_estado_label(estado: str | None) -> str:
     e = (estado or "").lower()
@@ -1152,7 +1161,7 @@ def _pdf_caja_condiciones(
     pdf.set_xy(x + pad, y + 1.2)
     pdf.set_text_color(22, 58, 95)
     pdf.set_font("Helvetica", "B", 6.5)
-    pdf.cell(inner_w, titulo_h, _pdf_txt("Condiciones"), ln=1)
+    pdf.cell(inner_w, titulo_h, _pdf_txt("Notas y condiciones"), ln=1)
     pdf.set_font("Helvetica", "", tam)
     pdf.set_text_color(26, 43, 60)
     yy = y + 1.2 + titulo_h

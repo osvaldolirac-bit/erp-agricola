@@ -1266,6 +1266,7 @@ def cotizaciones_form(cot_id: int | None = None):
         util_def=util_def,
         iva_def=iva_def,
         validez_def=validez_def,
+        condiciones_def=core.CONDICIONES_COTIZACION_DEFECTO,
         hoy=core.hoy_chile().isoformat(),
         slots=16,
     )

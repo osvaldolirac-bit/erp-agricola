@@ -55,7 +55,7 @@ class CotizacionCondicionesPdfTests(unittest.TestCase):
             except zlib.error:
                 continue
         plano = "\n".join(partes)
-        self.assertIn("Condiciones", plano)
+        self.assertIn("Notas y condiciones", plano)
         self.assertIn("Forma de pago", plano)
         self.assertIn("COT-0099", plano)
 
@@ -116,9 +116,15 @@ class CotizacionCondicionesPdfTests(unittest.TestCase):
         html = (
             ROOT / "riomaipo_vps/rmweb/templates/cotizaciones/form.html"
         ).read_text(encoding="utf-8")
-        self.assertIn("Condiciones de la cotización", html)
+        self.assertIn("Notas y condiciones", html)
+        self.assertIn("condiciones_def", html)
         self.assertIn('name="notas"', html)
         self.assertNotIn("Notas internas", html)
+        detalle = (
+            ROOT / "riomaipo_vps/rmweb/templates/cotizaciones/detalle.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Notas y condiciones", detalle)
+        self.assertIn("cot.notas", detalle)
 
 
 class FolioCotizacionAnioTests(unittest.TestCase):
@@ -171,6 +177,16 @@ class FolioCotizacionAnioTests(unittest.TestCase):
         self.assertIn("COT-1000_2026", cuenta["concepto"])
         self.assertEqual(core.renumerar_folios_cotizacion(conn), 0)
         self.assertEqual(core.siguiente_folio_cotizacion(conn, "2026-11-02"), "COT-28_2026")
+
+    def test_el_borrador_nuevo_trae_notas_y_condiciones(self):
+        core = self._core()
+        texto = core.CONDICIONES_COTIZACION_DEFECTO
+        self.assertIn("Validez:", texto)
+        self.assertIn("Alcance:", texto)
+        self.assertIn("Garantía:", texto)
+        self.assertIn("Forma de pago:", texto)
+        app = (ROOT / "riomaipo_vps/rmweb/app.py").read_text(encoding="utf-8")
+        self.assertIn("condiciones_def=core.CONDICIONES_COTIZACION_DEFECTO", app)
 
 
 class MenuModulosTests(unittest.TestCase):
