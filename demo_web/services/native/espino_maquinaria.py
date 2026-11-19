@@ -303,7 +303,7 @@ def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
         demo, conn, nombre or "temp", fi_f, ff_f
     )
 
-    from erp_maquinaria import TIPOS_MAQUINARIA_TRACTOR, TIPOS_MAQUINARIA_APLICACION
+    from erp_maquinaria import TIPOS_MAQUINARIA_APLICACION
 
     return {
         "maq_ops": MAQ_OPS,
@@ -319,7 +319,7 @@ def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
         "filtro_q": (request.args.get("q") or "").strip(),
         "filtro_desde": fi_f.isoformat(),
         "filtro_hasta": ff_f.isoformat(),
-        "tractores": _select_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR),
+        "tractores": _select_maquinaria(conn),
         "implementos": _select_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "fecha_def": (hoy if fi <= hoy <= ff else (ff if hoy > ff else fi)).isoformat(),
     }
@@ -347,7 +347,7 @@ def post_registrar(demo, conn, fi, ff) -> dict:
         return {"ok": False, "msg": "Datos numéricos inválidos."}
 
     if not tr_cod:
-        return {"ok": False, "msg": "Seleccione el tractor."}
+        return {"ok": False, "msg": "Seleccione la maquinaria."}
     if not trabajo:
         return {"ok": False, "msg": "Indique el detalle del trabajo."}
     if not (fi <= fecha <= ff):
@@ -361,7 +361,7 @@ def post_registrar(demo, conn, fi, ff) -> dict:
         (tr_cod.upper(),),
     ).fetchone()
     if not tr_row:
-        return {"ok": False, "msg": "Tractor no encontrado en maestra."}
+        return {"ok": False, "msg": "Maquinaria no encontrada en la maestra."}
     tr_lbl = etiqueta_maquinaria(tr_cod, tr_row[0])
 
     imp_lbl = ""
