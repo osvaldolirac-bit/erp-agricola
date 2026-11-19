@@ -1280,6 +1280,7 @@ def _contratistas_cosecha(demo, conn) -> dict:
         faena_id = 0
     if not faena_id and str(sel).isdigit():
         faena_id = faena_abierta(conn, int(sel)) or (faenas[0]["id"] if faenas else 0)
+    abierta_id = faena_abierta(conn, int(sel)) if str(sel).isdigit() else 0
     panel = armar_panel(conn, faena_id) if faena_id else {}
     filtro_numero = request.args.get("cosechero") or ""
     numero_filtro = int(filtro_numero) if str(filtro_numero).isdigit() else None
@@ -1332,6 +1333,7 @@ def _contratistas_cosecha(demo, conn) -> dict:
         "cosecha_faenas": faenas,
         "cosecha_faena_id": faena_id,
         "cosecha_faena": panel or None,
+        "cosecha_abierta_id": abierta_id,
         "cosecha_links": links,
         "cosecha_enlace": enlace,
         "cosecha_super": cosecha_super,
@@ -1451,16 +1453,16 @@ def _post_cosecha_baja(demo, conn) -> dict:
     return {"ok": True, "msg": msg}
 
 
-def _post_cosecha_nueva(demo, conn) -> dict:
-    from demo_web.services.cosecha import cuarteles_de_cosecha, nueva_faena
+def _post_cosecha_cerrar(demo, conn) -> dict:
+    from demo_web.services.cosecha import cerrar_faena
 
     _cid, fid = _ids_cosecha()
-    ok, msg, nuevo = nueva_faena(conn, fid, cuarteles_de_cosecha(demo), str(hoy_demo(demo)))
+    ok, msg = cerrar_faena(conn, fid, str(hoy_demo(demo)))
     if not ok:
         return {"ok": False, "msg": msg}
     conn.commit()
-    demo.registrar_accion("RRHH COSECHA", f"nueva faena {nuevo}")
-    return {"ok": True, "msg": msg, "faena_id": nuevo}
+    demo.registrar_accion("RRHH COSECHA", f"cierra faena {fid}")
+    return {"ok": True, "msg": msg, "faena_id": fid}
 
 
 def _post_liquidacion(demo, conn) -> dict:
@@ -1522,7 +1524,7 @@ def view(user_email: str, user_rol: str):
                 "cosecha_alta": _post_cosecha_alta,
                 "cosecha_nombre": _post_cosecha_nombre,
                 "cosecha_baja": _post_cosecha_baja,
-                "cosecha_nueva": _post_cosecha_nueva,
+                "cosecha_cerrar": _post_cosecha_cerrar,
             }
             fn = handlers.get(action)
             if fn:

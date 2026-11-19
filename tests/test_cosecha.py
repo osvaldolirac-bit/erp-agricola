@@ -158,6 +158,11 @@ class TestFaena(unittest.TestCase):
         self.assertTrue(todos["inhabilitada"])
         html = Path("demo_web/templates/modules/rrhh.html").read_text(encoding="utf-8")
         self.assertIn("El contratista ya no puede abrir estos enlaces.", html)
+        self.assertIn("Cerrar faena", html)
+        self.assertIn("Abrir nueva faena", html)
+        self.assertIn('value="cosecha_cerrar"', html)
+        self.assertNotIn("Cerrar faena y abrir otra", html)
+        self.assertNotIn("cosecha_nueva", html)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM facturas").fetchone()[0], 0)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM facturas_abonos").fetchone()[0], 0)
         html = Path("demo_web/templates/modules/rrhh.html").read_text(encoding="utf-8")
@@ -166,6 +171,28 @@ class TestFaena(unittest.TestCase):
         self.assertNotIn("cosecha_precio", html)
         self.assertNotIn("cosecha_abono", html)
         self.assertIn("Registrar servicio", html)
+
+    def test_cerrar_no_abre_otra_faena(self):
+        conn = _conn()
+        ok, _msg, faena = abrir_faena(conn, 1, ["CIRUELOS"], "2026-11-20")
+        self.assertTrue(ok)
+        ok, msg = cerrar_faena(conn, faena, "2026-11-21")
+        self.assertTrue(ok, msg)
+        self.assertEqual(
+            conn.execute(
+                "SELECT COUNT(*) FROM cosecha_faena WHERE contratista_id=1"
+            ).fetchone()[0],
+            1,
+        )
+        ok, msg, nueva = abrir_faena(conn, 1, ["CIRUELOS"], "2026-11-21")
+        self.assertTrue(ok, msg)
+        self.assertNotEqual(nueva, faena)
+        self.assertEqual(
+            conn.execute(
+                "SELECT COUNT(*) FROM cosecha_faena WHERE contratista_id=1 AND estado='abierta'"
+            ).fetchone()[0],
+            1,
+        )
 
     def test_el_telefono_no_lleva_precios(self):
         conn = _conn()
