@@ -493,6 +493,7 @@
     <p class="small text-muted mt-2 mb-0">Los números parten de 1. Los cuarteles de esta empresa son: {{ cosecha_cuarteles|join(', ') }}.</p>
   </form>
   {% else %}
+  {% if cosecha_faena.abierta %}
   {% if cosecha_enlace %}
   <div class="panel-card mb-3">
     <h2 class="h6">Enlace de todos los cuarteles</h2>
@@ -533,6 +534,9 @@
       </table>
     </div>
   </div>
+  {% else %}
+  <div class="alert alert-secondary">Faena cerrada. El contratista ya no puede abrir estos enlaces.</div>
+  {% endif %}
 
   <div class="panel-card mb-3">
     <h2 class="h6">Ingresos del enlace</h2>
