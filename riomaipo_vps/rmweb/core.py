@@ -288,6 +288,7 @@ def init_db(db_path: str | Path | None = None, empresa_default: dict | None = No
             ("gg_monto", "REAL DEFAULT 0"),
             ("utilidad_monto", "REAL DEFAULT 0"),
             ("valor_neto", "REAL DEFAULT 0"),
+            ("iva_pct", "REAL"),
         ],
     )
     _ensure_columns(c, "cotizacion_items", [("obs", "TEXT"), ("orden", "INTEGER DEFAULT 0")])
@@ -650,6 +651,19 @@ def ensure_cxc_from_cotizacion(c: sqlite3.Connection, cot_id: int) -> str | None
     cxc_id = cur.lastrowid
     cur.execute("UPDATE cotizaciones SET cxc_id=? WHERE id=?", (cxc_id, cot["id"]))
     return doc
+
+
+def cotizacion_iva_pct(cot, default: float | None = 19.0) -> float | None:
+    """Porcentaje de IVA guardado en la cotización. 0 es válido."""
+    if "iva_pct" in cot.keys() and cot["iva_pct"] is not None:
+        return float(cot["iva_pct"])
+    neto = float(cot["valor_neto"] or 0) if "valor_neto" in cot.keys() else 0.0
+    iva = float(cot["iva"] or 0) if "iva" in cot.keys() else 0.0
+    if neto > 0 and iva <= 0:
+        return 0.0
+    if neto > 0 and iva > 0:
+        return round(iva / neto * 100.0, 2)
+    return default
 
 
 def calc_cotizacion_totales(subtotal: float, gg_pct: float, utilidad_pct: float, iva_pct: float) -> dict:
@@ -1105,15 +1119,20 @@ def _cotizacion_planilla_totales(cot, items, iva_pct: float = 0.19) -> dict:
     stored_total = float(cot["total"] or 0) if "total" in cot.keys() else 0.0
     stored_neto = float(cot["valor_neto"] or 0) if "valor_neto" in cot.keys() else 0.0
 
+    tasa = 0.0 if iva_pct is None else float(iva_pct)
     if stored_neto > 0 and abs(stored_neto - neto) <= 1 and stored_iva >= 0:
         iva = stored_iva
         total = stored_total if stored_total > 0 else neto + iva
+        if neto > 0:
+            tasa = 0.0 if abs(iva) < 0.5 else iva / neto
     elif stored_total > 0 and stored_iva > 0 and abs(stored_total - stored_iva - neto) <= 2:
         # Legacy: a veces el neto coincidía con total-iva
         iva = stored_iva
         total = stored_total
+        if neto > 0:
+            tasa = iva / neto
     else:
-        iva = float(round(neto * float(iva_pct or 0.19)))
+        iva = float(round(neto * tasa))
         total = neto + iva
 
     return {
@@ -1125,7 +1144,7 @@ def _cotizacion_planilla_totales(cot, items, iva_pct: float = 0.19) -> dict:
         "util": util,
         "neto": neto,
         "iva": iva,
-        "iva_pct": float(iva_pct or 0.19) * 100.0,
+        "iva_pct": round(tasa * 100.0, 2),
         "total": total,
     }
 

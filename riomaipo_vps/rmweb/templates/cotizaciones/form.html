@@ -184,7 +184,8 @@
           <label for="iva_pct">IVA</label>
           <div class="cot-tot-pct">
             <input class="form-control form-control-sm" type="number" step="0.1" min="0"
-                   name="iva_pct" id="iva_pct" value="{{ iva_def }}">
+                   name="iva_pct" id="iva_pct"
+                   value="{{ iva_cot if iva_cot is not none else iva_def }}">
             <span>%</span>
           </div>
           <strong id="totIva">$0</strong>

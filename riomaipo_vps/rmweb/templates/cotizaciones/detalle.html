@@ -60,7 +60,7 @@
   <div class="col-md-2"><div class="panel"><div class="text-muted small">GG {{ (cot.gg_pct or 0)|round(1) }}%</div><strong>{{ clp(cot.gg_monto) }}</strong></div></div>
   <div class="col-md-2"><div class="panel"><div class="text-muted small">Utilidad {{ (cot.utilidad_pct or 0)|round(1) }}%</div><strong>{{ clp(cot.utilidad_monto) }}</strong></div></div>
   <div class="col-md-2"><div class="panel"><div class="text-muted small">Valor neto</div><strong>{{ clp(cot.valor_neto) }}</strong></div></div>
-  <div class="col-md-2"><div class="panel"><div class="text-muted small">IVA</div><strong>{{ clp(cot.iva) }}</strong></div></div>
+  <div class="col-md-2"><div class="panel"><div class="text-muted small">IVA{% if cot.iva_pct is not none %} {{ cot.iva_pct|round(1) }}%{% endif %}</div><strong>{{ clp(cot.iva) }}</strong></div></div>
   <div class="col-md-2"><div class="panel"><div class="text-muted small">Total</div><strong>{{ clp(cot.total) }}</strong></div></div>
 </div>
 <div class="panel">

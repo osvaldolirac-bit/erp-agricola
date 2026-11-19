@@ -215,6 +215,68 @@ class CotizacionCondicionesPdfTests(unittest.TestCase):
         app = (ROOT / "riomaipo_vps/rmweb/app.py").read_text(encoding="utf-8")
         self.assertIn("download_name=core.cotizacion_nombre_pdf(cot)", app)
 
+    def test_el_iva_en_cero_se_queda_en_cero(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT / "riomaipo_vps"))
+        from rmweb.core import (
+            _cotizacion_planilla_totales,
+            cotizacion_iva_pct,
+            cotizacion_pdf_bytes,
+        )
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE cotizaciones (
+                   folio TEXT, estado TEXT, fecha TEXT, razon_social TEXT, titulo TEXT,
+                   gg_pct REAL, utilidad_pct REAL, gg_monto REAL, utilidad_monto REAL,
+                   valor_neto REAL, iva REAL, total REAL, iva_pct REAL, notas TEXT
+               )"""
+        )
+        conn.execute(
+            """INSERT INTO cotizaciones VALUES (
+                   'COT-29_2026', 'borrador', '2026-11-19', 'SALVADOR', 'SALVADOR',
+                   5, 15, 17250, 51750, 414000, 0, 414000, 0, ''
+               )"""
+        )
+        cot = conn.execute("SELECT * FROM cotizaciones").fetchone()
+        self.assertEqual(cotizacion_iva_pct(cot), 0.0)
+        conn.execute(
+            """CREATE TABLE items (
+                   descripcion TEXT, unidad TEXT, cantidad REAL,
+                   precio_unitario REAL, total REAL
+               )"""
+        )
+        conn.execute("INSERT INTO items VALUES ('materiales y moldajes', 'un', 1, 145000, 145000)")
+        conn.execute("INSERT INTO items VALUES ('MO', 'un', 1, 200000, 200000)")
+        items = conn.execute("SELECT * FROM items").fetchall()
+        plan = _cotizacion_planilla_totales(cot, items, iva_pct=0.0)
+        self.assertEqual(plan["subtotal"], 345000)
+        self.assertEqual(plan["gg"], 17250)
+        self.assertEqual(plan["util"], 51750)
+        self.assertEqual(plan["neto"], 414000)
+        self.assertEqual(plan["iva"], 0)
+        self.assertEqual(plan["iva_pct"], 0)
+        self.assertEqual(plan["total"], 414000)
+        pdf = cotizacion_pdf_bytes(cot, items, None, iva_pct=0.0)
+        partes = []
+        for raw in re.findall(br"stream\r?\n(.*?)\r?\nendstream", pdf, re.S):
+            try:
+                partes.append(zlib.decompress(raw).decode("latin-1", "replace"))
+            except zlib.error:
+                continue
+        plano = "\n".join(partes)
+        self.assertIn("IVA 0%", plano)
+        self.assertNotIn("IVA 19%", plano)
+        app = (ROOT / "riomaipo_vps/rmweb/app.py").read_text(encoding="utf-8")
+        self.assertIn("def _form_iva_pct", app)
+        self.assertIn("En blanco significa 0", app)
+        form = (
+            ROOT / "riomaipo_vps/rmweb/templates/cotizaciones/form.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("iva_cot if iva_cot is not none else iva_def", form)
+
 
 class FolioCotizacionAnioTests(unittest.TestCase):
     def _core(self):
