@@ -47,6 +47,24 @@ def cuarteles_de_cosecha(demo: Any) -> list[str]:
     )
 
 
+def elegir_cuarteles_faena(oficiales: list[str], pedidos: list[str]) -> list[str]:
+    """Solo los cuarteles marcados, y solo si pertenecen a esta empresa."""
+    permitidos: dict[str, str] = {}
+    for crudo in oficiales:
+        nombre = str(crudo).strip()
+        if nombre:
+            permitidos[nombre.upper()] = nombre
+    elegidos: list[str] = []
+    vistos: set[str] = set()
+    for crudo in pedidos:
+        nombre = permitidos.get(str(crudo).strip().upper())
+        if not nombre or nombre.upper() in vistos:
+            continue
+        vistos.add(nombre.upper())
+        elegidos.append(nombre)
+    return elegidos
+
+
 _TABLAS_COSECHA = (
     """CREATE TABLE IF NOT EXISTS cosecha_faena (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,16 +236,20 @@ def listar_faenas(conn: sqlite3.Connection, contratista_id: int) -> list[dict]:
            WHERE contratista_id=? ORDER BY id DESC""",
         (int(contratista_id),),
     ).fetchall()
-    return [
-        {
-            "id": int(r[0]),
-            "estado": r[1],
-            "creada": r[2] or "",
-            "cerrada": r[3] or "",
-            "abierta": r[1] == "abierta",
-        }
-        for r in rows
-    ]
+    salida = []
+    for r in rows:
+        faena_id = int(r[0])
+        salida.append(
+            {
+                "id": faena_id,
+                "estado": r[1],
+                "creada": r[2] or "",
+                "cerrada": r[3] or "",
+                "abierta": r[1] == "abierta",
+                "cuarteles": [x["cuartel"] for x in listar_links(conn, faena_id)],
+            }
+        )
+    return salida
 
 
 def _token_link() -> str:

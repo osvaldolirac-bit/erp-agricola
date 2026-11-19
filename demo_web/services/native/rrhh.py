@@ -1360,14 +1360,20 @@ def _ids_cosecha() -> tuple[int, int]:
 
 
 def _post_cosecha_abrir(demo, conn) -> dict:
-    from demo_web.services.cosecha import abrir_faena, cuarteles_de_cosecha
+    from demo_web.services.cosecha import abrir_faena, cuarteles_de_cosecha, elegir_cuarteles_faena
 
     cid, _fid = _ids_cosecha()
-    ok, msg, nuevo = abrir_faena(conn, cid, cuarteles_de_cosecha(demo), str(hoy_demo(demo)))
+    cuarteles = elegir_cuarteles_faena(
+        cuarteles_de_cosecha(demo),
+        request.form.getlist("cuartel"),
+    )
+    if not cuarteles:
+        return {"ok": False, "msg": "Elija el cuartel."}
+    ok, msg, nuevo = abrir_faena(conn, cid, cuarteles, str(hoy_demo(demo)))
     if not ok:
         return {"ok": False, "msg": msg}
     conn.commit()
-    demo.registrar_accion("RRHH COSECHA", f"abre faena contratista {cid}")
+    demo.registrar_accion("RRHH COSECHA", f"abre faena contratista {cid} {' / '.join(cuarteles)}")
     return {"ok": True, "msg": msg, "faena_id": nuevo}
 
 

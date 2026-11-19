@@ -471,7 +471,7 @@
         <label class="form-label">Faena</label>
         <select name="faena_id" class="form-select" onchange="this.form.submit()">
           {% for f in cosecha_faenas %}
-          <option value="{{ f.id }}" {% if f.id == cosecha_faena_id %}selected{% endif %}>{{ f.creada }} · {{ f.estado }}</option>
+          <option value="{{ f.id }}" {% if f.id == cosecha_faena_id %}selected{% endif %}>{{ f.creada }}{% if f.cuarteles %} · {{ f.cuarteles|join(', ') }}{% endif %} · {{ f.estado }}</option>
           {% endfor %}
         </select>
       </div>
@@ -489,8 +489,17 @@
     <input type="hidden" name="sec" value="contratistas">
     <input type="hidden" name="sub" value="cosecha">
     <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+    <p class="form-label mb-2">Cuartel</p>
+    <div class="d-flex flex-wrap gap-3 mb-3">
+      {% for cuartel in cosecha_cuarteles %}
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="cuartel" value="{{ cuartel }}" id="faena-cuartel-{{ loop.index }}">
+        <label class="form-check-label" for="faena-cuartel-{{ loop.index }}">{{ cuartel }}</label>
+      </div>
+      {% endfor %}
+    </div>
     <button type="submit" class="btn btn-primary">Abrir faena</button>
-    <p class="small text-muted mt-2 mb-0">Los números parten de 1. Los cuarteles de esta empresa son: {{ cosecha_cuarteles|join(', ') }}.</p>
+    <p class="small text-muted mt-2 mb-0">Elija el cuartel. Los números parten de 1.</p>
   </form>
   {% else %}
   {% if cosecha_faena.abierta %}
@@ -681,8 +690,17 @@
     <input type="hidden" name="action" value="cosecha_abrir">
     <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
     <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+    <p class="form-label mb-2">Cuartel</p>
+    <div class="d-flex flex-wrap gap-3 mb-3">
+      {% for cuartel in cosecha_cuarteles %}
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="cuartel" value="{{ cuartel }}" id="nueva-cuartel-{{ loop.index }}">
+        <label class="form-check-label" for="nueva-cuartel-{{ loop.index }}">{{ cuartel }}</label>
+      </div>
+      {% endfor %}
+    </div>
     <button class="btn btn-primary btn-sm" type="submit">Abrir nueva faena</button>
-    <span class="small text-muted ms-2">Los números parten de 1.</span>
+    <p class="small text-muted mt-2 mb-0">Elija el cuartel. Los números parten de 1.</p>
   </form>
   {% endif %}
   {% endif %}

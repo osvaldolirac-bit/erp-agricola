@@ -13,6 +13,7 @@ from demo_web.services.cosecha import (
     dar_de_baja,
     deshacer_ultimo,
     detalle_ingresos,
+    elegir_cuarteles_faena,
     entregar_funda,
     filtrar_cuarteles_cosecha,
     guardar_persona,
@@ -163,6 +164,9 @@ class TestFaena(unittest.TestCase):
         self.assertIn('value="cosecha_cerrar"', html)
         self.assertNotIn("Cerrar faena y abrir otra", html)
         self.assertNotIn("cosecha_nueva", html)
+        self.assertIn('name="cuartel"', html)
+        self.assertIn("Elija el cuartel.", html)
+        self.assertNotIn("Los cuarteles de esta empresa son:", html)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM facturas").fetchone()[0], 0)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM facturas_abonos").fetchone()[0], 0)
         html = Path("demo_web/templates/modules/rrhh.html").read_text(encoding="utf-8")
@@ -171,6 +175,17 @@ class TestFaena(unittest.TestCase):
         self.assertNotIn("cosecha_precio", html)
         self.assertNotIn("cosecha_abono", html)
         self.assertIn("Registrar servicio", html)
+
+    def test_abrir_solo_pregunta_los_cuarteles_elegidos(self):
+        oficiales = filtrar_cuarteles_cosecha(LC, espino=False)
+        self.assertEqual(elegir_cuarteles_faena(oficiales, ["ciruelos", "OTRO"]), ["CIRUELOS"])
+        self.assertEqual(elegir_cuarteles_faena(oficiales, []), [])
+        conn = _conn()
+        ok, msg, faena = abrir_faena(
+            conn, 1, elegir_cuarteles_faena(oficiales, ["CIRUELOS"]), "2026-11-20"
+        )
+        self.assertTrue(ok, msg)
+        self.assertEqual([x["cuartel"] for x in listar_links(conn, faena)], ["CIRUELOS"])
 
     def test_cerrar_no_abre_otra_faena(self):
         conn = _conn()
