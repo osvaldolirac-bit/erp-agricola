@@ -53,11 +53,11 @@
         <a class="nav-link {% if active=='clientes' %}active{% endif %}" href="{{ url_for('clientes_list') }}">
           <span class="nav-link-main"><i class="bi bi-people"></i> Clientes</span>
         </a>
-        <a class="nav-link {% if active=='cotizaciones' %}active{% endif %}" href="{{ url_for('cotizaciones_list') }}">
+        <a class="nav-link {% if active=='cotizaciones' or active=='cotizaciones_cursor' %}active{% endif %}" href="{{ url_for('cotizaciones_list') }}">
           <span class="nav-link-main"><i class="bi bi-file-earmark-text"></i> Cotizaciones</span>
         </a>
-        {% if tenant_slug == 'riomaipo' and cursor_cotizacion_url %}
-        <a class="nav-link nav-sublink" href="{{ cursor_cotizacion_url }}" target="_blank" rel="noopener">
+        {% if tenant_slug == 'riomaipo' %}
+        <a class="nav-link nav-sublink {% if active=='cotizaciones_cursor' %}active{% endif %}" href="{{ url_for('cotizaciones_cursor') }}">
           <span class="nav-link-main"><i class="bi bi-cursor"></i> Con Cursor</span>
         </a>
         {% endif %}
