@@ -362,6 +362,35 @@ class SidebarMovilTests(unittest.TestCase):
         self.assertIn("@media (max-width: 991.98px)", css)
         self.assertIn("@media (min-width: 992px)", css)
 
+    def test_rio_maipo_abre_cursor_desde_cotizaciones(self):
+        from urllib.parse import parse_qs, urlparse
+
+        import sys
+
+        sys.path.insert(0, str(ROOT / "riomaipo_vps"))
+        from rmweb.core import enlace_cursor_cotizacion
+
+        url = enlace_cursor_cotizacion()
+        partes = urlparse(url)
+        self.assertEqual(partes.scheme, "https")
+        self.assertEqual(partes.netloc, "cursor.com")
+        self.assertEqual(partes.path, "/link/prompt")
+        texto = parse_qs(partes.query)["text"][0]
+        self.assertIn("Río Maipo", texto)
+        self.assertIn("Cliente", texto)
+        self.assertIn("Proyecto", texto)
+        self.assertIn("Asunto", texto)
+        self.assertIn("IVA", texto)
+        self.assertLess(len(url), 8000)
+        base = (ROOT / "riomaipo_vps/rmweb/templates/base.html").read_text(encoding="utf-8")
+        self.assertIn("tenant_slug == 'riomaipo'", base)
+        self.assertIn("cursor_cotizacion_url", base)
+        self.assertIn("Con Cursor", base)
+        self.assertIn('target="_blank"', base)
+        app = (ROOT / "riomaipo_vps/rmweb/app.py").read_text(encoding="utf-8")
+        self.assertIn('slug == "riomaipo"', app)
+        self.assertIn("enlace_cursor_cotizacion", app)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -302,6 +302,7 @@ def inject_globals():
         "app_name": "ERP Master",
         "track_name": (ten or {}).get("nombre") or "Comercial",
         "tenant_slug": slug,
+        "cursor_cotizacion_url": core.enlace_cursor_cotizacion() if slug == "riomaipo" else "",
         "tenants": list_tenants(),
         "session_idle_limit": SESSION_IDLE_SECONDS,
         "session_idle_warn": SESSION_IDLE_WARN_SECONDS,

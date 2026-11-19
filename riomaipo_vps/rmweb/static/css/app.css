@@ -75,6 +75,12 @@ body {
   background: rgba(255,255,255,.12);
   color: #fff;
 }
+.sidebar .nav-link.nav-sublink {
+  margin: -.05rem 0 .2rem 1.15rem;
+  padding: .32rem .65rem;
+  font-size: .86rem;
+  font-weight: 600;
+}
 .sidebar-foot {
   margin-top: auto;
   flex: 0 0 auto;

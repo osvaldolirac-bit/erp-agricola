@@ -8,6 +8,7 @@ import re
 import secrets
 import sqlite3
 from datetime import date, datetime, timedelta
+from urllib.parse import urlencode
 
 try:
     from zoneinfo import ZoneInfo
@@ -706,6 +707,26 @@ Alcance: el precio considera únicamente los materiales y la mano de obra descri
 Garantía: 6 meses sobre la mano de obra ejecutada. Los materiales y equipos mantienen la garantía del fabricante.
 
 Forma de pago: 50% al aceptar la cotización y 50% contra recepción conforme."""
+
+
+def enlace_cursor_cotizacion() -> str:
+    """Abre Cursor con el pedido para confeccionar una cotización de Río Maipo."""
+    texto = (
+        "En el ERP comercial, tenant Río Maipo, confecciona una cotización en borrador. "
+        "Si este mensaje no trae los datos, pídemelos. No inventes precios ni cantidades.\n\n"
+        "Parámetros:\n"
+        "- Cliente\n"
+        "- Proyecto\n"
+        "- Asunto\n"
+        "- Ítems: descripción, unidad, cantidad y precio unitario\n"
+        "- Gastos generales %\n"
+        "- Utilidad %\n"
+        "- IVA % (0 si no lleva)\n"
+        "- Notas y condiciones, solo si quiero cambiar el texto estándar\n\n"
+        "Guarda el borrador con esos montos. El detalle y el PDF deben mostrar proyecto, "
+        "asunto y notas. El archivo del PDF se llama folio, cliente, proyecto y asunto."
+    )
+    return "https://cursor.com/link/prompt?" + urlencode({"text": texto})
 
 
 def cxc_estado_label(estado: str | None) -> str:
