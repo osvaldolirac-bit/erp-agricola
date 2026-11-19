@@ -1168,6 +1168,12 @@ def vista_anotadora(
         return _vista_resumen(link, fecha)
     if link.get("menu"):
         return _vista_menu(link, fecha)
+    if (
+        not link.get("super")
+        and int(link.get("faena_id") or 0)
+        and not _faena_abierta_row(conn, int(link["faena_id"]))
+    ):
+        return {"inhabilitada": True}
     if not link["cuartel"]:
         return None
     faena_id = int(link["faena_id"])

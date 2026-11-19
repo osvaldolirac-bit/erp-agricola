@@ -472,6 +472,13 @@ def cosecha_formulario(token: str):
             (request.args.get("cuartel") or "").strip(),
             faena_id,
         )
+        if ctx is not None and ctx.get("inhabilitada"):
+            return (
+                "<!DOCTYPE html><meta charset='utf-8'>"
+                "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                "<title>Cosecha</title><p>Esta faena está cerrada.</p>",
+                403,
+            )
         if ctx is not None:
             borrador = session.pop("cosecha_borrador", None)
             if isinstance(borrador, dict):
