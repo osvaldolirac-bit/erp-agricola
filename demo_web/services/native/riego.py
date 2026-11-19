@@ -24,12 +24,12 @@ SECCIONES_LC = [
 REGAR_SUB = (
     ("ahora", "Ahora"),
     ("programar", "Programar"),
+    ("manual", "A mano"),
 )
 ARMADO_SUB = (
     ("sectores", "Sectores"),
     ("enlaces", "Enlaces"),
     ("parametros", "Parámetros"),
-    ("manual", "A mano"),
 )
 
 
@@ -41,8 +41,8 @@ def _canon_lc(sec: str, sub: str) -> tuple[str, str]:
         return "armado", "sectores"
     if sec in ("hydra", "hydra_riego"):
         return "hoy", ""
-    if sec == "manual":
-        return "armado", "manual"
+    if sec == "manual" or (sec == "armado" and sub == "manual"):
+        return "regar", "manual"
     if sec == "bitacora":
         return "hoy", ""
     if sec == "regar":
@@ -308,6 +308,12 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
                     "bitacora_registros": listar_bitacora(conn),
                 }
             )
+        elif sec == "regar" and sub == "manual":
+            ctx["form_fecha"] = hoy_demo(demo).isoformat()
+            if lc:
+                from demo_web.services.registro_riego import sectores_para_riego_manual
+
+                ctx["manual_sectores"] = sectores_para_riego_manual(conn)
         elif sec == "regar":
             from demo_web.services.hydrawise_riego import contexto_control_hydra_ui
 
@@ -391,12 +397,6 @@ def gather_riego(user_email: str, user_rol: str) -> dict:
             ctx["riego_config_rows"] = (
                 listar_config_riego_cc() if demo.es_super_admin() else []
             )
-        elif sec == "armado" and sub == "manual":
-            ctx["form_fecha"] = hoy_demo(demo).isoformat()
-            if lc:
-                from demo_web.services.registro_riego import sectores_para_riego_manual
-
-                ctx["manual_sectores"] = sectores_para_riego_manual(conn)
         elif sec == "bitacora" and habilitado():
             es_demo = get_erp_app() == "demo"
             hydra_link_n = 0
@@ -507,7 +507,7 @@ def view(user_email: str, user_rol: str):
                 conn.close()
             flash(result["msg"], "success" if result["ok"] else "danger")
             if is_concepcion_tenant():
-                return _volver("armado", "manual")
+                return _volver("regar", "manual")
             return _volver("manual")
 
         if action == "autorizar_riego":

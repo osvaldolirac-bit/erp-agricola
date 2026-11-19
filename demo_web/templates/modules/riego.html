@@ -36,17 +36,17 @@
   </div>
   {% endif %}
 
-  {% if sec_activa == 'manual' or (sec_activa == 'armado' and sub_activa == 'manual') %}
-  {% if sec_activa == 'armado' %}
-  {{ nav_sub(armado_sub, 'armado') }}
+  {% if sec_activa == 'manual' or (sec_activa == 'regar' and sub_activa == 'manual') %}
+  {% if sec_activa == 'regar' %}
+  {{ nav_sub(regar_sub, 'regar') }}
   {% endif %}
   <div class="panel-card">
     <h2 class="h6">Registro manual</h2>
     <p class="small text-muted">{% if manual_sectores %}Incluye los sectores de Hydra, Ciruelos y Nogales Cruz del Sur. El riego se imputa al centro de costo de ese sector.{% else %}Imputa directamente al huerto (CC).{% endif %} Fertilización opcional desde bodega (familia FERTILIZANTE).</p>
     <form method="post" class="row g-2" id="formManualRiego">
       <input type="hidden" name="action" value="registrar_manual">
-      <input type="hidden" name="sec" value="{% if sec_activa == 'armado' %}armado{% else %}manual{% endif %}">
-      {% if sec_activa == 'armado' %}<input type="hidden" name="sub" value="manual">{% endif %}
+      <input type="hidden" name="sec" value="{% if sec_activa == 'regar' %}regar{% else %}manual{% endif %}">
+      {% if sec_activa == 'regar' %}<input type="hidden" name="sub" value="manual">{% endif %}
       <div class="col-md-2">
         <label class="form-label small">N° (auto)</label>
         <input type="text" class="form-control form-control-sm" value="Correlativo al guardar" disabled>

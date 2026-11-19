@@ -29,14 +29,16 @@ class RiegoOficinaLcTests(unittest.TestCase):
                 ("armado", "Armado"),
             ],
         )
-        self.assertEqual(REGAR_SUB, (("ahora", "Ahora"), ("programar", "Programar")))
+        self.assertEqual(
+            REGAR_SUB,
+            (("ahora", "Ahora"), ("programar", "Programar"), ("manual", "A mano")),
+        )
         self.assertEqual(
             ARMADO_SUB,
             (
                 ("sectores", "Sectores"),
                 ("enlaces", "Enlaces"),
                 ("parametros", "Parámetros"),
-                ("manual", "A mano"),
             ),
         )
         self.assertEqual(
@@ -51,7 +53,9 @@ class RiegoOficinaLcTests(unittest.TestCase):
         self.assertEqual(_canon_lc("hydra", "riego"), ("hoy", ""))
         self.assertEqual(_canon_lc("hydra", "config"), ("armado", "sectores"))
         self.assertEqual(_canon_lc("hydra_config", ""), ("armado", "sectores"))
-        self.assertEqual(_canon_lc("manual", ""), ("armado", "manual"))
+        self.assertEqual(_canon_lc("manual", ""), ("regar", "manual"))
+        self.assertEqual(_canon_lc("armado", "manual"), ("regar", "manual"))
+        self.assertEqual(_canon_lc("regar", "manual"), ("regar", "manual"))
         self.assertEqual(_canon_lc("bitacora", ""), ("hoy", ""))
         self.assertEqual(_canon_lc("regar", ""), ("regar", "ahora"))
         self.assertEqual(_canon_lc("regar", "programar"), ("regar", "programar"))
@@ -81,7 +85,8 @@ class RiegoOficinaLcTests(unittest.TestCase):
         self.assertIn("listar_zonas", sectores)
         self.assertNotIn("contexto_control_hydra_ui", sectores)
         self.assertIn('return _volver("hoy")', src)
-        self.assertIn('return _volver("armado", "manual")', src)
+        self.assertIn('return _volver("regar", "manual")', src)
+        self.assertNotIn('return _volver("armado", "manual")', src)
         self.assertIn('return _volver("bitacora")', src)
 
     def test_las_plantillas_separan_hoy_regar_y_armado(self):
@@ -101,6 +106,9 @@ class RiegoOficinaLcTests(unittest.TestCase):
         self.assertIn("sub='sectores'", html)
         self.assertIn("Registro manual", html)
         manual = html.split("sec_activa == 'manual'", 1)[1].split("sec_activa == 'hoy'", 1)[0]
+        self.assertIn("nav_sub(regar_sub, 'regar')", manual)
+        self.assertIn('name="sub" value="manual"', manual)
+        self.assertNotIn("armado_sub", manual)
         self.assertNotIn("_hydra_control_ui", manual)
         control = (ROOT / "demo_web/templates/registro_riego/_hydra_control_ui.html").read_text()
         self.assertIn("Actualizar con Hydrawise", control)
