@@ -40,6 +40,16 @@ def parse_decimal_cl(raw: str | None, default: float | None = 0.0) -> float | No
         return default
 
 
+def parse_meta_imputacion(raw: str | None) -> float | None:
+    """Presupuesto o kilos: vacío es 0. Acepta 850000, 1.250.500 y 12,5."""
+    if not (raw or "").strip():
+        return 0.0
+    valor = parse_decimal_cl(raw, default=None)
+    if valor is None or valor < 0:
+        return None
+    return float(valor)
+
+
 def parse_numero_form(raw: str | None, default: float | None = 0.0) -> float | None:
     """Número posteado por un formulario.
 
