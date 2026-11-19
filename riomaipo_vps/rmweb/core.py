@@ -983,6 +983,27 @@ def cotizacion_proyecto_asunto(cot) -> tuple[str, str]:
     return _txt("proyecto"), _txt("asunto")
 
 
+def cotizacion_nombre_pdf(cot) -> str:
+    """Archivo: folio, cliente, proyecto y asunto."""
+
+    def _parte(valor) -> str:
+        s = str(valor or "").strip()
+        s = s.replace("\\", " ").replace("/", " ")
+        for ch in ':*?"<>|\n\r\t':
+            s = s.replace(ch, " ")
+        s = " ".join(s.split())
+        return s.strip(" .")
+
+    folio = _parte(cot["folio"]) if "folio" in cot.keys() else ""
+    cliente = _parte(cot["razon_social"]) if "razon_social" in cot.keys() else ""
+    proyecto, asunto = cotizacion_proyecto_asunto(cot)
+    partes = [p for p in (folio, cliente, _parte(proyecto), _parte(asunto)) if p]
+    base = " - ".join(partes) if partes else "cotizacion"
+    if len(base) > 160:
+        base = base[:160].rstrip(" .-")
+    return f"{base}.pdf"
+
+
 def cotizacion_titulo_pdf(cot) -> str:
     version = str(cot["version"] if "version" in cot.keys() else "1") or "1"
     version = version.lstrip("Vv") or "1"

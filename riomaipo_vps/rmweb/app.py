@@ -1352,7 +1352,7 @@ def cotizaciones_pdf(cot_id: int):
         BytesIO(pdf),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name=f"{cot['folio']}.pdf",
+        download_name=core.cotizacion_nombre_pdf(cot),
     )
 
 

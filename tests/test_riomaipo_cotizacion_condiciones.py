@@ -180,6 +180,41 @@ class CotizacionCondicionesPdfTests(unittest.TestCase):
         self.assertIn("Proyecto: Fray Montalva", plano)
         self.assertIn("Asunto: Fogón", plano)
 
+    def test_el_archivo_pdf_se_llama_con_cliente_proyecto_y_asunto(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT / "riomaipo_vps"))
+        from rmweb.core import cotizacion_nombre_pdf
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE cotizaciones (
+                   folio TEXT, razon_social TEXT, proyecto TEXT, asunto TEXT
+               )"""
+        )
+        conn.execute(
+            """INSERT INTO cotizaciones VALUES (
+                   'COT-28_2026', 'SALVADOR GARCÉS BERNALES', 'Fray Montalva', 'Fogón'
+               )"""
+        )
+        cot = conn.execute("SELECT * FROM cotizaciones").fetchone()
+        nombre = cotizacion_nombre_pdf(cot)
+        self.assertEqual(
+            nombre,
+            "COT-28_2026 - SALVADOR GARCÉS BERNALES - Fray Montalva - Fogón.pdf",
+        )
+        conn.execute(
+            "UPDATE cotizaciones SET asunto='plano/corte: norte', proyecto='' WHERE folio='COT-28_2026'"
+        )
+        cot = conn.execute("SELECT * FROM cotizaciones").fetchone()
+        limpio = cotizacion_nombre_pdf(cot)
+        self.assertNotIn("/", limpio)
+        self.assertNotIn(":", limpio)
+        self.assertTrue(limpio.endswith(".pdf"))
+        app = (ROOT / "riomaipo_vps/rmweb/app.py").read_text(encoding="utf-8")
+        self.assertIn("download_name=core.cotizacion_nombre_pdf(cot)", app)
+
 
 class FolioCotizacionAnioTests(unittest.TestCase):
     def _core(self):
