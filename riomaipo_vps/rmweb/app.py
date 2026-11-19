@@ -22,7 +22,6 @@ from flask import (
 from io import BytesIO
 
 from rmweb import core
-from rmweb.cotizacion_desde_texto import interpretar_proyecto
 from rmweb.tenants import get_tenant, list_tenants, modulo_visible
 from rmweb.pricing import pricing_context
 from rmweb.mail_alertas import enviar_correo_alerta, enviar_correo_alerta_pago
@@ -994,93 +993,6 @@ def cotizaciones_list():
             "sum_rec": sum_rec,
             "conv": conv,
         },
-    )
-
-
-@app.route("/cotizaciones/cursor", methods=["GET", "POST"])
-@login_required
-def cotizaciones_cursor():
-    slug = (session.get("tenant_slug") or "").strip().lower()
-    if slug != "riomaipo":
-        flash("Con Cursor está disponible en Río Maipo.", "warning")
-        return redirect(url_for("cotizaciones_list"))
-    texto = (request.form.get("proyecto_texto") or "").strip() if request.method == "POST" else ""
-    if request.method == "POST":
-        db = core.conn()
-        clientes = _clientes_para_cotizacion(db)
-        pedido = interpretar_proyecto(texto, clientes)
-        if not pedido["ok"]:
-            db.close()
-            flash(pedido["error"], "danger")
-            return render_template(
-                "cotizaciones/cursor.html",
-                active="cotizaciones_cursor",
-                proyecto_texto=texto,
-            )
-        gg_def = core.param(db, "gg_pct", 5)
-        util_def = core.param(db, "utilidad_pct", 15)
-        iva_def = core.param(db, "iva", 19)
-        gg_pct = float(gg_def if pedido["gg_pct"] is None else pedido["gg_pct"])
-        utilidad_pct = float(util_def if pedido["utilidad_pct"] is None else pedido["utilidad_pct"])
-        iva_num = float(iva_def if pedido["iva_pct"] is None else pedido["iva_pct"])
-        subtotal = sum(float(it["total"] or 0) for it in pedido["items"])
-        tots = core.calc_cotizacion_totales(subtotal, gg_pct, utilidad_pct, iva_num / 100.0)
-        notas = pedido["notas"] or core.CONDICIONES_COTIZACION_DEFECTO
-        fecha = core.hoy_chile().isoformat()
-        validez = int(core.param(db, "validez_cotizacion", 30))
-        folio = core.siguiente_folio_cotizacion(db, fecha)
-        cur = db.cursor()
-        try:
-            cur.execute(
-                """
-                INSERT INTO cotizaciones
-                (folio, cliente_id, asunto, proyecto, estado, fecha, validez_dias,
-                 version, titulo, gg_pct, utilidad_pct,
-                 gg_monto, utilidad_monto, valor_neto, subtotal, iva, total, notas, tipo_venta,
-                 iva_pct)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    folio, pedido["cliente_id"], pedido["asunto"], pedido["proyecto"], "borrador",
-                    fecha, validez, "1", pedido["titulo"], gg_pct, utilidad_pct,
-                    tots["gg_monto"], tots["utilidad_monto"], tots["valor_neto"],
-                    tots["subtotal"], tots["iva"], tots["total"], notas, "servicio",
-                    round(iva_num, 2),
-                ),
-            )
-        except sqlite3.IntegrityError:
-            db.rollback()
-            db.close()
-            flash("No se pudo guardar el borrador. Intente de nuevo.", "danger")
-            return render_template(
-                "cotizaciones/cursor.html",
-                active="cotizaciones_cursor",
-                proyecto_texto=texto,
-            )
-        cid = cur.lastrowid
-        db.executemany(
-            """
-            INSERT INTO cotizacion_items
-            (cotizacion_id, producto_id, descripcion, obs, orden, unidad, cantidad,
-             precio_unitario, total, es_servicio, dias_arriendo, tipo_linea)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            [
-                (
-                    cid, None, it["descripcion"], None, n, it["unidad"], it["cantidad"],
-                    it["precio_unitario"], it["total"], 1, 0, None,
-                )
-                for n, it in enumerate(pedido["items"], start=1)
-            ],
-        )
-        db.commit()
-        db.close()
-        flash(f"{folio} quedó como borrador. Revise partidas y totales.", "ok")
-        return redirect(url_for("cotizaciones_detalle", cot_id=cid))
-    return render_template(
-        "cotizaciones/cursor.html",
-        active="cotizaciones_cursor",
-        proyecto_texto="",
     )
 
 

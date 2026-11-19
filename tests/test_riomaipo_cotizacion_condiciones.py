@@ -362,54 +362,13 @@ class SidebarMovilTests(unittest.TestCase):
         self.assertIn("@media (max-width: 991.98px)", css)
         self.assertIn("@media (min-width: 992px)", css)
 
-    def test_rio_maipo_escribe_el_proyecto_y_queda_borrador(self):
-        import sys
-
-        sys.path.insert(0, str(ROOT / "riomaipo_vps"))
-        from rmweb.cotizacion_desde_texto import interpretar_proyecto
-
-        clientes = [
-            {"id": 14, "razon_social": "SALVADOR GARCÉS BERNALES"},
-            {"id": 3, "razon_social": "COMERCIAL DON HORACIO SPA"},
-        ]
-        texto = """Cliente: Salvador Garcés Bernales
-Proyecto: Fray Montalva
-Asunto: Fogón
-IVA: 0
-
-mortero pobre 3x3 x 10 cm, 9 m2, 35000
-emparejar terreno, 1 un, 30000
-adoquines provee cliente
-MO, 1 un, 450000
-"""
-        pedido = interpretar_proyecto(texto, clientes)
-        self.assertTrue(pedido["ok"], pedido.get("error"))
-        self.assertEqual(pedido["cliente_id"], 14)
-        self.assertEqual(pedido["proyecto"], "Fray Montalva")
-        self.assertEqual(pedido["asunto"], "Fogón")
-        self.assertEqual(pedido["iva_pct"], 0)
-        self.assertEqual(pedido["items"][0]["descripcion"], "mortero pobre 3x3 x 10 cm")
-        self.assertEqual(pedido["items"][0]["cantidad"], 9)
-        self.assertEqual(pedido["items"][0]["unidad"], "m2")
-        self.assertEqual(pedido["items"][0]["precio_unitario"], 35000)
-        self.assertEqual(pedido["items"][1]["precio_unitario"], 30000)
-        self.assertEqual(pedido["items"][2]["precio_unitario"], 0)
-        self.assertEqual(pedido["items"][3]["descripcion"], "MO")
-        self.assertEqual(pedido["items"][3]["precio_unitario"], 450000)
-        self.assertFalse(interpretar_proyecto("solo una frase", clientes)["ok"])
+    def test_el_sidebar_no_tiene_cursor(self):
         base = (ROOT / "riomaipo_vps/rmweb/templates/base.html").read_text(encoding="utf-8")
-        self.assertIn("tenant_slug == 'riomaipo'", base)
-        self.assertIn("cotizaciones_cursor", base)
-        self.assertIn("Con Cursor", base)
+        self.assertNotIn("Con Cursor", base)
+        self.assertNotIn("cotizaciones_cursor", base)
         self.assertNotIn("cursor.com/link/prompt", base)
-        pagina = (
-            ROOT / "riomaipo_vps/rmweb/templates/cotizaciones/cursor.html"
-        ).read_text(encoding="utf-8")
-        self.assertIn("proyecto_texto", pagina)
-        self.assertIn("Crear borrador", pagina)
         app = (ROOT / "riomaipo_vps/rmweb/app.py").read_text(encoding="utf-8")
-        self.assertIn('"/cotizaciones/cursor"', app)
-        self.assertIn('slug != "riomaipo"', app)
+        self.assertNotIn("/cotizaciones/cursor", app)
 
 
 if __name__ == "__main__":
