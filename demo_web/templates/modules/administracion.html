@@ -348,8 +348,8 @@
           {% for c in ppto_cuarteles %}
           <tr>
             <td>{{ c.nombre }}</td>
-            <td><input type="number" name="ppto_{{ c.cc }}" class="form-control form-control-sm" value="{{ c.ppto|int }}" min="0" step="100000"></td>
-            <td><input type="number" name="kg_{{ c.cc }}" class="form-control form-control-sm" value="{{ c.kg }}" min="0" step="100"></td>
+            <td><input type="text" name="ppto_{{ c.cc }}" class="form-control form-control-sm js-decimal-coma" inputmode="decimal" autocomplete="off" value="{{ c.ppto_input }}"></td>
+            <td><input type="text" name="kg_{{ c.cc }}" class="form-control form-control-sm js-decimal-coma" inputmode="decimal" autocomplete="off" value="{{ c.kg_input }}"></td>
           </tr>
           {% endfor %}
         </tbody>

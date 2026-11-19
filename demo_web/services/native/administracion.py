@@ -10,7 +10,14 @@ from demo_web.auth import user_db
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
 from demo_web.services.erp_loader import get_erp_app
 from demo_web.services.module_runner import redirect_module, store_pdf
-from demo_web.services.native._helpers import df_to_records, hoy_demo, parse_date, temporada_sel
+from demo_web.services.native._helpers import (
+    df_to_records,
+    format_monto_input_cl,
+    hoy_demo,
+    parse_date,
+    parse_meta_imputacion,
+    temporada_sel,
+)
 from demo_web.services.tenant_scope import is_concepcion_tenant, is_espino_tenant
 
 # Usuarios, módulos operador y respaldos viven en Super Consola (ERP Master).
@@ -363,8 +370,10 @@ def _gather_ppto(demo, conn) -> dict:
                 "nombre": cc.title(),
                 "cc": cc,
                 "ppto": float(ppto),
+                "ppto_input": format_monto_input_cl(float(ppto)),
                 "ppto_fmt": demo.f_peso(float(ppto)),
                 "kg": float(kg),
+                "kg_input": format_monto_input_cl(float(kg)),
             }
         )
     return {
@@ -744,12 +753,9 @@ def _post_guardar_metas(demo, conn) -> dict:
     if not temp:
         return {"ok": False, "msg": "Temporada no válida."}
     for cc in demo.CUARTELES_OFICIALES:
-        ppto_raw = request.form.get(f"ppto_{cc}") or "0"
-        kg_raw = request.form.get(f"kg_{cc}") or "0"
-        try:
-            ppto = float(ppto_raw)
-            kg = float(kg_raw)
-        except ValueError:
+        ppto = parse_meta_imputacion(request.form.get(f"ppto_{cc}"))
+        kg = parse_meta_imputacion(request.form.get(f"kg_{cc}"))
+        if ppto is None or kg is None:
             return {"ok": False, "msg": f"Valores inválidos para {cc}."}
         demo._guardar_ppto_temporada(conn, temp, cc, ppto)
         demo._guardar_kg_estimado_temporada(conn, temp, cc, kg)
