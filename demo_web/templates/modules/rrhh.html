@@ -669,16 +669,20 @@
   </div>
   {% if cosecha_faena.abierta %}
   <form method="post">
-    <input type="hidden" name="action" value="cosecha_nueva">
+    <input type="hidden" name="action" value="cosecha_cerrar">
     <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
     <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
     <input type="hidden" name="faena_id" value="{{ cosecha_faena_id }}">
-    <button class="btn btn-outline-dark btn-sm" type="submit" {% if not cosecha_faena.puede_nueva %}disabled{% endif %}>Cerrar faena y abrir otra</button>
-    {% if not cosecha_faena.puede_nueva and cosecha_faena.aviso_nueva %}
-    <span class="small text-muted ms-2">{{ cosecha_faena.aviso_nueva }}</span>
-    {% else %}
-    <span class="small text-muted ms-2">Los números parten de nuevo. El detalle de cada cosechero se queda en esta faena.</span>
-    {% endif %}
+    <button class="btn btn-outline-dark btn-sm" type="submit">Cerrar faena</button>
+    <span class="small text-muted ms-2">El contratista deja de ver los enlaces. El detalle se queda en esta faena.</span>
+  </form>
+  {% elif not cosecha_abierta_id %}
+  <form method="post">
+    <input type="hidden" name="action" value="cosecha_abrir">
+    <input type="hidden" name="sec" value="contratistas"><input type="hidden" name="sub" value="cosecha">
+    <input type="hidden" name="contratista_id" value="{{ cosecha_sel_id }}">
+    <button class="btn btn-primary btn-sm" type="submit">Abrir nueva faena</button>
+    <span class="small text-muted ms-2">Los números parten de 1.</span>
   </form>
   {% endif %}
   {% endif %}
