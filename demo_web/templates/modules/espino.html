@@ -190,7 +190,7 @@
       <input type="hidden" name="op" value="gastos">
       <div class="col-md-3">
         <label class="form-label">Buscar</label>
-        <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="Tractor, implemento, trabajo…">
+        <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="Maquinaria, implemento, trabajo…">
       </div>
       <div class="col-md-2">
         <label class="form-label">Desde</label>
@@ -221,14 +221,14 @@
           <tr>
             <th>Fecha</th>
             <th>Documento</th>
-            <th>Tractor</th>
+            <th>Maquinaria</th>
             <th>Implemento / equipo</th>
             <th>Trabajo</th>
             <th>Horas</th>
             <th>Ha</th>
-            <th class="text-end">Valor tractor $/ha</th>
+            <th class="text-end">Valor maquinaria $/ha</th>
             <th class="text-end">Valor implemento $/ha</th>
-            <th class="text-end">Total tractor</th>
+            <th class="text-end">Total maquinaria</th>
             <th class="text-end">Total implemento</th>
             <th class="text-end">Total</th>
             <th class="text-end">Haber</th>
@@ -307,7 +307,7 @@
   {% if not solo_lectura %}
   <div class="panel-card">
     <h2 class="h6 panel-title">Registrar trabajo maquinaria</h2>
-    <p class="small text-muted">El monto total del trabajo se imputa al Debe (desglose tractor / implemento).</p>
+    <p class="small text-muted">El monto se imputa al Debe. La maquinaria es toda la lista activa de Administración.</p>
     <form method="post" class="row g-3">
       <input type="hidden" name="action" value="maquinaria_registrar">
       <input type="hidden" name="sec" value="maquinaria">
@@ -328,7 +328,7 @@
         <input type="text" name="documento" id="maqDoc" class="form-control" placeholder="Factura o boleta">
       </div>
       <div class="col-md-6">
-        <label class="form-label">Tractor</label>
+        <label class="form-label">Maquinaria</label>
         <select name="tractor_codigo" class="form-select" required>
           <option value="">— Seleccione —</option>
           {% for t in tractores|default([]) %}
@@ -358,7 +358,7 @@
         <input type="number" name="horas" class="form-control" min="0" step="0.01">
       </div>
       <div class="col-md-2">
-        <label class="form-label">Valor tractor ($/ha)</label>
+        <label class="form-label">Valor maquinaria ($/ha)</label>
         <input type="number" name="monto_tractor" class="form-control" min="0" step="1" value="0">
       </div>
       <div class="col-md-2">
