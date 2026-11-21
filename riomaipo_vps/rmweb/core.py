@@ -848,9 +848,57 @@ def fmt_cant_pdf(v) -> str:
         return "0,00"
 
 
+def normalizar_version_cotizacion(raw) -> str:
+    """Versión sin la V inicial. Vacío queda en 1."""
+    text = str(raw if raw is not None else "").strip()
+    text = text.lstrip("Vv") or "1"
+    return text
+
+
+def siguiente_version_cotizacion(actual) -> str:
+    """Siguiente número de versión al guardar una modificación."""
+    text = normalizar_version_cotizacion(actual)
+    if text.isdigit():
+        return str(int(text) + 1)
+    m = re.search(r"(\d+)$", text)
+    if m:
+        return text[: m.start()] + str(int(m.group(1)) + 1)
+    return f"{text}-2"
+
+
+def version_al_guardar(anterior, enviada, *, editando: bool) -> str:
+    """Al editar, si no cambian el número, la versión sube. Una nueva respeta lo escrito."""
+    nueva = normalizar_version_cotizacion(enviada)
+    if not editando:
+        return nueva
+    previa = normalizar_version_cotizacion(anterior)
+    if nueva == previa:
+        return siguiente_version_cotizacion(previa)
+    return nueva
+
+
+def cotizacion_etiqueta_version(cot) -> str:
+    """Texto Vn más el folio, para el nombre del PDF y la franja del documento."""
+    version = normalizar_version_cotizacion(
+        cot["version"] if "version" in cot.keys() else "1"
+    )
+    folio = ""
+    if "folio" in cot.keys() and cot["folio"]:
+        folio = str(cot["folio"]).strip()
+    etiqueta = f"V{version} {folio}".strip() if folio else f"V{version}"
+    etiqueta = re.sub(r'[\\/:*?"<>|]+', "-", etiqueta)
+    return re.sub(r"\s+", " ", etiqueta).strip()
+
+
+def cotizacion_nombre_pdf(cot) -> str:
+    """Nombre de descarga: la V va en el archivo, por ejemplo V2 COT-0018.pdf."""
+    return f"{cotizacion_etiqueta_version(cot)}.pdf"
+
+
 def cotizacion_titulo_pdf(cot) -> str:
-    version = str(cot["version"] if "version" in cot.keys() else "1") or "1"
-    version = version.lstrip("Vv") or "1"
+    version = normalizar_version_cotizacion(
+        cot["version"] if "version" in cot.keys() else "1"
+    )
     titulo = ""
     for key in ("titulo", "asunto", "proyecto"):
         if key in cot.keys() and cot[key]:
@@ -1029,16 +1077,20 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
     pdf.set_text_color(180, 205, 230)
     pdf.cell(content_w - 80, 4, _pdf_txt(pie_marca_pdf())[:52], ln=1)
 
-    folio = cot["folio"] if "folio" in cot.keys() and cot["folio"] else ""
-    if folio:
-        bw, bh = 42, 10
+    folio = str(cot["folio"]).strip() if "folio" in cot.keys() and cot["folio"] else ""
+    etiqueta = cotizacion_etiqueta_version(cot)
+    pdf.set_title(_pdf_txt(etiqueta))
+    if etiqueta:
+        pdf.set_font("Helvetica", "B", 8)
+        bw = max(42.0, pdf.get_string_width(_pdf_txt(etiqueta)) + 8)
+        bh = 10
         bx = right - bw
         pdf.set_fill_color(*C_CYAN)
         pdf.rect(bx, 6, bw, bh, "F")
         pdf.set_xy(bx, 7.5)
         pdf.set_text_color(*C_WHITE)
         pdf.set_font("Helvetica", "B", 8)
-        pdf.cell(bw, 7, _pdf_txt(folio), align="C")
+        pdf.cell(bw, 7, _pdf_txt(etiqueta), align="C")
 
     y = 28.0
     cliente = cot["razon_social"] if "razon_social" in cot.keys() and cot["razon_social"] else ""
@@ -1211,7 +1263,7 @@ def cotizacion_pdf_bytes(cot, items, empresa_row, iva_pct: float = 0.19) -> byte
         content_w,
         5,
         _pdf_txt(
-            f"{folio} · {cliente} · Cotización · {hoy_chile().strftime('%d/%m/%Y')} · {pie_marca_pdf()}"
+            f"{etiqueta} · {cliente} · Cotización · {hoy_chile().strftime('%d/%m/%Y')} · {pie_marca_pdf()}"
         ),
         align="L",
     )

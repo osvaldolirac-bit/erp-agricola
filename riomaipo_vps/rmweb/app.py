@@ -1001,7 +1001,11 @@ def cotizaciones_form(cot_id: int | None = None):
             flash("Seleccione un cliente válido", "danger")
             db.close()
             return redirect(url_for("cotizaciones_form", cot_id=cot_id) if edit else url_for("cotizaciones_form"))
-        version = (request.form.get("version") or "1").strip().lstrip("Vv") or "1"
+        version = core.version_al_guardar(
+            edit["version"] if edit else "1",
+            request.form.get("version"),
+            editando=bool(edit),
+        )
         titulo = (request.form.get("titulo") or "").strip() or None
         proyecto = (request.form.get("proyecto") or "").strip() or None
         asunto = (request.form.get("asunto") or "").strip() or None
@@ -1173,7 +1177,7 @@ def cotizaciones_form(cot_id: int | None = None):
             cxc_doc = None
             stock_msg = None
             arriendo_msg = None
-            msg = f"{folio} guardada · total {core.clp(tots['total'])}"
+            msg = f"{folio} guardada · V{version} · total {core.clp(tots['total'])}"
             if estado == "aprobada":
                 ok_apr, cxc_doc, stock_msg, arriendo_msg = _cotizacion_aprobar_side_effects(
                     db, cid, tipo_venta
@@ -1182,7 +1186,7 @@ def cotizaciones_form(cot_id: int | None = None):
                     _cotizacion_revert_aprobacion(db, cid)
                     db.commit()
                     err = stock_msg or arriendo_msg or "No se pudo completar la aprobación"
-                    msg = f"{folio} guardada como borrador · total {core.clp(tots['total'])} · {err}"
+                    msg = f"{folio} guardada como borrador · V{version} · total {core.clp(tots['total'])} · {err}"
                     log_movimiento_demo("COTIZACION", msg)
                     flash(msg, "warning")
                 else:
@@ -1323,7 +1327,7 @@ def cotizaciones_pdf(cot_id: int):
         BytesIO(pdf),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name=f"{cot['folio']}.pdf",
+        download_name=core.cotizacion_nombre_pdf(cot),
     )
 
 
