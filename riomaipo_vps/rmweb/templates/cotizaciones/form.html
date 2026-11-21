@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>{% if edit %}Modificar {{ edit.folio }}{% else %}Nueva cotización{% endif %}</h1>
+    <h1>{% if edit %}Modificar {{ nombre_cotizacion(edit) }}{% else %}Nueva cotización{% endif %}</h1>
     <p>Ítems de obra · subtotal · gastos generales · utilidad · IVA · total.</p>
   </div>
   <div class="d-flex gap-2">
@@ -24,7 +24,11 @@
       </div>
       <div class="col-md-2">
         <label class="form-label fw-bold">Versión</label>
-        <input class="form-control" name="version" value="{{ edit.version if edit and edit.version else '1' }}">
+        {% set est = (edit.estado if edit and edit.estado else 'borrador') %}
+        <input class="form-control" name="version"
+               value="{% if not edit or est == 'borrador' %}borrador{% else %}{{ edit.version or '1' }}{% endif %}"
+               {% if not edit or est == 'borrador' %}readonly{% endif %}>
+        <div class="form-text">En borrador se muestra V borrador. El número sale al enviarla. Si editas una ya enviada, sube a la siguiente V.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label fw-bold">Cliente</label>
