@@ -25,8 +25,18 @@ class CotizacionVersionPdfTests(unittest.TestCase):
         self.assertEqual(core.version_al_guardar(None, "V3", editando=False), "3")
 
     def test_el_pdf_lleva_la_v_y_el_folio(self) -> None:
-        cot = {"version": "2", "folio": "COT-0018", "titulo": "Muro"}
-        self.assertEqual(core.cotizacion_nombre_pdf(cot), "V2 COT-0018.pdf")
+        cot = {
+            "version": "2",
+            "folio": "COT-0018",
+            "titulo": "Muro",
+            "razon_social": "Cliente Sur",
+            "proyecto": "Obra norte",
+            "asunto": "Radier",
+        }
+        self.assertEqual(
+            core.cotizacion_nombre_pdf(cot),
+            "V2 - COT-0018 - Cliente Sur - Obra norte - Radier.pdf",
+        )
         self.assertEqual(core.cotizacion_etiqueta_version(cot), "V2 COT-0018")
         self.assertTrue(core.cotizacion_titulo_pdf(cot).startswith("V2 "))
 

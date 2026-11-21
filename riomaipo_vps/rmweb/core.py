@@ -877,22 +877,38 @@ def version_al_guardar(anterior, enviada, *, editando: bool) -> str:
     return nueva
 
 
+def _parte_nombre_pdf(valor) -> str:
+    s = str(valor or "").strip()
+    s = s.replace("\\", " ").replace("/", " ")
+    for ch in ':*?"<>|\n\r\t':
+        s = s.replace(ch, " ")
+    return " ".join(s.split()).strip(" .")
+
+
 def cotizacion_etiqueta_version(cot) -> str:
-    """Texto Vn más el folio, para el nombre del PDF y la franja del documento."""
+    """Vn y el folio, para la franja del documento."""
     version = normalizar_version_cotizacion(
         cot["version"] if "version" in cot.keys() else "1"
     )
-    folio = ""
-    if "folio" in cot.keys() and cot["folio"]:
-        folio = str(cot["folio"]).strip()
+    folio = _parte_nombre_pdf(cot["folio"]) if "folio" in cot.keys() else ""
     etiqueta = f"V{version} {folio}".strip() if folio else f"V{version}"
-    etiqueta = re.sub(r'[\\/:*?"<>|]+', "-", etiqueta)
-    return re.sub(r"\s+", " ", etiqueta).strip()
+    return etiqueta
 
 
 def cotizacion_nombre_pdf(cot) -> str:
-    """Nombre de descarga: la V va en el archivo, por ejemplo V2 COT-0018.pdf."""
-    return f"{cotizacion_etiqueta_version(cot)}.pdf"
+    """Descarga: V, folio, cliente, proyecto y asunto."""
+    version = normalizar_version_cotizacion(
+        cot["version"] if "version" in cot.keys() else "1"
+    )
+    folio = _parte_nombre_pdf(cot["folio"]) if "folio" in cot.keys() else ""
+    cliente = _parte_nombre_pdf(cot["razon_social"]) if "razon_social" in cot.keys() else ""
+    proyecto = _parte_nombre_pdf(cot["proyecto"]) if "proyecto" in cot.keys() else ""
+    asunto = _parte_nombre_pdf(cot["asunto"]) if "asunto" in cot.keys() else ""
+    partes = [p for p in (f"V{version}", folio, cliente, proyecto, asunto) if p]
+    base = " - ".join(partes) if partes else f"V{version}"
+    if len(base) > 180:
+        base = base[:180].rstrip(" .-")
+    return f"{base}.pdf"
 
 
 def cotizacion_titulo_pdf(cot) -> str:
