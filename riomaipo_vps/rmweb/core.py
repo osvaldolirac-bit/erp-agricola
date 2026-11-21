@@ -848,33 +848,96 @@ def fmt_cant_pdf(v) -> str:
         return "0,00"
 
 
-def normalizar_version_cotizacion(raw) -> str:
-    """Versión sin la V inicial. Vacío queda en 1."""
+def _version_texto(raw) -> str:
     text = str(raw if raw is not None else "").strip()
-    text = text.lstrip("Vv") or "1"
+    if text[:1].lower() == "v":
+        text = text[1:].strip()
     return text
 
 
-def siguiente_version_cotizacion(actual) -> str:
-    """Siguiente número de versión al guardar una modificación."""
-    text = normalizar_version_cotizacion(actual)
-    if text.isdigit():
-        return str(int(text) + 1)
-    m = re.search(r"(\d+)$", text)
-    if m:
-        return text[: m.start()] + str(int(m.group(1)) + 1)
-    return f"{text}-2"
+def version_es_borrador(version, estado=None) -> bool:
+    """En borrador la versión no es un número: se muestra V borrador."""
+    if (estado or "").strip().lower() == "borrador":
+        return True
+    return _version_texto(version).lower() == "borrador"
 
 
-def version_al_guardar(anterior, enviada, *, editando: bool) -> str:
-    """Al editar, si no cambian el número, la versión sube. Una nueva respeta lo escrito."""
-    nueva = normalizar_version_cotizacion(enviada)
+def etiqueta_v_cotizacion(version, estado=None) -> str:
+    if version_es_borrador(version, estado):
+        return "V borrador"
+    texto = _version_texto(version)
+    if texto.isdigit():
+        return f"V{int(texto)}"
+    if not texto:
+        return "V1"
+    return f"V{texto}"
+
+
+def version_al_guardar(
+    anterior,
+    escrita,
+    *,
+    editando: bool,
+    estado: str = "enviada",
+    estado_anterior: str | None = None,
+) -> str:
+    """El número nace al enviar. En borrador queda borrador. Editar una enviada sube la V."""
+    estado = (estado or "borrador").strip().lower()
+    previa = _version_texto(anterior).lower()
+    puesta = _version_texto(escrita).lower()
     if not editando:
-        return nueva
-    previa = normalizar_version_cotizacion(anterior)
-    if nueva == previa:
-        return siguiente_version_cotizacion(previa)
-    return nueva
+        if estado == "borrador":
+            return "borrador"
+        if puesta.isdigit() and puesta != "1":
+            return str(int(puesta))
+        return "1"
+    if estado == "borrador":
+        if previa.isdigit():
+            return str(int(previa))
+        return "borrador"
+    era_borrador = (
+        (estado_anterior or "").strip().lower() == "borrador"
+        or previa in ("", "borrador")
+    )
+    if era_borrador:
+        if puesta.isdigit() and puesta != "1":
+            return str(int(puesta))
+        if previa.isdigit():
+            return str(int(previa) + 1)
+        return "1"
+    if puesta.isdigit() and puesta != previa:
+        return str(int(puesta))
+    if previa.isdigit():
+        return str(int(previa) + 1)
+    return "2"
+
+
+def version_al_cambiar_estado(anterior, estado, estado_anterior) -> str:
+    """Cambiar solo el estado no sube la V. Enviarla por primera vez la crea."""
+    estado = (estado or "borrador").strip().lower()
+    previa = _version_texto(anterior).lower()
+    if estado == "borrador":
+        if previa.isdigit():
+            return str(int(previa))
+        return "borrador"
+    if (estado_anterior or "").strip().lower() == "borrador" or previa in ("", "borrador"):
+        if previa.isdigit():
+            return str(int(previa) + 1)
+        return "1"
+    if previa.isdigit():
+        return str(int(previa))
+    return "1"
+
+
+def nombre_pantalla_cotizacion(cot) -> str:
+    """Nombre de la lista y del detalle: V2 COT-28_2026 o V borrador COT-31_2026."""
+    estado = cot["estado"] if "estado" in cot.keys() else ""
+    version = cot["version"] if "version" in cot.keys() else ""
+    folio = ""
+    if "folio" in cot.keys() and cot["folio"]:
+        folio = str(cot["folio"]).strip()
+    etiqueta = etiqueta_v_cotizacion(version, estado)
+    return f"{etiqueta} {folio}".strip() if folio else etiqueta
 
 
 def _parte_nombre_pdf(valor) -> str:
@@ -887,34 +950,33 @@ def _parte_nombre_pdf(valor) -> str:
 
 def cotizacion_etiqueta_version(cot) -> str:
     """Vn y el folio, para la franja del documento."""
-    version = normalizar_version_cotizacion(
-        cot["version"] if "version" in cot.keys() else "1"
-    )
+    estado = cot["estado"] if "estado" in cot.keys() else ""
+    version = cot["version"] if "version" in cot.keys() else ""
     folio = _parte_nombre_pdf(cot["folio"]) if "folio" in cot.keys() else ""
-    etiqueta = f"V{version} {folio}".strip() if folio else f"V{version}"
-    return etiqueta
+    etiqueta = etiqueta_v_cotizacion(version, estado)
+    return f"{etiqueta} {folio}".strip() if folio else etiqueta
 
 
 def cotizacion_nombre_pdf(cot) -> str:
     """Descarga: V, folio, cliente, proyecto y asunto."""
-    version = normalizar_version_cotizacion(
-        cot["version"] if "version" in cot.keys() else "1"
-    )
+    estado = cot["estado"] if "estado" in cot.keys() else ""
+    version = cot["version"] if "version" in cot.keys() else ""
+    etiqueta = etiqueta_v_cotizacion(version, estado)
     folio = _parte_nombre_pdf(cot["folio"]) if "folio" in cot.keys() else ""
     cliente = _parte_nombre_pdf(cot["razon_social"]) if "razon_social" in cot.keys() else ""
     proyecto = _parte_nombre_pdf(cot["proyecto"]) if "proyecto" in cot.keys() else ""
     asunto = _parte_nombre_pdf(cot["asunto"]) if "asunto" in cot.keys() else ""
-    partes = [p for p in (f"V{version}", folio, cliente, proyecto, asunto) if p]
-    base = " - ".join(partes) if partes else f"V{version}"
+    partes = [p for p in (etiqueta, folio, cliente, proyecto, asunto) if p]
+    base = " - ".join(partes) if partes else etiqueta
     if len(base) > 180:
         base = base[:180].rstrip(" .-")
     return f"{base}.pdf"
 
 
 def cotizacion_titulo_pdf(cot) -> str:
-    version = normalizar_version_cotizacion(
-        cot["version"] if "version" in cot.keys() else "1"
-    )
+    estado = cot["estado"] if "estado" in cot.keys() else ""
+    version = cot["version"] if "version" in cot.keys() else ""
+    etiqueta = etiqueta_v_cotizacion(version, estado)
     titulo = ""
     for key in ("titulo", "asunto", "proyecto"):
         if key in cot.keys() and cot[key]:
@@ -925,7 +987,7 @@ def cotizacion_titulo_pdf(cot) -> str:
         titulo = str(cot["razon_social"]).strip()
     if not titulo:
         titulo = "COTIZACION"
-    return f"V{version} COTIZACIÓN {titulo}".upper()
+    return f"{etiqueta} COTIZACIÓN {titulo}".upper()
 
 
 def _pct_from_text(text: str | None, default: float | None = None) -> float | None:

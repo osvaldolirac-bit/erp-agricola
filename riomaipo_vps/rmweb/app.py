@@ -296,6 +296,7 @@ def inject_globals():
         "estados_cot": getattr(core, "ESTADOS_COT", ()),
         "cxc_estado_label": core.cxc_estado_label,
         "cxc_estado_class": core.cxc_estado_class,
+        "nombre_cotizacion": core.nombre_pantalla_cotizacion,
         "auth_user": session.get("auth_user", ""),
         "auth_nombre": session.get("auth_nombre", ""),
         "auth_tipo": session.get("auth_tipo", ""),
@@ -918,7 +919,7 @@ def cotizaciones_list():
         pass
     rows = db.execute(
         """
-        SELECT c.id, c.folio, c.fecha, c.estado, c.total, c.asunto, c.proyecto, c.titulo,
+        SELECT c.id, c.folio, c.fecha, c.estado, c.version, c.total, c.asunto, c.proyecto, c.titulo,
                COALESCE(c.tipo_venta,'servicio') AS tipo_venta,
                COALESCE(c.tipo_cotizacion,'normal') AS tipo_cotizacion,
                c.centro_costo_id,
@@ -1001,15 +1002,17 @@ def cotizaciones_form(cot_id: int | None = None):
             flash("Seleccione un cliente válido", "danger")
             db.close()
             return redirect(url_for("cotizaciones_form", cot_id=cot_id) if edit else url_for("cotizaciones_form"))
-        version = core.version_al_guardar(
-            edit["version"] if edit else "1",
-            request.form.get("version"),
-            editando=bool(edit),
-        )
         titulo = (request.form.get("titulo") or "").strip() or None
         proyecto = (request.form.get("proyecto") or "").strip() or None
         asunto = (request.form.get("asunto") or "").strip() or None
         estado = request.form.get("estado") or "borrador"
+        version = core.version_al_guardar(
+            edit["version"] if edit else "borrador",
+            request.form.get("version"),
+            editando=bool(edit),
+            estado=estado,
+            estado_anterior=(edit["estado"] if edit else "borrador"),
+        )
         try:
             fecha = _fecha_cotizacion_form(request.form.get("fecha"))
         except ValueError:
@@ -1358,12 +1361,17 @@ def cotizaciones_estado(cot_id: int):
     from rmweb import ops as _ops
     _ops.ensure_ops_schema(db)
     prev = db.execute(
-        "SELECT estado, cliente_id FROM cotizaciones WHERE id=?",
+        "SELECT estado, cliente_id, version FROM cotizaciones WHERE id=?",
         (cot_id,),
     ).fetchone()
     prev_estado = (prev["estado"] if prev else "borrador") or "borrador"
+    prev_version = (prev["version"] if prev else "borrador") or "borrador"
     prev_cliente_id = int(prev["cliente_id"] or 0) if prev else 0
-    db.execute("UPDATE cotizaciones SET estado=? WHERE id=?", (estado, cot_id))
+    version = core.version_al_cambiar_estado(prev_version, estado, prev_estado)
+    db.execute(
+        "UPDATE cotizaciones SET estado=?, version=? WHERE id=?",
+        (estado, version, cot_id),
+    )
     db.commit()
     cxc_doc = None
     stock_msg = None
@@ -1380,8 +1388,8 @@ def cotizaciones_estado(cot_id: int):
                 db.execute("DELETE FROM abonos WHERE cuenta_id=?", (cxc_id,))
                 db.execute("DELETE FROM cuentas WHERE id=?", (cxc_id,))
             db.execute(
-                "UPDATE cotizaciones SET estado=?, cxc_id=NULL WHERE id=?",
-                (prev_estado, cot_id),
+                "UPDATE cotizaciones SET estado=?, version=?, cxc_id=NULL WHERE id=?",
+                (prev_estado, prev_version, cot_id),
             )
             db.commit()
             err = stock_msg or arriendo_msg or "No se pudo aprobar"
