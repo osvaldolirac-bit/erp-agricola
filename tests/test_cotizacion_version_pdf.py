@@ -107,3 +107,62 @@ class CotizacionVersionPdfTests(unittest.TestCase):
         pdf = core.cotizacion_pdf_bytes(cot, items, None, iva_pct=0.19)
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertIn(b"V4 COT-0007", pdf)
+
+
+class CuentaPdfCotizacionTest(unittest.TestCase):
+    def test_abono_pdf_trae_nombre_y_detalle_vigente(self):
+        cot = {
+            "folio": "COT-30_2026",
+            "version": "2",
+            "estado": "aprobada",
+            "titulo": "SALVADOR GARCES BERNALES",
+            "proyecto": "Fray Montalva",
+            "asunto": "Elevaciones",
+            "razon_social": "SALVADOR GARCES BERNALES",
+            "subtotal": 1691985,
+            "gg_pct": 5,
+            "gg_monto": 84599,
+            "utilidad_pct": 15,
+            "utilidad_monto": 253798,
+            "valor_neto": 2030382,
+            "iva": 0,
+            "total": 2030382,
+        }
+        items = [
+            {"descripcion": "MADERA", "obs": "", "unidad": "M2", "cantidad": 30.5, "precio_unitario": 0, "total": 0},
+            {"descripcion": "MADERA", "obs": "30,5 M2", "unidad": "un", "cantidad": 1, "precio_unitario": 0, "total": 0},
+            {"descripcion": "materiales", "obs": "tornillos, lija desvaste, discos corte", "unidad": "un", "cantidad": 1, "precio_unitario": 40000, "total": 40000},
+            {"descripcion": "protector cutex", "obs": "", "unidad": "GL", "cantidad": 1, "precio_unitario": 250000, "total": 250000},
+        ]
+        self.assertEqual(
+            core.concepto_desde_cotizacion(cot),
+            "Desde cotización V2 COT-30_2026 · Fray Montalva · Elevaciones",
+        )
+        cuenta = {
+            "documento": "EP-0022",
+            "concepto": "Desde cotización COT-30_2026 · SALVADOR GARCES BERNALES",
+            "fecha_emision": "2026-11-22",
+            "fecha_vencimiento": "2026-12-22",
+            "monto": 2030382,
+            "abonado": 700000,
+            "saldo": 1330382,
+            "estado": "parcial",
+            "razon_social": "SALVADOR GARCES BERNALES",
+            "cliente_rut": "14123582-6",
+            "tipo": "EP",
+        }
+        abonos = [{"fecha": "2026-11-23", "monto": 700000, "medio": "Transferencia", "nota": ""}]
+        pdf = core.cuenta_pdf_bytes(cuenta, abonos, None, cot=cot, items=items)
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        from io import BytesIO
+        from pypdf import PdfReader
+
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages)
+        self.assertIn("V2 COT-30_2026", text)
+        self.assertIn("Fray Montalva", text)
+        self.assertIn("Elevaciones", text)
+        self.assertIn("Detalle de la cotizaci", text)
+        self.assertIn("protector cutex", text)
+        self.assertIn("30,5 M2", text)
+        self.assertIn("tornillos, lija desvaste, discos corte", text)
+        self.assertIn("Gastos generales", text)

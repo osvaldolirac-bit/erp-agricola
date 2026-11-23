@@ -1176,6 +1176,7 @@ def cotizaciones_form(cot_id: int | None = None):
                 """,
                 [(cid, *ln) for ln in lineas],
             )
+            core.refrescar_concepto_cxc(db, cid)
             db.commit()
             cxc_doc = None
             stock_msg = None
@@ -1879,9 +1880,32 @@ def cuentas_pdf(cuenta_id: int):
         "ORDER BY date(fecha) DESC, id DESC",
         (cuenta_id,),
     ).fetchall()
+    cot = None
+    items = []
+    cot_id = cuenta["cotizacion_id"] if "cotizacion_id" in cuenta.keys() else None
+    if cot_id:
+        cot = db.execute(
+            """
+            SELECT c.*, cl.razon_social
+            FROM cotizaciones c
+            LEFT JOIN clientes cl ON cl.id = c.cliente_id
+            WHERE c.id=?
+            """,
+            (cot_id,),
+        ).fetchone()
+        items = db.execute(
+            """
+            SELECT descripcion, COALESCE(obs, '') AS obs, unidad, cantidad,
+                   precio_unitario, total
+            FROM cotizacion_items
+            WHERE cotizacion_id=?
+            ORDER BY COALESCE(orden, 0), id
+            """,
+            (cot_id,),
+        ).fetchall()
     empresa = db.execute("SELECT * FROM empresa WHERE id=1").fetchone()
     db.close()
-    pdf = core.cuenta_pdf_bytes(cuenta, abonos, empresa)
+    pdf = core.cuenta_pdf_bytes(cuenta, abonos, empresa, cot=cot, items=items)
     return send_file(
         BytesIO(pdf),
         mimetype="application/pdf",
