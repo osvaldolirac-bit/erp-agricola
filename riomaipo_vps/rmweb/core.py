@@ -2035,7 +2035,10 @@ def cargar_etiqueta_mo(c: sqlite3.Connection, cot_id: int, items) -> dict:
     else:
         gastos = []
         facturas = []
+    salidas = salidas_bodega_cotizacion(c, cot_id) if cot and (cot["estado"] or "") == "aprobada" else []
     compras = round(sum(float(g["monto"] or 0) for g in gastos), 2)
+    bodega = round(sum(float(s["monto"] or 0) for s in salidas), 2)
+    compras = round(compras + bodega, 2)
     valor_neto = float(montos["valor_neto"] or 0) if montos else 0.0
     if valor_neto <= 0 and montos:
         valor_neto = float(montos["total"] or 0)
@@ -2056,6 +2059,8 @@ def cargar_etiqueta_mo(c: sqlite3.Connection, cot_id: int, items) -> dict:
         "aprobada": bool(cot and (cot["estado"] or "") == "aprobada"),
         "hoy": hoy_chile().isoformat(),
         "gastos": gastos,
+        "salidas": salidas,
+        "bodega": bodega,
         "facturas": facturas,
         "resultado": resultado,
     }
@@ -2373,6 +2378,27 @@ def gastos_imputados_cotizacion(c: sqlite3.Connection, cot_id: int) -> list:
         {proveedor_sql}
         WHERE i.centro_costo_id=?
         ORDER BY f.fecha_emision DESC, i.id DESC
+        """,
+        (cc_id,),
+    ).fetchall()
+
+
+def salidas_bodega_cotizacion(c: sqlite3.Connection, cot_id: int) -> list:
+    """Mercadería que salió de bodega hacia esta cotización. El gasto se imputa aquí, no al ingresar."""
+    if not _tabla_sql(c, "inventario_movimientos"):
+        return []
+    cc_id = _cc_id_cotizacion(c, cot_id)
+    if not cc_id:
+        return []
+    return c.execute(
+        """
+        SELECT m.id, m.fecha, m.cantidad, m.costo_unitario,
+               ROUND(m.cantidad * COALESCE(m.costo_unitario,0), 2) AS monto,
+               COALESCE(i.nombre, '') AS concepto
+        FROM inventario_movimientos m
+        LEFT JOIN inventario i ON i.id = m.inventario_id
+        WHERE m.tipo='salida' AND m.centro_costo_id=?
+        ORDER BY m.fecha DESC, m.id DESC
         """,
         (cc_id,),
     ).fetchall()

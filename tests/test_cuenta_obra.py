@@ -57,6 +57,41 @@ class CentrosCotizacionAbiertaTest(unittest.TestCase):
         self.assertIsNone(cerrada)
 
 
+class SalidaBodegaTest(unittest.TestCase):
+    def test_la_salida_se_imputa_a_la_cotizacion(self) -> None:
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.execute(
+            """
+            CREATE TABLE centros_costo (
+                id INTEGER PRIMARY KEY, nombre TEXT, tipo TEXT,
+                cotizacion_id INTEGER, estado_obra TEXT
+            )
+            """
+        )
+        db.execute(
+            "INSERT INTO centros_costo (id, nombre, tipo, cotizacion_id, estado_obra) "
+            "VALUES (6, 'COT-30_2026', 'obra', 1, 'activa')"
+        )
+        db.execute("CREATE TABLE inventario (id INTEGER PRIMARY KEY, nombre TEXT)")
+        db.execute("INSERT INTO inventario (id, nombre) VALUES (1, 'Fierro')")
+        db.execute(
+            """
+            CREATE TABLE inventario_movimientos (
+                id INTEGER PRIMARY KEY, inventario_id INTEGER, tipo TEXT,
+                cantidad REAL, costo_unitario REAL, fecha TEXT, centro_costo_id INTEGER
+            )
+            """
+        )
+        db.execute(
+            "INSERT INTO inventario_movimientos VALUES (1, 1, 'salida', 2, 1500, '2026-11-24', 6)"
+        )
+        rows = core.salidas_bodega_cotizacion(db, 1)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["monto"], 3000)
+        self.assertEqual(rows[0]["concepto"], "Fierro")
+
+
 class CompraMontoUnicoTest(unittest.TestCase):
     def test_con_factura_el_monto_es_el_total_y_se_imputa_el_neto(self) -> None:
         m = core.montos_compra_unica("factura", 189980)

@@ -133,7 +133,7 @@
     </div>
   </div>
   <div class="small text-muted mt-2">
-    Gasto imputado (compras {{ clp(mo.resultado.compras) }} + mano de obra pagada {{ clp(mo.resultado.mo_pagada) }})
+    Gasto imputado (compras y salidas de bodega {{ clp(mo.resultado.compras) }} + mano de obra pagada {{ clp(mo.resultado.mo_pagada) }})
     {{ clp(mo.resultado.gasto) }} de {{ clp(mo.resultado.valor_neto) }}.
     El subtotal neto de las partidas es {{ clp(mo.resultado.subtotal) }}.
   </div>
@@ -185,9 +185,20 @@
           </form>
         </td>
       </tr>
-      {% else %}
-      <tr><td colspan="6" class="text-muted">Sin compras imputadas.</td></tr>
       {% endfor %}
+      {% for s in mo.salidas %}
+      <tr>
+        <td>{{ s.fecha or '' }}</td>
+        <td>Salida bodega</td>
+        <td></td>
+        <td>{{ s.concepto }} · {{ '%.2f'|format(s.cantidad or 0) }}</td>
+        <td>{{ clp(s.monto) }}</td>
+        <td></td>
+      </tr>
+      {% endfor %}
+      {% if not mo.gastos and not mo.salidas %}
+      <tr><td colspan="6" class="text-muted">Sin compras imputadas ni salidas de bodega.</td></tr>
+      {% endif %}
     </tbody>
   </table>
   {% endif %}
