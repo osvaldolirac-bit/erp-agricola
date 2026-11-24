@@ -35,7 +35,9 @@ def _registrar_acceso_sesion(demo, email: str, modulo: str = "") -> None:
     if session.get(tag):
         return
     try:
-        conn = demo.conectar_db()
+        from demo_web.auth.bitacora_acceso import conn_para_bitacora
+
+        conn = conn_para_bitacora(demo)
         f_h = demo.hora_chile().strftime("%Y-%m-%d %H:%M:%S")
         detalle = "Sesión Detectada (Flask LC)" if app_tag == "lc" else "Sesión Detectada (Flask demo)"
         conn.execute(
