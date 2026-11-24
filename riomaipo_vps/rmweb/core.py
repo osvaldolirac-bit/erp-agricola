@@ -491,7 +491,7 @@ def ensure_cxc_from_cotizacion(c: sqlite3.Connection, cot_id: int) -> str | None
     """
     cot = c.execute(
         """
-        SELECT id, folio, cliente_id, estado, total, cxc_id, asunto, titulo, proyecto
+        SELECT id, folio, cliente_id, estado, total, cxc_id, asunto, titulo, proyecto, version
         FROM cotizaciones WHERE id=?
         """,
         (cot_id,),
@@ -507,10 +507,7 @@ def ensure_cxc_from_cotizacion(c: sqlite3.Connection, cot_id: int) -> str | None
 
     dias = int(param(c, "dias_credito", 30))
     doc = next_code(c, "cuentas", "documento", "EP")
-    concepto = f"Desde cotización {cot['folio']}"
-    titulo = (cot["titulo"] or cot["asunto"] or cot["proyecto"] or "").strip()
-    if titulo:
-        concepto = f"{concepto} · {titulo[:80]}"
+    concepto = concepto_desde_cotizacion(cot)
     monto = float(cot["total"] or 0)
     cur = c.cursor()
     cur.execute(
@@ -938,6 +935,47 @@ def nombre_pantalla_cotizacion(cot) -> str:
         folio = str(cot["folio"]).strip()
     etiqueta = etiqueta_v_cotizacion(version, estado)
     return f"{etiqueta} {folio}".strip() if folio else etiqueta
+
+
+def nombre_detalle_cotizacion(cot) -> str:
+    """Nombre vigente con proyecto y asunto: V2 COT-30_2026 · Fray Montalva · Elevaciones."""
+    base = nombre_pantalla_cotizacion(cot)
+    extras = []
+    vistos = {base.lower()}
+    for key in ("proyecto", "asunto"):
+        if key not in cot.keys() or not cot[key]:
+            continue
+        txt = str(cot[key]).strip()
+        if not txt or txt.lower() in ("none", "null") or txt.lower() in vistos:
+            continue
+        extras.append(txt)
+        vistos.add(txt.lower())
+    if extras:
+        return f"{base} · {' · '.join(extras)}"
+    return base
+
+
+def concepto_desde_cotizacion(cot) -> str:
+    return f"Desde cotización {nombre_detalle_cotizacion(cot)}"
+
+
+def refrescar_concepto_cxc(c: sqlite3.Connection, cot_id: int) -> None:
+    """El abono usa el nombre vigente de la cotización, no el que se guardó al crearla."""
+    cot = c.execute(
+        """
+        SELECT c.*, cl.razon_social
+        FROM cotizaciones c
+        LEFT JOIN clientes cl ON cl.id = c.cliente_id
+        WHERE c.id=?
+        """,
+        (cot_id,),
+    ).fetchone()
+    if not cot or not cot["cxc_id"]:
+        return
+    c.execute(
+        "UPDATE cuentas SET concepto=? WHERE id=?",
+        (concepto_desde_cotizacion(cot), int(cot["cxc_id"])),
+    )
 
 
 def _parte_nombre_pdf(valor) -> str:
@@ -1427,7 +1465,117 @@ def _pdf_header_portrait(pdf, empresa_row, subtitle: str) -> None:
     pdf.set_y(y + 12)
 
 
-def cuenta_pdf_bytes(cuenta, abonos, empresa_row) -> bytes:
+def _pdf_lineas(pdf, texto, ancho) -> list[str]:
+    palabras = _pdf_txt(texto).split(" ")
+    lineas: list[str] = []
+    actual = ""
+    limite = max(4, ancho - 1.6)
+    for pal in palabras:
+        if not pal:
+            continue
+        prueba = pal if not actual else f"{actual} {pal}"
+        if pdf.get_string_width(prueba) <= limite or not actual:
+            actual = prueba
+        else:
+            lineas.append(actual)
+            actual = pal
+    if actual:
+        lineas.append(actual)
+    return lineas or [""]
+
+
+def _pdf_fila_detalle(pdf, celdas, anchos, aligns, negrita=False, alto_linea=3.8) -> None:
+    """Fila con texto completo: la observación no se corta."""
+    pdf.set_font("Helvetica", "B" if negrita else "", 8)
+    y0 = pdf.get_y()
+    if y0 > pdf.h - pdf.b_margin - 16:
+        pdf.add_page()
+        y0 = pdf.get_y()
+    alturas = []
+    for texto, w in zip(celdas, anchos):
+        alturas.append(alto_linea * len(_pdf_lineas(pdf, texto, w)))
+    alto = max(alturas)
+    if y0 + alto > pdf.h - pdf.b_margin:
+        pdf.add_page()
+        y0 = pdf.get_y()
+    x = pdf.l_margin
+    for texto, w, align in zip(celdas, anchos, aligns):
+        pdf.set_xy(x, y0)
+        pdf.multi_cell(w, alto_linea, _pdf_txt(texto), border=0, align=align)
+        pdf.rect(x, y0, w, alto)
+        x += w
+    pdf.set_xy(pdf.l_margin, y0 + alto)
+
+
+def _pdf_detalle_cotizacion(pdf, cot, items) -> None:
+    """Partidas vigentes de la cotización dentro del PDF del abono."""
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(22, 58, 95)
+    pdf.cell(0, 7, _pdf_txt("Detalle de la cotización"), ln=1)
+    pdf.set_text_color(26, 43, 60)
+    headers = ["Especificación", "Obs", "Und", "Cant.", "Valor", "Total"]
+    widths = [52, 48, 14, 18, 28, 30]
+    aligns = ["L", "L", "C", "R", "R", "R"]
+    pdf.set_fill_color(22, 58, 95)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 8)
+    for h, w in zip(headers, widths):
+        pdf.cell(w, 6, _pdf_txt(h), border=1, align="C", fill=True)
+    pdf.ln()
+    pdf.set_text_color(26, 43, 60)
+    filas = list(items or [])
+    if not filas:
+        pdf.set_font("Helvetica", "", 8)
+        pdf.cell(sum(widths), 6, _pdf_txt("Sin ítems"), border=1, ln=1)
+    else:
+        for it in filas:
+            desc = str(it["descripcion"] or "")
+            obs = str(it["obs"] if "obs" in it.keys() and it["obs"] else "")
+            und = str(it["unidad"] or "")
+            cant = float(it["cantidad"] or 0)
+            pu = float(it["precio_unitario"] or 0)
+            tot = float(it["total"] or 0)
+            seccion = tot == 0 and pu == 0
+            _pdf_fila_detalle(
+                pdf,
+                [
+                    desc,
+                    obs,
+                    und,
+                    fmt_cant_pdf(cant),
+                    "" if seccion else f"$ {fmt_clp_plain(pu)}",
+                    "" if seccion else f"$ {fmt_clp_plain(tot)}",
+                ],
+                widths,
+                aligns,
+                negrita=seccion,
+            )
+    if cot is None:
+        return
+    resumen = []
+    if "subtotal" in cot.keys():
+        resumen.append(("Subtotal neto", cot["subtotal"]))
+    if "gg_monto" in cot.keys() and float(cot["gg_monto"] or 0):
+        pct = cot["gg_pct"] if "gg_pct" in cot.keys() and cot["gg_pct"] is not None else ""
+        resumen.append((f"Gastos generales {pct}%".strip(), cot["gg_monto"]))
+    if "utilidad_monto" in cot.keys() and float(cot["utilidad_monto"] or 0):
+        pct = cot["utilidad_pct"] if "utilidad_pct" in cot.keys() and cot["utilidad_pct"] is not None else ""
+        resumen.append((f"Utilidad {pct}%".strip(), cot["utilidad_monto"]))
+    if "valor_neto" in cot.keys():
+        resumen.append(("Valor neto", cot["valor_neto"]))
+    if "iva" in cot.keys():
+        resumen.append(("IVA", cot["iva"]))
+    if not resumen:
+        return
+    pdf.ln(1)
+    pdf.set_font("Helvetica", "", 8)
+    for lab, val in resumen:
+        pdf.cell(132, 5, _pdf_txt(lab), border=0)
+        pdf.cell(28, 5, _pdf_txt(f"$ {fmt_clp_plain(val)}"), border=0, align="R", ln=1)
+
+
+def cuenta_pdf_bytes(cuenta, abonos, empresa_row, cot=None, items=None) -> bytes:
     """PDF vertical de un documento CxC con historial de abonos."""
     if FPDF is None:
         raise RuntimeError("FPDF no está instalado")
@@ -1451,13 +1599,18 @@ def cuenta_pdf_bytes(cuenta, abonos, empresa_row) -> bytes:
         ("Emisión", fmt_dmy(cuenta["fecha_emision"] if "fecha_emision" in cuenta.keys() else None)),
         ("Vencimiento", fmt_dmy(cuenta["fecha_vencimiento"] if "fecha_vencimiento" in cuenta.keys() else None)),
         ("Estado", cxc_estado_label(cuenta["estado"] if "estado" in cuenta.keys() else None)),
-        ("Concepto", cuenta["concepto"] if "concepto" in cuenta.keys() and cuenta["concepto"] else "—"),
+        (
+            "Cotización",
+            nombre_detalle_cotizacion(cot)
+            if cot is not None
+            else (cuenta["concepto"] if "concepto" in cuenta.keys() and cuenta["concepto"] else "—"),
+        ),
     ]
     for lab, val in lines:
         pdf.set_font("Helvetica", "B", 9)
         pdf.cell(40, 6, _pdf_txt(lab), border=0)
         pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 6, _pdf_txt(val), border=0)
+        pdf.multi_cell(150, 6, _pdf_txt(val), border=0)
 
     pdf.ln(3)
     pdf.set_fill_color(238, 243, 249)
@@ -1469,6 +1622,9 @@ def cuenta_pdf_bytes(cuenta, abonos, empresa_row) -> bytes:
     ]:
         pdf.cell(40, 7, _pdf_txt(lab), border=1, fill=True)
         pdf.cell(50, 7, _pdf_txt(val), border=1, align="R", ln=1)
+
+    if cot is not None or items:
+        _pdf_detalle_cotizacion(pdf, cot, items)
 
     pdf.ln(6)
     pdf.set_font("Helvetica", "B", 11)
