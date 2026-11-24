@@ -35,7 +35,7 @@
     <a class="nav-link {% if etiqueta != 'mo' %}active{% endif %}" href="{{ url_for('cotizaciones_detalle', cot_id=cot.id) }}">Cotización</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link {% if etiqueta == 'mo' %}active{% endif %}" href="{{ url_for('cotizaciones_detalle', cot_id=cot.id, etiqueta='mo') }}">Mano de obra{% if mo.monto %} · {{ clp(mo.monto) }}{% endif %}</a>
+    <a class="nav-link {% if etiqueta == 'mo' %}active{% endif %}" href="{{ url_for('cotizaciones_detalle', cot_id=cot.id, etiqueta='mo') }}">Cuenta obra</a>
   </li>
 </ul>
 {% if etiqueta != 'mo' %}
@@ -117,11 +117,81 @@
       <button class="btn btn-primary" type="submit">Actualizar estado</button>
     </div>
     <div class="col-12">
-      <div class="form-text">Al pasar a <strong>aprobada</strong>: CxC automática. Producto → salida bodega. Arriendo → contrato + despacho en módulo Arriendos. La mano de obra abre su cuenta en la etiqueta Mano de obra.</div>
+      <div class="form-text">Al pasar a <strong>aprobada</strong>: CxC automática. Producto → salida bodega. Arriendo → contrato + despacho en módulo Arriendos. La cuenta obra abre la mano de obra y la planilla de gastos.</div>
     </div>
   </form>
 </div>
 {% else %}
+<div class="panel mb-3">
+  <div class="d-flex justify-content-between align-items-baseline">
+    <h2 class="h6 mb-0">Utilidad {{ clp(mo.resultado.utilidad) }}</h2>
+    <span class="small">{{ '%.1f'|format(mo.resultado.pct) }}% del neto</span>
+  </div>
+  <div class="progress mt-2" style="height: 22px; background: #e9eef3;">
+    <div style="width: {{ mo.resultado.ancho }}%; background: {{ mo.resultado.color }};" class="progress-bar">
+      {{ '%.0f'|format(mo.resultado.pct) }}%
+    </div>
+  </div>
+  <div class="small text-muted mt-2">
+    Gasto imputado (compras {{ clp(mo.resultado.compras) }} + mano de obra pagada {{ clp(mo.resultado.mo_pagada) }})
+    {{ clp(mo.resultado.gasto) }} de {{ clp(mo.resultado.valor_neto) }}.
+    El subtotal neto de las partidas es {{ clp(mo.resultado.subtotal) }}.
+  </div>
+  {% if mo.resultado.alerta %}
+  <div class="alert alert-{{ mo.resultado.nivel }} py-2 mt-2 mb-0">{{ mo.resultado.alerta }}</div>
+  {% elif mo.resultado.gasto == 0 %}
+  <div class="small mt-2">Sin imputaciones, la utilidad es el valor neto.</div>
+  {% endif %}
+</div>
+<div class="panel mb-3">
+  <h2 class="h6 mb-2">Gastos de compra</h2>
+  {% if not mo.aprobada %}
+  <div class="text-muted">La planilla se abre al aprobar la cotización.</div>
+  {% else %}
+  {% if mo.facturas %}
+  <form class="row g-2 align-items-end mb-3" method="post" action="{{ url_for('cotizaciones_obra_gasto', cot_id=cot.id) }}">
+    <div class="col-md-6">
+      <label class="form-label">Compra</label>
+      <select class="form-select" name="factura_id" required>
+        {% for f in mo.facturas %}
+        <option value="{{ f.id }}">{{ f.documento }} · {{ f.proveedor or f.concepto }} · disponible {{ clp(f.disponible) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Neto a imputar</label>
+      <input class="form-control" type="number" name="monto" min="1" step="1" placeholder="Todo el disponible">
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary" type="submit">Imputar</button>
+    </div>
+  </form>
+  {% else %}
+  <div class="text-muted mb-2">No hay compras con neto disponible.</div>
+  {% endif %}
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Fecha</th><th>Documento</th><th>Proveedor</th><th>Concepto</th><th>Neto</th><th></th></tr></thead>
+    <tbody>
+      {% for g in mo.gastos %}
+      <tr>
+        <td>{{ g.fecha_emision or '' }}</td>
+        <td>{{ g.documento }}</td>
+        <td>{{ g.proveedor }}</td>
+        <td>{{ g.concepto or '' }}</td>
+        <td>{{ clp(g.monto) }}</td>
+        <td>
+          <form method="post" action="{{ url_for('cotizaciones_obra_gasto_quitar', cot_id=cot.id, imputacion_id=g.id) }}">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Quitar</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-muted">Sin compras imputadas.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
 <div class="panel mb-3">
   <h2 class="h6 mb-2">Contratista</h2>
   <form class="row g-2 align-items-end" method="post" action="{{ url_for('cotizaciones_mo_contratista', cot_id=cot.id) }}">
