@@ -2196,6 +2196,34 @@ def ensure_obra_schema(c: sqlite3.Connection) -> None:
     )
 
 
+def cotizacion_pagada(tiene_cxc: bool, saldo, estado_cxc) -> bool:
+    """Cerrada cuando el cliente pagó la cotización por completo."""
+    if not tiene_cxc:
+        return False
+    if str(estado_cxc or "").strip().lower() == "pagado":
+        return True
+    try:
+        return float(saldo or 0) <= 0.5
+    except (TypeError, ValueError):
+        return False
+
+
+def nombre_cc_cotizacion(folio, proyecto, asunto, titulo="") -> str:
+    partes = []
+    for txt in (folio, proyecto, asunto):
+        txt = str(txt or "").strip()
+        if not txt or txt.lower() in {"none", "null"}:
+            continue
+        if txt not in partes:
+            partes.append(txt)
+    if partes:
+        return " · ".join(partes)
+    titulo = str(titulo or "").strip()
+    if titulo and titulo.lower() not in {"none", "null"}:
+        return titulo
+    return "Cotización"
+
+
 def asegurar_cc_cotizacion(c: sqlite3.Connection, cot_id: int) -> int | None:
     """Centro de costo de la cotización, donde se imputan las compras."""
     ensure_obra_schema(c)
@@ -2208,28 +2236,29 @@ def asegurar_cc_cotizacion(c: sqlite3.Connection, cot_id: int) -> int | None:
     ).fetchone()
     if not cot:
         return None
+    nombre = nombre_cc_cotizacion(cot["folio"], cot["proyecto"], cot["asunto"], cot["titulo"])
     cc = c.execute(
         "SELECT id FROM centros_costo WHERE cotizacion_id=?",
         (cot_id,),
     ).fetchone()
     if not cc and cot["centro_costo_id"]:
         cc = c.execute(
-            "SELECT id FROM centros_costo WHERE id=?",
+            "SELECT id, tipo FROM centros_costo WHERE id=?",
             (cot["centro_costo_id"],),
         ).fetchone()
+        if cc and str(cc["tipo"] or "") != "obra":
+            cc = None
     if cc:
         cc_id = int(cc["id"])
         c.execute(
-            "UPDATE centros_costo SET cotizacion_id=? WHERE id=? AND cotizacion_id IS NULL",
-            (cot_id, cc_id),
+            """
+            UPDATE centros_costo
+            SET cotizacion_id=?, nombre=?, tipo='obra', estado_obra='activa'
+            WHERE id=?
+            """,
+            (cot_id, nombre, cc_id),
         )
     else:
-        partes = []
-        for key in ("proyecto", "asunto"):
-            txt = str(cot[key] or "").strip()
-            if txt and txt not in partes:
-                partes.append(txt)
-        nombre = " · ".join(partes) or str(cot["titulo"] or cot["folio"] or f"Cotización {cot_id}")
         orden = c.execute("SELECT COALESCE(MAX(orden),0)+1 AS o FROM centros_costo").fetchone()
         cur = c.execute(
             """
@@ -2251,6 +2280,67 @@ def asegurar_cc_cotizacion(c: sqlite3.Connection, cot_id: int) -> int | None:
         (cc_id, cot_id),
     )
     return cc_id
+
+
+def sincronizar_cc_cotizaciones(c: sqlite3.Connection) -> None:
+    """Cada cotización aprobada y no pagada es un centro abierto. La pagada se cierra."""
+    ensure_obra_schema(c)
+    if not _tabla_sql(c, "cotizaciones"):
+        return
+    cuentas = (
+        "LEFT JOIN cuentas cu ON cu.id = c.cxc_id"
+        if _tabla_sql(c, "cuentas")
+        else ""
+    )
+    saldo = "cu.saldo" if cuentas else "NULL AS saldo"
+    estado = "cu.estado AS cxc_estado" if cuentas else "NULL AS cxc_estado"
+    cxc_id = "cu.id AS cxc_id" if cuentas else "NULL AS cxc_id"
+    rows = c.execute(
+        f"""
+        SELECT c.id, c.estado, {cxc_id}, {saldo}, {estado}
+        FROM cotizaciones c
+        {cuentas}
+        WHERE c.estado='aprobada'
+        """
+    ).fetchall()
+    for row in rows:
+        tiene = row["cxc_id"] is not None
+        if cotizacion_pagada(tiene, row["saldo"], row["cxc_estado"]):
+            c.execute(
+                "UPDATE centros_costo SET estado_obra='cerrada' WHERE cotizacion_id=?",
+                (row["id"],),
+            )
+        else:
+            asegurar_cc_cotizacion(c, int(row["id"]))
+
+
+def cotizaciones_abiertas(c: sqlite3.Connection) -> list:
+    """Cotizaciones aprobadas que el cliente todavía no paga por completo."""
+    if not _tabla_sql(c, "cotizaciones"):
+        return []
+    cuentas = (
+        "LEFT JOIN cuentas cu ON cu.id = c.cxc_id"
+        if _tabla_sql(c, "cuentas")
+        else ""
+    )
+    saldo = "cu.saldo" if cuentas else "NULL AS saldo"
+    estado = "cu.estado AS cxc_estado" if cuentas else "NULL AS cxc_estado"
+    cxc_id = "cu.id AS cxc_id" if cuentas else "NULL AS cxc_id"
+    rows = c.execute(
+        f"""
+        SELECT c.id, c.folio, COALESCE(c.proyecto,'') AS proyecto,
+               COALESCE(c.asunto,'') AS asunto, {cxc_id}, {saldo}, {estado}
+        FROM cotizaciones c
+        {cuentas}
+        WHERE c.estado='aprobada'
+        ORDER BY c.id DESC
+        """
+    ).fetchall()
+    return [
+        row
+        for row in rows
+        if not cotizacion_pagada(row["cxc_id"] is not None, row["saldo"], row["cxc_estado"])
+    ]
 
 
 def _cc_id_cotizacion(c: sqlite3.Connection, cot_id: int) -> int | None:

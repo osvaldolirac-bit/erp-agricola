@@ -12,6 +12,51 @@ sys.path.insert(0, str(ROOT / "riomaipo_vps"))
 from rmweb import core  # noqa: E402
 
 
+class CentrosCotizacionAbiertaTest(unittest.TestCase):
+    def test_pagada_por_completo_esta_cerrada(self) -> None:
+        self.assertTrue(core.cotizacion_pagada(True, 0, "pagado"))
+        self.assertFalse(core.cotizacion_pagada(True, 135000, "parcial"))
+        self.assertFalse(core.cotizacion_pagada(False, None, None))
+
+    def test_el_centro_es_la_cotizacion_abierta(self) -> None:
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.execute(
+            """
+            CREATE TABLE cotizaciones (
+                id INTEGER PRIMARY KEY, estado TEXT, folio TEXT, proyecto TEXT,
+                asunto TEXT, titulo TEXT, cliente_id INTEGER, centro_costo_id INTEGER,
+                subtotal REAL, cxc_id INTEGER
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE cuentas (
+                id INTEGER PRIMARY KEY, saldo REAL, estado TEXT, monto REAL
+            )
+            """
+        )
+        db.execute("INSERT INTO cuentas (id, saldo, estado, monto) VALUES (1, 0, 'pagado', 100)")
+        db.execute("INSERT INTO cuentas (id, saldo, estado, monto) VALUES (2, 1330382, 'parcial', 2030382)")
+        db.execute(
+            "INSERT INTO cotizaciones (id, estado, folio, proyecto, asunto, subtotal, cxc_id) "
+            "VALUES (1, 'aprobada', 'COT-21_2026', 'andamios', '', 100, 1)"
+        )
+        db.execute(
+            "INSERT INTO cotizaciones (id, estado, folio, proyecto, asunto, subtotal, cxc_id) "
+            "VALUES (2, 'aprobada', 'COT-30_2026', 'Fray Montalva', 'Elevaciones', 1691985, 2)"
+        )
+        core.sincronizar_cc_cotizaciones(db)
+        abiertas = core.cotizaciones_abiertas(db)
+        self.assertEqual([r["folio"] for r in abiertas], ["COT-30_2026"])
+        nombre = db.execute("SELECT nombre, estado_obra FROM centros_costo WHERE cotizacion_id=2").fetchone()
+        self.assertEqual(nombre["nombre"], "COT-30_2026 · Fray Montalva · Elevaciones")
+        self.assertEqual(nombre["estado_obra"], "activa")
+        cerrada = db.execute("SELECT estado_obra FROM centros_costo WHERE cotizacion_id=1").fetchone()
+        self.assertIsNone(cerrada)
+
+
 class CompraMontoUnicoTest(unittest.TestCase):
     def test_con_factura_el_monto_es_el_total_y_se_imputa_el_neto(self) -> None:
         m = core.montos_compra_unica("factura", 189980)
