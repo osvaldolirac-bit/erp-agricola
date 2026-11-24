@@ -106,3 +106,52 @@ class ResultadoCuentaObraTest(unittest.TestCase):
         self.assertEqual(r["utilidad"], 2030382 - 55882)
         ok, err = core.imputar_gasto_cotizacion(db, 1, 7, 999999)
         self.assertFalse(ok)
+
+    def test_una_compra_en_otro_centro_se_puede_mover_a_la_cotizacion(self) -> None:
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.execute(
+            """
+            CREATE TABLE cotizaciones (
+                id INTEGER PRIMARY KEY, estado TEXT, folio TEXT, proyecto TEXT,
+                asunto TEXT, titulo TEXT, cliente_id INTEGER, centro_costo_id INTEGER,
+                subtotal REAL, valor_neto REAL, total REAL
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE facturas_compra (
+                id INTEGER PRIMARY KEY, documento TEXT, neto REAL, concepto TEXT,
+                fecha_emision TEXT, proveedor_id INTEGER
+            )
+            """
+        )
+        db.execute("CREATE TABLE proveedores (id INTEGER PRIMARY KEY, razon_social TEXT)")
+        db.execute(
+            "INSERT INTO cotizaciones (id, estado, folio, proyecto, subtotal, valor_neto, total) "
+            "VALUES (1, 'aprobada', 'COT-30_2026', 'Fray Montalva', 1691985, 2030382, 2030382)"
+        )
+        db.execute("INSERT INTO proveedores (id, razon_social) VALUES (4, 'HUAFA')")
+        db.execute(
+            "INSERT INTO facturas_compra (id, documento, neto, concepto, fecha_emision, proveedor_id) "
+            "VALUES (4, '20054935', 35000, 'Materiales cot-30', '2026-11-23', 4)"
+        )
+        core.ensure_obra_schema(db)
+        db.execute(
+            "INSERT INTO centros_costo (id, nombre, activo, tipo) VALUES (2, 'Operaciones', 1, 'general')"
+        )
+        db.execute(
+            "INSERT INTO factura_compra_cc (factura_id, centro_costo_id, monto) VALUES (4, 2, 35000)"
+        )
+        opciones = core.facturas_para_imputar(db, 1)
+        self.assertEqual([f["id"] for f in opciones], [4])
+        self.assertIn("Operaciones", opciones[0]["otros_nombres"])
+        ok, err = core.imputar_gasto_cotizacion(db, 1, 4, None)
+        self.assertTrue(ok, err)
+        centros = db.execute(
+            "SELECT centro_costo_id, monto FROM factura_compra_cc WHERE factura_id=4"
+        ).fetchall()
+        self.assertEqual(len(centros), 1)
+        self.assertEqual(centros[0]["monto"], 35000)
+        self.assertNotEqual(centros[0]["centro_costo_id"], 2)

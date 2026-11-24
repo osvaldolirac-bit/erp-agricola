@@ -2299,15 +2299,8 @@ def facturas_para_imputar(c: sqlite3.Connection, cot_id: int) -> list[dict]:
     ).fetchall()
     salida = []
     for fac in rows:
-        otros = 0.0
-        if _tabla_sql(c, "factura_compra_cc"):
-            q = "SELECT COALESCE(SUM(monto),0) AS s FROM factura_compra_cc WHERE factura_id=?"
-            params: list = [fac["id"]]
-            if cc_id:
-                q += " AND centro_costo_id<>?"
-                params.append(cc_id)
-            otros = float(c.execute(q, params).fetchone()["s"] or 0)
-        disponible = round(float(fac["neto"] or 0) - otros, 2)
+        ya_aqui, otros, nombres = _reparto_factura(c, int(fac["id"]), cc_id)
+        disponible = round(float(fac["neto"] or 0) - ya_aqui, 2)
         if disponible <= 0.001:
             continue
         salida.append(
@@ -2318,9 +2311,75 @@ def facturas_para_imputar(c: sqlite3.Connection, cot_id: int) -> list[dict]:
                 "concepto": fac["concepto"] or "",
                 "proveedor": fac["proveedor"] or "",
                 "disponible": disponible,
+                "otros_nombres": ", ".join(nombres),
             }
         )
     return salida
+
+
+def _reparto_factura(c: sqlite3.Connection, factura_id: int, cc_id: int | None) -> tuple[float, float, list[str]]:
+    """Cuánto de la compra ya está en este centro y cuánto en otros."""
+    if not _tabla_sql(c, "factura_compra_cc"):
+        return 0.0, 0.0, []
+    if _tabla_sql(c, "centros_costo"):
+        rows = c.execute(
+            """
+            SELECT i.centro_costo_id, i.monto, COALESCE(cc.nombre, '') AS nombre
+            FROM factura_compra_cc i
+            LEFT JOIN centros_costo cc ON cc.id = i.centro_costo_id
+            WHERE i.factura_id=?
+            """,
+            (factura_id,),
+        ).fetchall()
+    else:
+        rows = c.execute(
+            """
+            SELECT centro_costo_id, monto, '' AS nombre
+            FROM factura_compra_cc WHERE factura_id=?
+            """,
+            (factura_id,),
+        ).fetchall()
+    ya_aqui = 0.0
+    otros = 0.0
+    nombres: list[str] = []
+    for row in rows:
+        monto = float(row["monto"] or 0)
+        if cc_id and int(row["centro_costo_id"]) == int(cc_id):
+            ya_aqui += monto
+        else:
+            otros += monto
+            nombre = str(row["nombre"] or "").strip()
+            if nombre and nombre not in nombres:
+                nombres.append(nombre)
+    return round(ya_aqui, 2), round(otros, 2), nombres
+
+
+def _mover_exceso_a_cotizacion(c: sqlite3.Connection, factura_id: int, cc_id: int, exceso: float) -> None:
+    """Saca de otros centros lo que ahora queda en la cotización, sin duplicar el gasto."""
+    if exceso <= 0.001:
+        return
+    rows = c.execute(
+        """
+        SELECT id, monto FROM factura_compra_cc
+        WHERE factura_id=? AND centro_costo_id<>?
+        ORDER BY monto DESC, id DESC
+        """,
+        (factura_id, cc_id),
+    ).fetchall()
+    for row in rows:
+        if exceso <= 0.001:
+            break
+        actual = float(row["monto"] or 0)
+        quita = min(actual, exceso)
+        queda = round(actual - quita, 2)
+        exceso = round(exceso - quita, 2)
+        if queda <= 0.001:
+            c.execute("DELETE FROM factura_compra_cc WHERE id=?", (row["id"],))
+        else:
+            c.execute(
+                "UPDATE factura_compra_cc SET monto=? WHERE id=?",
+                (queda, row["id"]),
+            )
 
 
 def imputar_gasto_cotizacion(c: sqlite3.Connection, cot_id: int, factura_id, monto) -> tuple[bool, str]:
@@ -2342,19 +2401,11 @@ def imputar_gasto_cotizacion(c: sqlite3.Connection, cot_id: int, factura_id, mon
     cc_id = asegurar_cc_cotizacion(c, cot_id)
     if not cc_id:
         return False, "No se pudo abrir el centro de esta cotización."
-    otros = float(
-        c.execute(
-            """
-            SELECT COALESCE(SUM(monto),0) AS s FROM factura_compra_cc
-            WHERE factura_id=? AND centro_costo_id<>?
-            """,
-            (factura_id, cc_id),
-        ).fetchone()["s"]
-        or 0
-    )
-    disponible = round(float(fac["neto"] or 0) - otros, 2)
+    neto = round(float(fac["neto"] or 0), 2)
+    ya_aqui, otros, _nombres = _reparto_factura(c, factura_id, cc_id)
+    pendiente = round(neto - ya_aqui, 2)
     if str(monto or "").strip() == "":
-        monto_f = disponible
+        monto_f = pendiente
     else:
         try:
             monto_f = round(float(monto), 2)
@@ -2362,8 +2413,9 @@ def imputar_gasto_cotizacion(c: sqlite3.Connection, cot_id: int, factura_id, mon
             monto_f = 0.0
     if monto_f <= 0:
         return False, "Indica el neto a imputar."
-    if monto_f > disponible + 0.001:
+    if monto_f > pendiente + 0.001:
         return False, "El monto supera el neto disponible de esa compra."
+    _mover_exceso_a_cotizacion(c, factura_id, cc_id, round(monto_f + otros - neto, 2))
     previo = c.execute(
         "SELECT id FROM factura_compra_cc WHERE factura_id=? AND centro_costo_id=?",
         (factura_id, cc_id),

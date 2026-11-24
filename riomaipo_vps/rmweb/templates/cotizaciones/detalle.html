@@ -154,7 +154,7 @@
       <label class="form-label">Compra</label>
       <select class="form-select" name="factura_id" required>
         {% for f in mo.facturas %}
-        <option value="{{ f.id }}">{{ f.documento }} · {{ f.proveedor or f.concepto }} · disponible {{ clp(f.disponible) }}</option>
+        <option value="{{ f.id }}">{{ f.documento }} · {{ f.proveedor or f.concepto }} · {{ clp(f.disponible) }}{% if f.otros_nombres %} · hoy en {{ f.otros_nombres }}{% endif %}</option>
         {% endfor %}
       </select>
     </div>
