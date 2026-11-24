@@ -1776,3 +1776,261 @@ def estado_cuenta_pdf_bytes(cliente, cuentas, abonos, cots, deuda, empresa_row) 
     pdf.cell(0, 5, _pdf_txt(f"Generado {hoy_chile().strftime('%d/%m/%Y')} · {pie_marca_pdf()}"), ln=1)
     raw = pdf.output(dest="S")
     return raw.encode("latin-1") if isinstance(raw, str) else bytes(raw)
+
+
+def es_linea_mo(descripcion) -> bool:
+    """Partida de mano de obra: MO, M.O. o Mano de obra, también si el texto sigue."""
+    d = " ".join(str(descripcion or "").upper().replace(".", "").split())
+    return d == "MO" or d == "MANO DE OBRA" or d.startswith("MO ") or d.startswith("MANO DE OBRA ")
+
+
+def lineas_mo_detalle(items) -> list[dict]:
+    """Líneas MO con la partida (sección) que las agrupa en la cotización."""
+    seccion = ""
+    out = []
+    for it in items:
+        desc = str(it["descripcion"] or "")
+        pu = float(it["precio_unitario"] or 0)
+        tot = float(it["total"] or 0)
+        if tot == 0 and pu == 0 and not es_linea_mo(desc):
+            nombre = desc.strip()
+            if nombre:
+                seccion = nombre
+            continue
+        if not es_linea_mo(desc):
+            continue
+        obs = it["obs"] if "obs" in it.keys() and it["obs"] else ""
+        und = it["unidad"] if "unidad" in it.keys() and it["unidad"] else ""
+        out.append(
+            {
+                "descripcion": desc,
+                "obs": str(obs or ""),
+                "unidad": str(und or ""),
+                "cantidad": float(it["cantidad"] or 0),
+                "precio_unitario": pu,
+                "total": tot,
+                "partida": seccion,
+            }
+        )
+    return out
+
+
+def monto_mo(items) -> float:
+    return round(sum(ln["total"] for ln in lineas_mo_detalle(items)), 2)
+
+
+def _estado_cuenta_mo(monto: float, abonado: float) -> str:
+    saldo = round(float(monto or 0) - float(abonado or 0), 2)
+    if float(monto or 0) > 0 and saldo <= 0:
+        return "pagada"
+    if float(abonado or 0) > 0:
+        return "parcial"
+    return "pendiente"
+
+
+def ensure_mo_schema(c: sqlite3.Connection) -> None:
+    c.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS contratistas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            razon_social TEXT NOT NULL,
+            rut TEXT,
+            telefono TEXT,
+            activo INTEGER DEFAULT 1,
+            creado_en TEXT
+        );
+        CREATE TABLE IF NOT EXISTS cuentas_mo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cotizacion_id INTEGER UNIQUE NOT NULL,
+            contratista_id INTEGER,
+            monto REAL DEFAULT 0,
+            abonado REAL DEFAULT 0,
+            saldo REAL DEFAULT 0,
+            estado TEXT DEFAULT 'pendiente'
+        );
+        CREATE TABLE IF NOT EXISTS abonos_mo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cuenta_id INTEGER NOT NULL,
+            fecha TEXT,
+            monto REAL NOT NULL,
+            medio TEXT,
+            nota TEXT
+        );
+        """
+    )
+    _ensure_columns(c, "cotizaciones", [("contratista_id", "INTEGER")])
+
+
+def refrescar_cuenta_mo(c: sqlite3.Connection, cot_id: int) -> None:
+    """Abre o actualiza la cuenta del contratista cuando la cotización está aprobada."""
+    ensure_mo_schema(c)
+    cot = c.execute(
+        "SELECT id, estado, contratista_id FROM cotizaciones WHERE id=?",
+        (cot_id,),
+    ).fetchone()
+    if not cot:
+        return
+    items = c.execute(
+        """
+        SELECT descripcion, obs, unidad, cantidad, precio_unitario, total
+        FROM cotizacion_items WHERE cotizacion_id=?
+        ORDER BY COALESCE(orden, 0), id
+        """,
+        (cot_id,),
+    ).fetchall()
+    monto = monto_mo(items)
+    row = c.execute(
+        "SELECT id FROM cuentas_mo WHERE cotizacion_id=?",
+        (cot_id,),
+    ).fetchone()
+    if (cot["estado"] or "") != "aprobada":
+        return
+    if not row and monto <= 0:
+        return
+    if not row:
+        c.execute(
+            """
+            INSERT INTO cuentas_mo
+            (cotizacion_id, contratista_id, monto, abonado, saldo, estado)
+            VALUES (?,?,?,0,?, 'pendiente')
+            """,
+            (cot_id, cot["contratista_id"], monto, monto),
+        )
+        return
+    abonado = float(
+        c.execute(
+            "SELECT COALESCE(SUM(monto),0) AS s FROM abonos_mo WHERE cuenta_id=?",
+            (row["id"],),
+        ).fetchone()["s"]
+    )
+    saldo = round(monto - abonado, 2)
+    c.execute(
+        """
+        UPDATE cuentas_mo
+        SET monto=?, abonado=?, saldo=?, estado=?, contratista_id=?
+        WHERE id=?
+        """,
+        (
+            monto,
+            abonado,
+            saldo,
+            _estado_cuenta_mo(monto, abonado),
+            cot["contratista_id"],
+            row["id"],
+        ),
+    )
+
+
+def asignar_contratista_cotizacion(
+    c: sqlite3.Connection, cot_id: int, contratista_id, nuevo_nombre: str
+) -> tuple[bool, str]:
+    ensure_mo_schema(c)
+    nombre = " ".join(str(nuevo_nombre or "").split()).strip()
+    if nombre:
+        cur = c.execute(
+            "INSERT INTO contratistas (razon_social, activo, creado_en) VALUES (?,1,?)",
+            (nombre, hoy_chile().isoformat()),
+        )
+        contratista_id = int(cur.lastrowid)
+    else:
+        try:
+            contratista_id = int(contratista_id or 0)
+        except (TypeError, ValueError):
+            contratista_id = 0
+        if contratista_id <= 0:
+            return False, "Elige un contratista o escribe uno nuevo."
+        existe = c.execute(
+            "SELECT id FROM contratistas WHERE id=? AND COALESCE(activo,1)=1",
+            (contratista_id,),
+        ).fetchone()
+        if not existe:
+            return False, "Contratista no encontrado."
+    c.execute(
+        "UPDATE cotizaciones SET contratista_id=? WHERE id=?",
+        (contratista_id, cot_id),
+    )
+    c.execute(
+        "UPDATE cuentas_mo SET contratista_id=? WHERE cotizacion_id=?",
+        (contratista_id, cot_id),
+    )
+    return True, ""
+
+
+def registrar_abono_mo(
+    c: sqlite3.Connection, cot_id: int, fecha: str, monto, medio: str, nota: str | None
+) -> tuple[bool, str]:
+    refrescar_cuenta_mo(c, cot_id)
+    cot = c.execute(
+        "SELECT estado, contratista_id FROM cotizaciones WHERE id=?",
+        (cot_id,),
+    ).fetchone()
+    if not cot or (cot["estado"] or "") != "aprobada":
+        return False, "La cuenta del contratista se abre al aprobar la cotización."
+    if not cot["contratista_id"]:
+        return False, "Elige el contratista antes de registrar un abono."
+    cuenta = c.execute(
+        "SELECT id, monto, saldo FROM cuentas_mo WHERE cotizacion_id=?",
+        (cot_id,),
+    ).fetchone()
+    if not cuenta or float(cuenta["monto"] or 0) <= 0:
+        return False, "Esta cotización no tiene partidas de mano de obra."
+    try:
+        monto_f = round(float(monto or 0), 2)
+    except (TypeError, ValueError):
+        monto_f = 0.0
+    saldo = float(cuenta["saldo"] or 0)
+    if monto_f <= 0 or monto_f > saldo + 0.001:
+        return False, "Monto inválido: debe ser mayor a 0 y no superar el saldo."
+    c.execute(
+        "INSERT INTO abonos_mo (cuenta_id, fecha, monto, medio, nota) VALUES (?,?,?,?,?)",
+        (cuenta["id"], fecha, monto_f, medio or "Transferencia", nota),
+    )
+    refrescar_cuenta_mo(c, cot_id)
+    return True, ""
+
+
+def cargar_etiqueta_mo(c: sqlite3.Connection, cot_id: int, items) -> dict:
+    ensure_mo_schema(c)
+    refrescar_cuenta_mo(c, cot_id)
+    cot = c.execute(
+        """
+        SELECT c.estado, c.contratista_id, ct.razon_social AS contratista_nombre
+        FROM cotizaciones c
+        LEFT JOIN contratistas ct ON ct.id = c.contratista_id
+        WHERE c.id=?
+        """,
+        (cot_id,),
+    ).fetchone()
+    cuenta = c.execute(
+        "SELECT * FROM cuentas_mo WHERE cotizacion_id=?",
+        (cot_id,),
+    ).fetchone()
+    abonos = []
+    if cuenta:
+        abonos = c.execute(
+            """
+            SELECT fecha, monto, medio, nota
+            FROM abonos_mo WHERE cuenta_id=?
+            ORDER BY date(fecha) DESC, id DESC
+            """,
+            (cuenta["id"],),
+        ).fetchall()
+    contratistas = c.execute(
+        """
+        SELECT id, razon_social FROM contratistas
+        WHERE COALESCE(activo,1)=1
+        ORDER BY razon_social
+        """
+    ).fetchall()
+    lineas = lineas_mo_detalle(items)
+    return {
+        "lineas": lineas,
+        "monto": round(sum(ln["total"] for ln in lineas), 2),
+        "cuenta": cuenta,
+        "abonos": abonos,
+        "contratistas": contratistas,
+        "contratista_id": cot["contratista_id"] if cot else None,
+        "contratista_nombre": (cot["contratista_nombre"] if cot and cot["contratista_nombre"] else ""),
+        "aprobada": bool(cot and (cot["estado"] or "") == "aprobada"),
+        "hoy": hoy_chile().isoformat(),
+    }

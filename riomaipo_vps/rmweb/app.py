@@ -1177,6 +1177,7 @@ def cotizaciones_form(cot_id: int | None = None):
                 [(cid, *ln) for ln in lineas],
             )
             core.refrescar_concepto_cxc(db, cid)
+            core.refrescar_cuenta_mo(db, cid)
             db.commit()
             cxc_doc = None
             stock_msg = None
@@ -1289,6 +1290,8 @@ def cotizaciones_detalle(cot_id: int):
         "SELECT id, folio, estado FROM arriendo_contratos WHERE cotizacion_id=? LIMIT 1",
         (cot_id,),
     ).fetchone()
+    mo = core.cargar_etiqueta_mo(db, cot_id, items)
+    db.commit()
     db.close()
     return render_template(
         "cotizaciones/detalle.html",
@@ -1297,7 +1300,52 @@ def cotizaciones_detalle(cot_id: int):
         items=items,
         cxc=cxc,
         contrato_arriendo=contrato_arriendo,
+        mo=mo,
+        etiqueta=(request.args.get("etiqueta") or "").strip().lower(),
     )
+
+
+@app.route("/cotizaciones/<int:cot_id>/mo/contratista", methods=["POST"])
+@login_required
+def cotizaciones_mo_contratista(cot_id: int):
+    db = core.conn()
+    ok, err = core.asignar_contratista_cotizacion(
+        db,
+        cot_id,
+        request.form.get("contratista_id"),
+        request.form.get("nuevo") or "",
+    )
+    if ok:
+        db.commit()
+        flash("Contratista guardado en la cotización.", "ok")
+    else:
+        db.rollback()
+        flash(err, "danger")
+    db.close()
+    return redirect(url_for("cotizaciones_detalle", cot_id=cot_id, etiqueta="mo"))
+
+
+@app.route("/cotizaciones/<int:cot_id>/mo/abono", methods=["POST"])
+@login_required
+def cotizaciones_mo_abono(cot_id: int):
+    db = core.conn()
+    fecha = (request.form.get("fecha") or "").strip() or core.hoy_chile().isoformat()
+    ok, err = core.registrar_abono_mo(
+        db,
+        cot_id,
+        fecha,
+        request.form.get("monto"),
+        (request.form.get("medio") or "Transferencia").strip(),
+        (request.form.get("nota") or "").strip() or None,
+    )
+    if ok:
+        db.commit()
+        flash("Abono al contratista registrado.", "ok")
+    else:
+        db.rollback()
+        flash(err, "danger")
+    db.close()
+    return redirect(url_for("cotizaciones_detalle", cot_id=cot_id, etiqueta="mo"))
 
 
 @app.route("/cotizaciones/<int:cot_id>/pdf")
@@ -1395,6 +1443,8 @@ def cotizaciones_estado(cot_id: int):
             db.commit()
             err = stock_msg or arriendo_msg or "No se pudo aprobar"
             flash(err, "danger")
+            core.refrescar_cuenta_mo(db, cot_id)
+            db.commit()
             db.close()
             return redirect(url_for("cotizaciones_detalle", cot_id=cot_id))
         try:
@@ -1405,7 +1455,9 @@ def cotizaciones_estado(cot_id: int):
                 ppto_msg = None
         except Exception:
             ppto_msg = None
-        db.commit()
+            db.commit()
+    core.refrescar_cuenta_mo(db, cot_id)
+    db.commit()
     if prev_cliente_id:
         cur_cli = db.execute("SELECT cliente_id FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
         if cur_cli and int(cur_cli["cliente_id"] or 0) != prev_cliente_id:
