@@ -13,12 +13,18 @@ from rmweb import core  # noqa: E402
 
 
 class CompraMontoUnicoTest(unittest.TestCase):
-    def test_con_factura_imputa_el_neto(self) -> None:
-        m = core.montos_compra_unica("factura", 100000)
-        self.assertEqual(m["neto"], 100000)
-        self.assertEqual(m["iva"], 19000)
-        self.assertEqual(m["total"], 119000)
+    def test_con_factura_el_monto_es_el_total_y_se_imputa_el_neto(self) -> None:
+        m = core.montos_compra_unica("factura", 189980)
+        self.assertEqual(m["total"], 189980)
+        self.assertEqual(m["neto"], 159647)
+        self.assertEqual(m["iva"], 30333)
         self.assertEqual(m["cc_base"], "neto")
+
+    def test_con_factura_la_casilla_de_bruto_imputa_el_total(self) -> None:
+        m = core.montos_compra_unica("factura", 189980, imputar_bruto=True)
+        self.assertEqual(m["total"], 189980)
+        self.assertEqual(m["neto"], 159647)
+        self.assertEqual(m["cc_base"], "bruto")
 
     def test_sin_factura_imputa_el_monto_completo(self) -> None:
         for tipo in ("boleta", "guia", "otro"):

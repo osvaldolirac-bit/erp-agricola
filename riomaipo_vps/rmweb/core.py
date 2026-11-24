@@ -2061,11 +2061,17 @@ def cargar_etiqueta_mo(c: sqlite3.Connection, cot_id: int, items) -> dict:
     }
 
 
-def montos_compra_unica(tipo_documento: str, monto, iva_pct: float = 19.0) -> dict:
+def montos_compra_unica(
+    tipo_documento: str,
+    monto,
+    iva_pct: float = 19.0,
+    imputar_bruto: bool = False,
+) -> dict:
     """Compra sin detalle de materiales.
 
-    Con factura el monto ingresado es el neto y el IVA queda en la cuenta por pagar.
-    Sin factura el monto es el total: se imputa completo y no se suma IVA.
+    El monto ingresado es el total del documento. Con factura se separa el IVA
+    que ya viene dentro; no se suma encima. Sin la casilla de bruto, a la
+    cotización entra solo el neto.
     """
     tipo = (tipo_documento or "factura").strip().lower()
     try:
@@ -2076,14 +2082,17 @@ def montos_compra_unica(tipo_documento: str, monto, iva_pct: float = 19.0) -> di
         base = 0.0
     con_factura = tipo == "factura"
     if con_factura:
-        neto = base
         try:
             pct = float(iva_pct if iva_pct is not None else 19)
         except (TypeError, ValueError):
             pct = 19.0
-        iva = float(int(round(neto * pct / 100.0)))
-        total = neto + iva
-        cc_base = "neto"
+        factor = 1.0 + (pct / 100.0)
+        neto = float(int(round(base / factor))) if factor else base
+        if neto > base:
+            neto = base
+        iva = base - neto
+        total = base
+        cc_base = "bruto" if imputar_bruto else "neto"
     else:
         neto = base
         iva = 0.0
