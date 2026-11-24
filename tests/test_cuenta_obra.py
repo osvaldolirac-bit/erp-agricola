@@ -12,6 +12,23 @@ sys.path.insert(0, str(ROOT / "riomaipo_vps"))
 from rmweb import core  # noqa: E402
 
 
+class CompraMontoUnicoTest(unittest.TestCase):
+    def test_con_factura_imputa_el_neto(self) -> None:
+        m = core.montos_compra_unica("factura", 100000)
+        self.assertEqual(m["neto"], 100000)
+        self.assertEqual(m["iva"], 19000)
+        self.assertEqual(m["total"], 119000)
+        self.assertEqual(m["cc_base"], "neto")
+
+    def test_sin_factura_imputa_el_monto_completo(self) -> None:
+        for tipo in ("boleta", "guia", "otro"):
+            m = core.montos_compra_unica(tipo, 80000)
+            self.assertEqual(m["neto"], 80000, tipo)
+            self.assertEqual(m["iva"], 0, tipo)
+            self.assertEqual(m["total"], 80000, tipo)
+            self.assertEqual(m["cc_base"], "bruto", tipo)
+
+
 class ResultadoCuentaObraTest(unittest.TestCase):
     def test_sin_gastos_la_utilidad_es_el_neto(self) -> None:
         r = core.resultado_cuenta_obra(valor_neto=2030382, subtotal=1691985, compras=0, mo_pagada=0)

@@ -2061,6 +2061,43 @@ def cargar_etiqueta_mo(c: sqlite3.Connection, cot_id: int, items) -> dict:
     }
 
 
+def montos_compra_unica(tipo_documento: str, monto, iva_pct: float = 19.0) -> dict:
+    """Compra sin detalle de materiales.
+
+    Con factura el monto ingresado es el neto y el IVA queda en la cuenta por pagar.
+    Sin factura el monto es el total: se imputa completo y no se suma IVA.
+    """
+    tipo = (tipo_documento or "factura").strip().lower()
+    try:
+        base = float(int(round(float(monto or 0))))
+    except (TypeError, ValueError):
+        base = 0.0
+    if base < 0:
+        base = 0.0
+    con_factura = tipo == "factura"
+    if con_factura:
+        neto = base
+        try:
+            pct = float(iva_pct if iva_pct is not None else 19)
+        except (TypeError, ValueError):
+            pct = 19.0
+        iva = float(int(round(neto * pct / 100.0)))
+        total = neto + iva
+        cc_base = "neto"
+    else:
+        neto = base
+        iva = 0.0
+        total = base
+        cc_base = "bruto"
+    return {
+        "neto": neto,
+        "iva": iva,
+        "total": total,
+        "cc_base": cc_base,
+        "con_factura": con_factura,
+    }
+
+
 def resultado_cuenta_obra(*, valor_neto, subtotal, compras, mo_pagada) -> dict:
     """Sin gastos imputados la utilidad es el neto. Compras y MO pagada la achican."""
     neto = round(float(valor_neto or 0), 2)
