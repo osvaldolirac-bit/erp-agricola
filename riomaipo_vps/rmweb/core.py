@@ -2023,6 +2023,31 @@ def cargar_etiqueta_mo(c: sqlite3.Connection, cot_id: int, items) -> dict:
         """
     ).fetchall()
     lineas = lineas_mo_detalle(items)
+    montos = c.execute(
+        "SELECT subtotal, valor_neto, total FROM cotizaciones WHERE id=?",
+        (cot_id,),
+    ).fetchone()
+    mo_pagada = float(cuenta["abonado"] or 0) if cuenta else 0.0
+    if cot and (cot["estado"] or "") == "aprobada":
+        asegurar_cc_cotizacion(c, cot_id)
+        gastos = gastos_imputados_cotizacion(c, cot_id)
+        facturas = facturas_para_imputar(c, cot_id)
+    else:
+        gastos = []
+        facturas = []
+    salidas = salidas_bodega_cotizacion(c, cot_id) if cot and (cot["estado"] or "") == "aprobada" else []
+    compras = round(sum(float(g["monto"] or 0) for g in gastos), 2)
+    bodega = round(sum(float(s["monto"] or 0) for s in salidas), 2)
+    compras = round(compras + bodega, 2)
+    valor_neto = float(montos["valor_neto"] or 0) if montos else 0.0
+    if valor_neto <= 0 and montos:
+        valor_neto = float(montos["total"] or 0)
+    resultado = resultado_cuenta_obra(
+        valor_neto=valor_neto,
+        subtotal=float(montos["subtotal"] or 0) if montos else 0.0,
+        compras=compras,
+        mo_pagada=mo_pagada,
+    )
     return {
         "lineas": lineas,
         "monto": round(sum(ln["total"] for ln in lineas), 2),
@@ -2033,4 +2058,522 @@ def cargar_etiqueta_mo(c: sqlite3.Connection, cot_id: int, items) -> dict:
         "contratista_nombre": (cot["contratista_nombre"] if cot and cot["contratista_nombre"] else ""),
         "aprobada": bool(cot and (cot["estado"] or "") == "aprobada"),
         "hoy": hoy_chile().isoformat(),
+        "gastos": gastos,
+        "salidas": salidas,
+        "bodega": bodega,
+        "facturas": facturas,
+        "resultado": resultado,
     }
+
+
+def montos_compra_unica(
+    tipo_documento: str,
+    monto,
+    iva_pct: float = 19.0,
+    imputar_bruto: bool = False,
+) -> dict:
+    """Compra sin detalle de materiales.
+
+    El monto ingresado es el total del documento. Con factura se separa el IVA
+    que ya viene dentro; no se suma encima. Sin la casilla de bruto, a la
+    cotización entra solo el neto.
+    """
+    tipo = (tipo_documento or "factura").strip().lower()
+    try:
+        base = float(int(round(float(monto or 0))))
+    except (TypeError, ValueError):
+        base = 0.0
+    if base < 0:
+        base = 0.0
+    con_factura = tipo == "factura"
+    if con_factura:
+        try:
+            pct = float(iva_pct if iva_pct is not None else 19)
+        except (TypeError, ValueError):
+            pct = 19.0
+        factor = 1.0 + (pct / 100.0)
+        neto = float(int(round(base / factor))) if factor else base
+        if neto > base:
+            neto = base
+        iva = base - neto
+        total = base
+        cc_base = "bruto" if imputar_bruto else "neto"
+    else:
+        neto = base
+        iva = 0.0
+        total = base
+        cc_base = "bruto"
+    return {
+        "neto": neto,
+        "iva": iva,
+        "total": total,
+        "cc_base": cc_base,
+        "con_factura": con_factura,
+    }
+
+
+def resultado_cuenta_obra(*, valor_neto, subtotal, compras, mo_pagada) -> dict:
+    """Sin gastos imputados la utilidad es el neto. Compras y MO pagada la achican."""
+    neto = round(float(valor_neto or 0), 2)
+    sub = round(float(subtotal or 0), 2)
+    compras_f = round(float(compras or 0), 2)
+    mo_f = round(float(mo_pagada or 0), 2)
+    gasto = round(compras_f + mo_f, 2)
+    utilidad = round(neto - gasto, 2)
+    pct = 0.0 if neto <= 0 else round(gasto / neto * 100.0, 1)
+    if pct >= 100:
+        color = "#7b1113"
+    elif pct >= 90:
+        color = "#c0392b"
+    elif pct >= 75:
+        color = "#e07a1f"
+    elif pct >= 50:
+        color = "#c8960c"
+    else:
+        color = "#1b7f4e"
+    alerta = ""
+    nivel = ""
+    if neto > 0 and gasto > neto + 0.001:
+        alerta = "El gasto superó el valor neto. La utilidad quedó negativa."
+        nivel = "danger"
+    elif sub > 0 and gasto > sub + 0.001:
+        alerta = "El gasto superó el subtotal neto. Se están comiendo los gastos generales y la utilidad."
+        nivel = "warning"
+    return {
+        "valor_neto": neto,
+        "subtotal": sub,
+        "compras": compras_f,
+        "mo_pagada": mo_f,
+        "gasto": gasto,
+        "utilidad": utilidad,
+        "pct": pct,
+        "ancho": min(pct, 100.0),
+        "color": color,
+        "alerta": alerta,
+        "nivel": nivel,
+    }
+
+
+def _tabla_sql(c: sqlite3.Connection, nombre: str) -> bool:
+    return (
+        c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (nombre,),
+        ).fetchone()
+        is not None
+    )
+
+
+def ensure_obra_schema(c: sqlite3.Connection) -> None:
+    c.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS centros_costo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            activo INTEGER DEFAULT 1,
+            orden INTEGER DEFAULT 0,
+            presupuesto REAL DEFAULT 0,
+            tipo TEXT DEFAULT 'general',
+            cliente_id INTEGER,
+            estado_obra TEXT DEFAULT 'activa',
+            cotizacion_id INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS factura_compra_cc (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            factura_id INTEGER NOT NULL,
+            centro_costo_id INTEGER NOT NULL,
+            monto REAL DEFAULT 0
+        );
+        """
+    )
+    _ensure_columns(c, "cotizaciones", [("centro_costo_id", "INTEGER")])
+    _ensure_columns(
+        c,
+        "centros_costo",
+        [
+            ("tipo", "TEXT DEFAULT 'general'"),
+            ("cliente_id", "INTEGER"),
+            ("estado_obra", "TEXT DEFAULT 'activa'"),
+            ("cotizacion_id", "INTEGER"),
+            ("presupuesto", "REAL DEFAULT 0"),
+            ("orden", "INTEGER DEFAULT 0"),
+        ],
+    )
+
+
+def cotizacion_pagada(tiene_cxc: bool, saldo, estado_cxc) -> bool:
+    """Cerrada cuando el cliente pagó la cotización por completo."""
+    if not tiene_cxc:
+        return False
+    if str(estado_cxc or "").strip().lower() == "pagado":
+        return True
+    try:
+        return float(saldo or 0) <= 0.5
+    except (TypeError, ValueError):
+        return False
+
+
+def nombre_cc_cotizacion(folio, proyecto, asunto, titulo="") -> str:
+    partes = []
+    for txt in (folio, proyecto, asunto):
+        txt = str(txt or "").strip()
+        if not txt or txt.lower() in {"none", "null"}:
+            continue
+        if txt not in partes:
+            partes.append(txt)
+    if partes:
+        return " · ".join(partes)
+    titulo = str(titulo or "").strip()
+    if titulo and titulo.lower() not in {"none", "null"}:
+        return titulo
+    return "Cotización"
+
+
+def asegurar_cc_cotizacion(c: sqlite3.Connection, cot_id: int) -> int | None:
+    """Centro de costo de la cotización, donde se imputan las compras."""
+    ensure_obra_schema(c)
+    cot = c.execute(
+        """
+        SELECT id, folio, proyecto, asunto, titulo, cliente_id, centro_costo_id, subtotal
+        FROM cotizaciones WHERE id=?
+        """,
+        (cot_id,),
+    ).fetchone()
+    if not cot:
+        return None
+    nombre = nombre_cc_cotizacion(cot["folio"], cot["proyecto"], cot["asunto"], cot["titulo"])
+    cc = c.execute(
+        "SELECT id FROM centros_costo WHERE cotizacion_id=?",
+        (cot_id,),
+    ).fetchone()
+    if not cc and cot["centro_costo_id"]:
+        cc = c.execute(
+            "SELECT id, tipo FROM centros_costo WHERE id=?",
+            (cot["centro_costo_id"],),
+        ).fetchone()
+        if cc and str(cc["tipo"] or "") != "obra":
+            cc = None
+    if cc:
+        cc_id = int(cc["id"])
+        c.execute(
+            """
+            UPDATE centros_costo
+            SET cotizacion_id=?, nombre=?, tipo='obra', estado_obra='activa'
+            WHERE id=?
+            """,
+            (cot_id, nombre, cc_id),
+        )
+    else:
+        orden = c.execute("SELECT COALESCE(MAX(orden),0)+1 AS o FROM centros_costo").fetchone()
+        cur = c.execute(
+            """
+            INSERT INTO centros_costo
+            (nombre, activo, orden, presupuesto, tipo, cliente_id, estado_obra, cotizacion_id)
+            VALUES (?,1,?,?,'obra',?,'activa',?)
+            """,
+            (
+                nombre,
+                int(orden["o"] or 1),
+                float(cot["subtotal"] or 0),
+                cot["cliente_id"],
+                cot_id,
+            ),
+        )
+        cc_id = int(cur.lastrowid)
+    c.execute(
+        "UPDATE cotizaciones SET centro_costo_id=? WHERE id=?",
+        (cc_id, cot_id),
+    )
+    return cc_id
+
+
+def sincronizar_cc_cotizaciones(c: sqlite3.Connection) -> None:
+    """Cada cotización aprobada y no pagada es un centro abierto. La pagada se cierra."""
+    ensure_obra_schema(c)
+    if not _tabla_sql(c, "cotizaciones"):
+        return
+    cuentas = (
+        "LEFT JOIN cuentas cu ON cu.id = c.cxc_id"
+        if _tabla_sql(c, "cuentas")
+        else ""
+    )
+    saldo = "cu.saldo" if cuentas else "NULL AS saldo"
+    estado = "cu.estado AS cxc_estado" if cuentas else "NULL AS cxc_estado"
+    cxc_id = "cu.id AS cxc_id" if cuentas else "NULL AS cxc_id"
+    rows = c.execute(
+        f"""
+        SELECT c.id, c.estado, {cxc_id}, {saldo}, {estado}
+        FROM cotizaciones c
+        {cuentas}
+        WHERE c.estado='aprobada'
+        """
+    ).fetchall()
+    for row in rows:
+        tiene = row["cxc_id"] is not None
+        if cotizacion_pagada(tiene, row["saldo"], row["cxc_estado"]):
+            c.execute(
+                "UPDATE centros_costo SET estado_obra='cerrada' WHERE cotizacion_id=?",
+                (row["id"],),
+            )
+        else:
+            asegurar_cc_cotizacion(c, int(row["id"]))
+
+
+def cotizaciones_abiertas(c: sqlite3.Connection) -> list:
+    """Cotizaciones aprobadas que el cliente todavía no paga por completo."""
+    if not _tabla_sql(c, "cotizaciones"):
+        return []
+    cuentas = (
+        "LEFT JOIN cuentas cu ON cu.id = c.cxc_id"
+        if _tabla_sql(c, "cuentas")
+        else ""
+    )
+    saldo = "cu.saldo" if cuentas else "NULL AS saldo"
+    estado = "cu.estado AS cxc_estado" if cuentas else "NULL AS cxc_estado"
+    cxc_id = "cu.id AS cxc_id" if cuentas else "NULL AS cxc_id"
+    rows = c.execute(
+        f"""
+        SELECT c.id, c.folio, COALESCE(c.proyecto,'') AS proyecto,
+               COALESCE(c.asunto,'') AS asunto, {cxc_id}, {saldo}, {estado}
+        FROM cotizaciones c
+        {cuentas}
+        WHERE c.estado='aprobada'
+        ORDER BY c.id DESC
+        """
+    ).fetchall()
+    return [
+        row
+        for row in rows
+        if not cotizacion_pagada(row["cxc_id"] is not None, row["saldo"], row["cxc_estado"])
+    ]
+
+
+def _cc_id_cotizacion(c: sqlite3.Connection, cot_id: int) -> int | None:
+    if not _tabla_sql(c, "centros_costo"):
+        return None
+    row = c.execute(
+        "SELECT id FROM centros_costo WHERE cotizacion_id=?",
+        (cot_id,),
+    ).fetchone()
+    return int(row["id"]) if row else None
+
+
+def gastos_imputados_cotizacion(c: sqlite3.Connection, cot_id: int) -> list:
+    if not _tabla_sql(c, "factura_compra_cc") or not _tabla_sql(c, "facturas_compra"):
+        return []
+    cc_id = _cc_id_cotizacion(c, cot_id)
+    if not cc_id:
+        return []
+    proveedor_sql = (
+        "LEFT JOIN proveedores p ON p.id = f.proveedor_id"
+        if _tabla_sql(c, "proveedores")
+        else ""
+    )
+    proveedor_col = "COALESCE(p.razon_social, '') AS proveedor" if proveedor_sql else "'' AS proveedor"
+    return c.execute(
+        f"""
+        SELECT i.id, i.monto, f.documento, f.fecha_emision, f.concepto, {proveedor_col}
+        FROM factura_compra_cc i
+        JOIN facturas_compra f ON f.id = i.factura_id
+        {proveedor_sql}
+        WHERE i.centro_costo_id=?
+        ORDER BY f.fecha_emision DESC, i.id DESC
+        """,
+        (cc_id,),
+    ).fetchall()
+
+
+def salidas_bodega_cotizacion(c: sqlite3.Connection, cot_id: int) -> list:
+    """Mercadería que salió de bodega hacia esta cotización. El gasto se imputa aquí, no al ingresar."""
+    if not _tabla_sql(c, "inventario_movimientos"):
+        return []
+    cc_id = _cc_id_cotizacion(c, cot_id)
+    if not cc_id:
+        return []
+    return c.execute(
+        """
+        SELECT m.id, m.fecha, m.cantidad, m.costo_unitario,
+               ROUND(m.cantidad * COALESCE(m.costo_unitario,0), 2) AS monto,
+               COALESCE(i.nombre, '') AS concepto
+        FROM inventario_movimientos m
+        LEFT JOIN inventario i ON i.id = m.inventario_id
+        WHERE m.tipo='salida' AND m.centro_costo_id=?
+        ORDER BY m.fecha DESC, m.id DESC
+        """,
+        (cc_id,),
+    ).fetchall()
+
+
+def facturas_para_imputar(c: sqlite3.Connection, cot_id: int) -> list[dict]:
+    if not _tabla_sql(c, "facturas_compra"):
+        return []
+    cc_id = _cc_id_cotizacion(c, cot_id)
+    proveedor_sql = (
+        "LEFT JOIN proveedores p ON p.id = f.proveedor_id"
+        if _tabla_sql(c, "proveedores")
+        else ""
+    )
+    proveedor_col = "COALESCE(p.razon_social, '') AS proveedor" if proveedor_sql else "'' AS proveedor"
+    rows = c.execute(
+        f"""
+        SELECT f.id, f.documento, f.fecha_emision, f.concepto, f.neto, {proveedor_col}
+        FROM facturas_compra f
+        {proveedor_sql}
+        ORDER BY f.fecha_emision DESC, f.id DESC
+        """
+    ).fetchall()
+    salida = []
+    for fac in rows:
+        ya_aqui, otros, nombres = _reparto_factura(c, int(fac["id"]), cc_id)
+        disponible = round(float(fac["neto"] or 0) - ya_aqui, 2)
+        if disponible <= 0.001:
+            continue
+        salida.append(
+            {
+                "id": fac["id"],
+                "documento": fac["documento"] or "",
+                "fecha": fac["fecha_emision"] or "",
+                "concepto": fac["concepto"] or "",
+                "proveedor": fac["proveedor"] or "",
+                "disponible": disponible,
+                "otros_nombres": ", ".join(nombres),
+            }
+        )
+    return salida
+
+
+def _reparto_factura(c: sqlite3.Connection, factura_id: int, cc_id: int | None) -> tuple[float, float, list[str]]:
+    """Cuánto de la compra ya está en este centro y cuánto en otros."""
+    if not _tabla_sql(c, "factura_compra_cc"):
+        return 0.0, 0.0, []
+    if _tabla_sql(c, "centros_costo"):
+        rows = c.execute(
+            """
+            SELECT i.centro_costo_id, i.monto, COALESCE(cc.nombre, '') AS nombre
+            FROM factura_compra_cc i
+            LEFT JOIN centros_costo cc ON cc.id = i.centro_costo_id
+            WHERE i.factura_id=?
+            """,
+            (factura_id,),
+        ).fetchall()
+    else:
+        rows = c.execute(
+            """
+            SELECT centro_costo_id, monto, '' AS nombre
+            FROM factura_compra_cc WHERE factura_id=?
+            """,
+            (factura_id,),
+        ).fetchall()
+    ya_aqui = 0.0
+    otros = 0.0
+    nombres: list[str] = []
+    for row in rows:
+        monto = float(row["monto"] or 0)
+        if cc_id and int(row["centro_costo_id"]) == int(cc_id):
+            ya_aqui += monto
+        else:
+            otros += monto
+            nombre = str(row["nombre"] or "").strip()
+            if nombre and nombre not in nombres:
+                nombres.append(nombre)
+    return round(ya_aqui, 2), round(otros, 2), nombres
+
+
+def _mover_exceso_a_cotizacion(c: sqlite3.Connection, factura_id: int, cc_id: int, exceso: float) -> None:
+    """Saca de otros centros lo que ahora queda en la cotización, sin duplicar el gasto."""
+    if exceso <= 0.001:
+        return
+    rows = c.execute(
+        """
+        SELECT id, monto FROM factura_compra_cc
+        WHERE factura_id=? AND centro_costo_id<>?
+        ORDER BY monto DESC, id DESC
+        """,
+        (factura_id, cc_id),
+    ).fetchall()
+    for row in rows:
+        if exceso <= 0.001:
+            break
+        actual = float(row["monto"] or 0)
+        quita = min(actual, exceso)
+        queda = round(actual - quita, 2)
+        exceso = round(exceso - quita, 2)
+        if queda <= 0.001:
+            c.execute("DELETE FROM factura_compra_cc WHERE id=?", (row["id"],))
+        else:
+            c.execute(
+                "UPDATE factura_compra_cc SET monto=? WHERE id=?",
+                (queda, row["id"]),
+            )
+
+
+def imputar_gasto_cotizacion(c: sqlite3.Connection, cot_id: int, factura_id, monto) -> tuple[bool, str]:
+    cot = c.execute("SELECT estado FROM cotizaciones WHERE id=?", (cot_id,)).fetchone()
+    if not cot or (cot["estado"] or "") != "aprobada":
+        return False, "La planilla de gastos se abre al aprobar la cotización."
+    if not _tabla_sql(c, "facturas_compra"):
+        return False, "No hay compras para imputar."
+    try:
+        factura_id = int(factura_id or 0)
+    except (TypeError, ValueError):
+        factura_id = 0
+    fac = c.execute(
+        "SELECT id, documento, neto FROM facturas_compra WHERE id=?",
+        (factura_id,),
+    ).fetchone()
+    if not fac:
+        return False, "Compra no encontrada."
+    cc_id = asegurar_cc_cotizacion(c, cot_id)
+    if not cc_id:
+        return False, "No se pudo abrir el centro de esta cotización."
+    neto = round(float(fac["neto"] or 0), 2)
+    ya_aqui, otros, _nombres = _reparto_factura(c, factura_id, cc_id)
+    pendiente = round(neto - ya_aqui, 2)
+    if str(monto or "").strip() == "":
+        monto_f = pendiente
+    else:
+        try:
+            monto_f = round(float(monto), 2)
+        except (TypeError, ValueError):
+            monto_f = 0.0
+    if monto_f <= 0:
+        return False, "Indica el neto a imputar."
+    if monto_f > pendiente + 0.001:
+        return False, "El monto supera el neto disponible de esa compra."
+    _mover_exceso_a_cotizacion(c, factura_id, cc_id, round(monto_f + otros - neto, 2))
+    previo = c.execute(
+        "SELECT id FROM factura_compra_cc WHERE factura_id=? AND centro_costo_id=?",
+        (factura_id, cc_id),
+    ).fetchone()
+    if previo:
+        c.execute(
+            "UPDATE factura_compra_cc SET monto=? WHERE id=?",
+            (monto_f, previo["id"]),
+        )
+    else:
+        c.execute(
+            """
+            INSERT INTO factura_compra_cc (factura_id, centro_costo_id, monto)
+            VALUES (?,?,?)
+            """,
+            (factura_id, cc_id, monto_f),
+        )
+    return True, ""
+
+
+def quitar_gasto_cotizacion(c: sqlite3.Connection, cot_id: int, imputacion_id) -> tuple[bool, str]:
+    cc_id = _cc_id_cotizacion(c, cot_id)
+    if not cc_id:
+        return False, "Esta cotización no tiene gastos imputados."
+    try:
+        imputacion_id = int(imputacion_id or 0)
+    except (TypeError, ValueError):
+        imputacion_id = 0
+    row = c.execute(
+        "SELECT id FROM factura_compra_cc WHERE id=? AND centro_costo_id=?",
+        (imputacion_id, cc_id),
+    ).fetchone()
+    if not row:
+        return False, "Esa imputación no es de esta cotización."
+    c.execute("DELETE FROM factura_compra_cc WHERE id=?", (imputacion_id,))
+    return True, ""

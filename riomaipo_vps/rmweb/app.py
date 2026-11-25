@@ -1348,6 +1348,41 @@ def cotizaciones_mo_abono(cot_id: int):
     return redirect(url_for("cotizaciones_detalle", cot_id=cot_id, etiqueta="mo"))
 
 
+@app.route("/cotizaciones/<int:cot_id>/obra/gasto", methods=["POST"])
+@login_required
+def cotizaciones_obra_gasto(cot_id: int):
+    db = core.conn()
+    ok, err = core.imputar_gasto_cotizacion(
+        db,
+        cot_id,
+        request.form.get("factura_id"),
+        request.form.get("monto"),
+    )
+    if ok:
+        db.commit()
+        flash("Gasto imputado a la cotización.", "ok")
+    else:
+        db.rollback()
+        flash(err, "danger")
+    db.close()
+    return redirect(url_for("cotizaciones_detalle", cot_id=cot_id, etiqueta="mo"))
+
+
+@app.route("/cotizaciones/<int:cot_id>/obra/gasto/<int:imputacion_id>/quitar", methods=["POST"])
+@login_required
+def cotizaciones_obra_gasto_quitar(cot_id: int, imputacion_id: int):
+    db = core.conn()
+    ok, err = core.quitar_gasto_cotizacion(db, cot_id, imputacion_id)
+    if ok:
+        db.commit()
+        flash("Imputación quitada de la cotización.", "ok")
+    else:
+        db.rollback()
+        flash(err, "danger")
+    db.close()
+    return redirect(url_for("cotizaciones_detalle", cot_id=cot_id, etiqueta="mo"))
+
+
 @app.route("/cotizaciones/<int:cot_id>/pdf")
 @login_required
 def cotizaciones_pdf(cot_id: int):

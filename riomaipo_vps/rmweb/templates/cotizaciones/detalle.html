@@ -35,7 +35,7 @@
     <a class="nav-link {% if etiqueta != 'mo' %}active{% endif %}" href="{{ url_for('cotizaciones_detalle', cot_id=cot.id) }}">Cotización</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link {% if etiqueta == 'mo' %}active{% endif %}" href="{{ url_for('cotizaciones_detalle', cot_id=cot.id, etiqueta='mo') }}">Mano de obra{% if mo.monto %} · {{ clp(mo.monto) }}{% endif %}</a>
+    <a class="nav-link {% if etiqueta == 'mo' %}active{% endif %}" href="{{ url_for('cotizaciones_detalle', cot_id=cot.id, etiqueta='mo') }}">Cuenta obra</a>
   </li>
 </ul>
 {% if etiqueta != 'mo' %}
@@ -117,116 +117,246 @@
       <button class="btn btn-primary" type="submit">Actualizar estado</button>
     </div>
     <div class="col-12">
-      <div class="form-text">Al pasar a <strong>aprobada</strong>: CxC automática. Producto → salida bodega. Arriendo → contrato + despacho en módulo Arriendos. La mano de obra abre su cuenta en la etiqueta Mano de obra.</div>
+      <div class="form-text">Al pasar a <strong>aprobada</strong>: CxC automática. Producto → salida bodega. Arriendo → contrato + despacho en módulo Arriendos. La cuenta obra abre la mano de obra y la planilla de gastos.</div>
     </div>
   </form>
 </div>
 {% else %}
+{% set compras_directas = mo.resultado.compras - mo.bodega %}
+<style>
+  .obra-dona{width:188px;height:188px;border-radius:50%;background:conic-gradient(var(--obra-color) calc(var(--obra-pct) * 1%), #e6ebf0 0);display:grid;place-items:center;margin:0 auto}
+  .obra-dona-centro{width:132px;height:132px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1.15;padding:8px}
+  .obra-dona-centro strong{font-size:1.45rem;color:var(--obra-color)}
+  .obra-dona-monto{font-size:.82rem;font-weight:700;color:#243044}
+  .obra-dona-leyenda{font-size:.68rem;color:#6c757d;margin-top:2px}
+  .obra-etiqueta{font-size:.72rem;color:#6c757d;text-transform:uppercase;letter-spacing:.04em}
+  .obra-cifra{font-size:1.2rem;font-weight:700;line-height:1.2}
+  .obra-desglose{display:flex;flex-wrap:wrap;gap:.35rem 1.25rem}
+</style>
 <div class="panel mb-3">
-  <h2 class="h6 mb-2">Contratista</h2>
-  <form class="row g-2 align-items-end" method="post" action="{{ url_for('cotizaciones_mo_contratista', cot_id=cot.id) }}">
-    <div class="col-md-4">
-      <label class="form-label">Elegir</label>
-      <select class="form-select" name="contratista_id">
-        <option value="">—</option>
-        {% for ct in mo.contratistas %}
-        <option value="{{ ct.id }}" {% if mo.contratista_id == ct.id %}selected{% endif %}>{{ ct.razon_social }}</option>
-        {% endfor %}
-      </select>
+  <div class="row g-3 align-items-center">
+    <div class="col-md-auto">
+      <div class="obra-dona" style="--obra-pct: {{ mo.resultado.ancho }}; --obra-color: {{ mo.resultado.color }};" role="img" aria-label="Consumido {{ '%.1f'|format(mo.resultado.pct)|replace('.', ',') }} por ciento, {{ clp(mo.resultado.gasto) }}">
+        <div class="obra-dona-centro">
+          <strong>{{ '%.1f'|format(mo.resultado.pct)|replace('.', ',') }}%</strong>
+          <span class="obra-dona-monto">{{ clp(mo.resultado.gasto) }}</span>
+          <span class="obra-dona-leyenda">consumido</span>
+        </div>
+      </div>
     </div>
-    <div class="col-md-4">
-      <label class="form-label">O uno nuevo</label>
-      <input class="form-control" name="nuevo" placeholder="Nombre del contratista" autocomplete="off">
+    <div class="col">
+      <div class="row g-3">
+        <div class="col-sm-4">
+          <div class="obra-etiqueta">Valor neto</div>
+          <div class="obra-cifra">{{ clp(mo.resultado.valor_neto) }}</div>
+        </div>
+        <div class="col-sm-4">
+          <div class="obra-etiqueta">Consumido</div>
+          <div class="obra-cifra" style="color: {{ mo.resultado.color }}">{{ clp(mo.resultado.gasto) }}</div>
+        </div>
+        <div class="col-sm-4">
+          <div class="obra-etiqueta">Utilidad</div>
+          <div class="obra-cifra {% if mo.resultado.utilidad < 0 %}text-danger{% endif %}">{{ clp(mo.resultado.utilidad) }}</div>
+        </div>
+      </div>
+      <div class="obra-desglose small mt-3">
+        <span>Compras <strong>{{ clp(compras_directas) }}</strong></span>
+        <span>Salidas de bodega <strong>{{ clp(mo.bodega) }}</strong></span>
+        <span>Mano de obra pagada <strong>{{ clp(mo.resultado.mo_pagada) }}</strong></span>
+      </div>
+      <div class="small text-muted mt-2">Subtotal de las partidas {{ clp(mo.resultado.subtotal) }}. El porcentaje es el consumido sobre el valor neto.</div>
+      {% if mo.resultado.alerta %}
+      <div class="alert alert-{{ mo.resultado.nivel }} py-2 mt-3 mb-0">{{ mo.resultado.alerta }}</div>
+      {% elif mo.resultado.gasto == 0 %}
+      <div class="small mt-3 mb-0">Sin imputaciones, la utilidad es el valor neto.</div>
+      {% endif %}
     </div>
-    <div class="col-md-2">
-      <button class="btn btn-primary" type="submit">Guardar</button>
-    </div>
-  </form>
-  {% if mo.contratista_nombre %}
-  <div class="mt-2">Ejecuta <strong>{{ mo.contratista_nombre }}</strong></div>
-  {% endif %}
+  </div>
 </div>
-{% if mo.lineas %}
-<div class="row g-3 mb-3">
-  <div class="col-md-4"><div class="panel mb-0"><div class="text-muted small">Total mano de obra</div><strong>{{ clp(mo.cuenta.monto if mo.cuenta else mo.monto) }}</strong></div></div>
-  <div class="col-md-4"><div class="panel mb-0"><div class="text-muted small">Abonado al contratista</div><strong>{{ clp(mo.cuenta.abonado if mo.cuenta else 0) }}</strong></div></div>
-  <div class="col-md-4"><div class="panel mb-0"><div class="text-muted small">Saldo contratista</div><strong>{{ clp(mo.cuenta.saldo if mo.cuenta else mo.monto) }}</strong></div></div>
-</div>
-<div class="panel">
-  <table class="table table-sm">
-    <thead><tr><th>Partida</th><th>Detalle</th><th>Obs</th><th>Und</th><th>Cant</th><th>Valor</th><th>Total</th></tr></thead>
-    <tbody>
-      {% for ln in mo.lineas %}
-      <tr>
-        <td>{{ ln.partida }}</td>
-        <td>{{ ln.descripcion }}</td>
-        <td>{{ ln.obs }}</td>
-        <td>{{ ln.unidad }}</td>
-        <td>{{ '%.2f'|format(ln.cantidad) }}</td>
-        <td>{{ clp(ln.precio_unitario) }}</td>
-        <td>{{ clp(ln.total) }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% if not mo.aprobada %}
-<div class="alert alert-warning py-2">La cuenta del contratista se abre al aprobar la cotización. Puedes dejar el contratista elegido desde ahora.</div>
-{% elif not mo.contratista_id %}
-<div class="alert alert-warning py-2">Elige el contratista para registrar abonos.</div>
-{% else %}
-<div class="panel">
-  <h2 class="h6 mb-2">Abonos al contratista</h2>
-  {% if mo.cuenta and mo.cuenta.saldo > 0 %}
-  <form class="row g-2 align-items-end mb-3" method="post" action="{{ url_for('cotizaciones_mo_abono', cot_id=cot.id) }}">
-    <div class="col-md-2">
-      <label class="form-label">Fecha</label>
-      <input class="form-control" type="date" name="fecha" value="{{ mo.hoy }}" required>
-    </div>
-    <div class="col-md-2">
-      <label class="form-label">Monto</label>
-      <input class="form-control" type="number" name="monto" min="1" step="1" max="{{ mo.cuenta.saldo|round(0, 'ceil')|int }}" required>
-    </div>
-    <div class="col-md-2">
-      <label class="form-label">Medio</label>
-      <select class="form-select" name="medio">
-        <option>Transferencia</option>
-        <option>Cheque</option>
-        <option>Efectivo</option>
-        <option>Tarjeta</option>
-        <option>Otro</option>
-      </select>
-    </div>
-    <div class="col-md-4">
-      <label class="form-label">Nota</label>
-      <input class="form-control" name="nota" autocomplete="off">
-    </div>
-    <div class="col-md-2">
-      <button class="btn btn-primary" type="submit">Registrar abono</button>
-    </div>
-  </form>
-  {% elif mo.cuenta %}
-  <div class="alert alert-success py-2">La mano de obra de esta cotización está pagada.</div>
-  {% endif %}
-  <table class="table table-sm">
-    <thead><tr><th>Fecha</th><th>Monto</th><th>Medio</th><th>Nota</th></tr></thead>
-    <tbody>
-      {% for a in mo.abonos %}
-      <tr>
-        <td>{{ a.fecha }}</td>
-        <td>{{ clp(a.monto) }}</td>
-        <td>{{ a.medio or '' }}</td>
-        <td>{{ a.nota or '' }}</td>
-      </tr>
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="panel mb-3">
+      <h2 class="h6 mb-2">Compras</h2>
+      {% if not mo.aprobada %}
+      <div class="text-muted">La planilla se abre al aprobar la cotización.</div>
       {% else %}
-      <tr><td colspan="4" class="text-muted">Sin abonos al contratista.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      {% if mo.facturas %}
+      <form class="row g-2 align-items-end mb-3" method="post" action="{{ url_for('cotizaciones_obra_gasto', cot_id=cot.id) }}">
+        <div class="col-md-6">
+          <label class="form-label">Compra</label>
+          <select class="form-select" name="factura_id" required>
+            {% for f in mo.facturas %}
+            <option value="{{ f.id }}">{{ f.documento }} · {{ f.proveedor or f.concepto }} · {{ clp(f.disponible) }}{% if f.otros_nombres %} · hoy en {{ f.otros_nombres }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Neto a imputar</label>
+          <input class="form-control" type="number" name="monto" min="1" step="1" placeholder="Todo el disponible">
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary w-100" type="submit">Imputar</button>
+        </div>
+      </form>
+      {% else %}
+      <div class="text-muted mb-2">No hay compras con neto disponible.</div>
+      {% endif %}
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Fecha</th><th>Documento</th><th>Proveedor</th><th>Concepto</th><th class="text-end">Neto</th><th></th></tr></thead>
+        <tbody>
+          {% for g in mo.gastos %}
+          <tr>
+            <td>{{ g.fecha_emision or '' }}</td>
+            <td>{{ g.documento }}</td>
+            <td>{{ g.proveedor }}</td>
+            <td>{{ g.concepto or '' }}</td>
+            <td class="text-end">{{ clp(g.monto) }}</td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('cotizaciones_obra_gasto_quitar', cot_id=cot.id, imputacion_id=g.id) }}">
+                <button class="btn btn-sm btn-outline-danger" type="submit">Quitar</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-muted">Sin compras imputadas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    {% if mo.salidas %}
+    <div class="panel mb-3">
+      <h2 class="h6 mb-2">Salidas de bodega</h2>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Fecha</th><th>Material</th><th class="text-end">Cantidad</th><th class="text-end">Costo</th></tr></thead>
+        <tbody>
+          {% for s in mo.salidas %}
+          <tr>
+            <td>{{ s.fecha or '' }}</td>
+            <td>{{ s.concepto }}</td>
+            <td class="text-end">{{ '%.2f'|format(s.cantidad or 0) }}</td>
+            <td class="text-end">{{ clp(s.monto) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  <div class="col-lg-5">
+    <div class="panel mb-3">
+      <h2 class="h6 mb-2">Mano de obra</h2>
+      <form class="row g-2 align-items-end" method="post" action="{{ url_for('cotizaciones_mo_contratista', cot_id=cot.id) }}">
+        <div class="col-12">
+          <label class="form-label">Contratista</label>
+          <select class="form-select" name="contratista_id">
+            <option value="">—</option>
+            {% for ct in mo.contratistas %}
+            <option value="{{ ct.id }}" {% if mo.contratista_id == ct.id %}selected{% endif %}>{{ ct.razon_social }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-8">
+          <label class="form-label">O uno nuevo</label>
+          <input class="form-control" name="nuevo" placeholder="Nombre del contratista" autocomplete="off">
+        </div>
+        <div class="col-4">
+          <button class="btn btn-primary w-100" type="submit">Guardar</button>
+        </div>
+      </form>
+      {% if mo.contratista_nombre %}
+      <div class="mt-2">Ejecuta <strong>{{ mo.contratista_nombre }}</strong></div>
+      {% endif %}
+      {% if mo.lineas %}
+      <div class="row g-2 mt-2">
+        <div class="col-4">
+          <div class="obra-etiqueta">Cotizada</div>
+          <strong>{{ clp(mo.cuenta.monto if mo.cuenta else mo.monto) }}</strong>
+        </div>
+        <div class="col-4">
+          <div class="obra-etiqueta">Pagada</div>
+          <strong>{{ clp(mo.cuenta.abonado if mo.cuenta else 0) }}</strong>
+        </div>
+        <div class="col-4">
+          <div class="obra-etiqueta">Saldo</div>
+          <strong>{{ clp(mo.cuenta.saldo if mo.cuenta else mo.monto) }}</strong>
+        </div>
+      </div>
+      <details class="mt-3">
+        <summary>Partidas cotizadas</summary>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Partida</th><th>Detalle</th><th class="text-end">Total</th></tr></thead>
+            <tbody>
+              {% for ln in mo.lineas %}
+              <tr>
+                <td>{{ ln.partida }}</td>
+                <td>{{ ln.descripcion }}{% if ln.obs %} <span class="text-muted">· {{ ln.obs }}</span>{% endif %}</td>
+                <td class="text-end">{{ clp(ln.total) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% if not mo.aprobada %}
+      <div class="alert alert-warning py-2 mt-3 mb-0">La cuenta del contratista se abre al aprobar la cotización. Puedes dejar el contratista elegido desde ahora.</div>
+      {% elif not mo.contratista_id %}
+      <div class="alert alert-warning py-2 mt-3 mb-0">Elige el contratista para registrar abonos.</div>
+      {% else %}
+      <h3 class="h6 mt-3 mb-2">Abonos</h3>
+      {% if mo.cuenta and mo.cuenta.saldo > 0 %}
+      <form class="row g-2 align-items-end mb-3" method="post" action="{{ url_for('cotizaciones_mo_abono', cot_id=cot.id) }}">
+        <div class="col-6">
+          <label class="form-label">Fecha</label>
+          <input class="form-control" type="date" name="fecha" value="{{ mo.hoy }}" required>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Monto</label>
+          <input class="form-control" type="number" name="monto" min="1" step="1" max="{{ mo.cuenta.saldo|round(0, 'ceil')|int }}" required>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Medio</label>
+          <select class="form-select" name="medio">
+            <option>Transferencia</option>
+            <option>Cheque</option>
+            <option>Efectivo</option>
+            <option>Tarjeta</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Nota</label>
+          <input class="form-control" name="nota" autocomplete="off">
+        </div>
+        <div class="col-12">
+          <button class="btn btn-primary" type="submit">Registrar abono</button>
+        </div>
+      </form>
+      {% elif mo.cuenta %}
+      <div class="alert alert-success py-2">La mano de obra de esta cotización está pagada.</div>
+      {% endif %}
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Fecha</th><th>Monto</th><th>Medio</th><th>Nota</th></tr></thead>
+        <tbody>
+          {% for a in mo.abonos %}
+          <tr>
+            <td>{{ a.fecha }}</td>
+            <td>{{ clp(a.monto) }}</td>
+            <td>{{ a.medio or '' }}</td>
+            <td>{{ a.nota or '' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted">Sin abonos al contratista.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      {% else %}
+      <div class="text-muted mt-3">Esta cotización no tiene partidas de mano de obra.</div>
+      {% endif %}
+    </div>
+  </div>
 </div>
-{% endif %}
-{% else %}
-<div class="alert alert-secondary py-2">Esta cotización no tiene partidas de mano de obra.</div>
-{% endif %}
 {% endif %}
 {% endblock %}
