@@ -289,6 +289,51 @@ def _tabla_gastos_unificada(
     return rows, tot_debe, tot_haber, saldo, n_trabajos, pdf_url
 
 
+def _trabajos_para_corregir(demo, conn, fi_f, ff_f, buscar: str) -> list[dict]:
+    """Trabajos del periodo, para elegir cuál aplicación corregir."""
+    rows = conn.execute(
+        f"""SELECT id, fecha, documento, tractor_codigo, tractor, implemento_codigo, implemento,
+                   trabajo, horas, hectareas, monto_tractor, monto_implemento, monto
+            FROM {TABLA}
+            WHERE fecha BETWEEN ? AND ?
+            ORDER BY fecha DESC, id DESC""",
+        (str(fi_f), str(ff_f)),
+    ).fetchall()
+    q = (buscar or "").strip().upper()
+    out: list[dict] = []
+    for r in rows:
+        blob = " ".join(str(x or "") for x in (r[2], r[4], r[6], r[7])).upper()
+        if q and q not in blob:
+            continue
+        fecha = str(r[1])[:10]
+        horas = r[8]
+        ha = r[9]
+        monto = float(r[12] or 0)
+        out.append(
+            {
+                "id": int(r[0]),
+                "fecha": fecha,
+                "documento": r[2] or "",
+                "tractor_codigo": (r[3] or "").strip(),
+                "tractor": r[4] or "",
+                "implemento_codigo": (r[5] or "").strip(),
+                "implemento": r[6] or "",
+                "trabajo": r[7] or "",
+                "horas": "" if horas is None else f"{float(horas):g}",
+                "hectareas": "" if ha is None else f"{float(ha):g}",
+                "monto_tractor": f"{float(r[10] or 0):g}",
+                "monto_implemento": f"{float(r[11] or 0):g}",
+                "monto": monto,
+                "folio_interno": str(r[2] or "").startswith("INT-"),
+                "label": (
+                    f"{pd.to_datetime(fecha).strftime('%d-%m-%Y')} · {r[2] or '—'} · "
+                    f"{r[4] or '—'} · {r[7] or ''} · {demo.f_peso(monto)}"
+                ),
+            }
+        )
+    return out
+
+
 def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
     hoy = hoy_demo(demo)
     fi_f = parse_date(request.args.get("desde"), fi)
@@ -303,7 +348,19 @@ def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
         demo, conn, nombre or "temp", fi_f, ff_f
     )
 
-    from erp_maquinaria import TIPOS_MAQUINARIA_TRACTOR, TIPOS_MAQUINARIA_APLICACION
+    from erp_maquinaria import TIPOS_MAQUINARIA_APLICACION
+
+    buscar = (request.args.get("q") or "").strip()
+    trabajos_edit: list[dict] = []
+    trabajo_edit = None
+    if demo.es_admin() and not demo.es_solo_lectura():
+        trabajos_edit = _trabajos_para_corregir(demo, conn, fi_f, ff_f, buscar)
+        if trabajos_edit:
+            sel = (request.args.get("trabajo_id") or "").strip()
+            if sel.isdigit():
+                trabajo_edit = next((x for x in trabajos_edit if x["id"] == int(sel)), trabajos_edit[0])
+            else:
+                trabajo_edit = trabajos_edit[0]
 
     return {
         "maq_ops": MAQ_OPS,
@@ -316,12 +373,15 @@ def gather_maquinaria(demo, conn, fi, ff, nombre: str = "") -> dict:
         "libro_tot_haber": demo.f_peso(tot_haber),
         "libro_saldo": demo.f_peso(saldo),
         "pdf_trabajos_url": pdf_gastos,
-        "filtro_q": (request.args.get("q") or "").strip(),
+        "filtro_q": buscar,
         "filtro_desde": fi_f.isoformat(),
         "filtro_hasta": ff_f.isoformat(),
-        "tractores": _select_maquinaria(conn, TIPOS_MAQUINARIA_TRACTOR),
+        "tractores": _select_maquinaria(conn),
         "implementos": _select_maquinaria(conn, TIPOS_MAQUINARIA_APLICACION),
         "fecha_def": (hoy if fi <= hoy <= ff else (ff if hoy > ff else fi)).isoformat(),
+        "es_admin": demo.es_admin(),
+        "trabajos_edit": trabajos_edit,
+        "trabajo_edit": trabajo_edit,
     }
 
 
@@ -347,7 +407,7 @@ def post_registrar(demo, conn, fi, ff) -> dict:
         return {"ok": False, "msg": "Datos numéricos inválidos."}
 
     if not tr_cod:
-        return {"ok": False, "msg": "Seleccione el tractor."}
+        return {"ok": False, "msg": "Seleccione la maquinaria."}
     if not trabajo:
         return {"ok": False, "msg": "Indique el detalle del trabajo."}
     if not (fi <= fecha <= ff):
@@ -361,7 +421,7 @@ def post_registrar(demo, conn, fi, ff) -> dict:
         (tr_cod.upper(),),
     ).fetchone()
     if not tr_row:
-        return {"ok": False, "msg": "Tractor no encontrado en maestra."}
+        return {"ok": False, "msg": "Maquinaria no encontrada en la maestra."}
     tr_lbl = etiqueta_maquinaria(tr_cod, tr_row[0])
 
     imp_lbl = ""
@@ -452,3 +512,125 @@ def post_ingreso(demo, conn, fi, ff) -> dict:
     conn.commit()
     demo.registrar_accion(ETIQUETA, f"Abono maquinaria {doc} — {detalle}")
     return {"ok": True, "msg": f"Abono registrado ({demo.f_peso(monto)}).", "extra": {"op": "gastos"}}
+
+
+def _check_master(demo, clave: str) -> bool:
+    return (clave or "").strip() == demo.CLAVE_MAESTRA
+
+
+def post_corregir(demo, conn, fi, ff) -> dict:
+    """Corrige una aplicación ya imputada al Debe. El total se recalcula."""
+    from erp_maquinaria import etiqueta_maquinaria
+
+    if demo.es_solo_lectura():
+        return {"ok": False, "msg": "Modo solo lectura: no puede corregir aplicaciones."}
+    if not demo.es_admin():
+        return {"ok": False, "msg": "Requiere perfil admin."}
+    if not _check_master(demo, request.form.get("clave_maestra")):
+        return {"ok": False, "msg": "Clave maestra incorrecta."}
+
+    try:
+        mid = int(request.form.get("trabajo_id") or 0)
+    except (TypeError, ValueError):
+        mid = 0
+    extra = {"op": "gastos", "trabajo_id": mid}
+    if not mid:
+        return {"ok": False, "msg": "Seleccione la aplicación a corregir.", "extra": extra}
+
+    row = conn.execute(
+        f"SELECT fecha, documento FROM {TABLA} WHERE id=?",
+        (mid,),
+    ).fetchone()
+    if not row:
+        return {"ok": False, "msg": "Aplicación no encontrada.", "extra": extra}
+    try:
+        fecha_row = parse_date(str(row[0])[:10], hoy_demo(demo))
+    except Exception:
+        fecha_row = None
+    if fecha_row is not None and not (fi <= fecha_row <= ff):
+        return {"ok": False, "msg": "La aplicación no pertenece a la temporada seleccionada.", "extra": extra}
+
+    fecha = parse_date(request.form.get("fecha"), hoy_demo(demo))
+    trabajo = (request.form.get("trabajo") or "").strip()
+    sin_doc = request.form.get("sin_doc") == "1"
+    tr_cod = (request.form.get("tractor_codigo") or "").strip()
+    imp_cod = (request.form.get("implemento_codigo") or "").strip()
+    try:
+        hectareas = float(request.form.get("hectareas") or 0)
+        monto_tr = float(request.form.get("monto_tractor") or 0)
+        monto_imp = float(request.form.get("monto_implemento") or 0)
+        horas = request.form.get("horas")
+        horas_f = float(horas) if horas not in (None, "") else None
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "Datos numéricos inválidos.", "extra": extra}
+
+    if not tr_cod:
+        return {"ok": False, "msg": "Seleccione la maquinaria.", "extra": extra}
+    if not trabajo:
+        return {"ok": False, "msg": "Indique el detalle del trabajo.", "extra": extra}
+    if not (fi <= fecha <= ff):
+        return {"ok": False, "msg": "La fecha debe estar dentro de la temporada.", "extra": extra}
+
+    tr_row = conn.execute(
+        "SELECT nombre FROM maestra_maquinaria WHERE UPPER(TRIM(codigo))=?",
+        (tr_cod.upper(),),
+    ).fetchone()
+    if not tr_row:
+        return {"ok": False, "msg": "Maquinaria no encontrada en la maestra.", "extra": extra}
+    tr_lbl = etiqueta_maquinaria(tr_cod, tr_row[0])
+
+    imp_lbl = ""
+    if imp_cod:
+        imp_row = conn.execute(
+            "SELECT nombre FROM maestra_maquinaria WHERE UPPER(TRIM(codigo))=?",
+            (imp_cod.upper(),),
+        ).fetchone()
+        if not imp_row:
+            return {"ok": False, "msg": "Implemento no encontrado en la maestra.", "extra": extra}
+        imp_lbl = etiqueta_maquinaria(imp_cod, imp_row[0])
+
+    ha_eff = _hectareas_efectivas(hectareas)
+    monto = (monto_tr + monto_imp) * ha_eff
+    if monto <= 0:
+        return {"ok": False, "msg": "Indique valores $/ha de maquinaria y/o implemento.", "extra": extra}
+
+    doc_ini = str(row[1] or "").strip()
+    if sin_doc:
+        doc = doc_ini if doc_ini.startswith("INT-") else _folio_trabajo(conn, fecha)
+    else:
+        doc = (request.form.get("documento") or "").strip()
+        if not doc:
+            return {"ok": False, "msg": "Ingrese N° documento o marque folio interno.", "extra": extra}
+
+    combo = _combo_maquinaria(tr_lbl, imp_lbl)
+    conn.execute(
+        f"""UPDATE {TABLA} SET
+                fecha=?, documento=?, maquinaria_codigo=?, maquinaria=?, trabajo=?, horas=?, monto=?,
+                tractor_codigo=?, tractor=?, implemento_codigo=?, implemento=?,
+                monto_tractor=?, monto_implemento=?, hectareas=?
+            WHERE id=?""",
+        (
+            str(fecha),
+            doc,
+            tr_cod,
+            combo,
+            trabajo,
+            horas_f,
+            monto,
+            tr_cod,
+            tr_lbl,
+            imp_cod,
+            imp_lbl,
+            monto_tr,
+            monto_imp,
+            hectareas if hectareas > 0 else None,
+            mid,
+        ),
+    )
+    conn.commit()
+    demo.registrar_accion(ETIQUETA, f"Corrección trabajo {doc} — {trabajo}")
+    return {
+        "ok": True,
+        "msg": f"Aplicación corregida ({demo.f_peso(monto)}).",
+        "extra": extra,
+    }
