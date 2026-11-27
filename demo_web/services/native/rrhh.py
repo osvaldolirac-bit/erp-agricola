@@ -7,7 +7,7 @@ import pandas as pd
 from flask import flash, render_template, request, session, url_for
 
 from demo_web.services.demo_loader import bind_user_session, get_demo_module
-from demo_web.services.module_runner import redirect_module, store_pdf
+from demo_web.services.module_runner import pdf_download_url, redirect_module, store_pdf
 from demo_web.services.native._helpers import hoy_demo, parse_date
 
 SECCIONES = [
@@ -254,6 +254,22 @@ def _contratistas_por_cc(demo, conn) -> dict:
     }
 
 
+def nombre_pdf_cuenta_corriente(razon: str, cc: str | None = None) -> str:
+    """Nombre del archivo de la cuenta corriente, para el visor y la descarga."""
+    import unicodedata
+
+    def _trozo(texto: str) -> str:
+        plano = unicodedata.normalize("NFKD", texto or "")
+        plano = "".join(ch for ch in plano if not unicodedata.combining(ch))
+        return re.sub(r"[^A-Za-z0-9]+", "_", plano).strip("_")
+
+    nombre = _trozo(razon) or "contratista"
+    centro = _trozo(cc or "")
+    if centro:
+        nombre = f"{nombre}_{centro}"
+    return f"Cuenta_corriente_{nombre}.pdf"
+
+
 def _contratistas_cuenta(demo, conn) -> dict:
     from erp_contratistas import (
         fechas_consulta_contratistas_cc,
@@ -302,8 +318,8 @@ def _contratistas_cuenta(demo, conn) -> dict:
         )
     saldo_final = float(df["SALDO"].iloc[-1]) if not df.empty else 0.0
     pdf_url = None
+    pdf_name = ""
     if not df.empty:
-        suf_cc = f"_{cc_u.lower().replace(' ', '_')}" if cc_u else ""
         titulo = (
             f"CTA CTE {str(razon or '').upper()} "
             f"({fi.strftime('%d-%m-%Y')} al {ff.strftime('%d-%m-%Y')})"
@@ -311,10 +327,8 @@ def _contratistas_cuenta(demo, conn) -> dict:
         titulo += f" - CC {cc_u}" if cc_u else " - TODOS LOS CENTROS DE COSTOS"
         blob = demo.generar_pdf_blob(df, titulo, incluir_precios=False, orden_asc=True)
         if blob:
-            pdf_url = url_for(
-                "modules.pdf_download",
-                token=store_pdf(blob, f"cta_cte_{ct_map[ct_sel]}{suf_cc}.pdf"),
-            )
+            pdf_name = nombre_pdf_cuenta_corriente(str(razon or ct_sel), cc_u)
+            pdf_url = pdf_download_url(store_pdf(blob, pdf_name), pdf_name)
     return {
         "cta_vacia": False,
         "contratistas_cta": ct_map,
@@ -329,6 +343,7 @@ def _contratistas_cuenta(demo, conn) -> dict:
         "filtro_desde": fi.isoformat(),
         "filtro_hasta": ff.isoformat(),
         "pdf_cta_url": pdf_url,
+        "pdf_cta_filename": pdf_name,
         "pdf_cta_rows": len(rows),
     }
 

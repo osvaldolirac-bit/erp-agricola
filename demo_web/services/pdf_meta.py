@@ -29,4 +29,10 @@ def stamp_pdf_title(blob: bytes, title: str) -> bytes:
     if m:
         return blob[: m.start()] + title_token + b"\n" + blob[m.start() :]
 
+    # fpdf 2 escribe /CreationDate y no /Producer. Sin /Title el visor muestra la URL.
+    m = re.search(rb"<<\s*/CreationDate\b", blob)
+    if m:
+        pos = m.end() - len(b"/CreationDate")
+        return blob[:pos] + title_token + b"\n" + blob[pos:]
+
     return blob

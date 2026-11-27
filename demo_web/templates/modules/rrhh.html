@@ -371,7 +371,7 @@
   </div>
   {% if cta_rows %}
   <p class="small text-muted"><strong>{{ cta_razon }}</strong> · Trabajos {{ cta_tot_gen }} · Pagos {{ cta_tot_pag }} · Saldo {{ cta_saldo }}
-    {{ pdf_btn(pdf_cta_url, '📥 PDF CUENTA CORRIENTE', rows=pdf_cta_rows) }}
+    {{ pdf_btn(pdf_cta_url, '📥 PDF CUENTA CORRIENTE', filename=pdf_cta_filename, rows=pdf_cta_rows) }}
   </p>
   <div class="panel-card"><div class="table-responsive"><table class="table table-sm table-bordered demo-datatable w-100">
     <thead><tr><th>Fecha</th><th>Tipo</th><th>Documento</th><th>Detalle</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
