@@ -190,7 +190,7 @@
       <input type="hidden" name="op" value="gastos">
       <div class="col-md-3">
         <label class="form-label">Buscar</label>
-        <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="Tractor, implemento, trabajo…">
+        <input type="search" name="q" class="form-control" value="{{ filtro_q|default('') }}" placeholder="Maquinaria, implemento, trabajo…">
       </div>
       <div class="col-md-2">
         <label class="form-label">Desde</label>
@@ -221,14 +221,14 @@
           <tr>
             <th>Fecha</th>
             <th>Documento</th>
-            <th>Tractor</th>
+            <th>Maquinaria</th>
             <th>Implemento / equipo</th>
             <th>Trabajo</th>
             <th>Horas</th>
             <th>Ha</th>
-            <th class="text-end">Valor tractor $/ha</th>
+            <th class="text-end">Valor maquinaria $/ha</th>
             <th class="text-end">Valor implemento $/ha</th>
-            <th class="text-end">Total tractor</th>
+            <th class="text-end">Total maquinaria</th>
             <th class="text-end">Total implemento</th>
             <th class="text-end">Total</th>
             <th class="text-end">Haber</th>
@@ -261,6 +261,102 @@
     <p class="text-muted p-3 mb-0">Sin movimientos en el periodo.</p>
     {% endif %}
   </div>
+
+  {% if es_admin and trabajo_edit and not solo_lectura %}
+  <div class="panel-card">
+    <h2 class="h6">Corregir aplicación</h2>
+    <p class="small text-muted mb-2">Elija el trabajo y corrija fecha, maquinaria, implemento, horas, hectáreas o valores. El total se vuelve a calcular: (valor maquinaria + valor implemento) × hectáreas. Si las hectáreas quedan en cero, se usa 1.</p>
+    <form method="get" class="mb-3">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="gastos">
+      <input type="hidden" name="q" value="{{ filtro_q|default('') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <label class="form-label small">Aplicación</label>
+      <select name="trabajo_id" class="form-select" onchange="this.form.submit()">
+        {% for o in trabajos_edit %}
+        <option value="{{ o.id }}" {% if o.id == trabajo_edit.id %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <form method="post" class="row g-2">
+      <input type="hidden" name="action" value="maquinaria_corregir">
+      <input type="hidden" name="sec" value="maquinaria">
+      <input type="hidden" name="op" value="gastos">
+      <input type="hidden" name="temp" value="{{ temp_sel }}">
+      <input type="hidden" name="trabajo_id" value="{{ trabajo_edit.id }}">
+      <input type="hidden" name="q" value="{{ filtro_q|default('') }}">
+      <input type="hidden" name="desde" value="{{ filtro_desde }}">
+      <input type="hidden" name="hasta" value="{{ filtro_hasta }}">
+      <div class="col-md-3">
+        <label class="form-label small">Fecha</label>
+        <input type="date" name="fecha" class="form-control form-control-sm" value="{{ trabajo_edit.fecha }}" min="{{ fi_iso }}" max="{{ ff_iso }}" required>
+      </div>
+      <div class="col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" name="sin_doc" value="1" id="maqCorrSinDoc" {% if trabajo_edit.folio_interno %}checked{% endif %} onchange="toggleMaqCorrDoc(this.checked)">
+          <label class="form-check-label small" for="maqCorrSinDoc">Folio interno</label>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small">N° documento</label>
+        <input type="text" name="documento" id="maqCorrDoc" class="form-control form-control-sm" value="{{ trabajo_edit.documento }}" {% if trabajo_edit.folio_interno %}readonly{% endif %}>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small">Maquinaria</label>
+        <select name="tractor_codigo" class="form-select form-select-sm" required>
+          <option value="">— Seleccione —</option>
+          {% for t in tractores|default([]) %}
+          <option value="{{ t.codigo }}" {% if t.codigo == trabajo_edit.tractor_codigo %}selected{% endif %}>{{ t.label }}</option>
+          {% endfor %}
+          {% if trabajo_edit.tractor_codigo and trabajo_edit.tractor_codigo not in tractores|map(attribute='codigo')|list %}
+          <option value="{{ trabajo_edit.tractor_codigo }}" selected>{{ trabajo_edit.tractor }}</option>
+          {% endif %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small">Implemento (opcional)</label>
+        <select name="implemento_codigo" class="form-select form-select-sm">
+          <option value="">— Sin implemento —</option>
+          {% for t in implementos|default([]) %}
+          <option value="{{ t.codigo }}" {% if t.codigo == trabajo_edit.implemento_codigo %}selected{% endif %}>{{ t.label }}</option>
+          {% endfor %}
+          {% if trabajo_edit.implemento_codigo and trabajo_edit.implemento_codigo not in implementos|map(attribute='codigo')|list %}
+          <option value="{{ trabajo_edit.implemento_codigo }}" selected>{{ trabajo_edit.implemento }}</option>
+          {% endif %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small">Detalle del trabajo</label>
+        <input type="text" name="trabajo" class="form-control form-control-sm" value="{{ trabajo_edit.trabajo }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Hectáreas</label>
+        <input type="number" name="hectareas" class="form-control form-control-sm" min="0" step="0.01" value="{{ trabajo_edit.hectareas }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Horas</label>
+        <input type="number" name="horas" class="form-control form-control-sm" min="0" step="0.01" value="{{ trabajo_edit.horas }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Valor maquinaria ($/ha)</label>
+        <input type="number" name="monto_tractor" class="form-control form-control-sm" min="0" step="1" value="{{ trabajo_edit.monto_tractor }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Valor implemento ($/ha)</label>
+        <input type="number" name="monto_implemento" class="form-control form-control-sm" min="0" step="1" value="{{ trabajo_edit.monto_implemento }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Clave maestra</label>
+        <input type="password" name="clave_maestra" class="form-control form-control-sm" required>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-outline-primary btn-sm">Guardar corrección</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
 
   {% elif maq_op_activa == 'abono' %}
   {% if not solo_lectura %}
@@ -307,7 +403,7 @@
   {% if not solo_lectura %}
   <div class="panel-card">
     <h2 class="h6 panel-title">Registrar trabajo maquinaria</h2>
-    <p class="small text-muted">El monto total del trabajo se imputa al Debe (desglose tractor / implemento).</p>
+    <p class="small text-muted">El monto se imputa al Debe. La maquinaria es toda la lista activa de Administración.</p>
     <form method="post" class="row g-3">
       <input type="hidden" name="action" value="maquinaria_registrar">
       <input type="hidden" name="sec" value="maquinaria">
@@ -328,7 +424,7 @@
         <input type="text" name="documento" id="maqDoc" class="form-control" placeholder="Factura o boleta">
       </div>
       <div class="col-md-6">
-        <label class="form-label">Tractor</label>
+        <label class="form-label">Maquinaria</label>
         <select name="tractor_codigo" class="form-select" required>
           <option value="">— Seleccione —</option>
           {% for t in tractores|default([]) %}
@@ -358,7 +454,7 @@
         <input type="number" name="horas" class="form-control" min="0" step="0.01">
       </div>
       <div class="col-md-2">
-        <label class="form-label">Valor tractor ($/ha)</label>
+        <label class="form-label">Valor maquinaria ($/ha)</label>
         <input type="number" name="monto_tractor" class="form-control" min="0" step="1" value="0">
       </div>
       <div class="col-md-2">
@@ -573,6 +669,11 @@ function toggleMaqDoc(sinDoc) {
   if (!inp) return;
   if (sinDoc) { inp.value = 'AUTOGENERADO'; inp.readOnly = true; inp.removeAttribute('required'); }
   else { inp.value = ''; inp.readOnly = false; }
+}
+function toggleMaqCorrDoc(sinDoc) {
+  const inp = document.getElementById('maqCorrDoc');
+  if (!inp) return;
+  inp.readOnly = !!sinDoc;
 }
 function toggleMaqIngDoc(sinDoc) {
   const inp = document.getElementById('maqIngDoc');

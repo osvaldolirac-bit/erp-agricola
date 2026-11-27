@@ -346,6 +346,7 @@ def view(user_email: str, user_rol: str):
                 "corregir": _post_corregir,
                 "eliminar": _post_eliminar,
                 "maquinaria_registrar": espino_maquinaria.post_registrar,
+                "maquinaria_corregir": espino_maquinaria.post_corregir,
                 "maquinaria_ingreso": espino_maquinaria.post_ingreso,
                 "bodega_ingreso": espino_bodega.post_ingreso,
                 "bodega_salida": espino_bodega.post_salida,
